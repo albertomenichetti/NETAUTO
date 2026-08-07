@@ -28,7 +28,7 @@ class DataTypeVersionStatus(StrEnum):
     DEPRECATED = "deprecated"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class DataType:
     """Stable identity and human-readable name for a user-defined datatype."""
 
