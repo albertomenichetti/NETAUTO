@@ -36,6 +36,10 @@ Pydantic is used for static API models.
 Dynamic user-defined types are represented as DataTypes and compiled to
 JSON Schema. They are not expressed as dynamically generated Pydantic models.
 
+Built-in primitive types are part of the domain core itself. They are not
+user-created DataTypes and do not carry versioning, lifecycle, or persistence
+metadata.
+
 Validation is strict and must not rely on implicit value coercion.
 
 ## CLI and API rule
