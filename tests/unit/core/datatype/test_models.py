@@ -1,3 +1,4 @@
+from dataclasses import FrozenInstanceError
 from uuid import uuid4
 
 import pytest
@@ -35,6 +36,16 @@ def test_optional_description() -> None:
     datatype = DataType(id=uuid4(), namespace="network", name="vlan_id")
 
     assert datatype.description is None
+
+
+def test_datatype_instances_are_immutable() -> None:
+    datatype = DataType(id=uuid4(), namespace="network", name="vlan_id")
+
+    with pytest.raises(FrozenInstanceError):
+        datatype.namespace = "core"  # type: ignore[misc]
+
+    with pytest.raises(FrozenInstanceError):
+        datatype.name = "asn"  # type: ignore[misc]
 
 
 @pytest.mark.parametrize("namespace", ["", "Network", "network-core", "1network"])
