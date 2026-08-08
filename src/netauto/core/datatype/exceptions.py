@@ -39,3 +39,7 @@ class SchemaCompilationError(Exception):
 
 class ValidationEngineError(Exception):
     """Raised when datatype validation machinery fails."""
+
+
+class ReservedDataTypeNamespace(Exception):
+    """Raised when a custom datatype uses a reserved namespace."""
