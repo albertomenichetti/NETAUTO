@@ -51,3 +51,23 @@ class InvalidDataTypeVersionTransition(Exception):
 
 class MismatchedDataTypeVersion(Exception):
     """Raised when versions from different datatypes are mixed."""
+
+
+class DataTypeAlreadyExists(Exception):
+    """Raised when a datatype identity or logical name already exists."""
+
+
+class DataTypeVersionAlreadyExists(Exception):
+    """Raised when a datatype version identity already exists."""
+
+
+class DataTypeNotFound(Exception):
+    """Raised when a required datatype does not exist."""
+
+
+class DataTypeVersionNotFound(Exception):
+    """Raised when a required datatype version does not exist."""
+
+
+class DataTypePersistenceError(Exception):
+    """Raised when persisted datatype state cannot be mapped safely."""

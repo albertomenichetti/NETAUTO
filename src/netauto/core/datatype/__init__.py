@@ -4,7 +4,12 @@ from netauto.core.datatype.compiler import SchemaCompiler
 from netauto.core.datatype.constraints import Constraint, ConstraintName
 from netauto.core.datatype.exceptions import (
     ConflictingConstraints,
+    DataTypeAlreadyExists,
     DataTypeConstraintError,
+    DataTypeNotFound,
+    DataTypePersistenceError,
+    DataTypeVersionAlreadyExists,
+    DataTypeVersionNotFound,
     DuplicateConstraint,
     InvalidConstraintValue,
     InvalidDataTypeIdentifier,
@@ -21,6 +26,7 @@ from netauto.core.datatype.factory import DataTypeFactory
 from netauto.core.datatype.models import DataType, DataTypeVersion, DataTypeVersionStatus
 from netauto.core.datatype.primitives import PrimitiveType
 from netauto.core.datatype.registry import PrimitiveTypeRegistry
+from netauto.core.datatype.repository import DataTypeRepository
 from netauto.core.datatype.validation import ValidationEngine, ValidationIssue, ValidationResult
 from netauto.core.datatype.versioning import DataTypeVersioningService
 
@@ -30,8 +36,14 @@ __all__ = [
     "ConstraintName",
     "DataType",
     "DataTypeFactory",
+    "DataTypeAlreadyExists",
     "DataTypeConstraintError",
+    "DataTypeNotFound",
+    "DataTypePersistenceError",
+    "DataTypeRepository",
     "DataTypeVersion",
+    "DataTypeVersionAlreadyExists",
+    "DataTypeVersionNotFound",
     "DataTypeVersionStatus",
     "DuplicateConstraint",
     "InvalidConstraintValue",
