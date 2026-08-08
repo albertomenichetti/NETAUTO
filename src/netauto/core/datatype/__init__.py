@@ -1,5 +1,6 @@
 """Built-in datatype primitives."""
 
+from netauto.core.datatype.compiler import SchemaCompiler
 from netauto.core.datatype.constraints import Constraint, ConstraintName
 from netauto.core.datatype.exceptions import (
     ConflictingConstraints,
@@ -9,6 +10,7 @@ from netauto.core.datatype.exceptions import (
     InvalidDataTypeIdentifier,
     InvalidDataTypeVersion,
     PrimitiveTypeNotFound,
+    SchemaCompilationError,
     UnsupportedConstraint,
 )
 from netauto.core.datatype.models import DataType, DataTypeVersion, DataTypeVersionStatus
@@ -30,5 +32,7 @@ __all__ = [
     "PrimitiveType",
     "PrimitiveTypeNotFound",
     "PrimitiveTypeRegistry",
+    "SchemaCompilationError",
+    "SchemaCompiler",
     "UnsupportedConstraint",
 ]

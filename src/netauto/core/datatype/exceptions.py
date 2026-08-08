@@ -31,3 +31,7 @@ class DuplicateConstraint(DataTypeConstraintError):
 
 class ConflictingConstraints(DataTypeConstraintError):
     """Raised when a datatype version contains conflicting constraints."""
+
+
+class SchemaCompilationError(Exception):
+    """Raised when schema compilation fails."""
