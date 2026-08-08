@@ -9,6 +9,10 @@ from netauto.core.datatype.models import DataType, DataTypeVersion
 class DataTypeRepository(Protocol):
     """Repository contract for datatype persistence."""
 
+    def list(self) -> tuple[DataType, ...]:
+        """Return all datatypes ordered deterministically."""
+        ...
+
     def add(self, datatype: DataType) -> None:
         """Persist a new datatype identity."""
         ...

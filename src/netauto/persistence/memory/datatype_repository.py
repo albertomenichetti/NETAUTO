@@ -21,6 +21,11 @@ class InMemoryDataTypeRepository(DataTypeRepository):
         self._datatype_names: dict[tuple[str, str], UUID] = {}
         self._versions: dict[tuple[UUID, int], DataTypeVersion] = {}
 
+    def list(self) -> tuple[DataType, ...]:
+        datatypes = list(self._datatypes.values())
+        datatypes.sort(key=lambda item: (item.namespace, item.name, str(item.id)))
+        return tuple(datatypes)
+
     def add(self, datatype: DataType) -> None:
         if datatype.id in self._datatypes:
             raise DataTypeAlreadyExists("Datatype UUID already exists.")

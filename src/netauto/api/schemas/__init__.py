@@ -1,0 +1,1 @@
+"""Static API schemas."""

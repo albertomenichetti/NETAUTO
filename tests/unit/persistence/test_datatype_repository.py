@@ -169,6 +169,25 @@ def test_get_by_name(backend: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_list_returns_deterministic_ordering(backend: str, tmp_path: Path) -> None:
+    zeta = _datatype(namespace="zeta", name="beta", description=None)
+    vlan = _datatype(namespace="network", name="vlan_id", description=None)
+    hostname = _datatype(namespace="network", name="hostname", description=None)
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(zeta)
+        repo.add(vlan)
+        repo.add(hostname)
+        listed = repo.list()
+
+    assert [(datatype.namespace, datatype.name) for datatype in listed] == [
+        ("network", "hostname"),
+        ("network", "vlan_id"),
+        ("zeta", "beta"),
+    ]
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_duplicate_uuid_rejected(backend: str, tmp_path: Path) -> None:
     datatype = _datatype()
     duplicate = DataType(

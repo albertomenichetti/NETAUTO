@@ -100,6 +100,16 @@ class SqlAlchemyDataTypeRepository(DataTypeRepository):
         self._session = session
         self._primitive_registry = PrimitiveTypeRegistry()
 
+    def list(self) -> tuple[DataType, ...]:
+        rows = self._session.scalars(
+            select(DataTypeRow).order_by(
+                DataTypeRow.namespace.asc(),
+                DataTypeRow.name.asc(),
+                DataTypeRow.id.asc(),
+            )
+        ).all()
+        return tuple(_row_to_datatype(row) for row in rows)
+
     def add(self, datatype: DataType) -> None:
         self._session.add(
             DataTypeRow(
