@@ -406,6 +406,17 @@ def test_duplicate_enum_values_rejected() -> None:
         )
 
 
+def test_unhashable_invalid_enum_value_raises_invalid_constraint_value() -> None:
+    with pytest.raises(InvalidConstraintValue):
+        DataTypeVersion(
+            datatype_id=uuid4(),
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+            base_type=_base_type("core.string"),
+            constraints=(Constraint(name=ConstraintName.ENUM, value=(["invalid"],)),),
+        )
+
+
 @pytest.mark.parametrize(
     ("primitive_name", "enum_values"),
     [

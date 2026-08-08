@@ -102,8 +102,6 @@ def _validate_enum_collection(value: object) -> tuple[object, ...]:
         raise InvalidConstraintValue("Constraint 'enum' requires a tuple of values.")
     if not enum_values:
         raise InvalidConstraintValue("Constraint 'enum' must contain at least one value.")
-    if len(set(enum_values)) != len(enum_values):
-        raise InvalidConstraintValue("Constraint 'enum' values must be unique.")
     return enum_values
 
 
@@ -146,6 +144,8 @@ def _validate_constraint_value(constraint: Constraint, primitive_name: str) -> C
         enum_values = _validate_enum_collection(constraint.value)
         for enum_value in enum_values:
             _validate_enum_value_for_primitive(enum_value, primitive_name)
+        if len(set(enum_values)) != len(enum_values):
+            raise InvalidConstraintValue("Constraint 'enum' values must be unique.")
         return Constraint(name=constraint.name, value=enum_values)
     raise UnsupportedConstraint(
         f"Constraint '{constraint.name.value}' is not supported for primitive '{primitive_name}'."
