@@ -43,3 +43,11 @@ class ValidationEngineError(Exception):
 
 class ReservedDataTypeNamespace(Exception):
     """Raised when a custom datatype uses a reserved namespace."""
+
+
+class InvalidDataTypeVersionTransition(Exception):
+    """Raised when a datatype version lifecycle transition is invalid."""
+
+
+class MismatchedDataTypeVersion(Exception):
+    """Raised when versions from different datatypes are mixed."""

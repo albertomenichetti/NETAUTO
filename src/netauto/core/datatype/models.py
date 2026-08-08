@@ -219,7 +219,7 @@ class DataType:
         return f"{self.namespace}.{self.name}"
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class DataTypeVersion:
     """Versioned schema metadata for a datatype."""
 
@@ -234,4 +234,8 @@ class DataTypeVersion:
             raise InvalidDataTypeVersion(
                 f"Invalid version '{self.version}'. DataTypeVersion must be >= 1."
             )
-        self.constraints = _validate_constraints(self.base_type, tuple(self.constraints))
+        object.__setattr__(
+            self,
+            "constraints",
+            _validate_constraints(self.base_type, tuple(self.constraints)),
+        )

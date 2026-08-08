@@ -9,6 +9,8 @@ from netauto.core.datatype.exceptions import (
     InvalidConstraintValue,
     InvalidDataTypeIdentifier,
     InvalidDataTypeVersion,
+    InvalidDataTypeVersionTransition,
+    MismatchedDataTypeVersion,
     PrimitiveTypeNotFound,
     ReservedDataTypeNamespace,
     SchemaCompilationError,
@@ -20,6 +22,7 @@ from netauto.core.datatype.models import DataType, DataTypeVersion, DataTypeVers
 from netauto.core.datatype.primitives import PrimitiveType
 from netauto.core.datatype.registry import PrimitiveTypeRegistry
 from netauto.core.datatype.validation import ValidationEngine, ValidationIssue, ValidationResult
+from netauto.core.datatype.versioning import DataTypeVersioningService
 
 __all__ = [
     "ConflictingConstraints",
@@ -34,6 +37,8 @@ __all__ = [
     "InvalidConstraintValue",
     "InvalidDataTypeIdentifier",
     "InvalidDataTypeVersion",
+    "InvalidDataTypeVersionTransition",
+    "MismatchedDataTypeVersion",
     "PrimitiveType",
     "PrimitiveTypeNotFound",
     "PrimitiveTypeRegistry",
@@ -45,4 +50,5 @@ __all__ = [
     "ValidationEngineError",
     "ValidationIssue",
     "ValidationResult",
+    "DataTypeVersioningService",
 ]
