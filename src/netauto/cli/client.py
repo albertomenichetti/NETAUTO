@@ -1,0 +1,188 @@
+"""HTTP client for the NETAUTO REST API."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from json import JSONDecodeError
+from typing import TypeAlias
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
+
+from netauto.cli.errors import ApiError, InputError, ProtocolError, TransportError
+
+JSONValue: TypeAlias = object
+JSONObject: TypeAlias = dict[str, object]
+JSONArray: TypeAlias = list[object]
+
+
+class NetautoApiClient:
+    """Synchronous HTTP client for the NETAUTO API."""
+
+    def __init__(
+        self,
+        api_url: str,
+        *,
+        transport: httpx.BaseTransport | None = None,
+        timeout: float | httpx.Timeout = 5.0,
+    ) -> None:
+        self._base_url = _normalize_api_url(api_url)
+        try:
+            self._client = httpx.Client(
+                base_url=self._base_url,
+                follow_redirects=False,
+                timeout=timeout,
+                transport=transport,
+            )
+        except httpx.InvalidURL as error:
+            raise InputError("API URL is invalid.") from error
+
+    def __enter__(self) -> NetautoApiClient:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._client.close()
+
+    def list_datatypes(self) -> JSONArray:
+        return self._request_array("GET", "/datatypes")
+
+    def get_datatype(self, datatype_id: str) -> JSONObject:
+        return self._request_object("GET", f"/datatypes/{datatype_id}")
+
+    def get_datatype_by_name(self, namespace: str, name: str) -> JSONObject:
+        return self._request_object("GET", f"/datatypes/by-name/{namespace}/{name}")
+
+    def create_datatype(self, payload: JSONObject) -> JSONObject:
+        return self._request_object("POST", "/datatypes", json_body=payload)
+
+    def list_versions(self, datatype_id: str) -> JSONArray:
+        return self._request_array("GET", f"/datatypes/{datatype_id}/versions")
+
+    def get_version(self, datatype_id: str, version: int) -> JSONObject:
+        return self._request_object("GET", f"/datatypes/{datatype_id}/versions/{version}")
+
+    def revise_version(self, datatype_id: str, version: int, payload: JSONObject) -> JSONObject:
+        return self._request_object(
+            "PUT",
+            f"/datatypes/{datatype_id}/versions/{version}",
+            json_body=payload,
+        )
+
+    def create_version(self, datatype_id: str, source_version: int) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/datatypes/{datatype_id}/versions",
+            json_body={"source_version": source_version},
+        )
+
+    def publish_version(self, datatype_id: str, version: int) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/datatypes/{datatype_id}/versions/{version}/publish",
+        )
+
+    def deprecate_version(self, datatype_id: str, version: int) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/datatypes/{datatype_id}/versions/{version}/deprecate",
+        )
+
+    def _request_object(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: JSONObject | None = None,
+    ) -> JSONObject:
+        payload = self._request_json(method, path, json_body=json_body)
+        if not isinstance(payload, dict):
+            raise ProtocolError("Server returned an incompatible response.")
+        return payload
+
+    def _request_array(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: JSONObject | None = None,
+    ) -> JSONArray:
+        payload = self._request_json(method, path, json_body=json_body)
+        if not isinstance(payload, list):
+            raise ProtocolError("Server returned an incompatible response.")
+        return payload
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: JSONObject | None = None,
+    ) -> JSONValue:
+        try:
+            response = self._client.request(method, path, json=json_body)
+        except httpx.InvalidURL as error:
+            raise InputError("API URL is invalid.") from error
+        except httpx.RequestError as error:
+            raise TransportError("Could not connect to NETAUTO API.") from error
+
+        payload = _decode_json(response)
+        if 200 <= response.status_code < 300:
+            return payload
+
+        if not isinstance(payload, dict):
+            raise ProtocolError("Server returned an incompatible response.")
+        error_payload = _parse_error_envelope(payload, response.status_code)
+        raise error_payload
+
+
+def _normalize_api_url(api_url: str) -> str:
+    if not api_url.strip():
+        raise InputError("API URL is invalid.")
+    try:
+        parts = urlsplit(api_url)
+    except ValueError as error:
+        raise InputError("API URL is invalid.") from error
+    if not parts.scheme or not parts.netloc:
+        raise InputError("API URL is invalid.")
+
+    path = parts.path.rstrip("/")
+    if path.endswith("/api/v1"):
+        path = path[: -len("/api/v1")]
+    base_path = f"{path}/api/v1" if path else "/api/v1"
+    return urlunsplit((parts.scheme, parts.netloc, base_path, "", ""))
+
+
+def _decode_json(response: httpx.Response) -> JSONValue:
+    try:
+        return response.json()
+    except (JSONDecodeError, ValueError) as error:
+        raise ProtocolError("Server returned an incompatible response.") from error
+
+
+def _parse_error_envelope(payload: Mapping[str, object], status_code: int) -> ApiError:
+    error_object = payload.get("error")
+    if not isinstance(error_object, Mapping):
+        raise ProtocolError("Server returned an incompatible response.")
+
+    code = error_object.get("code")
+    message = error_object.get("message")
+    details = error_object.get("details", [])
+    if not isinstance(code, str) or not isinstance(message, str) or not isinstance(details, list):
+        raise ProtocolError("Server returned an incompatible response.")
+
+    normalized_details: list[dict[str, object]] = []
+    for detail in details:
+        if isinstance(detail, Mapping):
+            normalized_details.append(dict(detail))
+        else:
+            raise ProtocolError("Server returned an incompatible response.")
+
+    return ApiError(
+        status_code=status_code,
+        code=code,
+        message=message,
+        details=normalized_details,
+    )

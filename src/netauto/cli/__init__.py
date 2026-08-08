@@ -1,0 +1,2 @@
+"""NETAUTO CLI package."""
+

@@ -3,8 +3,8 @@ from __future__ import annotations
 import socket
 import threading
 import time
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 
 import httpx2
 import uvicorn
@@ -22,13 +22,15 @@ def _allocate_port() -> int:
 
 @asynccontextmanager
 async def serve_app(app: FastAPI) -> AsyncIterator[httpx2.AsyncClient]:
+    with serve_app_url(app) as base_url:
+        async with httpx2.AsyncClient(base_url=base_url) as client:
+            yield client
+
+
+@contextmanager
+def serve_app_url(app: FastAPI) -> Iterator[str]:
     port = _allocate_port()
-    config = uvicorn.Config(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="error",
-    )
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -43,10 +45,7 @@ async def serve_app(app: FastAPI) -> AsyncIterator[httpx2.AsyncClient]:
         raise RuntimeError("Uvicorn test server did not start.")
 
     try:
-        async with httpx2.AsyncClient(
-            base_url=f"http://127.0.0.1:{port}",
-        ) as client:
-            yield client
+        yield f"http://127.0.0.1:{port}"
     finally:
         server.should_exit = True
         thread.join(timeout=5)
