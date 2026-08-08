@@ -1,8 +1,9 @@
 from pathlib import Path
+from typing import Callable, cast
 
 import pytest
 from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from netauto.core.datatype import (
     Constraint,
@@ -22,6 +23,41 @@ def _uow(tmp_path: Path, filename: str) -> tuple[SqlAlchemyUnitOfWork, Engine]:
     create_schema(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
     return SqlAlchemyUnitOfWork(session_factory), engine
+
+
+class _SpySession:
+    def __init__(self) -> None:
+        self.rollback_called = False
+        self.close_called = False
+        self.commit_called = False
+        self._in_transaction = True
+
+    def commit(self) -> None:
+        self.commit_called = True
+        self._in_transaction = False
+
+    def rollback(self) -> None:
+        self.rollback_called = True
+        self._in_transaction = False
+
+    def close(self) -> None:
+        self.close_called = True
+
+    def in_transaction(self) -> bool:
+        return self._in_transaction
+
+
+def test_clean_exit_after_explicit_commit_does_not_call_rollback() -> None:
+    spy_session = _SpySession()
+    session_factory = cast("Callable[[], Session]", lambda: spy_session)
+    uow = SqlAlchemyUnitOfWork(session_factory)
+
+    with uow:
+        uow.commit()
+
+    assert spy_session.commit_called is True
+    assert spy_session.rollback_called is False
+    assert spy_session.close_called is True
 
 
 def test_unit_of_work_commit_persists(tmp_path: Path) -> None:

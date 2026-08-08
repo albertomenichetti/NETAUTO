@@ -28,7 +28,7 @@ class SqlAlchemyUnitOfWork:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._session is None:
             return
-        if exc is not None or self._session.in_transaction() is not None:
+        if exc is not None or self._session.in_transaction():
             self._session.rollback()
         self._session.close()
         self._session = None
