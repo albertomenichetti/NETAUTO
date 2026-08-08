@@ -57,9 +57,13 @@ def _is_plain_int(value: object) -> bool:
 
 
 def _is_finite_number(value: object) -> bool:
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    if isinstance(value, bool):
         return False
-    return math.isfinite(value)
+    if isinstance(value, int):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return False
 
 
 def _validate_non_negative_integer(value: object, constraint_name: ConstraintName) -> int:

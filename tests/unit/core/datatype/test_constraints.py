@@ -276,6 +276,20 @@ def test_int_minimum_for_number_is_valid() -> None:
     assert version.constraints[0].value == 1
 
 
+def test_very_large_integer_minimum_for_number_is_valid() -> None:
+    large_integer = 10**1000
+
+    version = DataTypeVersion(
+        datatype_id=uuid4(),
+        version=1,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=_base_type("core.number"),
+        constraints=(Constraint(name=ConstraintName.MINIMUM, value=large_integer),),
+    )
+
+    assert version.constraints[0].value == large_integer
+
+
 def test_float_maximum_for_number_is_valid() -> None:
     version = DataTypeVersion(
         datatype_id=uuid4(),
@@ -286,6 +300,20 @@ def test_float_maximum_for_number_is_valid() -> None:
     )
 
     assert version.constraints[0].value == 10.5
+
+
+def test_very_large_integer_maximum_for_number_is_valid() -> None:
+    large_integer = 10**1000
+
+    version = DataTypeVersion(
+        datatype_id=uuid4(),
+        version=1,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=_base_type("core.number"),
+        constraints=(Constraint(name=ConstraintName.MAXIMUM, value=large_integer),),
+    )
+
+    assert version.constraints[0].value == large_integer
 
 
 @pytest.mark.parametrize("value", [True, nan, inf, -inf])
