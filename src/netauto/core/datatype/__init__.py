@@ -12,10 +12,12 @@ from netauto.core.datatype.exceptions import (
     PrimitiveTypeNotFound,
     SchemaCompilationError,
     UnsupportedConstraint,
+    ValidationEngineError,
 )
 from netauto.core.datatype.models import DataType, DataTypeVersion, DataTypeVersionStatus
 from netauto.core.datatype.primitives import PrimitiveType
 from netauto.core.datatype.registry import PrimitiveTypeRegistry
+from netauto.core.datatype.validation import ValidationEngine, ValidationIssue, ValidationResult
 
 __all__ = [
     "ConflictingConstraints",
@@ -35,4 +37,8 @@ __all__ = [
     "SchemaCompilationError",
     "SchemaCompiler",
     "UnsupportedConstraint",
+    "ValidationEngine",
+    "ValidationEngineError",
+    "ValidationIssue",
+    "ValidationResult",
 ]

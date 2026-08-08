@@ -35,3 +35,7 @@ class ConflictingConstraints(DataTypeConstraintError):
 
 class SchemaCompilationError(Exception):
     """Raised when schema compilation fails."""
+
+
+class ValidationEngineError(Exception):
+    """Raised when datatype validation machinery fails."""
