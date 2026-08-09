@@ -92,6 +92,7 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
         "status": "draft",
         "parent": None,
         "properties": [],
+        "components": [],
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -119,11 +120,32 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                 "abstract": False,
                 "parent": None,
                 "properties": [],
+                "components": [
+                    {
+                        "name": "interfaces",
+                        "template_id": "target",
+                        "template_version": 2,
+                    }
+                ],
             }
         )
         client.list_object_template_versions("abc")
         client.get_object_template_version("abc", 2)
-        client.revise_object_template_version("abc", 2, {"parent": None, "properties": []})
+        client.revise_object_template_version(
+            "abc",
+            2,
+            {
+                "parent": None,
+                "properties": [],
+                "components": [
+                    {
+                        "name": "interfaces",
+                        "template_id": "target",
+                        "template_version": 2,
+                    }
+                ],
+            },
+        )
         client.create_object_template_version("abc", 2)
         client.publish_object_template_version("abc", 2)
         client.deprecate_object_template_version("abc", 2)
@@ -142,6 +164,13 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                 "abstract": False,
                 "parent": None,
                 "properties": [],
+                "components": [
+                    {
+                        "name": "interfaces",
+                        "template_id": "target",
+                        "template_version": 2,
+                    }
+                ],
             },
         ),
         ("GET", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions", None),
@@ -149,7 +178,17 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
         (
             "PUT",
             "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2",
-            {"parent": None, "properties": []},
+            {
+                "parent": None,
+                "properties": [],
+                "components": [
+                    {
+                        "name": "interfaces",
+                        "template_id": "target",
+                        "template_version": 2,
+                    }
+                ],
+            },
         ),
         (
             "POST",

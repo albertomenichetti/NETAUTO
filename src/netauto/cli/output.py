@@ -181,9 +181,10 @@ def render_object_template_version_list(payload: JSONArray, mode: OutputMode) ->
                 _require_string(version, "status"),
                 _render_parent(version.get("parent")),
                 str(len(_require_array(version, "properties"))),
+                str(len(_require_array(version, "components"))),
             )
         )
-    return _table(("VERSION", "STATUS", "PARENT", "PROPERTIES"), rows)
+    return _table(("VERSION", "STATUS", "PARENT", "PROPERTIES", "COMPONENTS"), rows)
 
 
 def render_object_template_version(
@@ -195,6 +196,7 @@ def render_object_template_version(
     if mode is OutputMode.JSON:
         return render_json(payload)
     properties = _require_array(payload, "properties")
+    components = _require_array(payload, "components")
     lines = []
     if prefix is not None:
         lines.append(prefix)
@@ -217,6 +219,18 @@ def render_object_template_version(
                 f"{_require_string(prop, 'name')}: "
                 f"{_require_string(prop, 'datatype_id')}@{_require_int(prop, 'datatype_version')} "
                 f"({'required' if _require_bool(prop, 'required') else 'optional'})"
+            )
+    lines.append("Components:")
+    if not components:
+        lines.append("  (none)")
+    else:
+        for item in components:
+            component = _require_object(item)
+            lines.append(
+                "  - "
+                f"{_require_string(component, 'name')}: "
+                f"{_require_string(component, 'template_id')}@"
+                f"{_require_int(component, 'template_version')}"
             )
     return "\n".join(lines)
 

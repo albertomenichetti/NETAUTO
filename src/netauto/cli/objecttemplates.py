@@ -56,6 +56,7 @@ def _build_create_payload(
     parent_template_id: UUID | None,
     parent_version: int | None,
     property_json: list[str],
+    component_json: list[str],
     file: str | None,
 ) -> JSONObject:
     inline_present = (
@@ -66,6 +67,7 @@ def _build_create_payload(
         or parent_template_id is not None
         or parent_version is not None
         or bool(property_json)
+        or bool(component_json)
     )
     ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
     if file is not None:
@@ -83,6 +85,7 @@ def _build_create_payload(
             required=False,
         ),
         "properties": [parse_json_object(value, kind="Property JSON") for value in property_json],
+        "components": [parse_json_object(value, kind="Component JSON") for value in component_json],
     }
 
 
@@ -92,6 +95,7 @@ def _build_revise_payload(
     parent_template_id: UUID | None,
     parent_version: int | None,
     property_json: list[str],
+    component_json: list[str],
     file: str | None,
 ) -> JSONObject:
     inline_present = (
@@ -99,6 +103,7 @@ def _build_revise_payload(
         or parent_template_id is not None
         or parent_version is not None
         or bool(property_json)
+        or bool(component_json)
     )
     ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
     if file is not None:
@@ -112,6 +117,7 @@ def _build_revise_payload(
             no_parent=no_parent,
         ),
         "properties": [parse_json_object(value, kind="Property JSON") for value in property_json],
+        "components": [parse_json_object(value, kind="Component JSON") for value in component_json],
     }
 
 
@@ -152,6 +158,7 @@ def create_object_template(
     parent_template_id: UUID | None = typer.Option(None, "--parent-template-id"),
     parent_version: int | None = typer.Option(None, "--parent-version", min=1),
     property_json: list[str] | None = typer.Option(None, "--property-json"),
+    component_json: list[str] | None = typer.Option(None, "--component-json"),
     file: str | None = typer.Option(None, "--file"),
 ) -> None:
     try:
@@ -163,6 +170,7 @@ def create_object_template(
             parent_template_id=parent_template_id,
             parent_version=parent_version,
             property_json=property_json or [],
+            component_json=component_json or [],
             file=file,
         )
     except CliError as error:
@@ -205,6 +213,7 @@ def revise_object_template_version(
     parent_template_id: UUID | None = typer.Option(None, "--parent-template-id"),
     parent_version: int | None = typer.Option(None, "--parent-version", min=1),
     property_json: list[str] | None = typer.Option(None, "--property-json"),
+    component_json: list[str] | None = typer.Option(None, "--component-json"),
     file: str | None = typer.Option(None, "--file"),
 ) -> None:
     try:
@@ -213,6 +222,7 @@ def revise_object_template_version(
             parent_template_id=parent_template_id,
             parent_version=parent_version,
             property_json=property_json or [],
+            component_json=component_json or [],
             file=file,
         )
     except CliError as error:

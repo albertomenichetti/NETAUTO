@@ -151,6 +151,7 @@ def _object_template_payload() -> dict[str, object]:
 def _object_template_version_payload() -> dict[str, object]:
     parent_id = str(uuid4())
     datatype_id = str(uuid4())
+    component_template_id = str(uuid4())
     return {
         "template_id": str(uuid4()),
         "version": 1,
@@ -169,6 +170,13 @@ def _object_template_version_payload() -> dict[str, object]:
                 "datatype_version": 3,
                 "required": False,
             },
+        ],
+        "components": [
+            {
+                "name": "interfaces",
+                "template_id": component_template_id,
+                "template_version": 2,
+            }
         ],
     }
 
@@ -387,6 +395,8 @@ def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch)
     )
     parent_id = str(uuid4())
     datatype_id = str(uuid4())
+    first_component_id = str(uuid4())
+    second_component_id = str(uuid4())
 
     result = runner.invoke(
         app,
@@ -415,6 +425,16 @@ def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch)
                     "required": False,
                 }
             ),
+            "--component-json",
+            json.dumps({"name": "interfaces", "template_id": first_component_id}),
+            "--component-json",
+            json.dumps(
+                {
+                    "name": "modules",
+                    "template_id": second_component_id,
+                    "template_version": 4,
+                }
+            ),
         ],
     )
 
@@ -438,6 +458,57 @@ def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch)
                             "required": False,
                         },
                     ],
+                    "components": [
+                        {"name": "interfaces", "template_id": first_component_id},
+                        {
+                            "name": "modules",
+                            "template_id": second_component_id,
+                            "template_version": 4,
+                        },
+                    ],
+                },
+            ),
+        )
+    ]
+
+
+def test_object_template_create_inline_without_components_sends_empty_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template = _object_template_payload()
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"create_object_template": {"object_template": template, "version": version}},
+        calls,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "create_object_template",
+            (
+                {
+                    "namespace": "network",
+                    "name": "device",
+                    "description": None,
+                    "abstract": False,
+                    "parent": None,
+                    "properties": [],
+                    "components": [],
                 },
             ),
         )
@@ -460,6 +531,7 @@ def test_object_template_create_file_and_stdin(monkeypatch: pytest.MonkeyPatch) 
         "abstract": False,
         "parent": None,
         "properties": [],
+        "components": [{"name": "interfaces", "template_id": str(uuid4())}],
     }
 
     with TemporaryDirectory() as temp_dir:
@@ -566,11 +638,51 @@ def test_object_template_create_local_input_errors(monkeypatch: pytest.MonkeyPat
             "[]",
         ],
     )
+    malformed_component = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+            "--component-json",
+            "not-json",
+        ],
+    )
+    non_object_component = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+            "--component-json",
+            "[]",
+        ],
+    )
+    file_component_conflict = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--file",
+            str(path),
+            "--component-json",
+            json.dumps({"name": "interfaces", "template_id": str(uuid4())}),
+        ],
+    )
 
     assert mode_conflict.exit_code == 2
     assert incomplete_parent.exit_code == 2
     assert malformed_property.exit_code == 2
     assert non_object_property.exit_code == 2
+    assert malformed_component.exit_code == 2
+    assert non_object_component.exit_code == 2
+    assert file_component_conflict.exit_code == 2
     assert calls == []
 
 
@@ -581,6 +693,8 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
     template_id = str(version["template_id"])
     parent_id = str(uuid4())
     datatype_id = str(uuid4())
+    first_component_id = str(uuid4())
+    second_component_id = str(uuid4())
 
     no_parent = runner.invoke(
         app,
@@ -593,6 +707,8 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
             "--no-parent",
             "--property-json",
             json.dumps({"name": "serial", "datatype_id": datatype_id, "required": False}),
+            "--component-json",
+            json.dumps({"name": "interfaces", "template_id": first_component_id}),
         ],
     )
     with_parent = runner.invoke(
@@ -616,6 +732,14 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
                     "required": True,
                 }
             ),
+            "--component-json",
+            json.dumps(
+                {
+                    "name": "modules",
+                    "template_id": second_component_id,
+                    "template_version": 5,
+                }
+            ),
         ],
     )
 
@@ -631,6 +755,9 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
                     "parent": None,
                     "properties": [
                         {"name": "serial", "datatype_id": datatype_id, "required": False}
+                    ],
+                    "components": [
+                        {"name": "interfaces", "template_id": first_component_id}
                     ],
                 },
             ),
@@ -650,9 +777,53 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
                             "required": True,
                         }
                     ],
+                    "components": [
+                        {
+                            "name": "modules",
+                            "template_id": second_component_id,
+                            "template_version": 5,
+                        }
+                    ],
                 },
             ),
         ),
+    ]
+
+
+def test_object_template_version_revise_without_components_sends_empty_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"revise_object_template_version": version}, calls)
+    template_id = str(version["template_id"])
+
+    result = runner.invoke(
+        app,
+        [
+            "object-template",
+            "version",
+            "revise",
+            template_id,
+            "1",
+            "--no-parent",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                {
+                    "parent": None,
+                    "properties": [],
+                    "components": [],
+                },
+            ),
+        )
     ]
 
 
@@ -663,7 +834,11 @@ def test_object_template_version_revise_file_and_parent_validation(
     calls: list[tuple[str, tuple[Any, ...]]] = []
     _patch_client(monkeypatch, {"revise_object_template_version": version}, calls)
     template_id = str(version["template_id"])
-    payload = {"parent": None, "properties": []}
+    payload = {
+        "parent": None,
+        "properties": [],
+        "components": [{"name": "interfaces", "template_id": str(uuid4())}],
+    }
 
     with TemporaryDirectory() as temp_dir:
         path = Path(temp_dir) / "revise.json"
@@ -785,7 +960,7 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
                 str(_object_template_version_payload()["template_id"]),
             ],
             {"list_object_template_versions": [_object_template_version_payload()]},
-            "@2",
+            "COMPONENTS",
         ),
         (
             [
@@ -796,7 +971,7 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
                 "1",
             ],
             {"get_object_template_version": _object_template_version_payload()},
-            "(required)",
+            "Components:",
         ),
     ],
 )
@@ -813,6 +988,127 @@ def test_object_template_human_rendering(
 
     assert result.exit_code == 0
     assert expected_text in result.stdout
+
+
+def test_object_template_version_human_output_includes_pinned_local_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"get_object_template_version": version}, calls)
+
+    result = runner.invoke(
+        app,
+        ["object-template", "version", "show", str(version["template_id"]), "1"],
+    )
+
+    components = version["components"]
+    assert isinstance(components, list)
+    component = components[0]
+    assert isinstance(component, dict)
+    assert result.exit_code == 0
+    expected = (
+        f"{component['name']}: "
+        f"{component['template_id']}@{component['template_version']}"
+    )
+    assert expected in result.stdout
+
+
+def test_object_template_version_human_output_renders_empty_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _object_template_version_payload()
+    version["components"] = []
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"get_object_template_version": version}, calls)
+
+    result = runner.invoke(
+        app,
+        ["object-template", "version", "show", str(version["template_id"]), "1"],
+    )
+
+    assert result.exit_code == 0
+    assert "Components:\n  (none)" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "template_id": str(uuid4()),
+            "version": 1,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+        },
+        {
+            "template_id": str(uuid4()),
+            "version": 1,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": {},
+        },
+        {
+            "template_id": str(uuid4()),
+            "version": 1,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": ["bad"],
+        },
+        {
+            "template_id": str(uuid4()),
+            "version": 1,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": [{"name": "interfaces", "template_id": str(uuid4())}],
+        },
+        {
+            "template_id": str(uuid4()),
+            "version": 1,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": [
+                {
+                    "name": "interfaces",
+                    "template_id": str(uuid4()),
+                    "template_version": True,
+                }
+            ],
+        },
+        {
+            "template_id": str(uuid4()),
+            "version": 1,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": [
+                {
+                    "name": "interfaces",
+                    "template_id": 123,
+                    "template_version": 1,
+                }
+            ],
+        },
+    ],
+)
+def test_object_template_version_component_protocol_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"get_object_template_version": payload}, calls)
+
+    result = runner.invoke(
+        app,
+        ["object-template", "version", "show", str(uuid4()), "1"],
+    )
+
+    assert result.exit_code == 4
+    assert "cli_protocol_error" in result.stderr
 
 
 def test_object_template_malformed_success_payload_maps_to_protocol_error(
