@@ -8,6 +8,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateInheritanceResolver,
     ObjectTemplateParentNotFound,
     ObjectTemplateProperty,
+    ObjectTemplateSelfInheritance,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
@@ -156,23 +157,37 @@ def test_missing_parent_raises_focused_error() -> None:
         )
 
 
-def test_direct_self_cycle_is_rejected() -> None:
+def test_same_template_same_version_parent_is_rejected() -> None:
     template_id = uuid4()
     version = _version(
         template_id,
         1,
         parent=ObjectTemplateVersionRef(template_id=template_id, version=1),
     )
-    versions = {(template_id, 1): version}
 
-    with pytest.raises(ObjectTemplateInheritanceCycle):
+    with pytest.raises(ObjectTemplateSelfInheritance):
         ObjectTemplateInheritanceResolver().resolve_effective_properties(
             version,
-            parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
+            parent_lookup=lambda _: pytest.fail("parent_lookup should not be called"),
         )
 
 
-def test_indirect_cycle_is_rejected() -> None:
+def test_same_template_different_version_parent_is_rejected() -> None:
+    template_id = uuid4()
+    version = _version(
+        template_id,
+        2,
+        parent=ObjectTemplateVersionRef(template_id=template_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateSelfInheritance):
+        ObjectTemplateInheritanceResolver().resolve_effective_properties(
+            version,
+            parent_lookup=lambda _: pytest.fail("parent_lookup should not be called"),
+        )
+
+
+def test_indirect_cycle_between_different_templates_is_rejected() -> None:
     first_id = uuid4()
     second_id = uuid4()
     first = _version(

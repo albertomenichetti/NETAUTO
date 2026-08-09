@@ -29,5 +29,29 @@ class ObjectTemplateInheritanceCycle(Exception):
     """Raised when object template inheritance contains a cycle."""
 
 
+class ObjectTemplateSelfInheritance(Exception):
+    """Raised when a template version declares a parent from the same template identity."""
+
+
 class InheritedObjectTemplatePropertyConflict(Exception):
     """Raised when a local property conflicts with an inherited property name."""
+
+
+class InvalidObjectTemplateVersionTransition(Exception):
+    """Raised when an object template version lifecycle transition is invalid."""
+
+
+class MismatchedObjectTemplateVersion(Exception):
+    """Raised when versions from different object templates are mixed."""
+
+
+class ObjectTemplateDataTypeVersionNotFound(Exception):
+    """Raised when a referenced datatype version cannot be found."""
+
+
+class ObjectTemplateDataTypeVersionNotPublished(Exception):
+    """Raised when a referenced datatype version is not published."""
+
+
+class ObjectTemplateParentNotPublished(Exception):
+    """Raised when a referenced parent object template version is not published."""

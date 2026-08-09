@@ -7,8 +7,14 @@ from netauto.core.objecttemplate.exceptions import (
     InvalidObjectTemplateIdentifier,
     InvalidObjectTemplateProperty,
     InvalidObjectTemplateVersion,
+    InvalidObjectTemplateVersionTransition,
+    MismatchedObjectTemplateVersion,
+    ObjectTemplateDataTypeVersionNotFound,
+    ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
     ObjectTemplateParentNotFound,
+    ObjectTemplateParentNotPublished,
+    ObjectTemplateSelfInheritance,
 )
 from netauto.core.objecttemplate.models import (
     ObjectTemplate,
@@ -21,6 +27,10 @@ from netauto.core.objecttemplate.resolver import (
     ObjectTemplateInheritanceResolver,
     ObjectTemplateVersionLookup,
 )
+from netauto.core.objecttemplate.versioning import (
+    DataTypeVersionLookup,
+    ObjectTemplateVersioningService,
+)
 
 __all__ = [
     "DuplicateObjectTemplateProperty",
@@ -29,13 +39,21 @@ __all__ = [
     "InvalidObjectTemplateIdentifier",
     "InvalidObjectTemplateProperty",
     "InvalidObjectTemplateVersion",
+    "InvalidObjectTemplateVersionTransition",
+    "MismatchedObjectTemplateVersion",
     "ObjectTemplate",
+    "ObjectTemplateDataTypeVersionNotFound",
+    "ObjectTemplateDataTypeVersionNotPublished",
     "ObjectTemplateInheritanceCycle",
     "ObjectTemplateInheritanceResolver",
     "ObjectTemplateParentNotFound",
+    "ObjectTemplateParentNotPublished",
+    "ObjectTemplateSelfInheritance",
     "ObjectTemplateProperty",
     "ObjectTemplateVersion",
     "ObjectTemplateVersionLookup",
     "ObjectTemplateVersionRef",
     "ObjectTemplateVersionStatus",
+    "ObjectTemplateVersioningService",
+    "DataTypeVersionLookup",
 ]

@@ -1,11 +1,13 @@
 """Pure domain inheritance resolution for object template versions."""
 
 from collections.abc import Callable
+from uuid import UUID
 
 from netauto.core.objecttemplate.exceptions import (
     InheritedObjectTemplatePropertyConflict,
     ObjectTemplateInheritanceCycle,
     ObjectTemplateParentNotFound,
+    ObjectTemplateSelfInheritance,
 )
 from netauto.core.objecttemplate.models import (
     ObjectTemplateProperty,
@@ -36,7 +38,7 @@ class ObjectTemplateInheritanceResolver:
         version: ObjectTemplateVersion,
         *,
         parent_lookup: ObjectTemplateVersionLookup,
-        visited: set[tuple[object, int]],
+        visited: set[tuple[UUID, int]],
     ) -> tuple[ObjectTemplateProperty, ...]:
         identity = (version.template_id, version.version)
         if identity in visited:
@@ -47,6 +49,11 @@ class ObjectTemplateInheritanceResolver:
         current_path = visited | {identity}
         inherited_properties: tuple[ObjectTemplateProperty, ...] = ()
         if version.parent is not None:
+            if version.parent.template_id == version.template_id:
+                raise ObjectTemplateSelfInheritance(
+                    "Object template version cannot inherit from another version of the same "
+                    "template."
+                )
             parent_version = parent_lookup(version.parent)
             if parent_version is None:
                 raise ObjectTemplateParentNotFound(
