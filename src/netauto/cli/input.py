@@ -44,6 +44,17 @@ def load_json_object(path: str) -> JSONObject:
     return payload
 
 
+def parse_json_object(value: str, *, kind: str) -> JSONObject:
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise InputError(f"{kind} must be valid JSON.") from error
+
+    if not isinstance(payload, dict):
+        raise InputError(f"{kind} must be a JSON object.")
+    return payload
+
+
 def ensure_modes_are_exclusive(
     *,
     file: str | None,
@@ -51,4 +62,3 @@ def ensure_modes_are_exclusive(
 ) -> None:
     if file is not None and inline_values_present:
         raise InputError("File input and inline options are mutually exclusive.")
-

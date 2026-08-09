@@ -84,6 +84,97 @@ def test_client_returns_arrays_and_objects() -> None:
         assert client.get_datatype("abc") == {"id": "x"}
 
 
+def test_object_template_client_builds_correct_urls_and_bodies() -> None:
+    seen: list[tuple[str, str, object]] = []
+    version_payload = {
+        "template_id": "x",
+        "version": 1,
+        "status": "draft",
+        "parent": None,
+        "properties": [],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        seen.append((request.method, str(request.url), json.loads(body) if body else None))
+        if request.method == "GET" and (
+            request.url.path.endswith("/object-templates")
+            or request.url.path.endswith("/versions")
+        ):
+            return _response(200, [])
+        return _response(200, version_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000/",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        client.list_object_templates()
+        client.get_object_template("abc")
+        client.get_object_template_by_name("network", "device")
+        client.create_object_template(
+            {
+                "namespace": "network",
+                "name": "device",
+                "description": None,
+                "abstract": False,
+                "parent": None,
+                "properties": [],
+            }
+        )
+        client.list_object_template_versions("abc")
+        client.get_object_template_version("abc", 2)
+        client.revise_object_template_version("abc", 2, {"parent": None, "properties": []})
+        client.create_object_template_version("abc", 2)
+        client.publish_object_template_version("abc", 2)
+        client.deprecate_object_template_version("abc", 2)
+
+    assert seen == [
+        ("GET", "http://127.0.0.1:8000/api/v1/object-templates", None),
+        ("GET", "http://127.0.0.1:8000/api/v1/object-templates/abc", None),
+        ("GET", "http://127.0.0.1:8000/api/v1/object-templates/by-name/network/device", None),
+        (
+            "POST",
+            "http://127.0.0.1:8000/api/v1/object-templates",
+            {
+                "namespace": "network",
+                "name": "device",
+                "description": None,
+                "abstract": False,
+                "parent": None,
+                "properties": [],
+            },
+        ),
+        ("GET", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions", None),
+        ("GET", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2", None),
+        (
+            "PUT",
+            "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2",
+            {"parent": None, "properties": []},
+        ),
+        (
+            "POST",
+            "http://127.0.0.1:8000/api/v1/object-templates/abc/versions",
+            {"source_version": 2},
+        ),
+        ("POST", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2/publish", None),
+        ("POST", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2/deprecate", None),
+    ]
+
+
+def test_object_template_client_returns_arrays_and_objects() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/object-templates"):
+            return _response(200, [{"id": "x"}])
+        return _response(200, {"id": "x"})
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.list_object_templates() == [{"id": "x"}]
+        assert client.get_object_template("abc") == {"id": "x"}
+
+
 @pytest.mark.parametrize("status_code", [404, 409, 422, 500])
 def test_client_raises_api_error_for_valid_netauto_error(status_code: int) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:

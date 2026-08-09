@@ -65,16 +65,52 @@ class FakeClient:
     def deprecate_version(self, datatype_id: str, version: int) -> Any:
         return self._call("deprecate_version", datatype_id, version)
 
+    def list_object_templates(self) -> Any:
+        return self._call("list_object_templates")
 
-def _patch_client(monkeypatch: pytest.MonkeyPatch, client: FakeClient) -> None:
+    def get_object_template(self, template_id: str) -> Any:
+        return self._call("get_object_template", template_id)
+
+    def get_object_template_by_name(self, namespace: str, name: str) -> Any:
+        return self._call("get_object_template_by_name", namespace, name)
+
+    def create_object_template(self, payload: dict[str, object]) -> Any:
+        return self._call("create_object_template", payload)
+
+    def list_object_template_versions(self, template_id: str) -> Any:
+        return self._call("list_object_template_versions", template_id)
+
+    def get_object_template_version(self, template_id: str, version: int) -> Any:
+        return self._call("get_object_template_version", template_id, version)
+
+    def revise_object_template_version(
+        self,
+        template_id: str,
+        version: int,
+        payload: dict[str, object],
+    ) -> Any:
+        return self._call("revise_object_template_version", template_id, version, payload)
+
+    def create_object_template_version(self, template_id: str, source_version: int) -> Any:
+        return self._call("create_object_template_version", template_id, source_version)
+
+    def publish_object_template_version(self, template_id: str, version: int) -> Any:
+        return self._call("publish_object_template_version", template_id, version)
+
+    def deprecate_object_template_version(self, template_id: str, version: int) -> Any:
+        return self._call("deprecate_object_template_version", template_id, version)
+
+
+def _patch_client(
+    monkeypatch: pytest.MonkeyPatch,
+    payloads: dict[str, Any],
+    calls: list[tuple[str, tuple[Any, ...]]],
+    *,
+    error: Exception | None = None,
+) -> None:
     monkeypatch.setattr(
-        "netauto.cli.datatypes.NetautoApiClient",
-        lambda api_url: client.__class__(
-            api_url,
-            client.payloads,
-            client.calls,
-            client.error,
-        ),
+        "netauto.cli.common.NetautoApiClient",
+        lambda api_url: FakeClient(api_url, payloads, calls, error=error),
     )
 
 
@@ -101,6 +137,42 @@ def _version_payload() -> dict[str, object]:
     }
 
 
+def _object_template_payload() -> dict[str, object]:
+    return {
+        "id": str(uuid4()),
+        "namespace": "network",
+        "name": "device",
+        "qualified_name": "network.device",
+        "description": "Device template",
+        "abstract": True,
+    }
+
+
+def _object_template_version_payload() -> dict[str, object]:
+    parent_id = str(uuid4())
+    datatype_id = str(uuid4())
+    return {
+        "template_id": str(uuid4()),
+        "version": 1,
+        "status": "draft",
+        "parent": {"template_id": parent_id, "version": 2},
+        "properties": [
+            {
+                "name": "hostname",
+                "datatype_id": datatype_id,
+                "datatype_version": 3,
+                "required": True,
+            },
+            {
+                "name": "serial",
+                "datatype_id": datatype_id,
+                "datatype_version": 3,
+                "required": False,
+            },
+        ],
+    }
+
+
 def test_version_and_help() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -109,6 +181,8 @@ def test_version_and_help() -> None:
     assert runner.invoke(app, ["--help"]).exit_code == 0
     assert runner.invoke(app, ["datatype", "--help"]).exit_code == 0
     assert runner.invoke(app, ["datatype", "version", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["object-template", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["object-template", "version", "--help"]).exit_code == 0
 
 
 def test_api_url_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,7 +194,7 @@ def test_api_url_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
         created_urls.append(api_url)
         return FakeClient(api_url, payloads, calls)
 
-    monkeypatch.setattr("netauto.cli.datatypes.NetautoApiClient", factory)
+    monkeypatch.setattr("netauto.cli.common.NetautoApiClient", factory)
 
     result = runner.invoke(
         app,
@@ -133,17 +207,17 @@ def test_api_url_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls == [("list_datatypes", ())]
 
 
-def test_list_show_and_show_name_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_datatype_list_show_and_show_name_json(monkeypatch: pytest.MonkeyPatch) -> None:
     datatype = _datatype_payload()
-    payloads = {
-        "list_datatypes": [datatype],
-        "get_datatype": datatype,
-        "get_datatype_by_name": datatype,
-    }
     calls: list[tuple[str, tuple[Any, ...]]] = []
-    monkeypatch.setattr(
-        "netauto.cli.datatypes.NetautoApiClient",
-        lambda api_url: FakeClient(api_url, payloads, calls),
+    _patch_client(
+        monkeypatch,
+        {
+            "list_datatypes": [datatype],
+            "get_datatype": datatype,
+            "get_datatype_by_name": datatype,
+        },
+        calls,
     )
 
     listed = runner.invoke(app, ["--output", "json", "datatype", "list"])
@@ -161,14 +235,14 @@ def test_list_show_and_show_name_json(monkeypatch: pytest.MonkeyPatch) -> None:
     assert json.loads(shown_name.stdout) == datatype
 
 
-def test_create_inline_and_file_and_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_datatype_create_inline_and_file_and_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     datatype = _datatype_payload()
     version = _version_payload()
-    payloads = {"create_datatype": {"datatype": datatype, "version": version}}
     calls: list[tuple[str, tuple[Any, ...]]] = []
-    monkeypatch.setattr(
-        "netauto.cli.datatypes.NetautoApiClient",
-        lambda api_url: FakeClient(api_url, payloads, calls),
+    _patch_client(
+        monkeypatch,
+        {"create_datatype": {"datatype": datatype, "version": version}},
+        calls,
     )
 
     inline = runner.invoke(
@@ -220,23 +294,20 @@ def test_create_inline_and_file_and_stdin(monkeypatch: pytest.MonkeyPatch) -> No
     assert stdin_result.exit_code == 0
 
 
-def test_version_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_datatype_version_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     version = _version_payload()
     calls: list[tuple[str, tuple[Any, ...]]] = []
-    monkeypatch.setattr(
-        "netauto.cli.datatypes.NetautoApiClient",
-        lambda api_url: FakeClient(
-            api_url,
-            {
-                "list_versions": [version],
-                "get_version": version,
-                "revise_version": version,
-                "create_version": version,
-                "publish_version": version,
-                "deprecate_version": version,
-            },
-            calls,
-        ),
+    _patch_client(
+        monkeypatch,
+        {
+            "list_versions": [version],
+            "get_version": version,
+            "revise_version": version,
+            "create_version": version,
+            "publish_version": version,
+            "deprecate_version": version,
+        },
+        calls,
     )
     datatype_id = str(version["datatype_id"])
 
@@ -270,47 +341,382 @@ def test_version_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     assert runner.invoke(app, ["datatype", "version", "deprecate", datatype_id, "1"]).exit_code == 0
 
 
-def test_local_input_errors_use_exit_code_2() -> None:
-    with TemporaryDirectory() as temp_dir:
-        path = Path(temp_dir) / "bad.json"
-        path.write_text("[]", encoding="utf-8")
-        malformed_json = runner.invoke(
+def test_object_template_read_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    template = _object_template_payload()
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {
+            "list_object_templates": [template],
+            "get_object_template": template,
+            "get_object_template_by_name": template,
+            "list_object_template_versions": [version],
+            "get_object_template_version": version,
+        },
+        calls,
+    )
+
+    assert runner.invoke(app, ["object-template", "list"]).exit_code == 0
+    assert runner.invoke(app, ["object-template", "show", str(template["id"])]).exit_code == 0
+    assert runner.invoke(app, ["object-template", "show-name", "network", "device"]).exit_code == 0
+    assert (
+        runner.invoke(
             app,
-            [
-                "datatype",
-                "create",
-                "--namespace",
-                "network",
-                "--name",
-                "x",
-                "--base-type",
-                "core.string",
-                "--constraint",
-                "minimum=not-json",
-            ],
+            ["object-template", "version", "list", str(template["id"])],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app,
+            ["object-template", "version", "show", str(template["id"]), "1"],
+        ).exit_code
+        == 0
+    )
+
+
+def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    template = _object_template_payload()
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"create_object_template": {"object_template": template, "version": version}},
+        calls,
+    )
+    parent_id = str(uuid4())
+    datatype_id = str(uuid4())
+
+    result = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+            "--description",
+            "Device template",
+            "--abstract",
+            "--parent-template-id",
+            parent_id,
+            "--parent-version",
+            "2",
+            "--property-json",
+            json.dumps({"name": "hostname", "datatype_id": datatype_id, "required": True}),
+            "--property-json",
+            json.dumps(
+                {
+                    "name": "serial",
+                    "datatype_id": datatype_id,
+                    "datatype_version": 4,
+                    "required": False,
+                }
+            ),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "create_object_template",
+            (
+                {
+                    "namespace": "network",
+                    "name": "device",
+                    "description": "Device template",
+                    "abstract": True,
+                    "parent": {"template_id": parent_id, "version": 2},
+                    "properties": [
+                        {"name": "hostname", "datatype_id": datatype_id, "required": True},
+                        {
+                            "name": "serial",
+                            "datatype_id": datatype_id,
+                            "datatype_version": 4,
+                            "required": False,
+                        },
+                    ],
+                },
+            ),
         )
+    ]
+
+
+def test_object_template_create_file_and_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    template = _object_template_payload()
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"create_object_template": {"object_template": template, "version": version}},
+        calls,
+    )
+    payload = {
+        "namespace": "network",
+        "name": "device",
+        "description": "Device template",
+        "abstract": False,
+        "parent": None,
+        "properties": [],
+    }
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "template.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        file_result = runner.invoke(app, ["object-template", "create", "--file", str(path)])
+        stdin_result = runner.invoke(
+            app,
+            ["object-template", "create", "--file", "-"],
+            input=path.read_text(encoding="utf-8"),
+        )
+
+    assert file_result.exit_code == 0
+    assert stdin_result.exit_code == 0
+
+
+def test_object_template_create_json_output_preserves_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template = _object_template_payload()
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"create_object_template": {"object_template": template, "version": version}},
+        calls,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"object_template": template, "version": version}
+
+
+def test_object_template_create_local_input_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"create_object_template": {}}, calls)
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "template.json"
+        path.write_text("{}", encoding="utf-8")
         mode_conflict = runner.invoke(
             app,
             [
-                "datatype",
+                "object-template",
                 "create",
                 "--file",
                 str(path),
                 "--namespace",
                 "network",
                 "--name",
-                "x",
-                "--base-type",
-                "core.string",
+                "device",
             ],
         )
-        missing_file = runner.invoke(app, ["datatype", "create", "--file", "missing.json"])
-        wrong_top_level = runner.invoke(app, ["datatype", "create", "--file", str(path)])
 
-    assert malformed_json.exit_code == 2
+    incomplete_parent = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+            "--parent-template-id",
+            str(uuid4()),
+        ],
+    )
+    malformed_property = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+            "--property-json",
+            "not-json",
+        ],
+    )
+    non_object_property = runner.invoke(
+        app,
+        [
+            "object-template",
+            "create",
+            "--namespace",
+            "network",
+            "--name",
+            "device",
+            "--property-json",
+            "[]",
+        ],
+    )
+
     assert mode_conflict.exit_code == 2
-    assert missing_file.exit_code == 2
-    assert wrong_top_level.exit_code == 2
+    assert incomplete_parent.exit_code == 2
+    assert malformed_property.exit_code == 2
+    assert non_object_property.exit_code == 2
+    assert calls == []
+
+
+def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"revise_object_template_version": version}, calls)
+    template_id = str(version["template_id"])
+    parent_id = str(uuid4())
+    datatype_id = str(uuid4())
+
+    no_parent = runner.invoke(
+        app,
+        [
+            "object-template",
+            "version",
+            "revise",
+            template_id,
+            "1",
+            "--no-parent",
+            "--property-json",
+            json.dumps({"name": "serial", "datatype_id": datatype_id, "required": False}),
+        ],
+    )
+    with_parent = runner.invoke(
+        app,
+        [
+            "object-template",
+            "version",
+            "revise",
+            template_id,
+            "1",
+            "--parent-template-id",
+            parent_id,
+            "--parent-version",
+            "3",
+            "--property-json",
+            json.dumps(
+                {
+                    "name": "hostname",
+                    "datatype_id": datatype_id,
+                    "datatype_version": 2,
+                    "required": True,
+                }
+            ),
+        ],
+    )
+
+    assert no_parent.exit_code == 0
+    assert with_parent.exit_code == 0
+    assert calls == [
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                {
+                    "parent": None,
+                    "properties": [
+                        {"name": "serial", "datatype_id": datatype_id, "required": False}
+                    ],
+                },
+            ),
+        ),
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                {
+                    "parent": {"template_id": parent_id, "version": 3},
+                    "properties": [
+                        {
+                            "name": "hostname",
+                            "datatype_id": datatype_id,
+                            "datatype_version": 2,
+                            "required": True,
+                        }
+                    ],
+                },
+            ),
+        ),
+    ]
+
+
+def test_object_template_version_revise_file_and_parent_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"revise_object_template_version": version}, calls)
+    template_id = str(version["template_id"])
+    payload = {"parent": None, "properties": []}
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "revise.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        file_result = runner.invoke(
+            app,
+            ["object-template", "version", "revise", template_id, "1", "--file", str(path)],
+        )
+
+    missing_parent_mode = runner.invoke(
+        app,
+        ["object-template", "version", "revise", template_id, "1"],
+    )
+
+    assert file_result.exit_code == 0
+    assert missing_parent_mode.exit_code == 2
+
+
+def test_object_template_version_lifecycle_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {
+            "create_object_template_version": version,
+            "publish_object_template_version": version,
+            "deprecate_object_template_version": version,
+        },
+        calls,
+    )
+    template_id = str(version["template_id"])
+
+    assert (
+        runner.invoke(
+            app,
+            ["object-template", "version", "create", template_id, "--source-version", "1"],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app,
+            ["object-template", "version", "publish", template_id, "1"],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app,
+            ["object-template", "version", "deprecate", template_id, "1"],
+        ).exit_code
+        == 0
+    )
 
 
 def test_bad_uuid_and_version_are_local_usage_errors() -> None:
@@ -323,6 +729,102 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
         ).exit_code
         == 2
     )
+    assert runner.invoke(app, ["object-template", "show", "not-a-uuid"]).exit_code == 2
+    assert (
+        runner.invoke(
+            app,
+            ["object-template", "version", "show", str(uuid4()), "0"],
+        ).exit_code
+        == 2
+    )
+    assert (
+        runner.invoke(
+            app,
+            ["object-template", "version", "create", str(uuid4()), "--source-version", "0"],
+        ).exit_code
+        == 2
+    )
+    assert (
+        runner.invoke(
+            app,
+            [
+                "object-template",
+                "create",
+                "--namespace",
+                "network",
+                "--name",
+                "device",
+                "--parent-template-id",
+                str(uuid4()),
+                "--parent-version",
+                "0",
+            ],
+        ).exit_code
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "payloads", "expected_text"),
+    [
+        (
+            ["object-template", "list"],
+            {"list_object_templates": [_object_template_payload()]},
+            "network.device",
+        ),
+        (
+            ["object-template", "show", str(_object_template_payload()["id"])],
+            {"get_object_template": _object_template_payload()},
+            "Abstract: yes",
+        ),
+        (
+            [
+                "object-template",
+                "version",
+                "list",
+                str(_object_template_version_payload()["template_id"]),
+            ],
+            {"list_object_template_versions": [_object_template_version_payload()]},
+            "@2",
+        ),
+        (
+            [
+                "object-template",
+                "version",
+                "show",
+                str(_object_template_version_payload()["template_id"]),
+                "1",
+            ],
+            {"get_object_template_version": _object_template_version_payload()},
+            "(required)",
+        ),
+    ],
+)
+def test_object_template_human_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    payloads: dict[str, Any],
+    expected_text: str,
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, payloads, calls)
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == 0
+    assert expected_text in result.stdout
+
+
+def test_object_template_malformed_success_payload_maps_to_protocol_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"get_object_template": {"id": "x"}}, calls)
+
+    result = runner.invoke(app, ["object-template", "show", str(uuid4())])
+
+    assert result.exit_code == 4
+    assert "cli_protocol_error" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -350,13 +852,19 @@ def test_cli_error_exit_codes_and_stderr(
     stderr_code: str,
 ) -> None:
     calls: list[tuple[str, tuple[Any, ...]]] = []
-    monkeypatch.setattr(
-        "netauto.cli.datatypes.NetautoApiClient",
-        lambda api_url: FakeClient(api_url, {"list_datatypes": []}, calls, error=error),
+    _patch_client(
+        monkeypatch,
+        {"list_datatypes": [], "list_object_templates": []},
+        calls,
+        error=error,
     )
 
-    result = runner.invoke(app, ["--output", "json", "datatype", "list"])
+    datatype_result = runner.invoke(app, ["--output", "json", "datatype", "list"])
+    object_template_result = runner.invoke(app, ["--output", "json", "object-template", "list"])
 
-    assert result.exit_code == exit_code
-    assert result.stdout == ""
-    assert stderr_code in result.stderr
+    assert datatype_result.exit_code == exit_code
+    assert datatype_result.stdout == ""
+    assert stderr_code in datatype_result.stderr
+    assert object_template_result.exit_code == exit_code
+    assert object_template_result.stdout == ""
+    assert stderr_code in object_template_result.stderr

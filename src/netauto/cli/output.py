@@ -117,8 +117,106 @@ def render_version(payload: JSONObject, mode: OutputMode, *, prefix: str | None 
         for constraint in constraints:
             item = _require_object(constraint)
             rendered_value = json.dumps(item.get("value"), ensure_ascii=False)
+            lines.append(f"  - {_require_string(item, 'name')}: {rendered_value}")
+    return "\n".join(lines)
+
+
+def render_object_template_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        template = _require_object(item)
+        rows.append(
+            (
+                _require_string(template, "qualified_name"),
+                _require_string(template, "id"),
+                _format_bool(_require_bool(template, "abstract")),
+                _optional_string(template, "description"),
+            )
+        )
+    return _table(("QUALIFIED NAME", "ID", "ABSTRACT", "DESCRIPTION"), rows)
+
+
+def render_object_template(payload: JSONObject, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    return "\n".join(
+        [
+            f"Qualified Name: {_require_string(payload, 'qualified_name')}",
+            f"ID: {_require_string(payload, 'id')}",
+            f"Namespace: {_require_string(payload, 'namespace')}",
+            f"Name: {_require_string(payload, 'name')}",
+            f"Abstract: {_format_bool(_require_bool(payload, 'abstract'))}",
+            f"Description: {_optional_string(payload, 'description')}",
+        ]
+    )
+
+
+def render_object_template_create_result(payload: JSONObject, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    template = _require_object(payload.get("object_template"))
+    version = _require_object(payload.get("version"))
+    return "\n".join(
+        [
+            f"Created {_require_string(template, 'qualified_name')}",
+            f"ID: {_require_string(template, 'id')}",
+            f"Version: {_require_int(version, 'version')}",
+            f"Status: {_require_string(version, 'status')}",
+            f"Abstract: {_format_bool(_require_bool(template, 'abstract'))}",
+        ]
+    )
+
+
+def render_object_template_version_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        version = _require_object(item)
+        rows.append(
+            (
+                str(_require_int(version, "version")),
+                _require_string(version, "status"),
+                _render_parent(version.get("parent")),
+                str(len(_require_array(version, "properties"))),
+            )
+        )
+    return _table(("VERSION", "STATUS", "PARENT", "PROPERTIES"), rows)
+
+
+def render_object_template_version(
+    payload: JSONObject,
+    mode: OutputMode,
+    *,
+    prefix: str | None = None,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    properties = _require_array(payload, "properties")
+    lines = []
+    if prefix is not None:
+        lines.append(prefix)
+    lines.extend(
+        [
+            f"ObjectTemplate ID: {_require_string(payload, 'template_id')}",
+            f"Version: {_require_int(payload, 'version')}",
+            f"Status: {_require_string(payload, 'status')}",
+            f"Parent: {_render_parent(payload.get('parent'))}",
+            "Properties:",
+        ]
+    )
+    if not properties:
+        lines.append("  (none)")
+    else:
+        for item in properties:
+            prop = _require_object(item)
             lines.append(
-                f"  - {_require_string(item, 'name')}: {rendered_value}"
+                "  - "
+                f"{_require_string(prop, 'name')}: "
+                f"{_require_string(prop, 'datatype_id')}@{_require_int(prop, 'datatype_version')} "
+                f"({'required' if _require_bool(prop, 'required') else 'optional'})"
             )
     return "\n".join(lines)
 
@@ -223,3 +321,28 @@ def _require_int(payload: JSONObject, key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ProtocolError("Server returned an incompatible response.")
     return value
+
+
+def _require_bool(payload: JSONObject, key: str) -> bool:
+    value = payload.get(key)
+    if not isinstance(value, bool):
+        raise ProtocolError("Server returned an incompatible response.")
+    return value
+
+
+def _require_array(payload: JSONObject, key: str) -> JSONArray:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        raise ProtocolError("Server returned an incompatible response.")
+    return value
+
+
+def _render_parent(value: object) -> str:
+    if value is None:
+        return "-"
+    parent = _require_object(value)
+    return f"{_require_string(parent, 'template_id')}@{_require_int(parent, 'version')}"
+
+
+def _format_bool(value: bool) -> str:
+    return "yes" if value else "no"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from netauto.cli.errors import InputError
-from netauto.cli.input import parse_constraint, parse_constraints
+from netauto.cli.input import parse_constraint, parse_constraints, parse_json_object
 
 
 def test_constraint_parsing_preserves_scalar_and_array_types() -> None:
@@ -45,3 +45,11 @@ def test_huge_integer_preserved_exactly() -> None:
     assert parsed[0]["value"] == huge
     assert type(parsed[0]["value"]) is int
 
+
+def test_parse_json_object_accepts_object_and_rejects_other_shapes() -> None:
+    assert parse_json_object('{"name":"hostname"}', kind="Property JSON") == {"name": "hostname"}
+
+    with pytest.raises(InputError):
+        parse_json_object("not-json", kind="Property JSON")
+    with pytest.raises(InputError):
+        parse_json_object("[]", kind="Property JSON")

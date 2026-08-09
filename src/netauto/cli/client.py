@@ -90,6 +90,61 @@ class NetautoApiClient:
             f"/datatypes/{datatype_id}/versions/{version}/deprecate",
         )
 
+    def list_object_templates(self) -> JSONArray:
+        return self._request_array("GET", "/object-templates")
+
+    def get_object_template(self, template_id: str) -> JSONObject:
+        return self._request_object("GET", f"/object-templates/{template_id}")
+
+    def get_object_template_by_name(self, namespace: str, name: str) -> JSONObject:
+        return self._request_object(
+            "GET",
+            f"/object-templates/by-name/{namespace}/{name}",
+        )
+
+    def create_object_template(self, payload: JSONObject) -> JSONObject:
+        return self._request_object("POST", "/object-templates", json_body=payload)
+
+    def list_object_template_versions(self, template_id: str) -> JSONArray:
+        return self._request_array("GET", f"/object-templates/{template_id}/versions")
+
+    def get_object_template_version(self, template_id: str, version: int) -> JSONObject:
+        return self._request_object(
+            "GET",
+            f"/object-templates/{template_id}/versions/{version}",
+        )
+
+    def revise_object_template_version(
+        self,
+        template_id: str,
+        version: int,
+        payload: JSONObject,
+    ) -> JSONObject:
+        return self._request_object(
+            "PUT",
+            f"/object-templates/{template_id}/versions/{version}",
+            json_body=payload,
+        )
+
+    def create_object_template_version(self, template_id: str, source_version: int) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/object-templates/{template_id}/versions",
+            json_body={"source_version": source_version},
+        )
+
+    def publish_object_template_version(self, template_id: str, version: int) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/object-templates/{template_id}/versions/{version}/publish",
+        )
+
+    def deprecate_object_template_version(self, template_id: str, version: int) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/object-templates/{template_id}/versions/{version}/deprecate",
+        )
+
     def _request_object(
         self,
         method: str,
