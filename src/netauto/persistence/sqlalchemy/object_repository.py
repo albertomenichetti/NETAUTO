@@ -99,9 +99,10 @@ class SqlAlchemyObjectRepository(ObjectRepository):
         row = self._session.get(ObjectRow, str(object_value.id))
         if row is None:
             raise ObjectNotFound("Object does not exist.")
+        properties_json = _serialize_properties(object_value.properties)
         row.template_id = str(object_value.template_id)
         row.template_version = object_value.template_version
-        row.properties_json = _serialize_properties(object_value.properties)
+        row.properties_json = properties_json
         self._session.flush()
 
     def delete(self, object_id: UUID) -> None:

@@ -190,6 +190,42 @@ def test_replace_complete_snapshot(tmp_path: Path) -> None:
         engine.dispose()
 
 
+def test_replace_serialization_failure_does_not_partially_mutate_persisted_row(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_atomicity.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    replacement = replace(
+        original,
+        template_id=uuid4(),
+        template_version=2,
+        properties={"bad": object()},
+    )
+    try:
+        repo.add(original)
+        session.commit()
+
+        with pytest.raises(ObjectPersistenceError):
+            repo.replace(replacement)
+
+        session.commit()
+
+        fresh_session = sessionmaker(engine, expire_on_commit=False)()
+        try:
+            fresh_repo = SqlAlchemyObjectRepository(fresh_session)
+            loaded = fresh_repo.get(original.id)
+            assert loaded == original
+            assert loaded is not None
+            assert loaded.template_id == original.template_id
+            assert loaded.template_version == original.template_version
+            assert loaded.properties == original.properties
+        finally:
+            fresh_session.close()
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_replace_missing_raises_object_not_found(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "replace_missing.sqlite3")
     try:
