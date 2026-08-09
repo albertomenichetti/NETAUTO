@@ -1,10 +1,13 @@
-"""SQLAlchemy unit of work for datatype persistence."""
+"""SQLAlchemy unit of work for shared persistence repositories."""
 
 from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
+from netauto.persistence.sqlalchemy.objecttemplate_repository import (
+    SqlAlchemyObjectTemplateRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -14,10 +17,12 @@ class SqlAlchemyUnitOfWork:
         self._session_factory = session_factory
         self._session: Session | None = None
         self.datatypes: SqlAlchemyDataTypeRepository
+        self.object_templates: SqlAlchemyObjectTemplateRepository
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
         self.datatypes = SqlAlchemyDataTypeRepository(self._session)
+        self.object_templates = SqlAlchemyObjectTemplateRepository(self._session)
         return self
 
     def commit(self) -> None:

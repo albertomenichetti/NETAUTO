@@ -71,3 +71,7 @@ class ObjectTemplateVersionAlreadyExists(Exception):
 
 class ObjectTemplateVersionNotFound(Exception):
     """Raised when a required object template version does not exist."""
+
+
+class ObjectTemplatePersistenceError(Exception):
+    """Raised when persisted object template state cannot be mapped safely."""

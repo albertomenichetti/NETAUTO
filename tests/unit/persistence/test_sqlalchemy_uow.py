@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Callable, cast
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine
@@ -13,8 +14,16 @@ from netauto.core.datatype import (
     DataTypeVersionAlreadyExists,
     DataTypeVersioningService,
 )
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplateVersion,
+    ObjectTemplateVersionStatus,
+)
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
+from netauto.persistence.sqlalchemy.objecttemplate_repository import (
+    SqlAlchemyObjectTemplateRepository,
+)
 from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
 
 
@@ -23,6 +32,31 @@ def _uow(tmp_path: Path, filename: str) -> tuple[SqlAlchemyUnitOfWork, Engine]:
     create_schema(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
     return SqlAlchemyUnitOfWork(session_factory), engine
+
+
+def _object_template(
+    *,
+    namespace: str = "network",
+    name: str = "device",
+    description: str | None = "Network device template",
+    abstract: bool = False,
+) -> ObjectTemplate:
+    return ObjectTemplate(
+        id=uuid4(),
+        namespace=namespace,
+        name=name,
+        description=description,
+        abstract=abstract,
+    )
+
+
+def _object_template_version(template_id: UUID) -> ObjectTemplateVersion:
+    return ObjectTemplateVersion(
+        template_id=template_id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(),
+    )
 
 
 class _SpySession:
@@ -60,6 +94,16 @@ def test_clean_exit_after_explicit_commit_does_not_call_rollback() -> None:
     assert spy_session.close_called is True
 
 
+def test_both_repositories_are_available_in_one_unit_of_work(tmp_path: Path) -> None:
+    uow, engine = _uow(tmp_path, "both_repositories.sqlite3")
+    try:
+        with uow:
+            assert isinstance(uow.datatypes, SqlAlchemyDataTypeRepository)
+            assert isinstance(uow.object_templates, SqlAlchemyObjectTemplateRepository)
+    finally:
+        engine.dispose()
+
+
 def test_unit_of_work_commit_persists(tmp_path: Path) -> None:
     datatype, version = DataTypeFactory().create(
         namespace="network",
@@ -81,6 +125,40 @@ def test_unit_of_work_commit_persists(tmp_path: Path) -> None:
             repo = SqlAlchemyDataTypeRepository(session)
             assert repo.get(datatype.id) == datatype
             assert repo.get_version(datatype.id, 1) == version
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_unit_of_work_commit_persists_datatypes_and_object_templates(tmp_path: Path) -> None:
+    datatype, datatype_version = DataTypeFactory().create(
+        namespace="network",
+        name="hostname",
+        description="Network hostname",
+        base_type="core.string",
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=1),),
+    )
+    template = _object_template()
+    template_version = _object_template_version(template.id)
+    uow, engine = _uow(tmp_path, "shared_commit.sqlite3")
+    try:
+        with uow:
+            uow.datatypes.add(datatype)
+            uow.datatypes.add_version(datatype_version)
+            uow.object_templates.add(template)
+            uow.object_templates.add_version(template_version)
+            uow.commit()
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            datatype_repo = SqlAlchemyDataTypeRepository(session)
+            template_repo = SqlAlchemyObjectTemplateRepository(session)
+            assert datatype_repo.get(datatype.id) == datatype
+            assert datatype_repo.get_version(datatype.id, 1) == datatype_version
+            assert template_repo.get(template.id) == template
+            assert template_repo.get_version(template.id, 1) == template_version
         finally:
             session.close()
     finally:
@@ -111,6 +189,45 @@ def test_unit_of_work_rollback_does_not_persist(tmp_path: Path) -> None:
             repo = SqlAlchemyDataTypeRepository(session)
             assert repo.get(datatype.id) is None
             assert repo.get_version(datatype.id, 1) is None
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_unit_of_work_rollback_does_not_persist_datatypes_and_object_templates(
+    tmp_path: Path,
+) -> None:
+    datatype, datatype_version = DataTypeFactory().create(
+        namespace="network",
+        name="hostname",
+        description="Network hostname",
+        base_type="core.string",
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=1),),
+    )
+    template = _object_template()
+    template_version = _object_template_version(template.id)
+    uow, engine = _uow(tmp_path, "shared_rollback.sqlite3")
+    try:
+        try:
+            with uow:
+                uow.datatypes.add(datatype)
+                uow.datatypes.add_version(datatype_version)
+                uow.object_templates.add(template)
+                uow.object_templates.add_version(template_version)
+                raise RuntimeError("abort")
+        except RuntimeError:
+            pass
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            datatype_repo = SqlAlchemyDataTypeRepository(session)
+            template_repo = SqlAlchemyObjectTemplateRepository(session)
+            assert datatype_repo.get(datatype.id) is None
+            assert datatype_repo.get_version(datatype.id, 1) is None
+            assert template_repo.get(template.id) is None
+            assert template_repo.get_version(template.id, 1) is None
         finally:
             session.close()
     finally:

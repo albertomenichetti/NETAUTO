@@ -46,7 +46,7 @@ class InMemoryObjectTemplateRepository(ObjectTemplateRepository):
 
     def add_version(self, version: ObjectTemplateVersion) -> None:
         if version.template_id not in self._templates:
-            raise ObjectTemplateNotFound("Parent object template does not exist.")
+            raise ObjectTemplateNotFound("Owning object template does not exist.")
         version_key = (version.template_id, version.version)
         if version_key in self._versions:
             raise ObjectTemplateVersionAlreadyExists("ObjectTemplate version already exists.")
