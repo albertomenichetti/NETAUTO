@@ -70,3 +70,4 @@ class ObjectTemplateVersionRow(Base):
     parent_template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_version: Mapped[int | None] = mapped_column(nullable=True)
     properties_json: Mapped[str] = mapped_column(Text, nullable=False)
+    components_json: Mapped[str] = mapped_column(Text, nullable=False)

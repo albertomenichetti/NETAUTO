@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateAlreadyExists,
+    ObjectTemplateComponent,
     ObjectTemplateNotFound,
     ObjectTemplatePersistenceError,
     ObjectTemplateProperty,
@@ -77,6 +78,55 @@ def _deserialize_properties(properties_json: str) -> tuple[ObjectTemplatePropert
     return tuple(properties)
 
 
+def _serialize_components(components: tuple[ObjectTemplateComponent, ...]) -> str:
+    payload = [
+        {
+            "name": component.name,
+            "template_id": str(component.template_id),
+            "template_version": component.template_version,
+        }
+        for component in components
+    ]
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _deserialize_components(components_json: str) -> tuple[ObjectTemplateComponent, ...]:
+    try:
+        payload = json.loads(components_json)
+    except json.JSONDecodeError as error:
+        raise ObjectTemplatePersistenceError(
+            "Stored object template component JSON is invalid."
+        ) from error
+    if not isinstance(payload, list):
+        raise ObjectTemplatePersistenceError(
+            "Stored object template components must be a JSON array."
+        )
+
+    components: list[ObjectTemplateComponent] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ObjectTemplatePersistenceError(
+                "Stored object template component entry must be a JSON object."
+            )
+        if set(item.keys()) != {"name", "template_id", "template_version"}:
+            raise ObjectTemplatePersistenceError(
+                "Stored object template component entry has an invalid shape."
+            )
+        try:
+            components.append(
+                ObjectTemplateComponent(
+                    name=item["name"],
+                    template_id=UUID(item["template_id"]),
+                    template_version=item["template_version"],
+                )
+            )
+        except Exception as error:
+            raise ObjectTemplatePersistenceError(
+                "Stored object template component entry is invalid."
+            ) from error
+    return tuple(components)
+
+
 def _row_to_object_template(row: ObjectTemplateRow) -> ObjectTemplate:
     try:
         return ObjectTemplate(
@@ -110,6 +160,7 @@ def _row_to_object_template_version(row: ObjectTemplateVersionRow) -> ObjectTemp
             status=ObjectTemplateVersionStatus(row.status),
             parent=parent,
             properties=_deserialize_properties(row.properties_json),
+            components=_deserialize_components(row.components_json),
         )
     except ObjectTemplatePersistenceError:
         raise
@@ -183,6 +234,7 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
                 ),
                 parent_version=version.parent.version if version.parent is not None else None,
                 properties_json=_serialize_properties(version.properties),
+                components_json=_serialize_components(version.components),
             )
         )
         try:
@@ -222,6 +274,7 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
         )
         row.parent_version = version.parent.version if version.parent is not None else None
         row.properties_json = _serialize_properties(version.properties)
+        row.components_json = _serialize_components(version.components)
         try:
             self._session.flush()
         except IntegrityError as error:
