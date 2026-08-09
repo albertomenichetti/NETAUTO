@@ -416,3 +416,227 @@ def test_cli_objecttemplate_acceptance_flow(tmp_path: Path) -> None:
                 ]
     finally:
         engine.dispose()
+
+
+def test_cli_objecttemplate_component_acceptance_flow(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            network_interface_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "network_interface",
+                    "--description",
+                    "Network interface template",
+                    "--abstract",
+                ],
+            )
+            assert network_interface_created.exit_code == 0
+            network_interface_payload = json.loads(network_interface_created.stdout)
+            network_interface_id = network_interface_payload["object_template"]["id"]
+            assert network_interface_payload["object_template"]["abstract"] is True
+            assert network_interface_payload["version"]["components"] == []
+
+            interface_v1_published = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object-template",
+                    "version",
+                    "publish",
+                    network_interface_id,
+                    "1",
+                ],
+            )
+            assert interface_v1_published.exit_code == 0
+
+            interface_v2 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "create",
+                    network_interface_id,
+                    "--source-version",
+                    "1",
+                ],
+            )
+            assert interface_v2.exit_code == 0
+            assert json.loads(interface_v2.stdout)["version"] == 2
+
+            interface_v2_published = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object-template",
+                    "version",
+                    "publish",
+                    network_interface_id,
+                    "2",
+                ],
+            )
+            assert interface_v2_published.exit_code == 0
+
+            network_device_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "network_device",
+                    "--description",
+                    "Network device template",
+                    "--abstract",
+                    "--component-json",
+                    json.dumps(
+                        {
+                            "name": "interfaces",
+                            "template_id": network_interface_id,
+                        }
+                    ),
+                ],
+            )
+            assert network_device_created.exit_code == 0
+            network_device_payload = json.loads(network_device_created.stdout)
+            network_device_id = network_device_payload["object_template"]["id"]
+            assert network_device_payload["version"]["components"] == [
+                {
+                    "name": "interfaces",
+                    "template_id": network_interface_id,
+                    "template_version": 2,
+                }
+            ]
+
+            device_v1_published = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object-template",
+                    "version",
+                    "publish",
+                    network_device_id,
+                    "1",
+                ],
+            )
+            assert device_v1_published.exit_code == 0
+
+            human_version_show = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object-template",
+                    "version",
+                    "show",
+                    network_device_id,
+                    "1",
+                ],
+            )
+            assert human_version_show.exit_code == 0
+            assert "Components:" in human_version_show.stdout
+            assert f"interfaces: {network_interface_id}@2" in human_version_show.stdout
+
+            human_version_list = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object-template",
+                    "version",
+                    "list",
+                    network_device_id,
+                ],
+            )
+            assert human_version_list.exit_code == 0
+            assert "COMPONENTS" in human_version_list.stdout
+            assert (
+                "  1" in human_version_list.stdout
+                or human_version_list.stdout.rstrip().endswith("1")
+            )
+
+            interface_v3 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "create",
+                    network_interface_id,
+                    "--source-version",
+                    "2",
+                ],
+            )
+            assert interface_v3.exit_code == 0
+            assert json.loads(interface_v3.stdout)["version"] == 3
+
+            interface_v3_published = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object-template",
+                    "version",
+                    "publish",
+                    network_interface_id,
+                    "3",
+                ],
+            )
+            assert interface_v3_published.exit_code == 0
+
+            network_device_v2 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "create",
+                    network_device_id,
+                    "--source-version",
+                    "1",
+                ],
+            )
+            assert network_device_v2.exit_code == 0
+            assert json.loads(network_device_v2.stdout) == {
+                "template_id": network_device_id,
+                "version": 2,
+                "status": "draft",
+                "parent": None,
+                "properties": [],
+                "components": [
+                    {
+                        "name": "interfaces",
+                        "template_id": network_interface_id,
+                        "template_version": 2,
+                    }
+                ],
+            }
+    finally:
+        engine.dispose()

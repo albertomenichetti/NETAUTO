@@ -82,6 +82,43 @@ async def _create_object_template(
     return response.json()
 
 
+async def _publish_object_template_version(
+    client: httpx2.AsyncClient,
+    template_id: str,
+    version: int,
+) -> dict[str, object]:
+    response = await client.post(
+        f"/api/v1/object-templates/{template_id}/versions/{version}/publish"
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+async def _create_next_object_template_version(
+    client: httpx2.AsyncClient,
+    template_id: str,
+    source_version: int,
+) -> dict[str, object]:
+    response = await client.post(
+        f"/api/v1/object-templates/{template_id}/versions",
+        json={"source_version": source_version},
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+async def _deprecate_object_template_version(
+    client: httpx2.AsyncClient,
+    template_id: str,
+    version: int,
+) -> dict[str, object]:
+    response = await client.post(
+        f"/api/v1/object-templates/{template_id}/versions/{version}/deprecate"
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
 def _string_field(payload: dict[str, object], *path: str) -> str:
     current: object = payload
     for key in path:
@@ -105,6 +142,237 @@ def _object_field(payload: dict[str, object], *path: str) -> dict[str, object]:
 
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path: Path) -> None:
+    database_path = tmp_path / "objecttemplate-components.sqlite3"
+
+    async with _client_for_database(database_path) as client:
+        network_interface = await _create_object_template(
+            client,
+            {
+                "namespace": "network",
+                "name": "network_interface",
+                "description": "Network interface template",
+                "abstract": True,
+                "parent": None,
+                "properties": [],
+                "components": [],
+            },
+        )
+        network_interface_id = _string_field(network_interface, "object_template", "id")
+        assert _object_field(network_interface, "object_template")["abstract"] is True
+
+        published_interface_v1 = await _publish_object_template_version(
+            client,
+            network_interface_id,
+            1,
+        )
+        assert published_interface_v1["status"] == "published"
+
+        interface_v2 = await _create_next_object_template_version(client, network_interface_id, 1)
+        assert interface_v2["version"] == 2
+        published_interface_v2 = await _publish_object_template_version(
+            client,
+            network_interface_id,
+            2,
+        )
+        assert published_interface_v2["status"] == "published"
+
+        interface_v3 = await _create_next_object_template_version(client, network_interface_id, 2)
+        assert interface_v3["version"] == 3
+        assert interface_v3["status"] == "draft"
+
+        network_device = await _create_object_template(
+            client,
+            {
+                "namespace": "network",
+                "name": "network_device",
+                "description": "Network device template",
+                "abstract": True,
+                "parent": None,
+                "properties": [],
+                "components": [{"name": "interfaces", "template_id": network_interface_id}],
+            },
+        )
+        network_device_id = _string_field(network_device, "object_template", "id")
+        assert _object_field(network_device, "version")["components"] == [
+            {
+                "name": "interfaces",
+                "template_id": network_interface_id,
+                "template_version": 2,
+            }
+        ]
+        published_device_v1 = await _publish_object_template_version(client, network_device_id, 1)
+        assert published_device_v1["status"] == "published"
+
+        router = await _create_object_template(
+            client,
+            {
+                "namespace": "network",
+                "name": "router",
+                "description": "Router template",
+                "abstract": False,
+                "parent": {"template_id": network_device_id, "version": 1},
+                "properties": [],
+                "components": [],
+            },
+        )
+        router_id = _string_field(router, "object_template", "id")
+        assert _object_field(router, "version")["components"] == []
+        published_router_v1 = await _publish_object_template_version(client, router_id, 1)
+        assert published_router_v1["status"] == "published"
+
+        published_interface_v3 = await _publish_object_template_version(
+            client,
+            network_interface_id,
+            3,
+        )
+        assert published_interface_v3["status"] == "published"
+
+        network_device_v2 = await _create_next_object_template_version(client, network_device_id, 1)
+        assert network_device_v2 == {
+            "template_id": network_device_id,
+            "version": 2,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": [
+                {
+                    "name": "interfaces",
+                    "template_id": network_interface_id,
+                    "template_version": 2,
+                }
+            ],
+        }
+
+        deprecated_interface_v2 = await _deprecate_object_template_version(
+            client,
+            network_interface_id,
+            2,
+        )
+        assert deprecated_interface_v2["status"] == "deprecated"
+
+        publish_device_v2 = await client.post(
+            f"/api/v1/object-templates/{network_device_id}/versions/2/publish"
+        )
+        assert publish_device_v2.status_code == 409
+        assert (
+            publish_device_v2.json()["error"]["code"]
+            == "object_template_component_version_not_published"
+        )
+
+        loaded_device_v2 = await client.get(
+            f"/api/v1/object-templates/{network_device_id}/versions/2"
+        )
+        assert loaded_device_v2.status_code == 200
+        assert loaded_device_v2.json() == {
+            "template_id": network_device_id,
+            "version": 2,
+            "status": "draft",
+            "parent": None,
+            "properties": [],
+            "components": [
+                {
+                    "name": "interfaces",
+                    "template_id": network_interface_id,
+                    "template_version": 2,
+                }
+            ],
+        }
+
+        loaded_device_v1 = await client.get(
+            f"/api/v1/object-templates/{network_device_id}/versions/1"
+        )
+        assert loaded_device_v1.status_code == 200
+        assert loaded_device_v1.json() == {
+            "template_id": network_device_id,
+            "version": 1,
+            "status": "published",
+            "parent": None,
+            "properties": [],
+            "components": [
+                {
+                    "name": "interfaces",
+                    "template_id": network_interface_id,
+                    "template_version": 2,
+                }
+            ],
+        }
+
+        loaded_router_v1 = await client.get(f"/api/v1/object-templates/{router_id}/versions/1")
+        assert loaded_router_v1.status_code == 200
+        assert loaded_router_v1.json() == {
+            "template_id": router_id,
+            "version": 1,
+            "status": "published",
+            "parent": {"template_id": network_device_id, "version": 1},
+            "properties": [],
+            "components": [],
+        }
+
+        router_after_deprecation = await _create_object_template(
+            client,
+            {
+                "namespace": "network",
+                "name": "router_after_deprecation",
+                "description": "Router after deprecation",
+                "abstract": False,
+                "parent": {"template_id": network_device_id, "version": 1},
+                "properties": [],
+                "components": [],
+            },
+        )
+        router_after_deprecation_id = _string_field(
+            router_after_deprecation,
+            "object_template",
+            "id",
+        )
+        assert _object_field(router_after_deprecation, "version")["status"] == "draft"
+        assert _object_field(router_after_deprecation, "version")["components"] == []
+
+        publish_router_after_deprecation = await client.post(
+            f"/api/v1/object-templates/{router_after_deprecation_id}/versions/1/publish"
+        )
+        assert publish_router_after_deprecation.status_code == 409
+        assert (
+            publish_router_after_deprecation.json()["error"]["code"]
+            == "object_template_component_version_not_published"
+        )
+
+        loaded_router_after_deprecation = await client.get(
+            f"/api/v1/object-templates/{router_after_deprecation_id}/versions/1"
+        )
+        assert loaded_router_after_deprecation.status_code == 200
+        assert loaded_router_after_deprecation.json() == {
+            "template_id": router_after_deprecation_id,
+            "version": 1,
+            "status": "draft",
+            "parent": {"template_id": network_device_id, "version": 1},
+            "properties": [],
+            "components": [],
+        }
+
+    async with _client_for_database(database_path) as client:
+        loaded_after_restart = await client.get(
+            f"/api/v1/object-templates/{network_device_id}/versions/1"
+        )
+
+    assert loaded_after_restart.status_code == 200
+    assert loaded_after_restart.json() == {
+        "template_id": network_device_id,
+        "version": 1,
+        "status": "published",
+        "parent": None,
+        "properties": [],
+        "components": [
+            {
+                "name": "interfaces",
+                "template_id": network_interface_id,
+                "template_version": 2,
+            }
+        ],
+    }
 
 
 async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path) -> None:
