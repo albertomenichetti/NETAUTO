@@ -26,15 +26,20 @@ from netauto.core.datatype import (
     UnsupportedConstraint,
 )
 from netauto.core.objecttemplate import (
+    DuplicateObjectTemplateComponent,
     DuplicateObjectTemplateProperty,
+    InheritedObjectTemplateComponentConflict,
     InheritedObjectTemplatePropertyConflict,
     InvalidObjectTemplate,
+    InvalidObjectTemplateComponent,
     InvalidObjectTemplateIdentifier,
     InvalidObjectTemplateProperty,
     InvalidObjectTemplateVersion,
     InvalidObjectTemplateVersionTransition,
     MismatchedObjectTemplateVersion,
     ObjectTemplateAlreadyExists,
+    ObjectTemplateComponentVersionNotFound,
+    ObjectTemplateComponentVersionNotPublished,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
@@ -197,6 +202,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Object template datatype version not found",
     ),
     (
+        ObjectTemplateComponentVersionNotFound,
+        HTTPStatus.NOT_FOUND,
+        "object_template_component_version_not_found",
+        "Object template component version not found",
+    ),
+    (
         ObjectTemplateAlreadyExists,
         HTTPStatus.CONFLICT,
         "object_template_already_exists",
@@ -227,6 +238,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Object template datatype version must be published",
     ),
     (
+        ObjectTemplateComponentVersionNotPublished,
+        HTTPStatus.CONFLICT,
+        "object_template_component_version_not_published",
+        "Object template component version must be published",
+    ),
+    (
         ObjectTemplateInheritanceCycle,
         HTTPStatus.CONFLICT,
         "object_template_inheritance_cycle",
@@ -243,6 +260,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "inherited_object_template_property_conflict",
         "Object template property conflicts with inherited property",
+    ),
+    (
+        InheritedObjectTemplateComponentConflict,
+        HTTPStatus.CONFLICT,
+        "inherited_object_template_component_conflict",
+        "Object template component conflicts with inherited component",
     ),
     (
         MismatchedObjectTemplateVersion,
@@ -275,10 +298,22 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Object template property is invalid",
     ),
     (
+        InvalidObjectTemplateComponent,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_object_template_component",
+        "Object template component is invalid",
+    ),
+    (
         DuplicateObjectTemplateProperty,
         HTTPStatus.UNPROCESSABLE_ENTITY,
         "duplicate_object_template_property",
         "Object template property names must be unique",
+    ),
+    (
+        DuplicateObjectTemplateComponent,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "duplicate_object_template_component",
+        "Object template component names must be unique",
     ),
     (
         ObjectTemplatePersistenceError,

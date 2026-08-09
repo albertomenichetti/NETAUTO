@@ -288,6 +288,7 @@ def test_cli_objecttemplate_acceptance_flow(tmp_path: Path) -> None:
                                 "required": False,
                             }
                         ],
+                        "components": [],
                     }
                 ]
 
@@ -309,6 +310,7 @@ def test_cli_objecttemplate_acceptance_flow(tmp_path: Path) -> None:
                 version_show_payload = json.loads(version_show.stdout)
                 assert version_show_payload["parent"] == {"template_id": device_id, "version": 1}
                 assert version_show_payload["properties"][0]["datatype_version"] == 1
+                assert version_show_payload["components"] == []
                 assert version_show_payload["status"] == "published"
 
                 human_show = runner.invoke(
@@ -356,6 +358,7 @@ def test_cli_objecttemplate_acceptance_flow(tmp_path: Path) -> None:
                             "required": False,
                         }
                     ],
+                    "components": [],
                 }
 
                 router_v2_published = runner.invoke(

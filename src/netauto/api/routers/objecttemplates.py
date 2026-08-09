@@ -11,6 +11,8 @@ from netauto.api.schemas.objecttemplates import (
     CreateNextObjectTemplateVersionRequest,
     CreateObjectTemplateRequest,
     CreateObjectTemplateResponse,
+    ObjectTemplateComponentRequest,
+    ObjectTemplateComponentResponse,
     ObjectTemplatePropertyRequest,
     ObjectTemplatePropertyResponse,
     ObjectTemplateResponse,
@@ -21,10 +23,12 @@ from netauto.api.schemas.objecttemplates import (
 )
 from netauto.application.objecttemplate import (
     ObjectTemplateApplicationService,
+    ObjectTemplateComponentSpec,
     ObjectTemplatePropertySpec,
 )
 from netauto.core.objecttemplate import (
     ObjectTemplate,
+    ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
@@ -54,6 +58,16 @@ def _to_property_spec(
     )
 
 
+def _to_component_spec(
+    component_request: ObjectTemplateComponentRequest,
+) -> ObjectTemplateComponentSpec:
+    return ObjectTemplateComponentSpec(
+        name=component_request.name,
+        template_id=component_request.template_id,
+        template_version=component_request.template_version,
+    )
+
+
 def _to_object_template_response(template: ObjectTemplate) -> ObjectTemplateResponse:
     return ObjectTemplateResponse(
         id=template.id,
@@ -71,6 +85,16 @@ def _to_property_response(property_value: ObjectTemplateProperty) -> ObjectTempl
         datatype_id=property_value.datatype_id,
         datatype_version=property_value.datatype_version,
         required=property_value.required,
+    )
+
+
+def _to_component_response(
+    component_value: ObjectTemplateComponent,
+) -> ObjectTemplateComponentResponse:
+    return ObjectTemplateComponentResponse(
+        name=component_value.name,
+        template_id=component_value.template_id,
+        template_version=component_value.template_version,
     )
 
 
@@ -92,6 +116,7 @@ def _to_version_response(version: ObjectTemplateVersion) -> ObjectTemplateVersio
         status=version.status,
         parent=_to_parent_response(version.parent),
         properties=[_to_property_response(prop) for prop in version.properties],
+        components=[_to_component_response(component) for component in version.components],
     )
 
 
@@ -112,6 +137,7 @@ def create_object_template(
         abstract=request.abstract,
         parent=_to_parent_ref(request.parent),
         properties=tuple(_to_property_spec(prop) for prop in request.properties),
+        components=tuple(_to_component_spec(component) for component in request.components),
     )
     return CreateObjectTemplateResponse(
         object_template=_to_object_template_response(template),
@@ -195,6 +221,7 @@ def revise_version(
         version=version,
         parent=_to_parent_ref(request.parent),
         properties=tuple(_to_property_spec(prop) for prop in request.properties),
+        components=tuple(_to_component_spec(component) for component in request.components),
     )
     return _to_version_response(revised)
 

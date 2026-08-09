@@ -232,6 +232,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                     "required": True,
                 }
             ],
+            "components": [],
         }
         assert child_by_id.status_code == 200
         assert child_by_id.json()["id"] == child_id
@@ -250,6 +251,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                     "required": False,
                 }
             ],
+            "components": [],
         }
         assert child_versions.status_code == 200
         assert child_versions.json() == [child_v1.json()]
@@ -274,6 +276,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                     "required": False,
                 }
             ],
+            "components": [],
         }
 
         revised_v2 = await client.put(
@@ -314,6 +317,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                     "required": False,
                 }
             ],
+            "components": [],
         }
         assert child_v2_again.status_code == 200
         assert child_v2_again.json() == {
@@ -329,6 +333,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                     "required": True,
                 }
             ],
+            "components": [],
         }
 
         deprecated_v1 = await client.post(
@@ -353,6 +358,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                         "required": False,
                     }
                 ],
+                "components": [],
             },
             {
                 "template_id": child_id,
@@ -367,6 +373,7 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
                         "required": True,
                     }
                 ],
+                "components": [],
             },
         ]
 
@@ -524,4 +531,5 @@ async def test_objecttemplate_state_survives_app_reconstruction(tmp_path: Path) 
                 "required": True,
             }
         ],
+        "components": [],
     }

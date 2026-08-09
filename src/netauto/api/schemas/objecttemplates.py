@@ -38,6 +38,18 @@ class ObjectTemplatePropertyResponse(ApiModel):
     required: bool
 
 
+class ObjectTemplateComponentRequest(ApiModel):
+    name: StrictStr
+    template_id: UUID
+    template_version: PositiveStrictInt | None = None
+
+
+class ObjectTemplateComponentResponse(ApiModel):
+    name: str
+    template_id: UUID
+    template_version: int
+
+
 class CreateObjectTemplateRequest(ApiModel):
     namespace: StrictStr
     name: StrictStr
@@ -45,11 +57,13 @@ class CreateObjectTemplateRequest(ApiModel):
     abstract: StrictBool
     parent: ObjectTemplateVersionRefRequest | None = None
     properties: list[ObjectTemplatePropertyRequest] = Field(default_factory=list)
+    components: list[ObjectTemplateComponentRequest] = Field(default_factory=list)
 
 
 class ReviseObjectTemplateVersionRequest(ApiModel):
     parent: ObjectTemplateVersionRefRequest | None
     properties: list[ObjectTemplatePropertyRequest]
+    components: list[ObjectTemplateComponentRequest] = Field(default_factory=list)
 
 
 class CreateNextObjectTemplateVersionRequest(ApiModel):
@@ -71,6 +85,7 @@ class ObjectTemplateVersionResponse(ApiModel):
     status: ObjectTemplateVersionStatus
     parent: ObjectTemplateVersionRefResponse | None
     properties: list[ObjectTemplatePropertyResponse]
+    components: list[ObjectTemplateComponentResponse]
 
 
 class CreateObjectTemplateResponse(ApiModel):
