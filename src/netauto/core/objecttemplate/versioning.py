@@ -7,11 +7,14 @@ from netauto.core.datatype.models import DataTypeVersion, DataTypeVersionStatus
 from netauto.core.objecttemplate.exceptions import (
     InvalidObjectTemplateVersionTransition,
     MismatchedObjectTemplateVersion,
+    ObjectTemplateComponentVersionNotFound,
+    ObjectTemplateComponentVersionNotPublished,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateParentNotPublished,
 )
 from netauto.core.objecttemplate.models import (
+    ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
@@ -37,6 +40,7 @@ class ObjectTemplateVersioningService:
         *,
         parent: ObjectTemplateVersionRef | None,
         properties: Iterable[ObjectTemplateProperty],
+        components: Iterable[ObjectTemplateComponent] = (),
     ) -> ObjectTemplateVersion:
         if version.status is not ObjectTemplateVersionStatus.DRAFT:
             raise InvalidObjectTemplateVersionTransition("Only draft versions may be revised.")
@@ -46,6 +50,7 @@ class ObjectTemplateVersioningService:
             status=ObjectTemplateVersionStatus.DRAFT,
             parent=parent,
             properties=tuple(properties),
+            components=tuple(components),
         )
 
     def create_next_version(
@@ -74,6 +79,7 @@ class ObjectTemplateVersioningService:
             status=ObjectTemplateVersionStatus.DRAFT,
             parent=source.parent,
             properties=source.properties,
+            components=source.components,
         )
 
     def publish(
@@ -87,6 +93,10 @@ class ObjectTemplateVersioningService:
             raise InvalidObjectTemplateVersionTransition("Only draft versions may be published.")
 
         effective_properties = self._resolver.resolve_effective_properties(
+            version,
+            parent_lookup=parent_lookup,
+        )
+        effective_components = self._resolver.resolve_effective_components(
             version,
             parent_lookup=parent_lookup,
         )
@@ -112,12 +122,29 @@ class ObjectTemplateVersioningService:
                     "Referenced datatype version must be published."
                 )
 
+        for component in effective_components:
+            component_version = parent_lookup(
+                ObjectTemplateVersionRef(
+                    template_id=component.template_id,
+                    version=component.template_version,
+                )
+            )
+            if component_version is None:
+                raise ObjectTemplateComponentVersionNotFound(
+                    "Referenced component target version was not found."
+                )
+            if component_version.status is not ObjectTemplateVersionStatus.PUBLISHED:
+                raise ObjectTemplateComponentVersionNotPublished(
+                    "Referenced component target version must be published."
+                )
+
         return ObjectTemplateVersion(
             template_id=version.template_id,
             version=version.version,
             status=ObjectTemplateVersionStatus.PUBLISHED,
             parent=version.parent,
             properties=version.properties,
+            components=version.components,
         )
 
     def deprecate(self, version: ObjectTemplateVersion) -> ObjectTemplateVersion:
@@ -131,4 +158,5 @@ class ObjectTemplateVersioningService:
             status=ObjectTemplateVersionStatus.DEPRECATED,
             parent=version.parent,
             properties=version.properties,
+            components=version.components,
         )

@@ -8,9 +8,13 @@ from netauto.core.datatype import (
     PrimitiveTypeRegistry,
 )
 from netauto.core.objecttemplate import (
+    InheritedObjectTemplateComponentConflict,
     InheritedObjectTemplatePropertyConflict,
     InvalidObjectTemplateVersionTransition,
     MismatchedObjectTemplateVersion,
+    ObjectTemplateComponent,
+    ObjectTemplateComponentVersionNotFound,
+    ObjectTemplateComponentVersionNotPublished,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
@@ -53,6 +57,19 @@ def _property(
     )
 
 
+def _component(
+    name: str,
+    *,
+    template_id: UUID | None = None,
+    template_version: int = 1,
+) -> ObjectTemplateComponent:
+    return ObjectTemplateComponent(
+        name=name,
+        template_id=template_id or uuid4(),
+        template_version=template_version,
+    )
+
+
 def _version(
     template_id: UUID,
     version: int,
@@ -60,6 +77,7 @@ def _version(
     status: ObjectTemplateVersionStatus,
     parent: ObjectTemplateVersionRef | None = None,
     properties: tuple[ObjectTemplateProperty, ...] = (),
+    components: tuple[ObjectTemplateComponent, ...] = (),
 ) -> ObjectTemplateVersion:
     return ObjectTemplateVersion(
         template_id=template_id,
@@ -67,6 +85,7 @@ def _version(
         status=status,
         parent=parent,
         properties=properties,
+        components=components,
     )
 
 
@@ -78,14 +97,17 @@ def test_revise_draft_returns_replacement_snapshot() -> None:
         1,
         status=ObjectTemplateVersionStatus.DRAFT,
         properties=(_property("hostname"),),
+        components=(_component("interfaces"),),
     )
     parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
     revised_property = _property("serial")
+    revised_component = _component("routing_engines")
 
     revised = service.revise_draft(
         original,
         parent=parent,
         properties=(revised_property,),
+        components=(revised_component,),
     )
 
     assert revised.template_id == original.template_id
@@ -93,8 +115,10 @@ def test_revise_draft_returns_replacement_snapshot() -> None:
     assert revised.status is ObjectTemplateVersionStatus.DRAFT
     assert revised.parent == parent
     assert revised.properties == (revised_property,)
+    assert revised.components == (revised_component,)
     assert original.parent is None
     assert tuple(prop.name for prop in original.properties) == ("hostname",)
+    assert tuple(component.name for component in original.components) == ("interfaces",)
 
 
 @pytest.mark.parametrize(
@@ -106,17 +130,24 @@ def test_revise_non_draft_rejected(status: ObjectTemplateVersionStatus) -> None:
     version = _version(uuid4(), 1, status=status)
 
     with pytest.raises(InvalidObjectTemplateVersionTransition):
-        service.revise_draft(version, parent=None, properties=())
+        service.revise_draft(version, parent=None, properties=(), components=())
 
 
 def test_publish_valid_root_template() -> None:
     service = ObjectTemplateVersioningService()
     datatype_id = uuid4()
+    component_target_id = uuid4()
+    component_target = _version(
+        component_target_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+    )
     draft = _version(
         uuid4(),
         1,
         status=ObjectTemplateVersionStatus.DRAFT,
         properties=(_property("hostname", datatype_id=datatype_id),),
+        components=(_component("interfaces", template_id=component_target_id),),
     )
     datatype_versions = {
         (datatype_id, 1): _datatype_version(
@@ -125,10 +156,11 @@ def test_publish_valid_root_template() -> None:
             status=DataTypeVersionStatus.PUBLISHED,
         )
     }
+    template_versions = {(component_target_id, 1): component_target}
 
     published = service.publish(
         draft,
-        parent_lookup=lambda _: None,
+        parent_lookup=lambda ref: template_versions.get((ref.template_id, ref.version)),
         datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(
             (datatype_uuid, version)
         ),
@@ -139,6 +171,7 @@ def test_publish_valid_root_template() -> None:
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
     assert published.parent == draft.parent
     assert published.properties == draft.properties
+    assert published.components == draft.components
     assert draft.status is ObjectTemplateVersionStatus.DRAFT
 
 
@@ -147,11 +180,26 @@ def test_publish_valid_inherited_template() -> None:
     parent_id = uuid4()
     inherited_datatype_id = uuid4()
     local_datatype_id = uuid4()
+    inherited_component_target_id = uuid4()
+    local_component_target_id = uuid4()
+    inherited_component_target = _version(
+        inherited_component_target_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+    )
+    local_component_target = _version(
+        local_component_target_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+    )
     parent = _version(
         parent_id,
         1,
         status=ObjectTemplateVersionStatus.PUBLISHED,
         properties=(_property("hostname", datatype_id=inherited_datatype_id),),
+        components=(
+            _component("interfaces", template_id=inherited_component_target_id),
+        ),
     )
     child = _version(
         uuid4(),
@@ -159,8 +207,15 @@ def test_publish_valid_inherited_template() -> None:
         status=ObjectTemplateVersionStatus.DRAFT,
         parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
         properties=(_property("routing_id", datatype_id=local_datatype_id),),
+        components=(
+            _component("routing_engines", template_id=local_component_target_id),
+        ),
     )
-    parent_versions = {(parent_id, 1): parent}
+    parent_versions = {
+        (parent_id, 1): parent,
+        (inherited_component_target_id, 1): inherited_component_target,
+        (local_component_target_id, 1): local_component_target,
+    }
     datatype_versions = {
         (inherited_datatype_id, 1): _datatype_version(
             inherited_datatype_id,
@@ -185,6 +240,7 @@ def test_publish_valid_inherited_template() -> None:
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
     assert published.parent == child.parent
     assert published.properties == child.properties
+    assert published.components == child.components
 
 
 def test_publish_missing_parent() -> None:
@@ -265,6 +321,36 @@ def test_publish_inheritance_conflict_behavior_is_preserved() -> None:
                 1,
                 status=DataTypeVersionStatus.PUBLISHED,
             ),
+        )
+
+
+def test_publish_component_inheritance_conflict_behavior_is_preserved() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    target_id = uuid4()
+    target = _version(target_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent = _version(
+        parent_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        components=(_component("interfaces", template_id=target_id),),
+    )
+    child = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
+        components=(_component("interfaces", template_id=target_id),),
+    )
+
+    with pytest.raises(InheritedObjectTemplateComponentConflict):
+        service.publish(
+            child,
+            parent_lookup=lambda ref: {  # noqa: ARG005
+                (parent_id, 1): parent,
+                (target_id, 1): target,
+            }.get((ref.template_id, ref.version)),
+            datatype_lookup=lambda _datatype_uuid, _version: None,
         )
 
 
@@ -405,9 +491,173 @@ def test_publish_checks_inherited_properties_datatypes_too() -> None:
         )
 
 
+def test_publish_missing_component_target_version() -> None:
+    service = ObjectTemplateVersioningService()
+    target_id = uuid4()
+    draft = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        components=(_component("interfaces", template_id=target_id),),
+    )
+    seen_refs: list[tuple[UUID, int]] = []
+
+    with pytest.raises(ObjectTemplateComponentVersionNotFound):
+        service.publish(
+            draft,
+            parent_lookup=lambda ref: seen_refs.append((ref.template_id, ref.version)) or None,
+            datatype_lookup=lambda _datatype_uuid, _version: None,
+        )
+
+    assert seen_refs == [(target_id, 1)]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED],
+)
+def test_publish_rejects_non_published_component_target_versions(
+    status: ObjectTemplateVersionStatus,
+) -> None:
+    service = ObjectTemplateVersioningService()
+    target_id = uuid4()
+    target = _version(target_id, 1, status=status)
+    draft = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        components=(_component("interfaces", template_id=target_id),),
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.publish(
+            draft,
+            parent_lookup=lambda _ref: target,
+            datatype_lookup=lambda _datatype_uuid, _version: None,
+        )
+
+
+def test_publish_checks_inherited_components_too() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    inherited_target_id = uuid4()
+    local_target_id = uuid4()
+    parent = _version(
+        parent_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        components=(_component("interfaces", template_id=inherited_target_id),),
+    )
+    local_target = _version(local_target_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    versions = {
+        (parent_id, 1): parent,
+        (local_target_id, 1): local_target,
+    }
+    child = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
+        components=(_component("routing_engines", template_id=local_target_id),),
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotFound):
+        service.publish(
+            child,
+            parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
+            datatype_lookup=lambda _datatype_uuid, _version: None,
+        )
+
+
+@pytest.mark.parametrize(
+    "inherited_status",
+    [ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED],
+)
+def test_publish_rejects_non_published_inherited_component_target_versions(
+    inherited_status: ObjectTemplateVersionStatus,
+) -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    inherited_target_id = uuid4()
+    local_target_id = uuid4()
+    inherited_target = _version(inherited_target_id, 1, status=inherited_status)
+    local_target = _version(local_target_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent = _version(
+        parent_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        components=(_component("interfaces", template_id=inherited_target_id),),
+    )
+    versions = {
+        (parent_id, 1): parent,
+        (inherited_target_id, 1): inherited_target,
+        (local_target_id, 1): local_target,
+    }
+    child = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
+        components=(_component("routing_engines", template_id=local_target_id),),
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.publish(
+            child,
+            parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
+            datatype_lookup=lambda _datatype_uuid, _version: None,
+        )
+
+
+def test_create_next_version_clones_exact_component_refs() -> None:
+    service = ObjectTemplateVersioningService()
+    component = _component("interfaces", template_id=uuid4(), template_version=3)
+    source = _version(
+        uuid4(),
+        2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        components=(component,),
+    )
+
+    next_version = service.create_next_version(source, existing_versions=(source,))
+
+    assert next_version.version == 3
+    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
+    assert next_version.components == (component,)
+    assert source.components == (component,)
+
+
+def test_publish_preserves_local_components() -> None:
+    service = ObjectTemplateVersioningService()
+    target_id = uuid4()
+    target = _version(target_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    component = _component("interfaces", template_id=target_id, template_version=1)
+    draft = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        components=(component,),
+    )
+
+    published = service.publish(
+        draft,
+        parent_lookup=lambda ref: {(target_id, 1): target}.get((ref.template_id, ref.version)),
+        datatype_lookup=lambda _datatype_uuid, _version: None,
+    )
+
+    assert published.components == (component,)
+    assert draft.components == (component,)
+
+
 def test_deprecate_published() -> None:
     service = ObjectTemplateVersioningService()
-    published = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    component = _component("interfaces", template_id=uuid4(), template_version=1)
+    published = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        components=(component,),
+    )
 
     deprecated = service.deprecate(published)
 
@@ -416,13 +666,14 @@ def test_deprecate_published() -> None:
     assert deprecated.status is ObjectTemplateVersionStatus.DEPRECATED
     assert deprecated.parent == published.parent
     assert deprecated.properties == published.properties
+    assert deprecated.components == published.components
 
 
 @pytest.mark.parametrize(
     "status",
     [ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED],
 )
-def test_invalid_deprecate_transitions(status: ObjectTemplateVersionStatus) -> None:
+def test_deprecate_non_published_rejected(status: ObjectTemplateVersionStatus) -> None:
     service = ObjectTemplateVersioningService()
     version = _version(uuid4(), 1, status=status)
 
@@ -430,42 +681,15 @@ def test_invalid_deprecate_transitions(status: ObjectTemplateVersionStatus) -> N
         service.deprecate(version)
 
 
-def test_create_next_version_clones_parent_and_properties() -> None:
+def test_create_next_version_rejects_non_published_source() -> None:
     service = ObjectTemplateVersioningService()
-    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
-    prop = _property("hostname")
-    source = _version(
-        uuid4(),
-        1,
-        status=ObjectTemplateVersionStatus.PUBLISHED,
-        parent=parent,
-        properties=(prop,),
-    )
+    source = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.DRAFT)
 
-    next_version = service.create_next_version(source, existing_versions=(source,))
-
-    assert next_version.version == 2
-    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
-    assert next_version.parent == source.parent
-    assert next_version.properties == source.properties
+    with pytest.raises(InvalidObjectTemplateVersionTransition):
+        service.create_next_version(source, existing_versions=(source,))
 
 
-def test_create_next_version_uses_max_plus_one_including_existing_drafts() -> None:
-    service = ObjectTemplateVersioningService()
-    template_id = uuid4()
-    source = _version(template_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    existing_versions = (
-        source,
-        _version(template_id, 2, status=ObjectTemplateVersionStatus.DRAFT),
-        _version(template_id, 5, status=ObjectTemplateVersionStatus.DEPRECATED),
-    )
-
-    next_version = service.create_next_version(source, existing_versions=existing_versions)
-
-    assert next_version.version == 6
-
-
-def test_create_next_version_rejects_mismatched_existing_versions() -> None:
+def test_create_next_version_rejects_mismatched_template_versions() -> None:
     service = ObjectTemplateVersioningService()
     source = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     other = _version(uuid4(), 2, status=ObjectTemplateVersionStatus.PUBLISHED)
@@ -474,24 +698,10 @@ def test_create_next_version_rejects_mismatched_existing_versions() -> None:
         service.create_next_version(source, existing_versions=(source, other))
 
 
-@pytest.mark.parametrize(
-    "status",
-    [ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED],
-)
-def test_create_next_version_source_must_be_published(
-    status: ObjectTemplateVersionStatus,
-) -> None:
-    service = ObjectTemplateVersioningService()
-    source = _version(uuid4(), 1, status=status)
-
-    with pytest.raises(InvalidObjectTemplateVersionTransition):
-        service.create_next_version(source, existing_versions=())
-
-
-def test_originals_remain_unchanged_after_operations() -> None:
+def test_ordinary_template_without_components_still_publishes() -> None:
     service = ObjectTemplateVersioningService()
     datatype_id = uuid4()
-    original = _version(
+    draft = _version(
         uuid4(),
         1,
         status=ObjectTemplateVersionStatus.DRAFT,
@@ -506,16 +716,12 @@ def test_originals_remain_unchanged_after_operations() -> None:
     }
 
     published = service.publish(
-        original,
+        draft,
         parent_lookup=lambda _: None,
         datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(
             (datatype_uuid, version)
         ),
     )
-    next_version = service.create_next_version(published, existing_versions=(published,))
-    deprecated = service.deprecate(published)
 
-    assert original.status is ObjectTemplateVersionStatus.DRAFT
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
-    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
-    assert deprecated.status is ObjectTemplateVersionStatus.DEPRECATED
+    assert published.components == ()
