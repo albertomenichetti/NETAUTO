@@ -1,11 +1,11 @@
-"""Domain models for runtime objects."""
+"""Domain models for runtime objects and structural membership."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from uuid import UUID
 
-from netauto.core.object.exceptions import InvalidObject
+from netauto.core.object.exceptions import InvalidComponentMembership, InvalidObject
 
 
 def _validate_plain_positive_int(value: object, message: str) -> int:
@@ -45,3 +45,22 @@ class Object:
             snapshot[key] = value
 
         object.__setattr__(self, "properties", MappingProxyType(snapshot))
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentMembership:
+    """Authoritative structural ownership edge between two objects."""
+
+    parent_object_id: UUID
+    slot_name: str
+    child_object_id: UUID
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.slot_name, str):
+            raise InvalidComponentMembership("ComponentMembership slot_name must be a string.")
+        if self.slot_name == "":
+            raise InvalidComponentMembership("ComponentMembership slot_name must not be empty.")
+        if self.parent_object_id == self.child_object_id:
+            raise InvalidComponentMembership(
+                "ComponentMembership parent_object_id and child_object_id must differ."
+            )

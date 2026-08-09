@@ -1,7 +1,11 @@
 """Object domain models."""
 
-from netauto.core.object.exceptions import InvalidObject, ObjectDataTypeVersionNotFound
-from netauto.core.object.models import Object
+from netauto.core.object.exceptions import (
+    InvalidComponentMembership,
+    InvalidObject,
+    ObjectDataTypeVersionNotFound,
+)
+from netauto.core.object.models import ComponentMembership, Object
 from netauto.core.object.validation import (
     DataTypeVersionLookup,
     ObjectValidationEngine,
@@ -10,7 +14,9 @@ from netauto.core.object.validation import (
 )
 
 __all__ = [
+    "ComponentMembership",
     "DataTypeVersionLookup",
+    "InvalidComponentMembership",
     "InvalidObject",
     "Object",
     "ObjectDataTypeVersionNotFound",

@@ -4,7 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from netauto.core.object import InvalidObject, Object
+from netauto.core.object import (
+    ComponentMembership,
+    InvalidComponentMembership,
+    InvalidObject,
+    Object,
+)
 
 
 def test_valid_object_with_empty_properties() -> None:
@@ -111,3 +116,90 @@ def test_object_copies_original_property_mapping() -> None:
     source["serial"] = "ABC123"
 
     assert object_value.properties == {"hostname": "router-01"}
+
+
+def test_object_still_has_no_ownership_fields() -> None:
+    object_value = Object(
+        id=uuid4(),
+        template_id=uuid4(),
+        template_version=1,
+        properties={},
+    )
+
+    assert not hasattr(object_value, "owner_id")
+    assert not hasattr(object_value, "parent_id")
+    assert not hasattr(object_value, "components")
+
+
+def test_component_membership_valid_construction_preserves_exact_values() -> None:
+    parent_object_id = uuid4()
+    child_object_id = uuid4()
+
+    membership = ComponentMembership(
+        parent_object_id=parent_object_id,
+        slot_name="interfaces",
+        child_object_id=child_object_id,
+    )
+
+    assert membership.parent_object_id == parent_object_id
+    assert membership.slot_name == "interfaces"
+    assert membership.child_object_id == child_object_id
+
+
+def test_component_membership_is_immutable() -> None:
+    membership = ComponentMembership(
+        parent_object_id=uuid4(),
+        slot_name="interfaces",
+        child_object_id=uuid4(),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        membership.slot_name = "modules"  # type: ignore[misc]
+
+
+def test_component_membership_has_normal_value_equality_and_no_independent_id() -> None:
+    parent_object_id = uuid4()
+    child_object_id = uuid4()
+    first = ComponentMembership(
+        parent_object_id=parent_object_id,
+        slot_name="interfaces",
+        child_object_id=child_object_id,
+    )
+    second = ComponentMembership(
+        parent_object_id=parent_object_id,
+        slot_name="interfaces",
+        child_object_id=child_object_id,
+    )
+
+    assert first == second
+    assert not hasattr(first, "id")
+
+
+@pytest.mark.parametrize("value", [None, 1, True, []])
+def test_component_membership_rejects_non_string_slot_name(value: object) -> None:
+    with pytest.raises(InvalidComponentMembership):
+        ComponentMembership(
+            parent_object_id=uuid4(),
+            slot_name=value,  # type: ignore[arg-type]
+            child_object_id=uuid4(),
+        )
+
+
+def test_component_membership_rejects_empty_slot_name() -> None:
+    with pytest.raises(InvalidComponentMembership):
+        ComponentMembership(
+            parent_object_id=uuid4(),
+            slot_name="",
+            child_object_id=uuid4(),
+        )
+
+
+def test_component_membership_rejects_direct_self_edge() -> None:
+    object_id = uuid4()
+
+    with pytest.raises(InvalidComponentMembership):
+        ComponentMembership(
+            parent_object_id=object_id,
+            slot_name="interfaces",
+            child_object_id=object_id,
+        )
