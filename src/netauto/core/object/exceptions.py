@@ -1,4 +1,11 @@
-"""Domain exceptions for object models, validation, and persistence."""
+"""Domain exceptions for object models, validation, persistence, and workflows."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from netauto.core.object.validation import ObjectValidationResult
 
 
 class InvalidObject(Exception):
@@ -31,3 +38,23 @@ class ObjectDataTypeVersionNotFound(Exception):
 
 class ObjectPersistenceError(Exception):
     """Raised when persisted object or membership state cannot be mapped safely."""
+
+
+class ObjectTemplateVersionNotPublished(Exception):
+    """Raised when a new object targets a non-published template version."""
+
+
+class AbstractObjectTemplateInstantiation(Exception):
+    """Raised when direct instantiation of an abstract template is attempted."""
+
+
+class ObjectValidationFailed(Exception):
+    """Raised when object properties fail semantic validation."""
+
+    def __init__(self, result: ObjectValidationResult) -> None:
+        self.result = result
+        super().__init__("Object validation failed.")
+
+
+class InvalidObjectPatch(Exception):
+    """Raised when an object patch request is internally inconsistent."""
