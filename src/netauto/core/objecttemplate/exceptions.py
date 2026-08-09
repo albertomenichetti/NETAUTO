@@ -55,3 +55,19 @@ class ObjectTemplateDataTypeVersionNotPublished(Exception):
 
 class ObjectTemplateParentNotPublished(Exception):
     """Raised when a referenced parent object template version is not published."""
+
+
+class ObjectTemplateAlreadyExists(Exception):
+    """Raised when an object template identity or logical name already exists."""
+
+
+class ObjectTemplateNotFound(Exception):
+    """Raised when a required object template does not exist."""
+
+
+class ObjectTemplateVersionAlreadyExists(Exception):
+    """Raised when an object template version identity already exists."""
+
+
+class ObjectTemplateVersionNotFound(Exception):
+    """Raised when a required object template version does not exist."""
