@@ -8,6 +8,7 @@ import pytest
 
 from netauto.application.objecttemplate import (
     ObjectTemplateApplicationService,
+    ObjectTemplateComponentSpec,
     ObjectTemplatePropertySpec,
 )
 from netauto.application.unit_of_work import ObjectTemplateUnitOfWork
@@ -19,9 +20,13 @@ from netauto.core.datatype import (
     DataTypeVersionStatus,
 )
 from netauto.core.objecttemplate import (
+    InheritedObjectTemplateComponentConflict,
     InheritedObjectTemplatePropertyConflict,
     InvalidObjectTemplateVersionTransition,
     ObjectTemplate,
+    ObjectTemplateComponent,
+    ObjectTemplateComponentVersionNotFound,
+    ObjectTemplateComponentVersionNotPublished,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateNotFound,
@@ -43,10 +48,15 @@ class TrackingObjectTemplateRepository(InMemoryObjectTemplateRepository):
     def __init__(self) -> None:
         super().__init__()
         self.get_version_calls: list[tuple[UUID, int]] = []
+        self.list_versions_calls: list[UUID] = []
 
     def get_version(self, template_id: UUID, version: int) -> ObjectTemplateVersion | None:
         self.get_version_calls.append((template_id, version))
         return super().get_version(template_id, version)
+
+    def list_versions(self, template_id: UUID) -> tuple[ObjectTemplateVersion, ...]:
+        self.list_versions_calls.append(template_id)
+        return super().list_versions(template_id)
 
 
 class FakeUnitOfWork(ObjectTemplateUnitOfWork):
@@ -138,11 +148,25 @@ def _spec(
     )
 
 
+def _component_spec(
+    name: str,
+    *,
+    template_id: UUID,
+    template_version: int | None = None,
+) -> ObjectTemplateComponentSpec:
+    return ObjectTemplateComponentSpec(
+        name=name,
+        template_id=template_id,
+        template_version=template_version,
+    )
+
+
 def _published_object_template_version(
     template_id: UUID,
     *,
     parent: ObjectTemplateVersionRef | None = None,
     properties: tuple[ObjectTemplateProperty, ...] = (),
+    components: tuple[ObjectTemplateComponent, ...] = (),
 ) -> ObjectTemplateVersion:
     return ObjectTemplateVersion(
         template_id=template_id,
@@ -150,7 +174,18 @@ def _published_object_template_version(
         status=ObjectTemplateVersionStatus.PUBLISHED,
         parent=parent,
         properties=properties,
+        components=components,
     )
+
+
+def _store_object_template_versions(
+    repo: InMemoryObjectTemplateRepository,
+    template: ObjectTemplate,
+    versions: tuple[ObjectTemplateVersion, ...],
+) -> None:
+    repo.add(template)
+    for version in versions:
+        repo.add_version(version)
 
 
 def test_objecttemplate_property_spec_accepts_none_and_positive_int() -> None:
@@ -169,6 +204,22 @@ def test_objecttemplate_property_spec_accepts_none_and_positive_int() -> None:
     assert spec_one.datatype_version == 1
 
 
+def test_objecttemplate_component_spec_accepts_none_and_positive_int() -> None:
+    spec_none = ObjectTemplateComponentSpec(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=None,
+    )
+    spec_one = ObjectTemplateComponentSpec(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=1,
+    )
+
+    assert spec_none.template_version is None
+    assert spec_one.template_version == 1
+
+
 @pytest.mark.parametrize("value", [True, False, 0, -1, -5])
 def test_objecttemplate_property_spec_rejects_invalid_runtime_datatype_version(
     value: object,
@@ -181,6 +232,21 @@ def test_objecttemplate_property_spec_rejects_invalid_runtime_datatype_version(
             name="hostname",
             datatype_id=uuid4(),
             datatype_version=value,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("value", [True, False, 0, -1, -5, 1.0, "1"])
+def test_objecttemplate_component_spec_rejects_invalid_runtime_template_version(
+    value: object,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="template_version must be a plain int >= 1 or None",
+    ):
+        ObjectTemplateComponentSpec(
+            name="interfaces",
+            template_id=uuid4(),
+            template_version=value,  # type: ignore[arg-type]
         )
 
 
@@ -266,6 +332,51 @@ def test_create_object_template_creates_identity_and_v1_draft() -> None:
     assert object_templates.get_version(template.id, 1) == version
 
 
+def test_create_object_template_stores_resolved_components_and_properties_together() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=True,
+    )
+    target_v1 = _published_object_template_version(component_target.id)
+    target_v2 = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(object_templates, component_target, (target_v1, target_v2))
+
+    template, version = service.create_object_template(
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+        parent=None,
+        properties=(_spec("hostname", datatype_id=datatype.id, required=True),),
+        components=(_component_spec("interfaces", template_id=component_target.id),),
+    )
+
+    assert commits[0] == 1
+    assert version.properties[0].datatype_version == datatype_version.version
+    assert version.components == (
+        ObjectTemplateComponent(
+            name="interfaces",
+            template_id=component_target.id,
+            template_version=2,
+        ),
+    )
+    assert object_templates.get(template.id) == template
+    assert object_templates.get_version(template.id, 1) == version
+    assert component_target.abstract is True
+
+
 def test_explicit_published_datatype_version_is_accepted() -> None:
     service, datatypes, _object_templates, _commits = _service()
     datatype, published = _published_datatype()
@@ -287,6 +398,40 @@ def test_explicit_published_datatype_version_is_accepted() -> None:
     )
 
     assert version.properties[0].datatype_version == published.version
+
+
+def test_explicit_published_component_target_version_is_accepted_and_pinned_exactly() -> None:
+    service, datatypes, object_templates, _commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=False,
+    )
+    published_target = _published_object_template_version(component_target.id)
+    _store_object_template_versions(object_templates, component_target, (published_target,))
+
+    _, version = service.create_object_template(
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+        parent=None,
+        properties=(),
+        components=(
+            _component_spec(
+                "interfaces",
+                template_id=component_target.id,
+                template_version=published_target.version,
+            ),
+        ),
+    )
+
+    assert version.components[0].template_version == published_target.version
+    assert (component_target.id, published_target.version) in object_templates.get_version_calls
 
 
 @pytest.mark.parametrize("status", [DataTypeVersionStatus.DRAFT, DataTypeVersionStatus.DEPRECATED])
@@ -326,6 +471,90 @@ def test_explicit_non_published_datatype_version_rejected(status: DataTypeVersio
     assert commits[0] == 0
 
 
+@pytest.mark.parametrize(
+    "status",
+    [ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED],
+)
+def test_explicit_non_published_component_target_version_rejected(
+    status: ObjectTemplateVersionStatus,
+) -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name=f"network_interface_{status.value}",
+        description=None,
+        abstract=False,
+    )
+    target_version = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=1,
+        status=status,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(object_templates, component_target, (target_version,))
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.create_object_template(
+            namespace="network",
+            name=f"device_{status.value}",
+            description=None,
+            abstract=False,
+            parent=None,
+            properties=(),
+            components=(
+                _component_spec(
+                    "interfaces",
+                    template_id=component_target.id,
+                    template_version=target_version.version,
+                ),
+            ),
+        )
+
+    assert commits[0] == 0
+
+
+def test_explicit_missing_component_target_version_rejected_and_does_not_commit() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        component_target,
+        (_published_object_template_version(component_target.id),),
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotFound):
+        service.create_object_template(
+            namespace="network",
+            name="device",
+            description=None,
+            abstract=False,
+            parent=None,
+            properties=(),
+            components=(
+                _component_spec(
+                    "interfaces",
+                    template_id=component_target.id,
+                    template_version=99,
+                ),
+            ),
+        )
+
+    assert commits[0] == 0
+    assert (component_target.id, 99) in object_templates.get_version_calls
+
+
 def test_explicit_missing_datatype_version_rejected() -> None:
     service, datatypes, _object_templates, commits = _service()
     datatype, published = _published_datatype()
@@ -344,6 +573,60 @@ def test_explicit_missing_datatype_version_rejected() -> None:
         )
 
     assert commits[0] == 0
+
+
+def test_omitted_component_version_chooses_highest_published_ignoring_newer_draft_and_deprecated(
+) -> None:
+    service, datatypes, object_templates, _commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=False,
+    )
+    v1_published = _published_object_template_version(component_target.id)
+    v2_published = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(),
+        components=(),
+    )
+    v3_draft = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=3,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(),
+        components=(),
+    )
+    v4_deprecated = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=4,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(
+        object_templates,
+        component_target,
+        (v1_published, v2_published, v3_draft, v4_deprecated),
+    )
+
+    _, version = service.create_object_template(
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+        parent=None,
+        properties=(),
+        components=(_component_spec("interfaces", template_id=component_target.id),),
+    )
+
+    assert version.components[0].template_version == 2
+    assert object_templates.list_versions_calls == [component_target.id]
 
 
 def test_omitted_version_chooses_highest_published_ignoring_newer_draft_and_deprecated() -> None:
@@ -395,6 +678,48 @@ def test_omitted_version_chooses_highest_published_ignoring_newer_draft_and_depr
     assert version.properties[0].datatype_version == 2
 
 
+def test_omitted_component_version_with_identity_but_no_published_version_rejected() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=False,
+    )
+    draft = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(),
+        components=(),
+    )
+    deprecated = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(object_templates, component_target, (draft, deprecated))
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.create_object_template(
+            namespace="network",
+            name="device",
+            description=None,
+            abstract=False,
+            parent=None,
+            properties=(),
+            components=(_component_spec("interfaces", template_id=component_target.id),),
+        )
+
+    assert commits[0] == 0
+    assert object_templates.list_versions_calls == [component_target.id]
+
+
 def test_omitted_version_with_identity_but_no_published_version_rejected() -> None:
     service, datatypes, _object_templates, commits = _service()
     datatype, draft = DataTypeFactory().create(
@@ -420,6 +745,25 @@ def test_omitted_version_with_identity_but_no_published_version_rejected() -> No
             abstract=False,
             parent=None,
             properties=(_spec("hostname", datatype_id=datatype.id),),
+        )
+
+    assert commits[0] == 0
+
+
+def test_omitted_component_version_with_missing_template_rejected() -> None:
+    service, datatypes, _object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+
+    with pytest.raises(ObjectTemplateComponentVersionNotFound):
+        service.create_object_template(
+            namespace="network",
+            name="device",
+            description=None,
+            abstract=False,
+            parent=None,
+            properties=(),
+            components=(_component_spec("interfaces", template_id=uuid4()),),
         )
 
     assert commits[0] == 0
@@ -474,6 +818,81 @@ def test_revise_draft_replaces_snapshot_and_preserves_identity_abstract() -> Non
     assert object_templates.get_version(template.id, 1) == revised
     assert object_templates.get(template.id) == template
     assert template.abstract is True
+
+
+def test_revise_replaces_components_with_newly_resolved_snapshot_and_can_clear() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, published = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (published,))
+    abstract_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=True,
+    )
+    target_v1 = _published_object_template_version(abstract_target.id)
+    target_v2 = ObjectTemplateVersion(
+        template_id=abstract_target.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(object_templates, abstract_target, (target_v1, target_v2))
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(),
+        components=(
+            ObjectTemplateComponent(
+                name="old_components",
+                template_id=abstract_target.id,
+                template_version=1,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(draft)
+
+    revised = service.revise_version(
+        template_id=template.id,
+        version=1,
+        parent=None,
+        properties=(_spec("hostname", datatype_id=datatype.id),),
+        components=(_component_spec("interfaces", template_id=abstract_target.id),),
+    )
+
+    assert commits[0] == 1
+    assert revised.properties[0].datatype_version == published.version
+    assert revised.components == (
+        ObjectTemplateComponent(
+            name="interfaces",
+            template_id=abstract_target.id,
+            template_version=2,
+        ),
+    )
+    assert object_templates.get(template.id) == template
+    assert abstract_target.abstract is True
+
+    cleared = service.revise_version(
+        template_id=template.id,
+        version=1,
+        parent=None,
+        properties=(),
+        components=(),
+    )
+
+    assert commits[0] == 2
+    assert cleared.components == ()
 
 
 def test_revise_invalid_transition_does_not_commit() -> None:
@@ -554,6 +973,75 @@ def test_create_next_version_clones_exact_pinned_snapshot_without_reresolving() 
     assert next_version.properties == source.properties
 
 
+def test_create_next_version_clones_exact_component_pin_without_reresolving() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, published_datatype = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (published_datatype,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=False,
+    )
+    pinned_published = _published_object_template_version(component_target.id)
+    newer_published = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(
+        object_templates,
+        component_target,
+        (pinned_published, newer_published),
+    )
+
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    source = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(),
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=component_target.id,
+                template_version=1,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(source)
+    deprecated_target = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        properties=(),
+        components=(),
+    )
+    object_templates.replace_version(deprecated_target)
+    object_templates.get_version_calls.clear()
+    object_templates.list_versions_calls.clear()
+
+    next_version = service.create_next_version(template_id=template.id, source_version=1)
+
+    assert commits[0] == 1
+    assert next_version.version == 2
+    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
+    assert next_version.components == source.components
+    assert object_templates.list_versions_calls == [template.id]
+    assert (component_target.id, 1) not in object_templates.get_version_calls
+    assert component_target.id not in object_templates.list_versions_calls
+
+
 def test_publish_root_template_succeeds_and_commits() -> None:
     service, datatypes, object_templates, commits = _service()
     datatype, published_datatype = _published_datatype()
@@ -585,6 +1073,99 @@ def test_publish_root_template_succeeds_and_commits() -> None:
     assert commits[0] == 1
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
     assert object_templates.get_version(template.id, 1) == published
+
+
+def test_publish_missing_or_non_published_component_target_blocks_publication() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, published_datatype = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (published_datatype,))
+    component_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=False,
+    )
+    draft_target = ObjectTemplateVersion(
+        template_id=component_target.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(),
+        components=(),
+    )
+    _store_object_template_versions(object_templates, component_target, (draft_target,))
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype.id,
+                datatype_version=published_datatype.version,
+            ),
+        ),
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=component_target.id,
+                template_version=1,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(draft)
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.publish_version(template_id=template.id, version=1)
+
+    object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=component_target.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+            properties=(),
+            components=(),
+        )
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.publish_version(template_id=template.id, version=1)
+
+    missing_target_draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype.id,
+                datatype_version=published_datatype.version,
+            ),
+        ),
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=uuid4(),
+                template_version=1,
+            ),
+        ),
+    )
+    object_templates.add_version(missing_target_draft)
+
+    with pytest.raises(ObjectTemplateComponentVersionNotFound):
+        service.publish_version(template_id=template.id, version=2)
+
+    assert commits[0] == 0
+    assert object_templates.get_version(template.id, 1) == draft
+    assert object_templates.get_version(template.id, 2) == missing_target_draft
 
 
 def test_publish_inherited_template_uses_exact_parent_lookup_and_validates_effective_datatypes(
@@ -640,6 +1221,138 @@ def test_publish_inherited_template_uses_exact_parent_lookup_and_validates_effec
     assert commits[0] == 1
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
     assert (parent_template.id, 1) in object_templates.get_version_calls
+
+
+def test_publish_inherited_component_target_validation_and_conflict_propagate() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, published_datatype = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (published_datatype,))
+    inherited_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface",
+        description=None,
+        abstract=True,
+    )
+    inherited_target_published = _published_object_template_version(inherited_target.id)
+    _store_object_template_versions(
+        object_templates,
+        inherited_target,
+        (inherited_target_published,),
+    )
+
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device",
+        description=None,
+        abstract=False,
+    )
+    parent_version = _published_object_template_version(
+        parent_template.id,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype.id,
+                datatype_version=published_datatype.version,
+            ),
+        ),
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=inherited_target.id,
+                template_version=1,
+            ),
+        ),
+    )
+    child_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    valid_child = ObjectTemplateVersion(
+        template_id=child_template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_template.id, version=1),
+        properties=(
+            ObjectTemplateProperty(
+                name="serial",
+                datatype_id=datatype.id,
+                datatype_version=published_datatype.version,
+            ),
+        ),
+        components=(),
+    )
+    object_templates.add(parent_template)
+    object_templates.add_version(parent_version)
+    object_templates.add(child_template)
+    object_templates.add_version(valid_child)
+
+    object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=inherited_target.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+            properties=(),
+            components=(),
+        )
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotPublished):
+        service.publish_version(template_id=child_template.id, version=1)
+
+    object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=parent_template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=parent_version.properties,
+            components=(
+                ObjectTemplateComponent(
+                    name="interfaces",
+                    template_id=uuid4(),
+                    template_version=1,
+                ),
+            ),
+        )
+    )
+
+    with pytest.raises(ObjectTemplateComponentVersionNotFound):
+        service.publish_version(template_id=child_template.id, version=1)
+
+    object_templates.replace_version(parent_version)
+    object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=inherited_target.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(),
+            components=(),
+        )
+    )
+    conflicting_child = ObjectTemplateVersion(
+        template_id=child_template.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_template.id, version=1),
+        properties=(),
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=inherited_target.id,
+                template_version=1,
+            ),
+        ),
+    )
+    object_templates.add_version(conflicting_child)
+
+    with pytest.raises(InheritedObjectTemplateComponentConflict):
+        service.publish_version(template_id=child_template.id, version=2)
+
+    assert commits[0] == 0
 
 
 def test_publish_missing_or_non_published_datatype_blocks_publication() -> None:

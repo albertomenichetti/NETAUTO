@@ -8,6 +8,9 @@ from netauto.application.unit_of_work import ObjectTemplateUnitOfWorkFactory
 from netauto.core.datatype import DataType, DataTypeVersion, DataTypeVersionStatus
 from netauto.core.objecttemplate import (
     ObjectTemplate,
+    ObjectTemplateComponent,
+    ObjectTemplateComponentVersionNotFound,
+    ObjectTemplateComponentVersionNotPublished,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateNotFound,
@@ -39,6 +42,28 @@ class ObjectTemplatePropertySpec:
         ):
             raise ValueError(
                 "ObjectTemplatePropertySpec datatype_version must be a plain int >= 1 "
+                "or None."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectTemplateComponentSpec:
+    """Application input for a component before template version resolution."""
+
+    name: str
+    template_id: UUID
+    template_version: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.template_version is None:
+            return
+        if (
+            isinstance(self.template_version, bool)
+            or not isinstance(self.template_version, int)
+            or self.template_version < 1
+        ):
+            raise ValueError(
+                "ObjectTemplateComponentSpec template_version must be a plain int >= 1 "
                 "or None."
             )
 
@@ -104,6 +129,59 @@ class ObjectTemplateApplicationService:
             )
         return tuple(resolved)
 
+    def _resolve_components(
+        self,
+        *,
+        components: Iterable[ObjectTemplateComponentSpec],
+        template_getter: Callable[[UUID], ObjectTemplate | None],
+        template_version_getter: Callable[[UUID, int], ObjectTemplateVersion | None],
+        template_versions_lister: Callable[[UUID], tuple[ObjectTemplateVersion, ...]],
+    ) -> tuple[ObjectTemplateComponent, ...]:
+        resolved: list[ObjectTemplateComponent] = []
+        for spec in components:
+            if spec.template_version is not None:
+                template_version = template_version_getter(
+                    spec.template_id,
+                    spec.template_version,
+                )
+                if template_version is None:
+                    raise ObjectTemplateComponentVersionNotFound(
+                        "Referenced component target version was not found."
+                    )
+                if template_version.status is not ObjectTemplateVersionStatus.PUBLISHED:
+                    raise ObjectTemplateComponentVersionNotPublished(
+                        "Referenced component target version must be published."
+                    )
+                concrete_version = template_version.version
+            else:
+                published_versions = tuple(
+                    version
+                    for version in template_versions_lister(spec.template_id)
+                    if version.status is ObjectTemplateVersionStatus.PUBLISHED
+                )
+                if published_versions:
+                    concrete_version = max(
+                        published_versions,
+                        key=lambda version: version.version,
+                    ).version
+                else:
+                    if template_getter(spec.template_id) is None:
+                        raise ObjectTemplateComponentVersionNotFound(
+                            "Referenced component target version was not found."
+                        )
+                    raise ObjectTemplateComponentVersionNotPublished(
+                        "Referenced component target version must be published."
+                    )
+
+            resolved.append(
+                ObjectTemplateComponent(
+                    name=spec.name,
+                    template_id=spec.template_id,
+                    template_version=concrete_version,
+                )
+            )
+        return tuple(resolved)
+
     def list_object_templates(self) -> tuple[ObjectTemplate, ...]:
         with self._uow_factory() as uow:
             return uow.object_templates.list()
@@ -148,6 +226,7 @@ class ObjectTemplateApplicationService:
         abstract: bool,
         parent: ObjectTemplateVersionRef | None,
         properties: Iterable[ObjectTemplatePropertySpec],
+        components: Iterable[ObjectTemplateComponentSpec] = (),
     ) -> tuple[ObjectTemplate, ObjectTemplateVersion]:
         with self._uow_factory() as uow:
             resolved_properties = self._resolve_properties(
@@ -155,6 +234,12 @@ class ObjectTemplateApplicationService:
                 datatype_getter=uow.datatypes.get,
                 datatype_version_getter=uow.datatypes.get_version,
                 datatype_versions_lister=uow.datatypes.list_versions,
+            )
+            resolved_components = self._resolve_components(
+                components=components,
+                template_getter=uow.object_templates.get,
+                template_version_getter=uow.object_templates.get_version,
+                template_versions_lister=uow.object_templates.list_versions,
             )
             template = ObjectTemplate(
                 id=uuid4(),
@@ -169,6 +254,7 @@ class ObjectTemplateApplicationService:
                 status=ObjectTemplateVersionStatus.DRAFT,
                 parent=parent,
                 properties=resolved_properties,
+                components=resolved_components,
             )
             uow.object_templates.add(template)
             uow.object_templates.add_version(version)
@@ -182,6 +268,7 @@ class ObjectTemplateApplicationService:
         version: int,
         parent: ObjectTemplateVersionRef | None,
         properties: Iterable[ObjectTemplatePropertySpec],
+        components: Iterable[ObjectTemplateComponentSpec] = (),
     ) -> ObjectTemplateVersion:
         with self._uow_factory() as uow:
             template = uow.object_templates.get(template_id)
@@ -196,10 +283,17 @@ class ObjectTemplateApplicationService:
                 datatype_version_getter=uow.datatypes.get_version,
                 datatype_versions_lister=uow.datatypes.list_versions,
             )
+            resolved_components = self._resolve_components(
+                components=components,
+                template_getter=uow.object_templates.get,
+                template_version_getter=uow.object_templates.get_version,
+                template_versions_lister=uow.object_templates.list_versions,
+            )
             revised = self._versioning.revise_draft(
                 current,
                 parent=parent,
                 properties=resolved_properties,
+                components=resolved_components,
             )
             uow.object_templates.replace_version(revised)
             uow.commit()
