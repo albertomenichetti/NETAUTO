@@ -1,6 +1,13 @@
-"""SQLAlchemy row models for datatype and object template persistence."""
+"""SQLAlchemy row models for datatype, object template, and object persistence."""
 
-from sqlalchemy import Boolean, ForeignKey, PrimaryKeyConstraint, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    ForeignKeyConstraint,
+    PrimaryKeyConstraint,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netauto.persistence.sqlalchemy.base import Base
@@ -71,3 +78,38 @@ class ObjectTemplateVersionRow(Base):
     parent_version: Mapped[int | None] = mapped_column(nullable=True)
     properties_json: Mapped[str] = mapped_column(Text, nullable=False)
     components_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ObjectRow(Base):
+    """Persisted object snapshot row."""
+
+    __tablename__ = "objects"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    template_id: Mapped[str] = mapped_column(Text, nullable=False)
+    template_version: Mapped[int] = mapped_column(nullable=False)
+    properties_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ObjectComponentRow(Base):
+    """Persisted direct structural ownership edge row."""
+
+    __tablename__ = "object_components"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["parent_object_id"],
+            ["objects.id"],
+            ondelete="CASCADE",
+            name="fk_object_components_parent_object_id",
+        ),
+        ForeignKeyConstraint(
+            ["child_object_id"],
+            ["objects.id"],
+            ondelete="CASCADE",
+            name="fk_object_components_child_object_id",
+        ),
+    )
+
+    parent_object_id: Mapped[str] = mapped_column(Text, nullable=False)
+    slot_name: Mapped[str] = mapped_column(Text, nullable=False)
+    child_object_id: Mapped[str] = mapped_column(Text, primary_key=True)

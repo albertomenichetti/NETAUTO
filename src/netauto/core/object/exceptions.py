@@ -1,4 +1,4 @@
-"""Domain exceptions for object domain models and validation."""
+"""Domain exceptions for object models, validation, and persistence."""
 
 
 class InvalidObject(Exception):
@@ -27,3 +27,7 @@ class ComponentMembershipNotFound(Exception):
 
 class ObjectDataTypeVersionNotFound(Exception):
     """Raised when a referenced datatype version cannot be found during validation."""
+
+
+class ObjectPersistenceError(Exception):
+    """Raised when persisted object or membership state cannot be mapped safely."""

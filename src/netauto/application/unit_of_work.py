@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Protocol, Self, TypeAlias
 
 from netauto.core.datatype import DataTypeRepository
+from netauto.core.object import ObjectRepository
 from netauto.core.objecttemplate import ObjectTemplateRepository
 
 
@@ -49,3 +50,31 @@ class ObjectTemplateUnitOfWork(Protocol):
 
 
 ObjectTemplateUnitOfWorkFactory: TypeAlias = Callable[[], ObjectTemplateUnitOfWork]
+
+
+class ObjectUnitOfWork(Protocol):
+    """Persistence-neutral unit of work for object orchestration."""
+
+    @property
+    def datatypes(self) -> DataTypeRepository:
+        ...
+
+    @property
+    def object_templates(self) -> ObjectTemplateRepository:
+        ...
+
+    @property
+    def objects(self) -> ObjectRepository:
+        ...
+
+    def __enter__(self) -> Self:
+        ...
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        ...
+
+    def commit(self) -> None:
+        ...
+
+
+ObjectUnitOfWorkFactory: TypeAlias = Callable[[], ObjectUnitOfWork]

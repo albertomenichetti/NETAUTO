@@ -8,6 +8,7 @@ from netauto.core.object.exceptions import (
     ObjectAlreadyExists,
     ObjectDataTypeVersionNotFound,
     ObjectNotFound,
+    ObjectPersistenceError,
 )
 from netauto.core.object.models import ComponentMembership, Object
 from netauto.core.object.repository import ObjectRepository
@@ -29,6 +30,7 @@ __all__ = [
     "ObjectAlreadyExists",
     "ObjectDataTypeVersionNotFound",
     "ObjectNotFound",
+    "ObjectPersistenceError",
     "ObjectRepository",
     "ObjectValidationEngine",
     "ObjectValidationIssue",

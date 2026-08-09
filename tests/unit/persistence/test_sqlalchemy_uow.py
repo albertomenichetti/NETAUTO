@@ -14,6 +14,7 @@ from netauto.core.datatype import (
     DataTypeVersionAlreadyExists,
     DataTypeVersioningService,
 )
+from netauto.core.object import ComponentMembership, Object
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateVersion,
@@ -21,6 +22,7 @@ from netauto.core.objecttemplate import (
 )
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
+from netauto.persistence.sqlalchemy.object_repository import SqlAlchemyObjectRepository
 from netauto.persistence.sqlalchemy.objecttemplate_repository import (
     SqlAlchemyObjectTemplateRepository,
 )
@@ -56,6 +58,34 @@ def _object_template_version(template_id: UUID) -> ObjectTemplateVersion:
         version=1,
         status=ObjectTemplateVersionStatus.DRAFT,
         properties=(),
+    )
+
+
+def _object(
+    *,
+    object_id: UUID | None = None,
+    template_id: UUID | None = None,
+    template_version: int = 1,
+    properties: dict[str, object] | None = None,
+) -> Object:
+    return Object(
+        id=object_id or uuid4(),
+        template_id=template_id or uuid4(),
+        template_version=template_version,
+        properties=properties or {},
+    )
+
+
+def _membership(
+    *,
+    parent_object_id: UUID,
+    child_object_id: UUID,
+    slot_name: str = "interfaces",
+) -> ComponentMembership:
+    return ComponentMembership(
+        parent_object_id=parent_object_id,
+        slot_name=slot_name,
+        child_object_id=child_object_id,
     )
 
 
@@ -100,6 +130,7 @@ def test_both_repositories_are_available_in_one_unit_of_work(tmp_path: Path) -> 
         with uow:
             assert isinstance(uow.datatypes, SqlAlchemyDataTypeRepository)
             assert isinstance(uow.object_templates, SqlAlchemyObjectTemplateRepository)
+            assert isinstance(uow.objects, SqlAlchemyObjectRepository)
     finally:
         engine.dispose()
 
@@ -320,6 +351,147 @@ def test_real_sqlite_file_survives_engine_and_session_recreation(tmp_path: Path)
         repo = SqlAlchemyDataTypeRepository(session)
         assert repo.get(datatype.id) == datatype
         assert repo.get_version(datatype.id, 1) == version
+    finally:
+        session.close()
+        second_engine.dispose()
+
+
+def test_unit_of_work_commit_persists_objects_and_memberships(tmp_path: Path) -> None:
+    parent = _object()
+    child = _object()
+    membership = _membership(parent_object_id=parent.id, child_object_id=child.id)
+    uow, engine = _uow(tmp_path, "objects_commit.sqlite3")
+    try:
+        with uow:
+            uow.objects.add(parent)
+            uow.objects.add(child)
+            uow.objects.add_membership(membership)
+            uow.commit()
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            repo = SqlAlchemyObjectRepository(session)
+            assert repo.get(parent.id) == parent
+            assert repo.get(child.id) == child
+            assert repo.get_owner(child.id) == membership
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_unit_of_work_context_exit_without_commit_rolls_back_objects_and_memberships(
+    tmp_path: Path,
+) -> None:
+    parent = _object()
+    child = _object()
+    membership = _membership(parent_object_id=parent.id, child_object_id=child.id)
+    uow, engine = _uow(tmp_path, "objects_no_commit.sqlite3")
+    try:
+        with uow:
+            uow.objects.add(parent)
+            uow.objects.add(child)
+            uow.objects.add_membership(membership)
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            repo = SqlAlchemyObjectRepository(session)
+            assert repo.get(parent.id) is None
+            assert repo.get(child.id) is None
+            assert repo.get_owner(child.id) is None
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_unit_of_work_exception_triggered_rollback_removes_object_and_membership_work(
+    tmp_path: Path,
+) -> None:
+    parent = _object()
+    child = _object()
+    membership = _membership(parent_object_id=parent.id, child_object_id=child.id)
+    uow, engine = _uow(tmp_path, "objects_rollback.sqlite3")
+    try:
+        try:
+            with uow:
+                uow.objects.add(parent)
+                uow.objects.add(child)
+                uow.objects.add_membership(membership)
+                raise RuntimeError("abort")
+        except RuntimeError:
+            pass
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            repo = SqlAlchemyObjectRepository(session)
+            assert repo.get(parent.id) is None
+            assert repo.get(child.id) is None
+            assert repo.get_owner(child.id) is None
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_transaction_can_include_object_template_and_object_state_atomically(
+    tmp_path: Path,
+) -> None:
+    template = _object_template()
+    template_version = _object_template_version(template.id)
+    object_value = _object(template_id=template.id, template_version=template_version.version)
+    uow, engine = _uow(tmp_path, "template_and_object.sqlite3")
+    try:
+        with uow:
+            uow.object_templates.add(template)
+            uow.object_templates.add_version(template_version)
+            uow.objects.add(object_value)
+            uow.commit()
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            template_repo = SqlAlchemyObjectTemplateRepository(session)
+            object_repo = SqlAlchemyObjectRepository(session)
+            assert template_repo.get(template.id) == template
+            assert template_repo.get_version(template.id, 1) == template_version
+            assert object_repo.get(object_value.id) == object_value
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_real_sqlite_file_reconstruction_preserves_objects_and_memberships(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "object_durable.sqlite3"
+    parent = _object()
+    child = _object()
+    membership = _membership(parent_object_id=parent.id, child_object_id=child.id)
+
+    first_engine = create_sqlite_engine(f"sqlite:///{database_path}")
+    create_schema(first_engine)
+    first_session_factory = sessionmaker(first_engine, expire_on_commit=False)
+    first_uow = SqlAlchemyUnitOfWork(first_session_factory)
+    with first_uow:
+        first_uow.objects.add(parent)
+        first_uow.objects.add(child)
+        first_uow.objects.add_membership(membership)
+        first_uow.commit()
+    first_engine.dispose()
+
+    second_engine = create_sqlite_engine(f"sqlite:///{database_path}")
+    second_session_factory = sessionmaker(second_engine, expire_on_commit=False)
+    session = second_session_factory()
+    try:
+        repo = SqlAlchemyObjectRepository(session)
+        assert repo.get(parent.id) == parent
+        assert repo.get(child.id) == child
+        assert repo.get_owner(child.id) == membership
     finally:
         session.close()
         second_engine.dispose()
