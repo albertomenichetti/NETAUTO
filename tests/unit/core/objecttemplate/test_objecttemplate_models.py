@@ -5,12 +5,15 @@ from uuid import uuid4
 import pytest
 
 from netauto.core.objecttemplate import (
+    DuplicateObjectTemplateComponent,
     DuplicateObjectTemplateProperty,
     InvalidObjectTemplate,
+    InvalidObjectTemplateComponent,
     InvalidObjectTemplateIdentifier,
     InvalidObjectTemplateProperty,
     InvalidObjectTemplateVersion,
     ObjectTemplate,
+    ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
@@ -125,6 +128,44 @@ def test_object_template_property_requires_required_bool(value: object) -> None:
         )
 
 
+def test_object_template_component_valid_construction() -> None:
+    component = ObjectTemplateComponent(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=2,
+    )
+
+    assert component.name == "interfaces"
+    assert component.template_version == 2
+
+
+def test_object_template_component_is_immutable() -> None:
+    component = ObjectTemplateComponent(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=1,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        component.template_version = 2  # type: ignore[misc]
+
+
+@pytest.mark.parametrize("value", ["", "interface-slots", "Interfaces", "1interfaces"])
+def test_object_template_component_rejects_invalid_name(value: str) -> None:
+    with pytest.raises(InvalidObjectTemplateIdentifier):
+        ObjectTemplateComponent(name=value, template_id=uuid4(), template_version=1)
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.0, "1"])
+def test_object_template_component_requires_plain_positive_template_version(value: object) -> None:
+    with pytest.raises(InvalidObjectTemplateComponent):
+        ObjectTemplateComponent(
+            name="interfaces",
+            template_id=uuid4(),
+            template_version=value,  # type: ignore[arg-type]
+        )
+
+
 def test_object_template_version_normalizes_properties_to_tuple() -> None:
     property_definition = ObjectTemplateProperty(
         name="hostname",
@@ -140,6 +181,23 @@ def test_object_template_version_normalizes_properties_to_tuple() -> None:
 
     assert version.properties == (property_definition,)
     assert isinstance(version.properties, tuple)
+
+
+def test_object_template_version_normalizes_components_to_tuple() -> None:
+    component = ObjectTemplateComponent(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=1,
+    )
+    version = ObjectTemplateVersion(
+        template_id=uuid4(),
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        components=cast("tuple[ObjectTemplateComponent, ...]", [component]),
+    )
+
+    assert version.components == (component,)
+    assert isinstance(version.components, tuple)
 
 
 def test_object_template_version_valid_construction_with_parent() -> None:
@@ -165,6 +223,30 @@ def test_object_template_version_valid_construction_with_parent() -> None:
     assert version.status is ObjectTemplateVersionStatus.PUBLISHED
     assert version.parent == parent
     assert version.properties == (property_definition,)
+
+
+def test_object_template_version_properties_and_components_can_coexist() -> None:
+    property_definition = ObjectTemplateProperty(
+        name="hostname",
+        datatype_id=uuid4(),
+        datatype_version=1,
+    )
+    component = ObjectTemplateComponent(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=1,
+    )
+
+    version = ObjectTemplateVersion(
+        template_id=uuid4(),
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(property_definition,),
+        components=(component,),
+    )
+
+    assert version.properties == (property_definition,)
+    assert version.components == (component,)
 
 
 @pytest.mark.parametrize("value", [0, -1, True, 1.0])
@@ -196,6 +278,28 @@ def test_object_template_version_rejects_duplicate_local_property_names() -> Non
             version=1,
             status=ObjectTemplateVersionStatus.DRAFT,
             properties=(property_a, property_b),
+        )
+
+
+def test_object_template_version_rejects_duplicate_local_component_names() -> None:
+    template_id = uuid4()
+    component_a = ObjectTemplateComponent(
+        name="interfaces",
+        template_id=template_id,
+        template_version=1,
+    )
+    component_b = ObjectTemplateComponent(
+        name="interfaces",
+        template_id=uuid4(),
+        template_version=2,
+    )
+
+    with pytest.raises(DuplicateObjectTemplateComponent):
+        ObjectTemplateVersion(
+            template_id=uuid4(),
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            components=(component_a, component_b),
         )
 
 

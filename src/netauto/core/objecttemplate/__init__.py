@@ -1,9 +1,12 @@
 """Object template domain models."""
 
 from netauto.core.objecttemplate.exceptions import (
+    DuplicateObjectTemplateComponent,
     DuplicateObjectTemplateProperty,
+    InheritedObjectTemplateComponentConflict,
     InheritedObjectTemplatePropertyConflict,
     InvalidObjectTemplate,
+    InvalidObjectTemplateComponent,
     InvalidObjectTemplateIdentifier,
     InvalidObjectTemplateProperty,
     InvalidObjectTemplateVersion,
@@ -23,6 +26,7 @@ from netauto.core.objecttemplate.exceptions import (
 )
 from netauto.core.objecttemplate.models import (
     ObjectTemplate,
+    ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
@@ -39,9 +43,12 @@ from netauto.core.objecttemplate.versioning import (
 )
 
 __all__ = [
+    "DuplicateObjectTemplateComponent",
     "DuplicateObjectTemplateProperty",
+    "InheritedObjectTemplateComponentConflict",
     "InheritedObjectTemplatePropertyConflict",
     "InvalidObjectTemplate",
+    "InvalidObjectTemplateComponent",
     "InvalidObjectTemplateIdentifier",
     "InvalidObjectTemplateProperty",
     "InvalidObjectTemplateVersion",
@@ -59,6 +66,7 @@ __all__ = [
     "ObjectTemplatePersistenceError",
     "ObjectTemplateRepository",
     "ObjectTemplateSelfInheritance",
+    "ObjectTemplateComponent",
     "ObjectTemplateProperty",
     "ObjectTemplateVersion",
     "ObjectTemplateVersionAlreadyExists",

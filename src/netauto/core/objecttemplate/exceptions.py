@@ -17,8 +17,16 @@ class InvalidObjectTemplateProperty(Exception):
     """Raised when an object template property has invalid local state."""
 
 
+class InvalidObjectTemplateComponent(Exception):
+    """Raised when an object template component has invalid local state."""
+
+
 class DuplicateObjectTemplateProperty(Exception):
     """Raised when a template version contains duplicate local property names."""
+
+
+class DuplicateObjectTemplateComponent(Exception):
+    """Raised when a template version contains duplicate local component names."""
 
 
 class ObjectTemplateParentNotFound(Exception):
@@ -35,6 +43,10 @@ class ObjectTemplateSelfInheritance(Exception):
 
 class InheritedObjectTemplatePropertyConflict(Exception):
     """Raised when a local property conflicts with an inherited property name."""
+
+
+class InheritedObjectTemplateComponentConflict(Exception):
+    """Raised when a local component conflicts with an inherited component name."""
 
 
 class InvalidObjectTemplateVersionTransition(Exception):

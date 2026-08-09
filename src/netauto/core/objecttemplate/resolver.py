@@ -4,12 +4,14 @@ from collections.abc import Callable
 from uuid import UUID
 
 from netauto.core.objecttemplate.exceptions import (
+    InheritedObjectTemplateComponentConflict,
     InheritedObjectTemplatePropertyConflict,
     ObjectTemplateInheritanceCycle,
     ObjectTemplateParentNotFound,
     ObjectTemplateSelfInheritance,
 )
 from netauto.core.objecttemplate.models import (
+    ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
@@ -28,6 +30,18 @@ class ObjectTemplateInheritanceResolver:
         parent_lookup: ObjectTemplateVersionLookup,
     ) -> tuple[ObjectTemplateProperty, ...]:
         return self._resolve_effective_properties(
+            version,
+            parent_lookup=parent_lookup,
+            visited=set(),
+        )
+
+    def resolve_effective_components(
+        self,
+        version: ObjectTemplateVersion,
+        *,
+        parent_lookup: ObjectTemplateVersionLookup,
+    ) -> tuple[ObjectTemplateComponent, ...]:
+        return self._resolve_effective_components(
             version,
             parent_lookup=parent_lookup,
             visited=set(),
@@ -73,3 +87,44 @@ class ObjectTemplateInheritanceResolver:
                 )
 
         return inherited_properties + version.properties
+
+    def _resolve_effective_components(
+        self,
+        version: ObjectTemplateVersion,
+        *,
+        parent_lookup: ObjectTemplateVersionLookup,
+        visited: set[tuple[UUID, int]],
+    ) -> tuple[ObjectTemplateComponent, ...]:
+        identity = (version.template_id, version.version)
+        if identity in visited:
+            raise ObjectTemplateInheritanceCycle(
+                "Object template inheritance cycle detected."
+            )
+
+        current_path = visited | {identity}
+        inherited_components: tuple[ObjectTemplateComponent, ...] = ()
+        if version.parent is not None:
+            if version.parent.template_id == version.template_id:
+                raise ObjectTemplateSelfInheritance(
+                    "Object template version cannot inherit from another version of the same "
+                    "template."
+                )
+            parent_version = parent_lookup(version.parent)
+            if parent_version is None:
+                raise ObjectTemplateParentNotFound(
+                    "Referenced parent object template version was not found."
+                )
+            inherited_components = self._resolve_effective_components(
+                parent_version,
+                parent_lookup=parent_lookup,
+                visited=current_path,
+            )
+
+        inherited_names = {component.name for component in inherited_components}
+        for component in version.components:
+            if component.name in inherited_names:
+                raise InheritedObjectTemplateComponentConflict(
+                    f"Component '{component.name}' conflicts with an inherited component."
+                )
+
+        return inherited_components + version.components

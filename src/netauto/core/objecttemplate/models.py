@@ -6,8 +6,10 @@ from enum import StrEnum
 from uuid import UUID
 
 from netauto.core.objecttemplate.exceptions import (
+    DuplicateObjectTemplateComponent,
     DuplicateObjectTemplateProperty,
     InvalidObjectTemplate,
+    InvalidObjectTemplateComponent,
     InvalidObjectTemplateIdentifier,
     InvalidObjectTemplateProperty,
     InvalidObjectTemplateVersion,
@@ -101,6 +103,27 @@ class ObjectTemplateProperty:
 
 
 @dataclass(frozen=True, slots=True)
+class ObjectTemplateComponent:
+    """Local structural component slot declaration for an object template version."""
+
+    name: str
+    template_id: UUID
+    template_version: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", _validate_identifier(self.name, "component name"))
+        if isinstance(self.template_version, bool) or not isinstance(self.template_version, int):
+            raise InvalidObjectTemplateComponent(
+                "ObjectTemplateComponent template_version must be an integer >= 1."
+            )
+        if self.template_version < 1:
+            raise InvalidObjectTemplateComponent(
+                f"Invalid template_version '{self.template_version}'. "
+                "ObjectTemplateComponent template_version must be >= 1."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ObjectTemplateVersion:
     """Versioned object template schema metadata."""
 
@@ -109,6 +132,7 @@ class ObjectTemplateVersion:
     status: ObjectTemplateVersionStatus
     parent: ObjectTemplateVersionRef | None = None
     properties: tuple[ObjectTemplateProperty, ...] = ()
+    components: tuple[ObjectTemplateComponent, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -128,3 +152,13 @@ class ObjectTemplateVersion:
                 )
             seen_names.add(prop.name)
         object.__setattr__(self, "properties", normalized_properties)
+
+        normalized_components = tuple(self.components)
+        seen_component_names: set[str] = set()
+        for component in normalized_components:
+            if component.name in seen_component_names:
+                raise DuplicateObjectTemplateComponent(
+                    f"Duplicate component '{component.name}' is not allowed."
+                )
+            seen_component_names.add(component.name)
+        object.__setattr__(self, "components", normalized_components)
