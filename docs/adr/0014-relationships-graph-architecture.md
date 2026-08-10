@@ -255,6 +255,39 @@ effective applications inside its source and target endpoint families. Users
 must not create another RelationshipDefinition merely to represent one of those
 inherited cases.
 
+Relationship applicability is downward through inheritance only. For:
+
+```text
+A USES B
+```
+
+the definition applies to:
+
+```text
+self-or-descendants(A)
+    ×
+self-or-descendants(B)
+```
+
+It does not propagate upward to ancestors. For example, if:
+
+```text
+BaseDevice
+└── Router
+```
+
+then:
+
+```text
+Router USES Credential
+```
+
+does not imply:
+
+```text
+BaseDevice USES Credential
+```
+
 The first M2 model is additive only:
 
 - no disabling inherited Relationships;
@@ -328,21 +361,41 @@ For one forward/reverse semantic pair, there must not be two
 `RelationshipDefinition` values whose effective source endpoint sets overlap
 and whose effective target endpoint sets also overlap.
 
-Conceptually, for:
+Conceptually:
+
+```text
+EffectiveEndpointSet(T) =
+    T plus templates/ObjectTemplateVersions
+    that qualify as descendants of T through
+    exact pinned ancestry
+```
+
+For:
 
 ```text
 A USES B
 ```
 
-the inherited applicability space is:
+the effective applicability space is:
 
 ```text
-Family(A) × Family(B)
+EffectiveEndpointSet(A) × EffectiveEndpointSet(B)
 ```
 
-where `Family(T)` means the template identity `T` plus identities that are
-inheritance-compatible with `T` through exact pinned ancestor/descendant
-behavior.
+The canonical conflict invariant is:
+
+```text
+for two definitions with the same normalized
+forward/reverse semantic pair:
+
+conflict iff
+
+source_effective_set_1 ∩ source_effective_set_2 != ∅
+
+AND
+
+target_effective_set_1 ∩ target_effective_set_2 != ∅
+```
 
 Therefore, if:
 
@@ -362,6 +415,22 @@ A1 USES B1
 A2 USES B1
 ```
 
+Ancestor definitions must still be inspected during conflict detection because
+their descendant applicability may already cover the proposed endpoint. For
+example, if:
+
+```text
+A USES B
+```
+
+already exists and `A1` is a descendant of `A`, then:
+
+```text
+A1 USES B
+```
+
+must be rejected because it is already covered by the ancestor definition.
+
 The same protection must work in the opposite temporal direction. If:
 
 ```text
@@ -375,7 +444,9 @@ A USES B
 ```
 
 must also be rejected, because the two definitions would overlap once the
-ancestor/descendant applicability sets are considered together.
+effective endpoint sets are considered together. This does not mean the child
+definition propagates upward. It means the two downward applicability spaces
+overlap.
 
 The check must consider both endpoint families simultaneously. Only checking
 one endpoint family would miss cases such as:
