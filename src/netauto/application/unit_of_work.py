@@ -6,6 +6,7 @@ from typing import Protocol, Self, TypeAlias
 from netauto.core.datatype import DataTypeRepository
 from netauto.core.object import ObjectRepository
 from netauto.core.objecttemplate import ObjectTemplateRepository
+from netauto.core.relationship import RelationshipDefinitionRepository
 
 
 class DataTypeUnitOfWork(Protocol):
@@ -78,3 +79,30 @@ class ObjectUnitOfWork(Protocol):
 
 
 ObjectUnitOfWorkFactory: TypeAlias = Callable[[], ObjectUnitOfWork]
+
+
+class RelationshipDefinitionUnitOfWork(Protocol):
+    """Persistence-neutral unit of work for relationship definition orchestration."""
+
+    @property
+    def relationship_definitions(self) -> RelationshipDefinitionRepository:
+        ...
+
+    @property
+    def object_templates(self) -> ObjectTemplateRepository:
+        ...
+
+    def __enter__(self) -> Self:
+        ...
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        ...
+
+    def commit(self) -> None:
+        ...
+
+
+RelationshipDefinitionUnitOfWorkFactory: TypeAlias = Callable[
+    [],
+    RelationshipDefinitionUnitOfWork,
+]

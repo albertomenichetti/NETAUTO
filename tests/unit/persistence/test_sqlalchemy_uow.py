@@ -20,11 +20,15 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersion,
     ObjectTemplateVersionStatus,
 )
+from netauto.core.relationship import RelationshipDefinition
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.object_repository import SqlAlchemyObjectRepository
 from netauto.persistence.sqlalchemy.objecttemplate_repository import (
     SqlAlchemyObjectTemplateRepository,
+)
+from netauto.persistence.sqlalchemy.relationship_repository import (
+    SqlAlchemyRelationshipDefinitionRepository,
 )
 from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -58,6 +62,23 @@ def _object_template_version(template_id: UUID) -> ObjectTemplateVersion:
         version=1,
         status=ObjectTemplateVersionStatus.DRAFT,
         properties=(),
+    )
+
+
+def _relationship_definition(
+    *,
+    definition_id: UUID | None = None,
+    source_template_id: UUID,
+    target_template_id: UUID,
+    forward_name: str = "uses",
+    reverse_name: str = "is_used_by",
+) -> RelationshipDefinition:
+    return RelationshipDefinition(
+        id=definition_id or uuid4(),
+        source_template_id=source_template_id,
+        target_template_id=target_template_id,
+        forward_name=forward_name,
+        reverse_name=reverse_name,
     )
 
 
@@ -131,6 +152,10 @@ def test_both_repositories_are_available_in_one_unit_of_work(tmp_path: Path) -> 
             assert isinstance(uow.datatypes, SqlAlchemyDataTypeRepository)
             assert isinstance(uow.object_templates, SqlAlchemyObjectTemplateRepository)
             assert isinstance(uow.objects, SqlAlchemyObjectRepository)
+            assert isinstance(
+                uow.relationship_definitions,
+                SqlAlchemyRelationshipDefinitionRepository,
+            )
     finally:
         engine.dispose()
 
@@ -495,6 +520,63 @@ def test_real_sqlite_file_reconstruction_preserves_objects_and_memberships(
     finally:
         session.close()
         second_engine.dispose()
+
+
+def test_unit_of_work_commit_persists_relationship_definitions(tmp_path: Path) -> None:
+    source = _object_template(name="source")
+    target = _object_template(name="target")
+    definition = _relationship_definition(
+        source_template_id=source.id,
+        target_template_id=target.id,
+    )
+    uow, engine = _uow(tmp_path, "relationship_definitions_commit.sqlite3")
+    try:
+        with uow:
+            uow.object_templates.add(source)
+            uow.object_templates.add(target)
+            uow.relationship_definitions.add(definition)
+            uow.commit()
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            repo = SqlAlchemyRelationshipDefinitionRepository(session)
+            assert repo.get(definition.id) == definition
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_unit_of_work_rollback_does_not_persist_relationship_definitions(
+    tmp_path: Path,
+) -> None:
+    source = _object_template(name="source")
+    target = _object_template(name="target")
+    definition = _relationship_definition(
+        source_template_id=source.id,
+        target_template_id=target.id,
+    )
+    uow, engine = _uow(tmp_path, "relationship_definitions_rollback.sqlite3")
+    try:
+        try:
+            with uow:
+                uow.object_templates.add(source)
+                uow.object_templates.add(target)
+                uow.relationship_definitions.add(definition)
+                raise RuntimeError("abort")
+        except RuntimeError:
+            pass
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            repo = SqlAlchemyRelationshipDefinitionRepository(session)
+            assert repo.get(definition.id) is None
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
 
 
 def test_replace_version_persists_lifecycle_replacements(tmp_path: Path) -> None:

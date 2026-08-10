@@ -1,4 +1,4 @@
-"""SQLAlchemy row models for datatype, object template, and object persistence."""
+"""SQLAlchemy row models for datatype, object template, relationship, and object persistence."""
 
 from sqlalchemy import (
     Boolean,
@@ -78,6 +78,26 @@ class ObjectTemplateVersionRow(Base):
     parent_version: Mapped[int | None] = mapped_column(nullable=True)
     properties_json: Mapped[str] = mapped_column(Text, nullable=False)
     components_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class RelationshipDefinitionRow(Base):
+    """Persisted relationship definition row."""
+
+    __tablename__ = "relationship_definitions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    source_template_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("object_templates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    target_template_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("object_templates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    forward_name: Mapped[str] = mapped_column(Text, nullable=False)
+    reverse_name: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class ObjectRow(Base):
