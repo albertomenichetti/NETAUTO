@@ -532,3 +532,119 @@ def test_cli_datatype_revise_without_base_type_and_delete_lifecycle(tmp_path: Pa
             assert "datatype_not_found" in missing.stderr
     finally:
         engine.dispose()
+
+
+def test_cli_create_next_accepts_deprecated_source(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "common",
+                    "--name",
+                    "email",
+                    "--description",
+                    "Email address",
+                    "--base-type",
+                    "core.string",
+                    "--constraint",
+                    'pattern="^[^@]+@[^@]+[.][^@]+$"',
+                ],
+            )
+            assert created.exit_code == 0
+            created_payload = json.loads(created.stdout)
+            datatype_id = created_payload["datatype"]["id"]
+
+            published_v1 = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "version", "publish", datatype_id, "1"],
+            )
+            assert published_v1.exit_code == 0
+
+            created_v2 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "version",
+                    "create",
+                    datatype_id,
+                    "--source-version",
+                    "1",
+                ],
+            )
+            assert created_v2.exit_code == 0
+            created_v2_payload = json.loads(created_v2.stdout)
+
+            published_v2 = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "version", "publish", datatype_id, "2"],
+            )
+            assert published_v2.exit_code == 0
+
+            deprecated_v1 = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "version", "deprecate", datatype_id, "1"],
+            )
+            assert deprecated_v1.exit_code == 0
+            deprecated_v2 = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "version", "deprecate", datatype_id, "2"],
+            )
+            assert deprecated_v2.exit_code == 0
+
+            created_v3 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "version",
+                    "create",
+                    datatype_id,
+                    "--source-version",
+                    "2",
+                ],
+            )
+            assert created_v3.exit_code == 0
+            created_v3_payload = json.loads(created_v3.stdout)
+
+            versions = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "version",
+                    "list",
+                    datatype_id,
+                ],
+            )
+            assert versions.exit_code == 0
+
+            assert created_v3_payload["version"] == 3
+            assert created_v3_payload["status"] == "draft"
+            assert created_v3_payload["base_type"] == created_v2_payload["base_type"]
+            assert created_v3_payload["constraints"] == created_v2_payload["constraints"]
+            assert [(v["version"], v["status"]) for v in json.loads(versions.stdout)] == [
+                (1, "deprecated"),
+                (2, "deprecated"),
+                (3, "draft"),
+            ]
+    finally:
+        engine.dispose()

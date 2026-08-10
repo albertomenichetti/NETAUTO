@@ -62,9 +62,12 @@ class DataTypeVersioningService:
         *,
         existing_versions: Iterable[DataTypeVersion],
     ) -> DataTypeVersion:
-        if source.status is not DataTypeVersionStatus.PUBLISHED:
+        if source.status not in (
+            DataTypeVersionStatus.PUBLISHED,
+            DataTypeVersionStatus.DEPRECATED,
+        ):
             raise InvalidDataTypeVersionTransition(
-                "Only published versions may be used to create the next version."
+                "Only published or deprecated versions may be used to create the next version."
             )
 
         versions = tuple(existing_versions)

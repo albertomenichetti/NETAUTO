@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -48,7 +46,9 @@ create_and_publish() {
     echo
 }
 
-printf "${RED}\n[CREAZIONE E PUBBLICAZIONE DATATYPE PER I TIPI BUILT-IN]\n${NC}"
+
+printf "${RED}\n=====[DATATYPE PER I TIPI BUILT-IN]=====\n${NC}"
+printf "\n${GREEN}(creazione e pubblicazione datatype built-in)\n${NC}"
 create_and_publish "common" "string" "Stringa generica" "core.string"
 create_and_publish "common" "integer" "Numero intero con segno" "core.integer"
 create_and_publish "common" "number" "Numero reale" "core.number"
@@ -58,50 +58,126 @@ create_and_publish "common" "datetime" "Data e ora in formato RFC3339, YYYY-MM-D
 create_and_publish "network" "ip" "Singolo IP IPv4 o IPv6" "core.ip"
 create_and_publish "network" "ip_prefix" "Prefisso valido in formato CIDR IPv4 o IPv6" "core.ip_prefix"
 
-
-
-printf "${RED}\n[ USO FUNZIONE DATATYPE LIST ]\n${NC}"
+printf "\n${GREEN}(visualizzazione datatype creati tramite datatype list)\n${NC}"
 "${CMD[@]}" datatype list
 
+printf "\n${GREEN}(visualizzazione datatype creati tramite datatype list, json fmt)\n${NC}"
+"${CMD[@]}" --output "json" datatype list
 
 
-printf "${RED}\n[CREAZIONE E PUBBLICAZIONE DATATYPE DERIVATO]\n${NC}"
-create_and_publish "common" "email" "Stringa generica" "core.string"
 
 
+printf "${RED}\n=====[OPERAZIONI SU DATATYPE DERIVATO]=====\n${NC}"
+printf "\n${GREEN}(creazione e pubblicazione datatype derivato common.email)\n${NC}"
+create_and_publish "common" "email" "Indirizzo email" "core.string"
 
-printf "${RED}\n[CREAZIONE E MODIFICA NUOVA VERSIONE DATATYPE DERIVATO]\n${NC}"
-dtid=$("${CMD[@]}" --output "json" datatype show-name common datetime | jq -r '.id')
+printf "\n${GREEN}(tentativo di creazione di un datatype duplicato)\n${NC}"
+"${CMD[@]}" --output "json" datatype create --namespace "common" --name "email" --description "Indirizzo email" --base-type "core.string"
+
+printf "\n${GREEN}(creazione nuova versione datatype derivato common.email)\n${NC}"
+dtid=$("${CMD[@]}" --output "json" datatype show-name common email | jq -r '.id')
 echo -e "recuperato id:${dtid}"
 versnew=$("${CMD[@]}" --output "json" datatype version create ${dtid} --source-version 1 | jq -r '.version')
 echo -e "creata nuova versione:${versnew}"
-"${CMD[@]}" --output "json" datatype version revise ${dtid} ${versnew} --base-type core.string --constraint 'pattern="^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"' 1>/dev/null 2>&1
+
+printf "\n${GREEN}(modifica contraint pattern su nuova versione)\n${NC}"
+"${CMD[@]}" --output "json" datatype version revise ${dtid} ${versnew} --constraint 'pattern="^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"' 1>/dev/null 2>&1
 echo -e "modificata versione:${versnew}"
 
-
-
-printf "${RED}\n[STATO ATTUALE VERSIONI]\n${NC}"
+printf "\n${GREEN}(stato attuale versioni)\n${NC}"
 "${CMD[@]}" datatype version list ${dtid}
 
-
-
-printf "${RED}\n[STATO ATTUALE VERSIONI (json)]\n${NC}"
+printf "\n${GREEN}(stato attuale versioni, json fmt)\n${NC}"
 "${CMD[@]}" --output "json" datatype version list ${dtid}
 
-
-
-printf "${RED}\n[PUBLISH NUOVA VERSIONE E DEPRECATE DELL'ALTRA]\n${NC}"
+printf "\n${GREEN}(publish nuova versione e deprecate dell'altra)\n${NC}"
 "${CMD[@]}" --output "json" datatype version publish ${dtid} ${versnew} 1>/dev/null 2>&1
 "${CMD[@]}" --output "json" datatype version deprecate ${dtid} 1 1>/dev/null 2>&1
 echo -e "versione deprecata:1"
 echo -e "versione publish:${versnew}"
 
-
-
-printf "${RED}\n[STATO ATTUALE VERSIONI]\n${NC}"
+printf "\n${GREEN}(stato attuale versioni)\n${NC}"
 "${CMD[@]}" datatype version list ${dtid}
 
-
-
-printf "${RED}\n[STATO ATTUALE VERSIONI (json)]\n${NC}"
+printf "\n${GREEN}(stato attuale versioni, json fmt)\n${NC}"
 "${CMD[@]}" --output "json" datatype version list ${dtid}
+
+printf "\n${GREEN}(cancellazione datatype common.email)\n${NC}"
+"${CMD[@]}" --output "json" datatype delete ${dtid}
+
+printf "\n${GREEN}(lista datatype presenti)\n${NC}"
+"${CMD[@]}" datatype list
+
+
+
+
+
+
+printf "${RED}\n[INTERAZIONE DATATYPE E OBJECTTEMPLATE]\n${NC}"
+
+printf "\n${GREEN}(creazione datatype derivato common.email)\n${NC}"
+"${CMD[@]}" --output "json" datatype create --namespace "common" --name "email" --description "Indirizzo email" --base-type "core.string" 1>/dev/null 2>&1
+dtid=$("${CMD[@]}" --output "json" datatype show-name common email | jq -r '.id')
+
+printf "\n${GREEN}(versioni e stato datatype common.email)\n${NC}"
+"${CMD[@]}" datatype version list ${dtid}
+
+printf "\n${GREEN}(tentativo di creazione objecttemplate test_template che usa common.email, deve fallire perchè common.email non è pubblicato)\n${NC}"
+"${CMD[@]}" --output json object-template create --namespace test --name test_template --description "Template di test" --property-json "{\"name\": \"e_mail\", \"datatype_id\": \"$dtid\", \"required\": false}"
+
+printf "\n${GREEN}(pubblicazione datatype derivato common.email)\n${NC}"
+echo -e "recuperato id:${dtid}"
+"${CMD[@]}" --output "json" datatype version publish ${dtid} 1 1>/dev/null 2>&1
+
+printf "\n${GREEN}(versioni e stato datatype common.email)\n${NC}"
+"${CMD[@]}" datatype version list ${dtid}
+
+printf "\n${GREEN}(creazione objecttemplate test_template che usa common.email)\n${NC}"
+otid=$("${CMD[@]}" --output json object-template create --namespace test --name test_template --description "Template di test" --property-json "{\"name\": \"e_mail\", \"datatype_id\": \"$dtid\", \"required\": false}" | jq -r '.object_template.id')
+echo -e "id:${otid}"
+
+printf "\n${GREEN}(lista objecttemplate presenti)\n${NC}"
+"${CMD[@]}" object-template list
+
+printf "\n${GREEN}(lista objecttemplate presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output "json" object-template list
+
+printf "\n${GREEN}(versioni objecttemplate test_template presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}
+
+printf "\n${GREEN}(tentativo di cancellazione datatype common.email, deve fallire perchè è in uso a test_template)\n${NC}"
+"${CMD[@]}" --output "json" datatype delete ${dtid}
+
+printf "\n${GREEN}(deprecate dell'unica versione common.email)\n${NC}"
+"${CMD[@]}" --output "json" datatype version deprecate ${dtid} 1 1>/dev/null 2>&1
+
+printf "\n${GREEN}(versioni e stato datatype common.email)\n${NC}"
+"${CMD[@]}" datatype version list ${dtid}
+
+printf "\n${GREEN}(tentativo di creazione objecttemplate test_template2 che usa common.email, deve fallire perchè common.email ha un'unica versione ed è deprecata)\n${NC}"
+"${CMD[@]}" --output json object-template create --namespace test --name test_template2 --description "Template di test2" --property-json "{\"name\": \"e_mail\", \"datatype_id\": \"$dtid\", \"required\": false}"
+
+printf "\n${GREEN}(creazione di due nuove versioni di datatype derivato common.email)\n${NC}"
+versnew1=$("${CMD[@]}" --output "json" datatype version create ${dtid} --source-version 1 | jq -r '.version')
+echo -e "creata nuova versione:${versnew1}"
+versnew2=$("${CMD[@]}" --output "json" datatype version create ${dtid} --source-version 1 | jq -r '.version')
+echo -e "creata nuova versione:${versnew2}"
+"${CMD[@]}" --output "json" datatype version publish ${dtid} ${versnew1} 1>/dev/null 2>&1
+echo -e "pubblicata nuova versione:${versnew1}"
+"${CMD[@]}" --output "json" datatype version publish ${dtid} ${versnew2} 1>/dev/null 2>&1
+echo -e "pubblicata nuova versione:${versnew2}"
+
+printf "\n${GREEN}(versioni e stato datatype common.email)\n${NC}"
+"${CMD[@]}" datatype version list ${dtid}
+
+printf "\n${GREEN}(creazione objecttemplate test_template2 che usa common.email; senza version pinning specifico userà la versione più grande)\n${NC}"
+otid=$("${CMD[@]}" --output json object-template create --namespace test --name test_template2 --description "Template di test" --property-json "{\"name\": \"e_mail\", \"datatype_id\": \"$dtid\", \"required\": false}" | jq -r '.object_template.id')
+echo -e "id:${otid}"
+
+printf "\n${GREEN}(versioni objecttemplate test_template2 presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}
+
+
+printf "\n${GREEN}(creazione objecttemplate test_template3 che usa common.email; pinning specifico su versione 2)\n${NC}"
+otid=$("${CMD[@]}" --output json object-template create --namespace test --name test_template3 --description "Template di test" --property-json "{\"name\": \"e_mail\", \"datatype_id\": \"$dtid\", \"datatype_version\": 2, \"required\": false}" | jq -r '.object_template.id')
+echo -e "id:${otid}"

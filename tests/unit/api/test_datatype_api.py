@@ -209,6 +209,40 @@ async def test_not_found_and_conflict_mappings() -> None:
     assert revise_published.json()["error"]["code"] == "invalid_datatype_version_transition"
 
 
+async def test_create_next_accepts_deprecated_source() -> None:
+    async with _client() as (client, _repo, _object_templates, _commits):
+        created = await _create_hostname(client)
+        datatype_id = created["datatype"]["id"]
+
+        published_v1 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/1/publish")
+        assert published_v1.status_code == 200
+
+        created_v2 = await client.post(
+            f"/api/v1/datatypes/{datatype_id}/versions",
+            json={"source_version": 1},
+        )
+        assert created_v2.status_code == 201
+
+        published_v2 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/2/publish")
+        assert published_v2.status_code == 200
+
+        deprecated_v1 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/1/deprecate")
+        assert deprecated_v1.status_code == 200
+        deprecated_v2 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/2/deprecate")
+        assert deprecated_v2.status_code == 200
+
+        created_v3 = await client.post(
+            f"/api/v1/datatypes/{datatype_id}/versions",
+            json={"source_version": 2},
+        )
+
+    assert created_v3.status_code == 201
+    assert created_v3.json()["version"] == 3
+    assert created_v3.json()["status"] == "draft"
+    assert created_v3.json()["base_type"] == "core.string"
+    assert created_v3.json()["constraints"] == created_v2.json()["constraints"]
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_code"),
     [

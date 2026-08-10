@@ -202,6 +202,27 @@ def test_create_next_version_creates_v2_draft_from_published_source() -> None:
     assert source.status is DataTypeVersionStatus.PUBLISHED
 
 
+def test_create_next_version_creates_draft_from_deprecated_source_without_mutating_source() -> None:
+    service = DataTypeVersioningService()
+    published = service.publish(_draft_version())
+    deprecated = service.deprecate(published)
+
+    next_version = service.create_next_version(
+        deprecated,
+        existing_versions=(published, deprecated),
+    )
+
+    assert next_version.datatype_id == deprecated.datatype_id
+    assert next_version.version == 2
+    assert next_version.status is DataTypeVersionStatus.DRAFT
+    assert next_version.base_type == deprecated.base_type
+    assert next_version.constraints == deprecated.constraints
+    assert deprecated.version == 1
+    assert deprecated.status is DataTypeVersionStatus.DEPRECATED
+    assert deprecated.base_type == published.base_type
+    assert deprecated.constraints == published.constraints
+
+
 def test_create_next_version_uses_monotonic_max_existing_plus_one() -> None:
     service = DataTypeVersioningService()
     datatype_id = uuid4()
@@ -267,9 +288,37 @@ def test_create_next_version_supports_generator_existing_versions() -> None:
     assert next_version.status is DataTypeVersionStatus.DRAFT
 
 
+def test_create_next_version_from_deprecated_source_uses_max_existing_plus_one() -> None:
+    service = DataTypeVersioningService()
+    datatype_id = uuid4()
+    source = DataTypeVersion(
+        datatype_id=datatype_id,
+        version=1,
+        status=DataTypeVersionStatus.DEPRECATED,
+        base_type=_base_type("core.integer"),
+        constraints=(Constraint(name=ConstraintName.MINIMUM, value=1),),
+    )
+    existing_versions = (
+        source,
+        DataTypeVersion(
+            datatype_id=datatype_id,
+            version=3,
+            status=DataTypeVersionStatus.DEPRECATED,
+            base_type=source.base_type,
+            constraints=source.constraints,
+        ),
+    )
+
+    next_version = service.create_next_version(source, existing_versions=existing_versions)
+
+    assert next_version.version == 4
+    assert next_version.base_type == source.base_type
+    assert next_version.constraints == source.constraints
+
+
 @pytest.mark.parametrize(
     "status",
-    [DataTypeVersionStatus.DRAFT, DataTypeVersionStatus.DEPRECATED],
+    [DataTypeVersionStatus.DRAFT],
 )
 def test_create_next_version_rejects_non_published_sources(status: DataTypeVersionStatus) -> None:
     service = DataTypeVersioningService()

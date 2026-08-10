@@ -15,6 +15,7 @@ from netauto.core.datatype import (
     DataTypeVersioningService,
     DataTypeVersionNotFound,
     DataTypeVersionStatus,
+    InvalidDataTypeVersionTransition,
 )
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -199,6 +200,53 @@ def test_create_next_uses_exact_source_and_all_existing_versions() -> None:
     assert next_version.constraints == v1_published.constraints
     assert commits[0] == 1
 
+
+def test_create_next_accepts_deprecated_source_and_commits_once() -> None:
+    service, repo, _object_templates, commits = _service()
+    datatype, v1_draft = DataTypeFactory().create(
+        namespace="network",
+        name="hostname",
+        description="Network hostname",
+        base_type="core.string",
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=1),),
+    )
+    versioning = DataTypeVersioningService()
+    v1_published = versioning.publish(v1_draft)
+    v2_draft = versioning.create_next_version(v1_published, existing_versions=(v1_published,))
+    v2_published = versioning.publish(v2_draft)
+    v1_deprecated = versioning.deprecate(v1_published)
+    v2_deprecated = versioning.deprecate(v2_published)
+
+    repo.add(datatype)
+    repo.add_version(v1_deprecated)
+    repo.add_version(v2_deprecated)
+
+    next_version = service.create_next_version(datatype_id=datatype.id, source_version=2)
+
+    assert next_version.version == 3
+    assert next_version.status is DataTypeVersionStatus.DRAFT
+    assert next_version.base_type == v2_deprecated.base_type
+    assert next_version.constraints == v2_deprecated.constraints
+    assert repo.get_version(datatype.id, 2) == v2_deprecated
+    assert commits[0] == 1
+
+
+def test_create_next_from_draft_source_raises_without_commit() -> None:
+    service, repo, _object_templates, commits = _service()
+    datatype, draft = DataTypeFactory().create(
+        namespace="network",
+        name="hostname",
+        description="Network hostname",
+        base_type="core.string",
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=1),),
+    )
+    repo.add(datatype)
+    repo.add_version(draft)
+
+    with pytest.raises(InvalidDataTypeVersionTransition):
+        service.create_next_version(datatype_id=datatype.id, source_version=1)
+
+    assert commits[0] == 0
 
 def test_mutation_does_not_commit_after_exception() -> None:
     service, _repo, _object_templates, commits = _service()

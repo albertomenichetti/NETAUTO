@@ -131,6 +131,58 @@ async def test_large_integer_constraint_round_trip_over_http(tmp_path: Path) -> 
         assert isinstance(loaded.json()["constraints"][0]["value"], int)
 
 
+async def test_create_next_accepts_deprecated_source_over_http_and_sqlite(tmp_path: Path) -> None:
+    async with _client(tmp_path) as client:
+        created = await client.post(
+            "/api/v1/datatypes",
+            json={
+                "namespace": "common",
+                "name": "email",
+                "description": "Email address",
+                "base_type": "core.string",
+                "constraints": [{"name": "pattern", "value": "^[^@]+@[^@]+[.][^@]+$"}],
+            },
+        )
+        assert created.status_code == 201
+        datatype_id = created.json()["datatype"]["id"]
+
+        published_v1 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/1/publish")
+        assert published_v1.status_code == 200
+
+        created_v2 = await client.post(
+            f"/api/v1/datatypes/{datatype_id}/versions",
+            json={"source_version": 1},
+        )
+        assert created_v2.status_code == 201
+
+        published_v2 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/2/publish")
+        assert published_v2.status_code == 200
+
+        deprecated_v1 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/1/deprecate")
+        assert deprecated_v1.status_code == 200
+        deprecated_v2 = await client.post(f"/api/v1/datatypes/{datatype_id}/versions/2/deprecate")
+        assert deprecated_v2.status_code == 200
+
+        created_v3 = await client.post(
+            f"/api/v1/datatypes/{datatype_id}/versions",
+            json={"source_version": 2},
+        )
+        assert created_v3.status_code == 201
+        created_v3_payload = created_v3.json()
+        assert created_v3_payload["version"] == 3
+        assert created_v3_payload["status"] == "draft"
+        assert created_v3_payload["base_type"] == "core.string"
+        assert created_v3_payload["constraints"] == published_v2.json()["constraints"]
+
+        versions = await client.get(f"/api/v1/datatypes/{datatype_id}/versions")
+        assert versions.status_code == 200
+        assert [(item["version"], item["status"]) for item in versions.json()] == [
+            (1, "deprecated"),
+            (2, "deprecated"),
+            (3, "draft"),
+        ]
+
+
 async def test_failed_http_mutation_does_not_leave_partial_state(tmp_path: Path) -> None:
     async with _client(tmp_path) as client:
         first = await client.post(
