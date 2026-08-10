@@ -21,6 +21,20 @@ from netauto.core.relationship import (
 from netauto.persistence.sqlalchemy.models import RelationshipDefinitionRow, RelationshipRow
 
 
+def _is_duplicate_relationship_integrity_error(error: IntegrityError) -> bool:
+    message = str(getattr(error, "orig", error))
+    if "UNIQUE constraint failed: relationships.id" in message:
+        return True
+    if (
+        "UNIQUE constraint failed: "
+        "relationships.relationship_definition_id, "
+        "relationships.source_object_id, "
+        "relationships.target_object_id"
+    ) in message:
+        return True
+    return False
+
+
 def _row_to_relationship_definition(row: RelationshipDefinitionRow) -> RelationshipDefinition:
     try:
         return RelationshipDefinition(
@@ -154,7 +168,9 @@ class SqlAlchemyRelationshipRepository(RelationshipRepository):
         try:
             self._session.flush()
         except IntegrityError as error:
-            raise RelationshipAlreadyExists("Relationship already exists.") from error
+            if _is_duplicate_relationship_integrity_error(error):
+                raise RelationshipAlreadyExists("Relationship already exists.") from error
+            raise RelationshipPersistenceError("Relationship could not be persisted.") from error
         except Exception as error:
             raise RelationshipPersistenceError("Relationship could not be persisted.") from error
 

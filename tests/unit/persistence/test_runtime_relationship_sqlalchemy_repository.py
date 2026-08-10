@@ -476,3 +476,79 @@ def test_invalid_stored_row_raises_persistence_error(tmp_path: Path) -> None:
     finally:
         session.close()
         engine.dispose()
+
+
+def test_missing_relationship_definition_fk_is_persistence_error(tmp_path: Path) -> None:
+    repo, _definition_repo, object_repo, template_repo, session, engine = _repo(
+        tmp_path,
+        "runtime_relationship_missing_definition_fk.sqlite3",
+    )
+    try:
+        source_template = _template(name="source")
+        target_template = _template(name="target")
+        template_repo.add(source_template)
+        template_repo.add(target_template)
+        source_object = _object(template_id=source_template.id)
+        target_object = _object(template_id=target_template.id)
+        object_repo.add(source_object)
+        object_repo.add(target_object)
+        session.flush()
+        relationship = _relationship(
+            relationship_definition_id=uuid4(),
+            source_object_id=source_object.id,
+            target_object_id=target_object.id,
+        )
+
+        with pytest.raises(RelationshipPersistenceError):
+            repo.add(relationship)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_missing_source_object_fk_is_persistence_error(tmp_path: Path) -> None:
+    repo, _definition_repo, object_repo, template_repo, session, engine = _repo(
+        tmp_path,
+        "runtime_relationship_missing_source_fk.sqlite3",
+    )
+    try:
+        definition_id, _source_object, target_object = _seed_definition_and_objects(
+            template_repo,
+            object_repo,
+            session,
+        )
+        relationship = _relationship(
+            relationship_definition_id=definition_id,
+            source_object_id=uuid4(),
+            target_object_id=target_object.id,
+        )
+
+        with pytest.raises(RelationshipPersistenceError):
+            repo.add(relationship)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_missing_target_object_fk_is_persistence_error(tmp_path: Path) -> None:
+    repo, _definition_repo, object_repo, template_repo, session, engine = _repo(
+        tmp_path,
+        "runtime_relationship_missing_target_fk.sqlite3",
+    )
+    try:
+        definition_id, source_object, _target_object = _seed_definition_and_objects(
+            template_repo,
+            object_repo,
+            session,
+        )
+        relationship = _relationship(
+            relationship_definition_id=definition_id,
+            source_object_id=source_object.id,
+            target_object_id=uuid4(),
+        )
+
+        with pytest.raises(RelationshipPersistenceError):
+            repo.add(relationship)
+    finally:
+        session.close()
+        engine.dispose()
