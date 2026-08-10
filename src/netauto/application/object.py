@@ -250,6 +250,17 @@ class ObjectApplicationService:
                 raise ObjectNotFound("Object does not exist.")
             return uow.objects.list_components(parent.id, slot_name=slot_name)
 
+    def delete_object(self, object_id: UUID) -> None:
+        with self._uow_factory() as uow:
+            target = uow.objects.get(object_id)
+            if target is None:
+                raise ObjectNotFound("Object does not exist.")
+
+            deletion_order = self._collect_subtree_postorder(uow, target.id)
+            for candidate_id in deletion_order:
+                uow.objects.delete(candidate_id)
+            uow.commit()
+
     def _get_template_version(
         self,
         uow: ObjectUnitOfWork,
@@ -339,3 +350,30 @@ class ObjectApplicationService:
             if owner is None:
                 return
             current_id = owner.parent_object_id
+
+    def _collect_subtree_postorder(
+        self,
+        uow: ObjectUnitOfWork,
+        object_id: UUID,
+    ) -> tuple[UUID, ...]:
+        ordered: list[UUID] = []
+        visiting: set[UUID] = set()
+        visited: set[UUID] = set()
+
+        def visit(current_id: UUID) -> None:
+            if current_id in visited:
+                return
+            if current_id in visiting:
+                raise ComponentOwnershipCycle(
+                    "Object deletion encountered an ownership cycle."
+                )
+
+            visiting.add(current_id)
+            for membership in uow.objects.list_components(current_id):
+                visit(membership.child_object_id)
+            visiting.remove(current_id)
+            visited.add(current_id)
+            ordered.append(current_id)
+
+        visit(object_id)
+        return tuple(ordered)
