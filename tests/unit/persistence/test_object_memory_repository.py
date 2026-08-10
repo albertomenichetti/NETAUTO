@@ -87,6 +87,28 @@ def test_get_missing_returns_none() -> None:
     assert repo.get(uuid4()) is None
 
 
+def test_list_by_template_version_filters_exact_pin_deterministically() -> None:
+    repo = InMemoryObjectRepository()
+    template_id = uuid4()
+    low = _object(
+        object_id=UUID("00000000-0000-0000-0000-000000000001"),
+        template_id=template_id,
+        template_version=1,
+    )
+    high = _object(
+        object_id=UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+        template_id=template_id,
+        template_version=1,
+    )
+    other_version = _object(template_id=template_id, template_version=2)
+    other_template = _object(template_id=uuid4(), template_version=1)
+
+    for object_value in (high, other_version, other_template, low):
+        repo.add(object_value)
+
+    assert repo.list_by_template_version(template_id, 1) == (low, high)
+
+
 def test_replace_existing_snapshot() -> None:
     repo = InMemoryObjectRepository()
     original = _object(properties={"hostname": "router-01"})

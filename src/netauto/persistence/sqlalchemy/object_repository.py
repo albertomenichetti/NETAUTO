@@ -95,6 +95,21 @@ class SqlAlchemyObjectRepository(ObjectRepository):
             return None
         return _row_to_object(row)
 
+    def list_by_template_version(
+        self,
+        template_id: UUID,
+        template_version: int,
+    ) -> tuple[Object, ...]:
+        rows = self._session.scalars(
+            select(ObjectRow)
+            .where(
+                ObjectRow.template_id == str(template_id),
+                ObjectRow.template_version == template_version,
+            )
+            .order_by(ObjectRow.id.asc())
+        ).all()
+        return tuple(_row_to_object(row) for row in rows)
+
     def replace(self, object_value: Object) -> None:
         row = self._session.get(ObjectRow, str(object_value.id))
         if row is None:

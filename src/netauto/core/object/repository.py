@@ -21,6 +21,14 @@ class ObjectRepository(Protocol):
         """Return an object by UUID or None."""
         ...
 
+    def list_by_template_version(
+        self,
+        template_id: UUID,
+        template_version: int,
+    ) -> tuple[Object, ...]:
+        """Return objects pinned to one exact template identity/version pair."""
+        ...
+
     def replace(self, object_value: Object) -> None:
         """Replace an existing object snapshot."""
         ...

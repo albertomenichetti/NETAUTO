@@ -147,6 +147,15 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
         client.create_object_template_version("abc", 2)
         client.publish_object_template_version("abc", 2)
         client.deprecate_object_template_version("abc", 2)
+        client.get_object_migration_analysis("abc", 1, 2)
+        client.migrate_objects(
+            "abc",
+            1,
+            {
+                "target_version": 2,
+                "property_values": {"serialnumber": "UNKNOWN"},
+            },
+        )
 
     assert seen == [
         ("GET", "http://127.0.0.1:8000/api/v1/object-templates", None),
@@ -193,6 +202,22 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
         ),
         ("POST", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2/publish", None),
         ("POST", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2/deprecate", None),
+        (
+            "GET",
+            (
+                "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/1/"
+                "migration-analysis?target_version=2"
+            ),
+            None,
+        ),
+        (
+            "POST",
+            "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/1/migrate-objects",
+            {
+                "target_version": 2,
+                "property_values": {"serialnumber": "UNKNOWN"},
+            },
+        ),
     ]
 
 

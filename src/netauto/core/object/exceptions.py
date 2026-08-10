@@ -70,3 +70,19 @@ class ObjectComponentTemplateIncompatible(Exception):
 
 class ComponentOwnershipCycle(Exception):
     """Raised when a structural ownership change would create an ownership cycle."""
+
+
+class ObjectMigrationTargetVersionNotPublished(Exception):
+    """Raised when automatic migration targets a non-published template version."""
+
+
+class ObjectMigrationBlocked(Exception):
+    """Raised when structural migration analysis contains blocking changes."""
+
+
+class MissingObjectMigrationPropertyValue(Exception):
+    """Raised when a new required target property lacks a migration-supplied value."""
+
+
+class UnexpectedObjectMigrationPropertyValue(Exception):
+    """Raised when migration supplies a value for a property outside the additive delta."""

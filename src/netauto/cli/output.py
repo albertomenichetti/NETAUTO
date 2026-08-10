@@ -325,6 +325,69 @@ def render_object_delete_result(
     return f"Deleted object {object_id}"
 
 
+def render_object_migration_analysis(payload: JSONObject, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+
+    added_properties = _require_array(payload, "added_properties")
+    added_components = _require_array(payload, "added_components")
+    blocking_changes = _require_array(payload, "blocking_changes")
+    lines = [
+        f"Template ID: {_require_string(payload, 'template_id')}",
+        f"Source Version: {_require_int(payload, 'source_version')}",
+        f"Target Version: {_require_int(payload, 'target_version')}",
+        f"Automatic: {_format_bool(_require_bool(payload, 'automatic'))}",
+        "Added Properties:",
+    ]
+    if not added_properties:
+        lines.append("  (none)")
+    else:
+        for item in added_properties:
+            property_value = _require_object(item)
+            lines.append(
+                "  - "
+                f"{_require_string(property_value, 'name')} "
+                f"({'required' if _require_bool(property_value, 'required') else 'optional'})"
+            )
+    lines.append("Added Components:")
+    if not added_components:
+        lines.append("  (none)")
+    else:
+        for item in added_components:
+            component = _require_object(item)
+            lines.append(
+                "  - "
+                f"{_require_string(component, 'name')}: "
+                f"{_require_string(component, 'template_id')}"
+            )
+    lines.append("Blocking Changes:")
+    if not blocking_changes:
+        lines.append("  (none)")
+    else:
+        for item in blocking_changes:
+            change = _require_object(item)
+            lines.append(
+                "  - "
+                f"{_require_string(change, 'kind')}: "
+                f"{_require_string(change, 'name')}"
+            )
+    return "\n".join(lines)
+
+
+def render_object_migration_result(payload: JSONObject, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    return "\n".join(
+        [
+            "Migrated objects",
+            f"Template ID: {_require_string(payload, 'template_id')}",
+            f"Source Version: {_require_int(payload, 'source_version')}",
+            f"Target Version: {_require_int(payload, 'target_version')}",
+            f"Migrated Count: {_require_int(payload, 'migrated_count')}",
+        ]
+    )
+
+
 def _error_payload(error: CliError) -> JSONObject:
     if isinstance(error, ApiError):
         return {

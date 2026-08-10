@@ -3,16 +3,22 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
-from netauto.api.dependencies import get_object_template_service
+from netauto.api.dependencies import get_object_service, get_object_template_service
 from netauto.api.errors import ERROR_RESPONSES
 from netauto.api.schemas.objecttemplates import (
     CreateNextObjectTemplateVersionRequest,
     CreateObjectTemplateRequest,
     CreateObjectTemplateResponse,
+    MigrateObjectsRequest,
+    MigrateObjectsResponse,
     ObjectTemplateComponentRequest,
     ObjectTemplateComponentResponse,
+    ObjectTemplateMigrationAddedComponentResponse,
+    ObjectTemplateMigrationAddedPropertyResponse,
+    ObjectTemplateMigrationAnalysisResponse,
+    ObjectTemplateMigrationBlockingChangeResponse,
     ObjectTemplatePropertyRequest,
     ObjectTemplatePropertyResponse,
     ObjectTemplateResponse,
@@ -21,10 +27,18 @@ from netauto.api.schemas.objecttemplates import (
     ObjectTemplateVersionResponse,
     ReviseObjectTemplateVersionRequest,
 )
+from netauto.application.object import ObjectApplicationService
 from netauto.application.objecttemplate import (
     ObjectTemplateApplicationService,
     ObjectTemplateComponentSpec,
     ObjectTemplatePropertySpec,
+)
+from netauto.core.object import (
+    ObjectMigrationResult,
+    ObjectTemplateMigrationAddedComponent,
+    ObjectTemplateMigrationAddedProperty,
+    ObjectTemplateMigrationAnalysis,
+    ObjectTemplateMigrationBlockingChange,
 )
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -37,6 +51,7 @@ from netauto.core.objecttemplate import (
 router = APIRouter(prefix="/object-templates", tags=["object-templates"])
 
 PositiveVersion = Annotated[int, Path(ge=1)]
+PositiveVersionQuery = Annotated[int, Query(ge=1)]
 
 
 def _to_parent_ref(
@@ -115,6 +130,65 @@ def _to_version_response(version: ObjectTemplateVersion) -> ObjectTemplateVersio
         parent=_to_parent_response(version.parent),
         properties=[_to_property_response(prop) for prop in version.properties],
         components=[_to_component_response(component) for component in version.components],
+    )
+
+
+def _to_migration_added_property_response(
+    property_value: ObjectTemplateMigrationAddedProperty,
+) -> ObjectTemplateMigrationAddedPropertyResponse:
+    return ObjectTemplateMigrationAddedPropertyResponse(
+        name=property_value.name,
+        required=property_value.required,
+    )
+
+
+def _to_migration_added_component_response(
+    component_value: ObjectTemplateMigrationAddedComponent,
+) -> ObjectTemplateMigrationAddedComponentResponse:
+    return ObjectTemplateMigrationAddedComponentResponse(
+        name=component_value.name,
+        template_id=component_value.template_id,
+    )
+
+
+def _to_migration_blocking_change_response(
+    change: ObjectTemplateMigrationBlockingChange,
+) -> ObjectTemplateMigrationBlockingChangeResponse:
+    return ObjectTemplateMigrationBlockingChangeResponse(
+        kind=change.kind,
+        name=change.name,
+    )
+
+
+def _to_migration_analysis_response(
+    analysis: ObjectTemplateMigrationAnalysis,
+) -> ObjectTemplateMigrationAnalysisResponse:
+    return ObjectTemplateMigrationAnalysisResponse(
+        template_id=analysis.template_id,
+        source_version=analysis.source_version,
+        target_version=analysis.target_version,
+        automatic=analysis.automatic,
+        added_properties=[
+            _to_migration_added_property_response(property_value)
+            for property_value in analysis.added_properties
+        ],
+        added_components=[
+            _to_migration_added_component_response(component_value)
+            for component_value in analysis.added_components
+        ],
+        blocking_changes=[
+            _to_migration_blocking_change_response(change)
+            for change in analysis.blocking_changes
+        ],
+    )
+
+
+def _to_migrate_objects_response(result: ObjectMigrationResult) -> MigrateObjectsResponse:
+    return MigrateObjectsResponse(
+        template_id=result.template_id,
+        source_version=result.source_version,
+        target_version=result.target_version,
+        migrated_count=result.migrated_count,
     )
 
 
@@ -201,6 +275,45 @@ def get_version(
     service: Annotated[ObjectTemplateApplicationService, Depends(get_object_template_service)],
 ) -> ObjectTemplateVersionResponse:
     return _to_version_response(service.get_version(template_id, version))
+
+
+@router.get(
+    "/{template_id}/versions/{version}/migration-analysis",
+    response_model=ObjectTemplateMigrationAnalysisResponse,
+    responses=ERROR_RESPONSES,
+)
+def analyze_object_migration(
+    template_id: UUID,
+    version: PositiveVersion,
+    target_version: PositiveVersionQuery,
+    service: Annotated[ObjectApplicationService, Depends(get_object_service)],
+) -> ObjectTemplateMigrationAnalysisResponse:
+    analysis = service.analyze_object_migration(
+        template_id=template_id,
+        source_version=version,
+        target_version=target_version,
+    )
+    return _to_migration_analysis_response(analysis)
+
+
+@router.post(
+    "/{template_id}/versions/{version}/migrate-objects",
+    response_model=MigrateObjectsResponse,
+    responses=ERROR_RESPONSES,
+)
+def migrate_objects(
+    template_id: UUID,
+    version: PositiveVersion,
+    request: MigrateObjectsRequest,
+    service: Annotated[ObjectApplicationService, Depends(get_object_service)],
+) -> MigrateObjectsResponse:
+    result = service.migrate_objects(
+        template_id=template_id,
+        source_version=version,
+        target_version=request.target_version,
+        property_values=request.property_values,
+    )
+    return _to_migrate_objects_response(result)
 
 
 @router.put(

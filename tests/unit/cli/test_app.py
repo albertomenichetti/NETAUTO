@@ -100,6 +100,27 @@ class FakeClient:
     def deprecate_object_template_version(self, template_id: str, version: int) -> Any:
         return self._call("deprecate_object_template_version", template_id, version)
 
+    def get_object_migration_analysis(
+        self,
+        template_id: str,
+        source_version: int,
+        target_version: int,
+    ) -> Any:
+        return self._call(
+            "get_object_migration_analysis",
+            template_id,
+            source_version,
+            target_version,
+        )
+
+    def migrate_objects(
+        self,
+        template_id: str,
+        source_version: int,
+        payload: dict[str, object],
+    ) -> Any:
+        return self._call("migrate_objects", template_id, source_version, payload)
+
     def list_objects(self) -> Any:
         return self._call("list_objects")
 
@@ -223,6 +244,27 @@ def _component_membership_payload() -> dict[str, object]:
         "parent_object_id": str(uuid4()),
         "slot_name": "interfaces",
         "component_object_id": str(uuid4()),
+    }
+
+
+def _object_migration_analysis_payload() -> dict[str, object]:
+    return {
+        "template_id": str(uuid4()),
+        "source_version": 1,
+        "target_version": 2,
+        "automatic": True,
+        "added_properties": [{"name": "serialnumber", "required": True}],
+        "added_components": [{"name": "power_supplies", "template_id": str(uuid4())}],
+        "blocking_changes": [],
+    }
+
+
+def _object_migration_result_payload() -> dict[str, object]:
+    return {
+        "template_id": str(uuid4()),
+        "source_version": 1,
+        "target_version": 2,
+        "migrated_count": 3,
     }
 
 
@@ -1215,6 +1257,165 @@ def test_object_delete_command(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls == [("delete_object", (object_id,))]
 
 
+def test_object_migration_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    analysis = _object_migration_analysis_payload()
+    result_payload = _object_migration_result_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {
+            "get_object_migration_analysis": analysis,
+            "migrate_objects": result_payload,
+        },
+        calls,
+    )
+    template_id = str(uuid4())
+
+    analyzed = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "object",
+            "migrate-analyze",
+            "--template-id",
+            template_id,
+            "--from-version",
+            "1",
+            "--to-version",
+            "2",
+        ],
+    )
+    migrated = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "object",
+            "migrate",
+            "--template-id",
+            template_id,
+            "--from-version",
+            "1",
+            "--to-version",
+            "2",
+            "--property-json",
+            json.dumps({"serialnumber": "UNKNOWN", "metadata": {"site": "lab"}}),
+        ],
+    )
+
+    assert analyzed.exit_code == 0
+    assert json.loads(analyzed.stdout) == analysis
+    assert migrated.exit_code == 0
+    assert json.loads(migrated.stdout) == result_payload
+    assert calls == [
+        ("get_object_migration_analysis", (template_id, 1, 2)),
+        (
+            "migrate_objects",
+            (
+                template_id,
+                1,
+                {
+                    "target_version": 2,
+                    "property_values": {
+                        "serialnumber": "UNKNOWN",
+                        "metadata": {"site": "lab"},
+                    },
+                },
+            ),
+        ),
+    ]
+
+
+def test_object_migrate_file_and_local_input_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    result_payload = _object_migration_result_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"migrate_objects": result_payload}, calls)
+    template_id = str(uuid4())
+    payload = {"target_version": 2, "property_values": {"serialnumber": "UNKNOWN"}}
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "migration.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        file_result = runner.invoke(
+            app,
+            [
+                "object",
+                "migrate",
+                "--template-id",
+                template_id,
+                "--from-version",
+                "1",
+                "--file",
+                str(path),
+            ],
+        )
+        mode_conflict = runner.invoke(
+            app,
+            [
+                "object",
+                "migrate",
+                "--template-id",
+                template_id,
+                "--from-version",
+                "1",
+                "--file",
+                str(path),
+                "--to-version",
+                "2",
+            ],
+        )
+
+    missing_target = runner.invoke(
+        app,
+        [
+            "object",
+            "migrate",
+            "--template-id",
+            template_id,
+            "--from-version",
+            "1",
+        ],
+    )
+    malformed_property = runner.invoke(
+        app,
+        [
+            "object",
+            "migrate",
+            "--template-id",
+            template_id,
+            "--from-version",
+            "1",
+            "--to-version",
+            "2",
+            "--property-json",
+            "not-json",
+        ],
+    )
+    non_object_property = runner.invoke(
+        app,
+        [
+            "object",
+            "migrate",
+            "--template-id",
+            template_id,
+            "--from-version",
+            "1",
+            "--to-version",
+            "2",
+            "--property-json",
+            "[]",
+        ],
+    )
+
+    assert file_result.exit_code == 0
+    assert mode_conflict.exit_code == 2
+    assert missing_target.exit_code == 2
+    assert malformed_property.exit_code == 2
+    assert non_object_property.exit_code == 2
+    assert calls == [("migrate_objects", (template_id, 1, payload))]
+
+
 def test_object_component_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     membership = _component_membership_payload()
     calls: list[tuple[str, tuple[Any, ...]]] = []
@@ -1382,6 +1583,38 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     assert (
         runner.invoke(
             app,
+            [
+                "object",
+                "migrate-analyze",
+                "--template-id",
+                "not-a-uuid",
+                "--from-version",
+                "1",
+                "--to-version",
+                "2",
+            ],
+        ).exit_code
+        == 2
+    )
+    assert (
+        runner.invoke(
+            app,
+            [
+                "object",
+                "migrate",
+                "--template-id",
+                str(uuid4()),
+                "--from-version",
+                "0",
+                "--to-version",
+                "2",
+            ],
+        ).exit_code
+        == 2
+    )
+    assert (
+        runner.invoke(
+            app,
             ["object", "create", "--template-id", str(uuid4()), "--template-version", "0"],
         ).exit_code
         == 2
@@ -1506,6 +1739,34 @@ def test_object_template_human_rendering(
             ],
             {"detach_object_component": _component_membership_payload()},
             "Detached component",
+        ),
+        (
+            [
+                "object",
+                "migrate-analyze",
+                "--template-id",
+                str(_object_migration_analysis_payload()["template_id"]),
+                "--from-version",
+                "1",
+                "--to-version",
+                "2",
+            ],
+            {"get_object_migration_analysis": _object_migration_analysis_payload()},
+            "Added Properties:",
+        ),
+        (
+            [
+                "object",
+                "migrate",
+                "--template-id",
+                str(_object_migration_result_payload()["template_id"]),
+                "--from-version",
+                "1",
+                "--to-version",
+                "2",
+            ],
+            {"migrate_objects": _object_migration_result_payload()},
+            "Migrated objects",
         ),
     ],
 )

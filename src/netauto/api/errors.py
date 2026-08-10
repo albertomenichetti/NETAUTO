@@ -33,14 +33,18 @@ from netauto.core.object import (
     InvalidComponentMembership,
     InvalidObject,
     InvalidObjectPatch,
+    MissingObjectMigrationPropertyValue,
     ObjectAlreadyExists,
     ObjectComponentSlotNotFound,
     ObjectComponentTemplateIncompatible,
     ObjectDataTypeVersionNotFound,
+    ObjectMigrationBlocked,
+    ObjectMigrationTargetVersionNotPublished,
     ObjectNotFound,
     ObjectPersistenceError,
     ObjectTemplateVersionNotPublished,
     ObjectValidationFailed,
+    UnexpectedObjectMigrationPropertyValue,
 )
 from netauto.core.objecttemplate import (
     DuplicateObjectTemplateComponent,
@@ -181,6 +185,18 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Component ownership cycle detected",
     ),
     (
+        ObjectMigrationTargetVersionNotPublished,
+        HTTPStatus.CONFLICT,
+        "object_migration_target_version_not_published",
+        "Object migration target version must be published",
+    ),
+    (
+        ObjectMigrationBlocked,
+        HTTPStatus.CONFLICT,
+        "object_migration_blocked",
+        "Object migration contains blocking schema changes",
+    ),
+    (
         DataTypeAlreadyExists,
         HTTPStatus.CONFLICT,
         "datatype_already_exists",
@@ -263,6 +279,18 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.UNPROCESSABLE_ENTITY,
         "invalid_object_patch",
         "Object patch is invalid",
+    ),
+    (
+        MissingObjectMigrationPropertyValue,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "missing_object_migration_property_value",
+        "Object migration requires values for newly added required properties",
+    ),
+    (
+        UnexpectedObjectMigrationPropertyValue,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "unexpected_object_migration_property_value",
+        "Object migration supplied values may only target newly added properties",
     ),
     (
         ObjectComponentSlotNotFound,

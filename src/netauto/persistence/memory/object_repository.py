@@ -33,6 +33,20 @@ class InMemoryObjectRepository(ObjectRepository):
     def get(self, object_id: UUID) -> Object | None:
         return self._objects.get(object_id)
 
+    def list_by_template_version(
+        self,
+        template_id: UUID,
+        template_version: int,
+    ) -> tuple[Object, ...]:
+        objects = [
+            object_value
+            for object_value in self._objects.values()
+            if object_value.template_id == template_id
+            and object_value.template_version == template_version
+        ]
+        objects.sort(key=lambda item: str(item.id))
+        return tuple(objects)
+
     def replace(self, object_value: Object) -> None:
         if object_value.id not in self._objects:
             raise ObjectNotFound("Object does not exist.")

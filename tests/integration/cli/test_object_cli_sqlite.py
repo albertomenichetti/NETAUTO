@@ -358,3 +358,222 @@ def test_cli_object_acceptance_flow(tmp_path: Path) -> None:
             assert "object_not_found" in port_missing.stderr
     finally:
         engine.dispose()
+
+
+def test_cli_object_migration_flow(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            hostname_created = _invoke_json(
+                base_url,
+                [
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "hostname",
+                    "--description",
+                    "Hostname",
+                    "--base-type",
+                    "core.string",
+                ],
+            )
+            serial_created = _invoke_json(
+                base_url,
+                [
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "serialnumber",
+                    "--description",
+                    "Serialnumber",
+                    "--base-type",
+                    "core.string",
+                ],
+            )
+            hostname_id = hostname_created["datatype"]["id"]
+            serial_id = serial_created["datatype"]["id"]
+
+            assert (
+                runner.invoke(
+                    app,
+                    ["--api-url", base_url, "datatype", "version", "publish", hostname_id, "1"],
+                ).exit_code
+                == 0
+            )
+            assert (
+                runner.invoke(
+                    app,
+                    ["--api-url", base_url, "datatype", "version", "publish", serial_id, "1"],
+                ).exit_code
+                == 0
+            )
+
+            template_created = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "device",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "hostname",
+                            "datatype_id": hostname_id,
+                            "required": True,
+                        }
+                    ),
+                ],
+            )
+            template_id = template_created["object_template"]["id"]
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "object-template",
+                        "version",
+                        "publish",
+                        template_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            created_object = _invoke_json(
+                base_url,
+                [
+                    "object",
+                    "create",
+                    "--template-id",
+                    template_id,
+                    "--template-version",
+                    "1",
+                    "--property-json",
+                    json.dumps({"hostname": "router-01"}),
+                ],
+            )
+            object_id = created_object["id"]
+
+            created_v2 = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "version",
+                    "create",
+                    template_id,
+                    "--source-version",
+                    "1",
+                ],
+            )
+            assert created_v2["version"] == 2
+
+            revise_payload = {
+                "parent": None,
+                "properties": [
+                    {
+                        "name": "hostname",
+                        "datatype_id": hostname_id,
+                        "datatype_version": 1,
+                        "required": True,
+                    },
+                    {
+                        "name": "serialnumber",
+                        "datatype_id": serial_id,
+                        "datatype_version": 1,
+                        "required": True,
+                    },
+                ],
+                "components": [],
+            }
+            revise_path = tmp_path / "migrate-revise.json"
+            revise_path.write_text(json.dumps(revise_payload), encoding="utf-8")
+            revised = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "revise",
+                    template_id,
+                    "2",
+                    "--file",
+                    str(revise_path),
+                ],
+            )
+            assert revised.exit_code == 0
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "object-template",
+                        "version",
+                        "publish",
+                        template_id,
+                        "2",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            analysis = _invoke_json(
+                base_url,
+                [
+                    "object",
+                    "migrate-analyze",
+                    "--template-id",
+                    template_id,
+                    "--from-version",
+                    "1",
+                    "--to-version",
+                    "2",
+                ],
+            )
+            assert analysis["automatic"] is True
+            assert analysis["added_properties"] == [
+                {"name": "serialnumber", "required": True}
+            ]
+
+            migrated = _invoke_json(
+                base_url,
+                [
+                    "object",
+                    "migrate",
+                    "--template-id",
+                    template_id,
+                    "--from-version",
+                    "1",
+                    "--to-version",
+                    "2",
+                    "--property-json",
+                    json.dumps({"serialnumber": "UNKNOWN"}),
+                ],
+            )
+            assert migrated == {
+                "template_id": template_id,
+                "source_version": 1,
+                "target_version": 2,
+                "migrated_count": 1,
+            }
+
+            shown = _invoke_json(base_url, ["object", "show", object_id])
+            assert shown["template_version"] == 2
+            assert shown["properties"] == {
+                "hostname": "router-01",
+                "serialnumber": "UNKNOWN",
+            }
+    finally:
+        engine.dispose()

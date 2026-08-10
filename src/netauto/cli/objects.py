@@ -14,6 +14,8 @@ from netauto.cli.output import (
     render_object,
     render_object_delete_result,
     render_object_list,
+    render_object_migration_analysis,
+    render_object_migration_result,
 )
 
 object_app = typer.Typer(help="Manage objects.")
@@ -79,6 +81,24 @@ def _build_attach_payload(
     return {
         "slot_name": slot_name,
         "component_object_id": uuid_text(component_object_id),
+    }
+
+
+def _build_migration_payload(
+    *,
+    target_version: int | None,
+    property_json: list[str],
+    file: str | None,
+) -> JSONObject:
+    inline_present = target_version is not None or bool(property_json)
+    ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
+    if file is not None:
+        return load_json_object(file)
+    if target_version is None:
+        raise InputError("Inline migration mode requires --to-version.")
+    return {
+        "target_version": target_version,
+        "property_values": _merge_property_json(property_json),
     }
 
 
@@ -149,6 +169,48 @@ def delete_object(ctx: typer.Context, object_id: UUID) -> None:
             mode,
             object_id=uuid_text(object_id),
         ),
+    )
+
+
+@object_app.command("migrate-analyze")
+def migrate_analyze(
+    ctx: typer.Context,
+    template_id: UUID = typer.Option(..., "--template-id"),
+    from_version: int = typer.Option(..., "--from-version", min=1),
+    to_version: int = typer.Option(..., "--to-version", min=1),
+) -> None:
+    run_action(
+        ctx,
+        lambda client: client.get_object_migration_analysis(
+            uuid_text(template_id),
+            from_version,
+            to_version,
+        ),
+        render_object_migration_analysis,
+    )
+
+
+@object_app.command("migrate")
+def migrate_objects(
+    ctx: typer.Context,
+    template_id: UUID = typer.Option(..., "--template-id"),
+    from_version: int = typer.Option(..., "--from-version", min=1),
+    to_version: int | None = typer.Option(None, "--to-version", min=1),
+    property_json: list[str] | None = typer.Option(None, "--property-json"),
+    file: str | None = typer.Option(None, "--file"),
+) -> None:
+    try:
+        payload = _build_migration_payload(
+            target_version=to_version,
+            property_json=property_json or [],
+            file=file,
+        )
+    except CliError as error:
+        fail(ctx, error)
+    run_action(
+        ctx,
+        lambda client: client.migrate_objects(uuid_text(template_id), from_version, payload),
+        render_object_migration_result,
     )
 
 

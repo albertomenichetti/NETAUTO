@@ -11,13 +11,23 @@ from netauto.core.object import (
     ComponentMembershipNotFound,
     ComponentOwnershipCycle,
     InvalidObjectPatch,
+    MissingObjectMigrationPropertyValue,
     Object,
     ObjectComponentSlotNotFound,
     ObjectComponentTemplateIncompatible,
+    ObjectMigrationBlocked,
+    ObjectMigrationResult,
+    ObjectMigrationTargetVersionNotPublished,
     ObjectNotFound,
+    ObjectTemplateMigrationAddedComponent,
+    ObjectTemplateMigrationAddedProperty,
+    ObjectTemplateMigrationAnalysis,
+    ObjectTemplateMigrationBlockingChange,
+    ObjectTemplateMigrationBlockingChangeKind,
     ObjectTemplateVersionNotPublished,
     ObjectValidationEngine,
     ObjectValidationFailed,
+    UnexpectedObjectMigrationPropertyValue,
 )
 from netauto.core.objecttemplate import (
     ObjectTemplateComponent,
@@ -256,6 +266,78 @@ class ObjectApplicationService:
                 uow.objects.delete(candidate_id)
             uow.commit()
 
+    def analyze_object_migration(
+        self,
+        *,
+        template_id: UUID,
+        source_version: int,
+        target_version: int,
+    ) -> ObjectTemplateMigrationAnalysis:
+        with self._uow_factory() as uow:
+            return self._analyze_object_migration(
+                uow,
+                template_id=template_id,
+                source_version=source_version,
+                target_version=target_version,
+            )
+
+    def migrate_objects(
+        self,
+        *,
+        template_id: UUID,
+        source_version: int,
+        target_version: int,
+        property_values: Mapping[str, object],
+    ) -> ObjectMigrationResult:
+        with self._uow_factory() as uow:
+            analysis = self._analyze_object_migration(
+                uow,
+                template_id=template_id,
+                source_version=source_version,
+                target_version=target_version,
+            )
+            if not analysis.automatic:
+                raise ObjectMigrationBlocked("Object migration contains blocking schema changes.")
+
+            values_by_name = dict(property_values)
+            self._validate_migration_property_values(values_by_name, analysis=analysis)
+
+            target = self._get_template_version(
+                uow,
+                template_id=template_id,
+                template_version=target_version,
+            )
+            target_effective_properties = self._resolve_effective_properties(uow, target)
+            candidates = uow.objects.list_by_template_version(template_id, source_version)
+            if not candidates:
+                return ObjectMigrationResult(
+                    template_id=template_id,
+                    source_version=source_version,
+                    target_version=target_version,
+                    migrated_count=0,
+                )
+
+            migrated_objects = [
+                self._build_migrated_object(
+                    current,
+                    target_version=target_version,
+                    property_values=values_by_name,
+                    effective_properties=target_effective_properties,
+                    datatype_lookup=uow.datatypes.get_version,
+                )
+                for current in candidates
+            ]
+
+            for migrated in migrated_objects:
+                uow.objects.replace(migrated)
+            uow.commit()
+            return ObjectMigrationResult(
+                template_id=template_id,
+                source_version=source_version,
+                target_version=target_version,
+                migrated_count=len(migrated_objects),
+            )
+
     def _get_template_version(
         self,
         uow: ObjectUnitOfWork,
@@ -372,3 +454,176 @@ class ObjectApplicationService:
 
         visit(object_id)
         return tuple(ordered)
+
+    def _analyze_object_migration(
+        self,
+        uow: ObjectUnitOfWork,
+        *,
+        template_id: UUID,
+        source_version: int,
+        target_version: int,
+    ) -> ObjectTemplateMigrationAnalysis:
+        template = uow.object_templates.get(template_id)
+        if template is None:
+            raise ObjectTemplateNotFound("Object template does not exist.")
+
+        source = self._get_template_version(
+            uow,
+            template_id=template_id,
+            template_version=source_version,
+        )
+        target = self._get_template_version(
+            uow,
+            template_id=template_id,
+            template_version=target_version,
+        )
+        if target.status is not ObjectTemplateVersionStatus.PUBLISHED:
+            raise ObjectMigrationTargetVersionNotPublished(
+                "Object migration target version must be published."
+            )
+
+        source_effective_properties = self._resolve_effective_properties(uow, source)
+        target_effective_properties = self._resolve_effective_properties(uow, target)
+        source_effective_components = self._resolve_effective_components(uow, source)
+        target_effective_components = self._resolve_effective_components(uow, target)
+
+        added_properties, property_blocking_changes = self._compare_properties(
+            source_effective_properties,
+            target_effective_properties,
+        )
+        added_components, component_blocking_changes = self._compare_components(
+            source_effective_components,
+            target_effective_components,
+        )
+        return ObjectTemplateMigrationAnalysis(
+            template_id=template_id,
+            source_version=source_version,
+            target_version=target_version,
+            added_properties=added_properties,
+            added_components=added_components,
+            blocking_changes=property_blocking_changes + component_blocking_changes,
+        )
+
+    def _compare_properties(
+        self,
+        source: tuple[ObjectTemplateProperty, ...],
+        target: tuple[ObjectTemplateProperty, ...],
+    ) -> tuple[
+        tuple[ObjectTemplateMigrationAddedProperty, ...],
+        tuple[ObjectTemplateMigrationBlockingChange, ...],
+    ]:
+        source_by_name = {property_value.name: property_value for property_value in source}
+        target_by_name = {property_value.name: property_value for property_value in target}
+
+        added = tuple(
+            ObjectTemplateMigrationAddedProperty(
+                name=name,
+                required=target_by_name[name].required,
+            )
+            for name in sorted(target_by_name)
+            if name not in source_by_name
+        )
+        blocking: list[ObjectTemplateMigrationBlockingChange] = []
+        for name in sorted(source_by_name):
+            if name not in target_by_name:
+                blocking.append(
+                    ObjectTemplateMigrationBlockingChange(
+                        kind=ObjectTemplateMigrationBlockingChangeKind.PROPERTY_REMOVED,
+                        name=name,
+                    )
+                )
+            elif target_by_name[name] != source_by_name[name]:
+                blocking.append(
+                    ObjectTemplateMigrationBlockingChange(
+                        kind=ObjectTemplateMigrationBlockingChangeKind.PROPERTY_CHANGED,
+                        name=name,
+                    )
+                )
+        return added, tuple(blocking)
+
+    def _compare_components(
+        self,
+        source: tuple[ObjectTemplateComponent, ...],
+        target: tuple[ObjectTemplateComponent, ...],
+    ) -> tuple[
+        tuple[ObjectTemplateMigrationAddedComponent, ...],
+        tuple[ObjectTemplateMigrationBlockingChange, ...],
+    ]:
+        source_by_name = {component.name: component for component in source}
+        target_by_name = {component.name: component for component in target}
+
+        added = tuple(
+            ObjectTemplateMigrationAddedComponent(
+                name=name,
+                template_id=target_by_name[name].template_id,
+            )
+            for name in sorted(target_by_name)
+            if name not in source_by_name
+        )
+        blocking: list[ObjectTemplateMigrationBlockingChange] = []
+        for name in sorted(source_by_name):
+            if name not in target_by_name:
+                blocking.append(
+                    ObjectTemplateMigrationBlockingChange(
+                        kind=ObjectTemplateMigrationBlockingChangeKind.COMPONENT_REMOVED,
+                        name=name,
+                    )
+                )
+            elif target_by_name[name] != source_by_name[name]:
+                blocking.append(
+                    ObjectTemplateMigrationBlockingChange(
+                        kind=ObjectTemplateMigrationBlockingChangeKind.COMPONENT_CHANGED,
+                        name=name,
+                    )
+                )
+        return added, tuple(blocking)
+
+    def _validate_migration_property_values(
+        self,
+        property_values: Mapping[str, object],
+        *,
+        analysis: ObjectTemplateMigrationAnalysis,
+    ) -> None:
+        added_by_name = {
+            property_value.name: property_value for property_value in analysis.added_properties
+        }
+        unexpected_names = sorted(name for name in property_values if name not in added_by_name)
+        if unexpected_names:
+            raise UnexpectedObjectMigrationPropertyValue(
+                "Migration supplied values may only target newly added properties."
+            )
+
+        missing_required_names = [
+            property_value.name
+            for property_value in analysis.added_properties
+            if property_value.required and property_value.name not in property_values
+        ]
+        if missing_required_names:
+            raise MissingObjectMigrationPropertyValue(
+                "Migration requires values for all newly added required properties."
+            )
+
+    def _build_migrated_object(
+        self,
+        current: Object,
+        *,
+        target_version: int,
+        property_values: Mapping[str, object],
+        effective_properties: tuple[ObjectTemplateProperty, ...],
+        datatype_lookup,
+    ) -> Object:
+        candidate = dict(current.properties)
+        candidate.update(property_values)
+        result = self._validation.validate_properties(
+            properties=candidate,
+            effective_properties=effective_properties,
+            datatype_lookup=datatype_lookup,
+        )
+        if not result.is_valid:
+            raise ObjectValidationFailed(result)
+        return Object(
+            id=current.id,
+            template_id=current.template_id,
+            template_version=target_version,
+            properties=candidate,
+        )

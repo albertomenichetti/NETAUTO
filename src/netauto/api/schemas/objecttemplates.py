@@ -68,6 +68,11 @@ class CreateNextObjectTemplateVersionRequest(ApiModel):
     source_version: PositiveStrictInt
 
 
+class MigrateObjectsRequest(ApiModel):
+    target_version: PositiveStrictInt
+    property_values: dict[str, object] = Field(default_factory=dict)
+
+
 class ObjectTemplateResponse(ApiModel):
     id: UUID
     namespace: str
@@ -89,3 +94,35 @@ class ObjectTemplateVersionResponse(ApiModel):
 class CreateObjectTemplateResponse(ApiModel):
     object_template: ObjectTemplateResponse
     version: ObjectTemplateVersionResponse
+
+
+class ObjectTemplateMigrationAddedPropertyResponse(ApiModel):
+    name: str
+    required: bool
+
+
+class ObjectTemplateMigrationAddedComponentResponse(ApiModel):
+    name: str
+    template_id: UUID
+
+
+class ObjectTemplateMigrationBlockingChangeResponse(ApiModel):
+    kind: str
+    name: str
+
+
+class ObjectTemplateMigrationAnalysisResponse(ApiModel):
+    template_id: UUID
+    source_version: int
+    target_version: int
+    automatic: bool
+    added_properties: list[ObjectTemplateMigrationAddedPropertyResponse]
+    added_components: list[ObjectTemplateMigrationAddedComponentResponse]
+    blocking_changes: list[ObjectTemplateMigrationBlockingChangeResponse]
+
+
+class MigrateObjectsResponse(ApiModel):
+    template_id: UUID
+    source_version: int
+    target_version: int
+    migrated_count: int

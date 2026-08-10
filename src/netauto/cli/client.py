@@ -145,6 +145,32 @@ class NetautoApiClient:
             f"/object-templates/{template_id}/versions/{version}/deprecate",
         )
 
+    def get_object_migration_analysis(
+        self,
+        template_id: str,
+        source_version: int,
+        target_version: int,
+    ) -> JSONObject:
+        return self._request_object(
+            "GET",
+            (
+                f"/object-templates/{template_id}/versions/{source_version}/migration-analysis"
+                f"?target_version={target_version}"
+            ),
+        )
+
+    def migrate_objects(
+        self,
+        template_id: str,
+        source_version: int,
+        payload: JSONObject,
+    ) -> JSONObject:
+        return self._request_object(
+            "POST",
+            f"/object-templates/{template_id}/versions/{source_version}/migrate-objects",
+            json_body=payload,
+        )
+
     def list_objects(self) -> JSONArray:
         return self._request_array("GET", "/objects")
 
