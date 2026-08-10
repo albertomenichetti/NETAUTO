@@ -250,6 +250,11 @@ satisfied either:
 Inherited definitions must not be copied or materialized into descendant
 templates. Inheritance is resolved dynamically and effectively.
 
+One declared definition therefore already covers all inheritance-compatible
+effective applications inside its source and target endpoint families. Users
+must not create another RelationshipDefinition merely to represent one of those
+inherited cases.
+
 The first M2 model is additive only:
 
 - no disabling inherited Relationships;
@@ -318,6 +323,91 @@ The preferred canonical duplicate comparison is orientation-normalized:
 - if either matches an existing definition's canonical semantics, reject it as
   duplicate.
 
+Inheritance makes the duplicate rule stricter than exact-endpoint equality.
+For one forward/reverse semantic pair, there must not be two
+`RelationshipDefinition` values whose effective source endpoint sets overlap
+and whose effective target endpoint sets also overlap.
+
+Conceptually, for:
+
+```text
+A USES B
+```
+
+the inherited applicability space is:
+
+```text
+Family(A) × Family(B)
+```
+
+where `Family(T)` means the template identity `T` plus identities that are
+inheritance-compatible with `T` through exact pinned ancestor/descendant
+behavior.
+
+Therefore, if:
+
+```text
+A USES B
+```
+
+already exists, and inheritance makes `A1`, `A2`, and `B1` compatible
+descendants, all of the following are semantically overlapping and must be
+rejected as duplicate definitions:
+
+```text
+A1 USES B
+A2 USES B
+A USES B1
+A1 USES B1
+A2 USES B1
+```
+
+The same protection must work in the opposite temporal direction. If:
+
+```text
+A1 USES B
+```
+
+already exists and `A1` is a descendant of `A`, then:
+
+```text
+A USES B
+```
+
+must also be rejected, because the two definitions would overlap once the
+ancestor/descendant applicability sets are considered together.
+
+The check must consider both endpoint families simultaneously. Only checking
+one endpoint family would miss cases such as:
+
+```text
+A1 USES B1
+```
+
+followed by:
+
+```text
+A USES B
+```
+
+when both sides overlap through inheritance.
+
+Equivalent inverse declarations are part of the same conflict space. Thus:
+
+```text
+B IS_USED_BY A1
+B1 IS_USED_BY A
+B1 IS_USED_BY A2
+```
+
+must be normalized back to the canonical semantics of:
+
+```text
+A USES B
+```
+
+before overlap is checked.
+
 Different semantics between the same endpoint identities may coexist:
 
 ```text
@@ -345,6 +435,32 @@ credential-01 IS_USED_BY router-01
 ```
 
 represent the same runtime edge.
+
+Because inheritance applicability depends on exact pinned
+`ObjectTemplateVersion` ancestry, future implementation must enforce this
+uniqueness invariant not only when a `RelationshipDefinition` is created, but
+also before publishing an `ObjectTemplateVersion` whose new parent ancestry
+would introduce overlap between existing definitions.
+
+Example:
+
+```text
+Router USES Credential
+NetworkDevice USES Credential
+```
+
+may be valid while `Router` is unrelated to `NetworkDevice`. If publishing:
+
+```text
+Router@2 extends NetworkDevice@3
+```
+
+would cause those two definitions to overlap through inheritance, publication
+must be rejected before that ancestry becomes effective.
+
+This safeguard must evaluate exact pinned ancestry rather than "latest"
+template versions so that historical usable version pins remain semantically
+correct.
 
 ## RelationshipDefinition Identity / Type
 
