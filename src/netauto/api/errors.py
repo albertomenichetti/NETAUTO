@@ -74,8 +74,10 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionNotFound,
 )
 from netauto.core.relationship import (
+    InvalidRelationship,
     InvalidRelationshipDefinition,
     InvalidRelationshipIdentifier,
+    RelationshipAlreadyExists,
     RelationshipDefinitionAlreadyExists,
     RelationshipDefinitionInUse,
     RelationshipDefinitionNotFound,
@@ -83,6 +85,9 @@ from netauto.core.relationship import (
     RelationshipDefinitionSemanticConflict,
     RelationshipDefinitionTemplateNotFound,
     RelationshipDefinitionTemplateNotPublished,
+    RelationshipEndpointIncompatible,
+    RelationshipNotFound,
+    RelationshipObjectNotFound,
     RelationshipPersistenceError,
 )
 
@@ -300,6 +305,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Object patch is invalid",
     ),
     (
+        InvalidRelationship,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_relationship",
+        "Relationship is invalid",
+    ),
+    (
         MissingObjectMigrationPropertyValue,
         HTTPStatus.UNPROCESSABLE_ENTITY,
         "missing_object_migration_property_value",
@@ -384,6 +395,18 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Object template version already exists",
     ),
     (
+        RelationshipNotFound,
+        HTTPStatus.NOT_FOUND,
+        "relationship_not_found",
+        "Relationship not found",
+    ),
+    (
+        RelationshipObjectNotFound,
+        HTTPStatus.NOT_FOUND,
+        "relationship_object_not_found",
+        "Relationship endpoint object not found",
+    ),
+    (
         RelationshipDefinitionNotFound,
         HTTPStatus.NOT_FOUND,
         "relationship_definition_not_found",
@@ -394,6 +417,18 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.NOT_FOUND,
         "relationship_definition_template_not_found",
         "Relationship definition template not found",
+    ),
+    (
+        RelationshipAlreadyExists,
+        HTTPStatus.CONFLICT,
+        "relationship_already_exists",
+        "Relationship already exists",
+    ),
+    (
+        RelationshipEndpointIncompatible,
+        HTTPStatus.CONFLICT,
+        "relationship_endpoint_incompatible",
+        "Relationship endpoint is incompatible",
     ),
     (
         RelationshipDefinitionAlreadyExists,

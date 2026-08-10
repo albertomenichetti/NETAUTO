@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from netauto.api.app import create_app
 from netauto.application.unit_of_work import ObjectUnitOfWork
+from netauto.core.object import Object
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateVersion,
@@ -87,6 +88,11 @@ class BrokenRelationshipRepository(InMemoryRelationshipRepository):
         raise RelationshipPersistenceError("boom")
 
 
+class BrokenRuntimeRelationshipRepository(InMemoryRelationshipRepository):
+    def list(self) -> tuple[Relationship, ...]:
+        raise RelationshipPersistenceError("boom")
+
+
 class BrokenRelationshipUnitOfWork(FakeUnitOfWork):
     def __init__(self) -> None:
         super().__init__(
@@ -140,12 +146,25 @@ class BrokenLifecycleUnitOfWork(FakeUnitOfWork):
         )
 
 
+class BrokenRuntimeUnitOfWork(FakeUnitOfWork):
+    def __init__(self) -> None:
+        super().__init__(
+            InMemoryDataTypeRepository(),
+            InMemoryObjectTemplateRepository(),
+            InMemoryObjectRepository(),
+            BrokenRuntimeRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            [0],
+        )
+
+
 @pytest.fixture
 def client_context() -> (
     Generator[
         tuple[
             TestClient,
             InMemoryObjectTemplateRepository,
+            InMemoryObjectRepository,
             InMemoryRelationshipDefinitionRepository,
             InMemoryRelationshipRepository,
             list[int],
@@ -172,7 +191,14 @@ def client_context() -> (
         )
 
     with TestClient(create_app(factory)) as client:
-        yield client, object_templates, relationship_definitions, relationships, commits
+        yield (
+            client,
+            object_templates,
+            objects,
+            relationship_definitions,
+            relationships,
+            commits,
+        )
 
 
 def _store_template(
@@ -192,6 +218,29 @@ def _store_template(
     repo.add(template)
     for version in versions:
         repo.add_version(version)
+    return template
+
+
+def _store_published_template(
+    repo: InMemoryObjectTemplateRepository,
+    *,
+    name: str,
+) -> ObjectTemplate:
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name=name,
+        description=f"{name} template",
+        abstract=False,
+    )
+    repo.add(template)
+    repo.add_version(
+        ObjectTemplateVersion(
+            template_id=template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+        )
+    )
     return template
 
 
@@ -240,16 +289,34 @@ def _relationship(
     )
 
 
+def _store_object(
+    repo: InMemoryObjectRepository,
+    *,
+    template_id: UUID,
+    template_version: int = 1,
+    object_id: UUID | None = None,
+) -> Object:
+    object_value = Object(
+        id=object_id or uuid4(),
+        template_id=template_id,
+        template_version=template_version,
+        properties={},
+    )
+    repo.add(object_value)
+    return object_value
+
+
 def test_create_list_show_and_delete_relationship_definition(
     client_context: tuple[
         TestClient,
         InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
         InMemoryRelationshipDefinitionRepository,
         InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, relationship_definitions, _relationships, commits = (
+    client, object_templates, _objects, relationship_definitions, _relationships, commits = (
         client_context
     )
     source = ObjectTemplate(
@@ -326,12 +393,13 @@ def test_request_validation_and_identifier_errors(
     client_context: tuple[
         TestClient,
         InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
         InMemoryRelationshipDefinitionRepository,
         InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, _relationship_definitions, _relationships, _commits = (
+    client, object_templates, _objects, _relationship_definitions, _relationships, _commits = (
         client_context
     )
     source = ObjectTemplate(
@@ -420,12 +488,13 @@ def test_not_found_not_published_and_semantic_conflict_mappings(
     client_context: tuple[
         TestClient,
         InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
         InMemoryRelationshipDefinitionRepository,
         InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, _relationship_definitions, _relationships, commits = (
+    client, object_templates, _objects, _relationship_definitions, _relationships, commits = (
         client_context
     )
     missing_source = client.post(
@@ -537,12 +606,13 @@ def test_inheritance_overlap_conflict_and_delete_missing(
     client_context: tuple[
         TestClient,
         InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
         InMemoryRelationshipDefinitionRepository,
         InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, _relationship_definitions, _relationships, commits = (
+    client, object_templates, _objects, _relationship_definitions, _relationships, commits = (
         client_context
     )
     source = ObjectTemplate(
@@ -624,12 +694,15 @@ def test_delete_in_use_relationship_definition_returns_conflict(
     client_context: tuple[
         TestClient,
         InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
         InMemoryRelationshipDefinitionRepository,
         InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, relationship_definitions, relationships, commits = client_context
+    client, object_templates, _objects, relationship_definitions, relationships, commits = (
+        client_context
+    )
     source = _store_template(
         object_templates,
         name="source",
@@ -690,3 +763,203 @@ def test_openapi_contains_relationship_definition_routes() -> None:
     assert "delete" in paths["/api/v1/relationship-definitions/{definition_id}"]
     assert "put" not in paths["/api/v1/relationship-definitions/{definition_id}"]
     assert "patch" not in paths["/api/v1/relationship-definitions/{definition_id}"]
+    assert "/api/v1/relationships" in paths
+    assert "/api/v1/relationships/{relationship_id}" in paths
+    assert "get" in paths["/api/v1/relationships"]
+    assert "post" in paths["/api/v1/relationships"]
+    assert "get" in paths["/api/v1/relationships/{relationship_id}"]
+    assert "delete" in paths["/api/v1/relationships/{relationship_id}"]
+    assert "put" not in paths["/api/v1/relationships/{relationship_id}"]
+    assert "patch" not in paths["/api/v1/relationships/{relationship_id}"]
+
+
+def test_runtime_relationship_list_create_show_and_delete(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, relationship_definitions, _relationships, commits = (
+        client_context
+    )
+    source = _store_published_template(object_templates, name="network_device")
+    target = _store_published_template(object_templates, name="credential")
+    definition = _definition(source_template_id=source.id, target_template_id=target.id)
+    relationship_definitions.add(definition)
+    source_object = _store_object(objects, template_id=source.id)
+    target_object = _store_object(objects, template_id=target.id)
+
+    empty = client.get("/api/v1/relationships")
+    created = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+        },
+    )
+
+    assert empty.status_code == 200
+    assert empty.json() == []
+    assert created.status_code == 201
+    created_payload = created.json()
+    relationship_id = created_payload["id"]
+    assert created_payload == {
+        "id": relationship_id,
+        "relationship_definition_id": str(definition.id),
+        "source_object_id": str(source_object.id),
+        "target_object_id": str(target_object.id),
+    }
+
+    listed = client.get("/api/v1/relationships")
+    shown = client.get(f"/api/v1/relationships/{relationship_id}")
+    deleted = client.delete(f"/api/v1/relationships/{relationship_id}")
+    missing = client.get(f"/api/v1/relationships/{relationship_id}")
+
+    assert listed.status_code == 200
+    assert listed.json() == [created_payload]
+    assert shown.status_code == 200
+    assert shown.json() == created_payload
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "relationship_not_found"
+    assert commits[0] == 2
+
+
+def test_runtime_relationship_request_validation_and_error_mappings(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, relationship_definitions, _relationships, commits = (
+        client_context
+    )
+    source = _store_published_template(object_templates, name="network_device")
+    target = _store_published_template(object_templates, name="credential")
+    definition = _definition(source_template_id=source.id, target_template_id=target.id)
+    relationship_definitions.add(definition)
+    source_object = _store_object(objects, template_id=source.id)
+    target_object = _store_object(objects, template_id=target.id)
+
+    invalid_path = client.get("/api/v1/relationships/not-a-uuid")
+    extra_field = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "extra": "nope",
+        },
+    )
+    malformed_definition = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": "not-a-uuid",
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+        },
+    )
+    malformed_source = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": "not-a-uuid",
+            "target_object_id": str(target_object.id),
+        },
+    )
+    malformed_target = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": "not-a-uuid",
+        },
+    )
+    missing_target = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(source_object.id),
+        },
+    )
+    missing_definition = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(uuid4()),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+        },
+    )
+    missing_object = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(uuid4()),
+            "target_object_id": str(target_object.id),
+        },
+    )
+    created = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+        },
+    )
+    duplicate = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+        },
+    )
+    incompatible = client.post(
+        "/api/v1/relationships",
+        json={
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(target_object.id),
+            "target_object_id": str(source_object.id),
+        },
+    )
+
+    assert invalid_path.status_code == 422
+    assert invalid_path.json()["error"]["code"] == "request_validation_failed"
+    assert extra_field.status_code == 422
+    assert extra_field.json()["error"]["code"] == "request_validation_failed"
+    assert malformed_definition.status_code == 422
+    assert malformed_definition.json()["error"]["code"] == "request_validation_failed"
+    assert malformed_source.status_code == 422
+    assert malformed_source.json()["error"]["code"] == "request_validation_failed"
+    assert malformed_target.status_code == 422
+    assert malformed_target.json()["error"]["code"] == "request_validation_failed"
+    assert missing_target.status_code == 422
+    assert missing_target.json()["error"]["code"] == "request_validation_failed"
+    assert missing_definition.status_code == 404
+    assert missing_definition.json()["error"]["code"] == "relationship_definition_not_found"
+    assert missing_object.status_code == 404
+    assert missing_object.json()["error"]["code"] == "relationship_object_not_found"
+    assert created.status_code == 201
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "relationship_already_exists"
+    assert incompatible.status_code == 409
+    assert incompatible.json()["error"]["code"] == "relationship_endpoint_incompatible"
+    assert commits[0] == 1
+
+
+def test_runtime_relationship_persistence_error_maps_to_500() -> None:
+    with TestClient(create_app(BrokenRuntimeUnitOfWork)) as client:
+        response = client.get("/api/v1/relationships")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "persistence_error"

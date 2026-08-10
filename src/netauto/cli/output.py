@@ -369,6 +369,60 @@ def render_relationship_definition_delete_result(
     return f"Deleted relationship definition {definition_id}"
 
 
+def render_relationship_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        relationship = _require_object(item)
+        rows.append(
+            (
+                _require_string(relationship, "id"),
+                _require_string(relationship, "relationship_definition_id"),
+                _require_string(relationship, "source_object_id"),
+                _require_string(relationship, "target_object_id"),
+            )
+        )
+    return _table(
+        ("ID", "RELATIONSHIP DEFINITION ID", "SOURCE OBJECT ID", "TARGET OBJECT ID"),
+        rows,
+    )
+
+
+def render_relationship(
+    payload: JSONObject,
+    mode: OutputMode,
+    *,
+    prefix: str | None = None,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    lines = []
+    if prefix is not None:
+        lines.append(prefix)
+    lines.extend(
+        [
+            f"ID: {_require_string(payload, 'id')}",
+            "Relationship Definition ID: "
+            f"{_require_string(payload, 'relationship_definition_id')}",
+            f"Source Object ID: {_require_string(payload, 'source_object_id')}",
+            f"Target Object ID: {_require_string(payload, 'target_object_id')}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_relationship_delete_result(
+    _payload: object,
+    mode: OutputMode,
+    *,
+    relationship_id: str,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(None)
+    return f"Deleted relationship {relationship_id}"
+
+
 def render_object_delete_result(
     _payload: object,
     mode: OutputMode,

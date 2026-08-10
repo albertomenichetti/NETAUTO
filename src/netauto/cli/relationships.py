@@ -1,4 +1,4 @@
-"""Typer commands for relationship definitions."""
+"""Typer commands for runtime relationships and relationship definitions."""
 
 from uuid import UUID
 
@@ -9,15 +9,52 @@ from netauto.cli.common import fail, run_action, uuid_text
 from netauto.cli.errors import CliError, InputError
 from netauto.cli.input import ensure_modes_are_exclusive, load_json_object
 from netauto.cli.output import (
+    render_relationship,
     render_relationship_definition,
     render_relationship_definition_delete_result,
     render_relationship_definition_list,
+    render_relationship_delete_result,
+    render_relationship_list,
 )
 
+relationship_app = typer.Typer(help="Manage runtime relationships.")
 relationship_definition_app = typer.Typer(help="Manage relationship definitions.")
 
 
-def _build_create_payload(
+def _build_runtime_create_payload(
+    *,
+    relationship_definition_id: UUID | None,
+    source_object_id: UUID | None,
+    target_object_id: UUID | None,
+    file: str | None,
+) -> JSONObject:
+    inline_present = any(
+        value is not None
+        for value in (
+            relationship_definition_id,
+            source_object_id,
+            target_object_id,
+        )
+    )
+    ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
+    if file is not None:
+        return load_json_object(file)
+    if None in (relationship_definition_id, source_object_id, target_object_id):
+        raise InputError(
+            "Inline create mode requires --relationship-definition-id, "
+            "--source-object-id, and --target-object-id."
+        )
+    assert relationship_definition_id is not None
+    assert source_object_id is not None
+    assert target_object_id is not None
+    return {
+        "relationship_definition_id": uuid_text(relationship_definition_id),
+        "source_object_id": uuid_text(source_object_id),
+        "target_object_id": uuid_text(target_object_id),
+    }
+
+
+def _build_definition_create_payload(
     *,
     source_template_id: UUID | None,
     target_template_id: UUID | None,
@@ -54,6 +91,68 @@ def _build_create_payload(
     }
 
 
+@relationship_app.command("list")
+def list_relationships(ctx: typer.Context) -> None:
+    run_action(
+        ctx,
+        lambda client: client.list_relationships(),
+        render_relationship_list,
+    )
+
+
+@relationship_app.command("show")
+def show_relationship(ctx: typer.Context, relationship_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.get_relationship(uuid_text(relationship_id)),
+        render_relationship,
+    )
+
+
+@relationship_app.command("create")
+def create_relationship(
+    ctx: typer.Context,
+    relationship_definition_id: UUID | None = typer.Option(
+        None,
+        "--relationship-definition-id",
+    ),
+    source_object_id: UUID | None = typer.Option(None, "--source-object-id"),
+    target_object_id: UUID | None = typer.Option(None, "--target-object-id"),
+    file: str | None = typer.Option(None, "--file"),
+) -> None:
+    try:
+        payload = _build_runtime_create_payload(
+            relationship_definition_id=relationship_definition_id,
+            source_object_id=source_object_id,
+            target_object_id=target_object_id,
+            file=file,
+        )
+    except CliError as error:
+        fail(ctx, error)
+    run_action(
+        ctx,
+        lambda client: client.create_relationship(payload),
+        lambda payload, mode: render_relationship(
+            payload,
+            mode,
+            prefix="Created relationship",
+        ),
+    )
+
+
+@relationship_app.command("delete")
+def delete_relationship(ctx: typer.Context, relationship_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.delete_relationship(uuid_text(relationship_id)),
+        lambda payload, mode: render_relationship_delete_result(
+            payload,
+            mode,
+            relationship_id=uuid_text(relationship_id),
+        ),
+    )
+
+
 @relationship_definition_app.command("list")
 def list_relationship_definitions(ctx: typer.Context) -> None:
     run_action(
@@ -82,7 +181,7 @@ def create_relationship_definition(
     file: str | None = typer.Option(None, "--file"),
 ) -> None:
     try:
-        payload = _build_create_payload(
+        payload = _build_definition_create_payload(
             source_template_id=source_template_id,
             target_template_id=target_template_id,
             forward_name=forward_name,

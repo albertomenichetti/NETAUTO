@@ -10,7 +10,10 @@ from netauto.api.routers.relationships import router as relationship_router
 from netauto.application.datatype import DataTypeApplicationService
 from netauto.application.object import ObjectApplicationService
 from netauto.application.objecttemplate import ObjectTemplateApplicationService
-from netauto.application.relationship import RelationshipDefinitionApplicationService
+from netauto.application.relationship import (
+    RelationshipApplicationService,
+    RelationshipDefinitionApplicationService,
+)
 from netauto.application.unit_of_work import ObjectUnitOfWorkFactory
 
 
@@ -22,6 +25,7 @@ def create_app(uow_factory: ObjectUnitOfWorkFactory) -> FastAPI:
     app.state.relationship_definition_service = RelationshipDefinitionApplicationService(
         uow_factory
     )
+    app.state.relationship_service = RelationshipApplicationService(uow_factory)
     register_exception_handlers(app)
     app.include_router(datatype_router, prefix="/api/v1")
     app.include_router(object_router, prefix="/api/v1")

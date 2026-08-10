@@ -157,6 +157,18 @@ class FakeClient:
     def delete_relationship_definition(self, definition_id: str) -> Any:
         return self._call("delete_relationship_definition", definition_id)
 
+    def list_relationships(self) -> Any:
+        return self._call("list_relationships")
+
+    def get_relationship(self, relationship_id: str) -> Any:
+        return self._call("get_relationship", relationship_id)
+
+    def create_relationship(self, payload: dict[str, object]) -> Any:
+        return self._call("create_relationship", payload)
+
+    def delete_relationship(self, relationship_id: str) -> Any:
+        return self._call("delete_relationship", relationship_id)
+
 
 def _patch_client(
     monkeypatch: pytest.MonkeyPatch,
@@ -290,6 +302,15 @@ def _relationship_definition_payload() -> dict[str, object]:
     }
 
 
+def _relationship_payload() -> dict[str, object]:
+    return {
+        "id": str(uuid4()),
+        "relationship_definition_id": str(uuid4()),
+        "source_object_id": str(uuid4()),
+        "target_object_id": str(uuid4()),
+    }
+
+
 def test_version_and_help() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -302,6 +323,7 @@ def test_version_and_help() -> None:
     assert runner.invoke(app, ["object", "component", "--help"]).exit_code == 0
     assert runner.invoke(app, ["object-template", "--help"]).exit_code == 0
     assert runner.invoke(app, ["object-template", "version", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["relationship", "--help"]).exit_code == 0
     assert runner.invoke(app, ["relationship-definition", "--help"]).exit_code == 0
 
 
@@ -1603,6 +1625,73 @@ def test_relationship_definition_commands(monkeypatch: pytest.MonkeyPatch) -> No
     ]
 
 
+def test_relationship_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    relationship = _relationship_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {
+            "list_relationships": [relationship],
+            "get_relationship": relationship,
+            "create_relationship": relationship,
+            "delete_relationship": None,
+        },
+        calls,
+    )
+    relationship_id = str(relationship["id"])
+
+    listed = runner.invoke(app, ["--output", "json", "relationship", "list"])
+    shown = runner.invoke(
+        app,
+        ["--output", "json", "relationship", "show", relationship_id],
+    )
+    created = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "relationship",
+            "create",
+            "--relationship-definition-id",
+            str(relationship["relationship_definition_id"]),
+            "--source-object-id",
+            str(relationship["source_object_id"]),
+            "--target-object-id",
+            str(relationship["target_object_id"]),
+        ],
+    )
+    deleted = runner.invoke(
+        app,
+        ["relationship", "delete", relationship_id],
+    )
+
+    assert listed.exit_code == 0
+    assert json.loads(listed.stdout) == [relationship]
+    assert shown.exit_code == 0
+    assert json.loads(shown.stdout) == relationship
+    assert created.exit_code == 0
+    assert json.loads(created.stdout) == relationship
+    assert deleted.exit_code == 0
+    assert f"Deleted relationship {relationship_id}" in deleted.stdout
+    assert calls == [
+        ("list_relationships", ()),
+        ("get_relationship", (relationship_id,)),
+        (
+            "create_relationship",
+            (
+                {
+                    "relationship_definition_id": str(
+                        relationship["relationship_definition_id"]
+                    ),
+                    "source_object_id": str(relationship["source_object_id"]),
+                    "target_object_id": str(relationship["target_object_id"]),
+                },
+            ),
+        ),
+        ("delete_relationship", (relationship_id,)),
+    ]
+
+
 def test_relationship_definition_create_file_and_local_input_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1641,6 +1730,45 @@ def test_relationship_definition_create_file_and_local_input_errors(
     assert mode_conflict.exit_code == 2
     assert missing_inline.exit_code == 2
     assert calls == [("create_relationship_definition", (payload,))]
+
+
+def test_relationship_create_file_and_local_input_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    relationship = _relationship_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"create_relationship": relationship}, calls)
+    payload = {
+        "relationship_definition_id": str(uuid4()),
+        "source_object_id": str(uuid4()),
+        "target_object_id": str(uuid4()),
+    }
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "relationship.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        file_result = runner.invoke(
+            app,
+            ["relationship", "create", "--file", str(path)],
+        )
+        mode_conflict = runner.invoke(
+            app,
+            [
+                "relationship",
+                "create",
+                "--file",
+                str(path),
+                "--source-object-id",
+                str(uuid4()),
+            ],
+        )
+
+    missing_inline = runner.invoke(app, ["relationship", "create"])
+
+    assert file_result.exit_code == 0
+    assert mode_conflict.exit_code == 2
+    assert missing_inline.exit_code == 2
+    assert calls == [("create_relationship", (payload,))]
 
 
 def test_object_semantic_api_error_flows_through_existing_cli_error_handling(
@@ -1725,6 +1853,43 @@ def test_relationship_definition_api_error_flows_through_existing_cli_error_hand
     )
 
 
+def test_relationship_api_error_flows_through_existing_cli_error_handling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"create_relationship": {}},
+        calls,
+        error=ApiError(
+            status_code=409,
+            code="relationship_endpoint_incompatible",
+            message="Relationship endpoint is incompatible",
+            details=[],
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "relationship",
+            "create",
+            "--relationship-definition-id",
+            str(uuid4()),
+            "--source-object-id",
+            str(uuid4()),
+            "--target-object-id",
+            str(uuid4()),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert json.loads(result.stderr)["error"]["code"] == "relationship_endpoint_incompatible"
+
+
 def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     assert runner.invoke(app, ["datatype", "show", "not-a-uuid"]).exit_code == 2
     assert runner.invoke(app, ["datatype", "version", "show", str(uuid4()), "0"]).exit_code == 2
@@ -1756,6 +1921,8 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     assert (
         runner.invoke(app, ["relationship-definition", "delete", "not-a-uuid"]).exit_code == 2
     )
+    assert runner.invoke(app, ["relationship", "show", "not-a-uuid"]).exit_code == 2
+    assert runner.invoke(app, ["relationship", "delete", "not-a-uuid"]).exit_code == 2
     assert (
         runner.invoke(
             app,
@@ -1964,6 +2131,21 @@ def test_object_human_rendering(
 @pytest.mark.parametrize(
     ("command", "payloads", "expected_text"),
     [
+        (
+            ["relationship", "list"],
+            {"list_relationships": [_relationship_payload()]},
+            "RELATIONSHIP DEFINITION ID",
+        ),
+        (
+            ["relationship", "show", str(_relationship_payload()["id"])],
+            {"get_relationship": _relationship_payload()},
+            "Relationship Definition ID:",
+        ),
+        (
+            ["relationship", "delete", str(_relationship_payload()["id"])],
+            {"delete_relationship": None},
+            "Deleted relationship",
+        ),
         (
             ["relationship-definition", "list"],
             {"list_relationship_definitions": [_relationship_definition_payload()]},

@@ -1,4 +1,4 @@
-"""Pydantic DTOs for relationship definition REST endpoints."""
+"""Pydantic DTOs for relationship definition and runtime relationship REST endpoints."""
 
 from uuid import UUID
 
@@ -20,3 +20,16 @@ class RelationshipDefinitionResponse(ApiModel):
     target_template_id: UUID
     forward_name: str
     reverse_name: str
+
+
+class CreateRelationshipRequest(ApiModel):
+    relationship_definition_id: UUID
+    source_object_id: UUID
+    target_object_id: UUID
+
+
+class RelationshipResponse(ApiModel):
+    id: UUID
+    relationship_definition_id: UUID
+    source_object_id: UUID
+    target_object_id: UUID
