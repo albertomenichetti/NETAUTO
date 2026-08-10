@@ -6,6 +6,7 @@ import typer
 
 from netauto.cli.common import CliContext
 from netauto.cli.datatypes import datatype_app
+from netauto.cli.objects import object_app
 from netauto.cli.objecttemplates import object_template_app
 from netauto.cli.output import OutputMode
 
@@ -13,6 +14,7 @@ DEFAULT_API_URL = "http://127.0.0.1:8000"
 
 app = typer.Typer(help="NETAUTO CLI")
 app.add_typer(datatype_app, name="datatype")
+app.add_typer(object_app, name="object")
 app.add_typer(object_template_app, name="object-template")
 
 

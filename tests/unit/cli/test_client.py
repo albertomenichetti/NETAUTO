@@ -214,6 +214,137 @@ def test_object_template_client_returns_arrays_and_objects() -> None:
         assert client.get_object_template("abc") == {"id": "x"}
 
 
+def test_object_client_builds_correct_urls_and_bodies() -> None:
+    seen: list[tuple[str, str, object]] = []
+    object_payload = {
+        "id": "object-1",
+        "template_id": "template-1",
+        "template_version": 2,
+        "properties": {"hostname": "router-01"},
+    }
+    membership_payload = {
+        "parent_object_id": "parent-1",
+        "slot_name": "interfaces",
+        "component_object_id": "child-1",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        seen.append((request.method, str(request.url), json.loads(body) if body else None))
+        if request.method == "GET" and (
+            request.url.path.endswith("/objects")
+            or request.url.path.endswith("/components")
+        ):
+            if request.url.path.endswith("/components"):
+                return _response(200, [membership_payload])
+            return _response(200, [object_payload])
+        if request.method == "DELETE" and request.url.path.endswith("/objects/object-1"):
+            return httpx.Response(204)
+        if request.url.path.endswith("/components/child-1"):
+            return _response(200, membership_payload)
+        return _response(200, object_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000/",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        client.list_objects()
+        client.get_object("object-1")
+        client.create_object(
+            {
+                "template_id": "template-1",
+                "template_version": 2,
+                "properties": {"hostname": "router-01", "enabled": True},
+            }
+        )
+        client.update_object(
+            "object-1",
+            {
+                "properties": {"hostname": "router-02"},
+                "remove_properties": ["serial"],
+            },
+        )
+        client.delete_object("object-1")
+        client.list_object_components("parent-1")
+        client.attach_object_component(
+            "parent-1",
+            {
+                "slot_name": "interfaces",
+                "component_object_id": "child-1",
+            },
+        )
+        client.detach_object_component("child-1")
+
+    assert seen == [
+        ("GET", "http://127.0.0.1:8000/api/v1/objects", None),
+        ("GET", "http://127.0.0.1:8000/api/v1/objects/object-1", None),
+        (
+            "POST",
+            "http://127.0.0.1:8000/api/v1/objects",
+            {
+                "template_id": "template-1",
+                "template_version": 2,
+                "properties": {"hostname": "router-01", "enabled": True},
+            },
+        ),
+        (
+            "PATCH",
+            "http://127.0.0.1:8000/api/v1/objects/object-1",
+            {
+                "properties": {"hostname": "router-02"},
+                "remove_properties": ["serial"],
+            },
+        ),
+        ("DELETE", "http://127.0.0.1:8000/api/v1/objects/object-1", None),
+        ("GET", "http://127.0.0.1:8000/api/v1/objects/parent-1/components", None),
+        (
+            "POST",
+            "http://127.0.0.1:8000/api/v1/objects/parent-1/components",
+            {
+                "slot_name": "interfaces",
+                "component_object_id": "child-1",
+            },
+        ),
+        ("DELETE", "http://127.0.0.1:8000/api/v1/objects/components/child-1", None),
+    ]
+
+
+def test_object_client_returns_objects_arrays_and_empty_delete() -> None:
+    object_payload = {
+        "id": "object-1",
+        "template_id": "template-1",
+        "template_version": 2,
+        "properties": {},
+    }
+    membership_payload = {
+        "parent_object_id": "parent-1",
+        "slot_name": "interfaces",
+        "component_object_id": "child-1",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/objects"):
+            return _response(200, [object_payload])
+        if path.endswith("/components"):
+            return _response(200, [membership_payload])
+        if path.endswith("/objects/object-1"):
+            if request.method == "DELETE":
+                return httpx.Response(204)
+            return _response(200, object_payload)
+        return _response(200, membership_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.list_objects() == [object_payload]
+        assert client.get_object("object-1") == object_payload
+        assert client.list_object_components("parent-1") == [membership_payload]
+        assert client.detach_object_component("child-1") == membership_payload
+        assert client.delete_object("object-1") is None
+
+
 @pytest.mark.parametrize("status_code", [404, 409, 422, 500])
 def test_client_raises_api_error_for_valid_netauto_error(status_code: int) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:

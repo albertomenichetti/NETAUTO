@@ -235,6 +235,97 @@ def render_object_template_version(
     return "\n".join(lines)
 
 
+def render_object_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        object_value = _require_object(item)
+        properties = _require_object(object_value.get("properties"))
+        rows.append(
+            (
+                _require_string(object_value, "id"),
+                _require_string(object_value, "template_id"),
+                str(_require_int(object_value, "template_version")),
+                str(len(properties)),
+            )
+        )
+    return _table(("ID", "TEMPLATE ID", "TEMPLATE VERSION", "PROPERTIES"), rows)
+
+
+def render_object(payload: JSONObject, mode: OutputMode, *, prefix: str | None = None) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    properties = _require_object(payload.get("properties"))
+    lines = []
+    if prefix is not None:
+        lines.append(prefix)
+    lines.extend(
+        [
+            f"ID: {_require_string(payload, 'id')}",
+            f"Template ID: {_require_string(payload, 'template_id')}",
+            f"Template Version: {_require_int(payload, 'template_version')}",
+            "Properties:",
+        ]
+    )
+    if not properties:
+        lines.append("  (none)")
+    else:
+        for name, value in properties.items():
+            if not isinstance(name, str):
+                raise ProtocolError("Server returned an incompatible response.")
+            lines.append(f"  - {name}: {json.dumps(value, ensure_ascii=False)}")
+    return "\n".join(lines)
+
+
+def render_component_membership_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        membership = _require_object(item)
+        rows.append(
+            (
+                _require_string(membership, "parent_object_id"),
+                _require_string(membership, "slot_name"),
+                _require_string(membership, "component_object_id"),
+            )
+        )
+    return _table(("PARENT OBJECT ID", "SLOT", "COMPONENT OBJECT ID"), rows)
+
+
+def render_component_membership(
+    payload: JSONObject,
+    mode: OutputMode,
+    *,
+    prefix: str | None = None,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    lines = []
+    if prefix is not None:
+        lines.append(prefix)
+    lines.extend(
+        [
+            f"Parent Object ID: {_require_string(payload, 'parent_object_id')}",
+            f"Slot Name: {_require_string(payload, 'slot_name')}",
+            f"Component Object ID: {_require_string(payload, 'component_object_id')}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_object_delete_result(
+    _payload: object,
+    mode: OutputMode,
+    *,
+    object_id: str,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(None)
+    return f"Deleted object {object_id}"
+
+
 def _error_payload(error: CliError) -> JSONObject:
     if isinstance(error, ApiError):
         return {

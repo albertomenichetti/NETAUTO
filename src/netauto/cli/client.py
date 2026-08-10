@@ -145,6 +145,30 @@ class NetautoApiClient:
             f"/object-templates/{template_id}/versions/{version}/deprecate",
         )
 
+    def list_objects(self) -> JSONArray:
+        return self._request_array("GET", "/objects")
+
+    def get_object(self, object_id: str) -> JSONObject:
+        return self._request_object("GET", f"/objects/{object_id}")
+
+    def create_object(self, payload: JSONObject) -> JSONObject:
+        return self._request_object("POST", "/objects", json_body=payload)
+
+    def update_object(self, object_id: str, payload: JSONObject) -> JSONObject:
+        return self._request_object("PATCH", f"/objects/{object_id}", json_body=payload)
+
+    def delete_object(self, object_id: str) -> None:
+        self._request_empty("DELETE", f"/objects/{object_id}")
+
+    def list_object_components(self, object_id: str) -> JSONArray:
+        return self._request_array("GET", f"/objects/{object_id}/components")
+
+    def attach_object_component(self, object_id: str, payload: JSONObject) -> JSONObject:
+        return self._request_object("POST", f"/objects/{object_id}/components", json_body=payload)
+
+    def detach_object_component(self, component_object_id: str) -> JSONObject:
+        return self._request_object("DELETE", f"/objects/components/{component_object_id}")
+
     def _request_object(
         self,
         method: str,
@@ -168,6 +192,28 @@ class NetautoApiClient:
         if not isinstance(payload, list):
             raise ProtocolError("Server returned an incompatible response.")
         return payload
+
+    def _request_empty(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: JSONObject | None = None,
+    ) -> None:
+        try:
+            response = self._client.request(method, path, json=json_body)
+        except httpx.InvalidURL as error:
+            raise InputError("API URL is invalid.") from error
+        except httpx.RequestError as error:
+            raise TransportError("Could not connect to NETAUTO API.") from error
+
+        if 200 <= response.status_code < 300:
+            return
+
+        payload = _decode_json(response)
+        if not isinstance(payload, dict):
+            raise ProtocolError("Server returned an incompatible response.")
+        raise _parse_error_envelope(payload, response.status_code)
 
     def _request_json(
         self,
