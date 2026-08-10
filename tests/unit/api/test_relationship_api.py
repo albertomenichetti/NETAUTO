@@ -18,6 +18,7 @@ from netauto.core.relationship import (
     Relationship,
     RelationshipDefinition,
     RelationshipDefinitionPersistenceError,
+    RelationshipPersistenceError,
 )
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
@@ -80,6 +81,12 @@ class BrokenRelationshipDefinitionRepository(InMemoryRelationshipDefinitionRepos
         raise RelationshipDefinitionPersistenceError("boom")
 
 
+class BrokenRelationshipRepository(InMemoryRelationshipRepository):
+    def list_by_definition(self, relationship_definition_id: UUID) -> tuple[Relationship, ...]:
+        del relationship_definition_id
+        raise RelationshipPersistenceError("boom")
+
+
 class BrokenRelationshipUnitOfWork(FakeUnitOfWork):
     def __init__(self) -> None:
         super().__init__(
@@ -88,6 +95,47 @@ class BrokenRelationshipUnitOfWork(FakeUnitOfWork):
             InMemoryObjectRepository(),
             InMemoryRelationshipRepository(),
             BrokenRelationshipDefinitionRepository(),
+            [0],
+        )
+
+
+class BrokenLifecycleUnitOfWork(FakeUnitOfWork):
+    definition_id = UUID("00000000-0000-0000-0000-000000000001")
+
+    def __init__(self) -> None:
+        source = ObjectTemplate(
+            id=uuid4(),
+            namespace="network",
+            name="source",
+            description="source template",
+            abstract=False,
+        )
+        target = ObjectTemplate(
+            id=uuid4(),
+            namespace="network",
+            name="target",
+            description="target template",
+            abstract=False,
+        )
+        object_templates = InMemoryObjectTemplateRepository()
+        object_templates.add(source)
+        object_templates.add(target)
+        relationship_definitions = InMemoryRelationshipDefinitionRepository()
+        relationship_definitions.add(
+            RelationshipDefinition(
+                id=self.definition_id,
+                source_template_id=source.id,
+                target_template_id=target.id,
+                forward_name="uses",
+                reverse_name="is_used_by",
+            )
+        )
+        super().__init__(
+            InMemoryDataTypeRepository(),
+            object_templates,
+            InMemoryObjectRepository(),
+            BrokenRelationshipRepository(),
+            relationship_definitions,
             [0],
         )
 
@@ -613,6 +661,16 @@ def test_delete_in_use_relationship_definition_returns_conflict(
 def test_relationship_definition_persistence_error_mapping() -> None:
     with TestClient(create_app(BrokenRelationshipUnitOfWork)) as client:
         response = client.get("/api/v1/relationship-definitions")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "persistence_error"
+
+
+def test_relationship_definition_delete_relationship_persistence_error_maps_to_500() -> None:
+    with TestClient(create_app(BrokenLifecycleUnitOfWork)) as client:
+        response = client.delete(
+            f"/api/v1/relationship-definitions/{BrokenLifecycleUnitOfWork.definition_id}"
+        )
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "persistence_error"

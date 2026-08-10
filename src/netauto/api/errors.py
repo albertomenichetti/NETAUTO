@@ -83,6 +83,7 @@ from netauto.core.relationship import (
     RelationshipDefinitionSemanticConflict,
     RelationshipDefinitionTemplateNotFound,
     RelationshipDefinitionTemplateNotPublished,
+    RelationshipPersistenceError,
 )
 
 
@@ -528,6 +529,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
     ),
     (
         RelationshipDefinitionPersistenceError,
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "persistence_error",
+        "Persistence operation failed",
+    ),
+    (
+        RelationshipPersistenceError,
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "persistence_error",
         "Persistence operation failed",

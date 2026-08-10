@@ -25,6 +25,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )
+from netauto.core.relationship import RelationshipPersistenceError
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
@@ -86,6 +87,12 @@ class BrokenObjectRepository(InMemoryObjectRepository):
         raise ObjectPersistenceError("boom")
 
 
+class BrokenRelationshipRepository(InMemoryRelationshipRepository):
+    def list_incident_to_objects(self, object_ids: object) -> tuple[object, ...]:
+        del object_ids
+        raise RelationshipPersistenceError("boom")
+
+
 class BrokenObjectUnitOfWork(FakeUnitOfWork):
     def __init__(self) -> None:
         super().__init__(
@@ -93,6 +100,29 @@ class BrokenObjectUnitOfWork(FakeUnitOfWork):
             InMemoryObjectTemplateRepository(),
             BrokenObjectRepository(),
             InMemoryRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            [0],
+        )
+
+
+class BrokenLifecycleUnitOfWork(FakeUnitOfWork):
+    object_id = UUID("00000000-0000-0000-0000-000000000001")
+
+    def __init__(self) -> None:
+        objects = InMemoryObjectRepository()
+        objects.add(
+            Object(
+                id=self.object_id,
+                template_id=uuid4(),
+                template_version=1,
+                properties={},
+            )
+        )
+        super().__init__(
+            InMemoryDataTypeRepository(),
+            InMemoryObjectTemplateRepository(),
+            objects,
+            BrokenRelationshipRepository(),
             InMemoryRelationshipDefinitionRepository(),
             [0],
         )
@@ -886,6 +916,17 @@ def test_object_persistence_error_maps_to_500() -> None:
 
     with TestClient(create_app(factory)) as client:
         response = client.get("/api/v1/objects")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "persistence_error"
+
+
+def test_object_delete_relationship_persistence_error_maps_to_500() -> None:
+    def factory() -> BrokenLifecycleUnitOfWork:
+        return BrokenLifecycleUnitOfWork()
+
+    with TestClient(create_app(factory)) as client:
+        response = client.delete(f"/api/v1/objects/{BrokenLifecycleUnitOfWork.object_id}")
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "persistence_error"

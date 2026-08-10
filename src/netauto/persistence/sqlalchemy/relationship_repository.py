@@ -107,7 +107,12 @@ class SqlAlchemyRelationshipDefinitionRepository(RelationshipDefinitionRepositor
         if row is None:
             raise RelationshipDefinitionNotFound("RelationshipDefinition does not exist.")
         self._session.delete(row)
-        self._session.flush()
+        try:
+            self._session.flush()
+        except Exception as error:
+            raise RelationshipDefinitionPersistenceError(
+                "RelationshipDefinition could not be deleted."
+            ) from error
 
 
 class SqlAlchemyRelationshipRepository(RelationshipRepository):
