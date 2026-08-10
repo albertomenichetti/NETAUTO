@@ -15,7 +15,7 @@ from netauto.api.schemas.objects import (
     UpdateObjectRequest,
 )
 from netauto.application.object import ObjectApplicationService
-from netauto.core.object import ComponentMembership, ComponentMembershipNotFound, Object
+from netauto.core.object import ComponentMembership, Object
 
 router = APIRouter(prefix="/objects", tags=["objects"])
 
@@ -128,18 +128,13 @@ def attach_component(
 
 
 @router.delete(
-    "/{object_id}/components/{component_object_id}",
+    "/components/{component_object_id}",
     response_model=ComponentMembershipResponse,
     responses=ERROR_RESPONSES,
 )
 def detach_component(
-    object_id: UUID,
     component_object_id: UUID,
     service: Annotated[ObjectApplicationService, Depends(get_object_service)],
 ) -> ComponentMembershipResponse:
-    owner = service.get_owner(component_object_id)
-    if owner is None or owner.parent_object_id != object_id:
-        raise ComponentMembershipNotFound("Component membership does not exist.")
-
     membership = service.detach_component(component_object_id)
     return _to_membership_response(membership)

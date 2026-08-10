@@ -201,7 +201,7 @@ def test_attach_list_and_detach_component_successfully(
         json={"slot_name": "interfaces", "component_object_id": str(child.id)},
     )
     listed = client.get(f"/api/v1/objects/{parent.id}/components")
-    detached = client.delete(f"/api/v1/objects/{parent.id}/components/{child.id}")
+    detached = client.delete(f"/api/v1/objects/components/{child.id}")
     child_after = client.get(f"/api/v1/objects/{child.id}")
     listed_after = client.get(f"/api/v1/objects/{parent.id}/components")
 
@@ -253,7 +253,7 @@ def test_detach_preserves_detached_component_subtree(
         json={"slot_name": "children", "component_object_id": str(grandchild.id)},
     )
     commits[0] = 0
-    detached = client.delete(f"/api/v1/objects/{parent.id}/components/{child.id}")
+    detached = client.delete(f"/api/v1/objects/components/{child.id}")
     child_after = client.get(f"/api/v1/objects/{child.id}")
     grandchild_after = client.get(f"/api/v1/objects/{grandchild.id}")
     child_components = client.get(f"/api/v1/objects/{child.id}/components")
@@ -410,7 +410,7 @@ def test_attach_incompatible_duplicate_and_cycle_errors_flow_through_mapping(
     assert commits[0] == 3
 
 
-def test_detach_missing_membership_and_parent_mismatch_use_existing_mapping(
+def test_detach_missing_membership_uses_existing_mapping(
     client_context: tuple[
         TestClient,
         InMemoryDataTypeRepository,
@@ -421,18 +421,16 @@ def test_detach_missing_membership_and_parent_mismatch_use_existing_mapping(
 ) -> None:
     client, _datatypes, templates, objects, commits = client_context
     node, _node_v1 = _store_template(templates, name="node")
-    parent = _object(objects, template_id=node.id, template_version=1)
-    other_parent = _object(objects, template_id=node.id, template_version=1)
+    _parent = _object(objects, template_id=node.id, template_version=1)
     child = _object(objects, template_id=node.id, template_version=1)
-    objects.add_membership(ComponentMembership(parent.id, "children", child.id))
 
-    missing_membership = client.delete(f"/api/v1/objects/{parent.id}/components/{uuid4()}")
-    wrong_parent = client.delete(f"/api/v1/objects/{other_parent.id}/components/{child.id}")
+    missing_membership = client.delete(f"/api/v1/objects/components/{uuid4()}")
+    missing_child = client.delete(f"/api/v1/objects/components/{child.id}")
 
     assert missing_membership.status_code == 404
     assert missing_membership.json()["error"]["code"] == "object_not_found"
-    assert wrong_parent.status_code == 404
-    assert wrong_parent.json()["error"]["code"] == "component_membership_not_found"
+    assert missing_child.status_code == 404
+    assert missing_child.json()["error"]["code"] == "component_membership_not_found"
     assert commits[0] == 0
 
 
@@ -474,7 +472,7 @@ def test_request_validation_remains_separate_for_composition_endpoints(
         ),
         (
             "delete",
-            f"/api/v1/objects/{uuid4()}/components/not-a-uuid",
+            "/api/v1/objects/components/not-a-uuid",
             None,
             "/path/component_object_id",
         ),
@@ -521,6 +519,6 @@ def test_openapi_contains_object_composition_routes_and_schemas(
     assert response.status_code == 200
     payload = response.json()
     assert "/api/v1/objects/{object_id}/components" in payload["paths"]
-    assert "/api/v1/objects/{object_id}/components/{component_object_id}" in payload["paths"]
+    assert "/api/v1/objects/components/{component_object_id}" in payload["paths"]
     assert "AttachObjectComponentRequest" in payload["components"]["schemas"]
     assert "ComponentMembershipResponse" in payload["components"]["schemas"]
