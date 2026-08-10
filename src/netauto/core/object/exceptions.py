@@ -58,3 +58,15 @@ class ObjectValidationFailed(Exception):
 
 class InvalidObjectPatch(Exception):
     """Raised when an object patch request is internally inconsistent."""
+
+
+class ObjectComponentSlotNotFound(Exception):
+    """Raised when a requested component slot is not declared by the parent template."""
+
+
+class ObjectComponentTemplateIncompatible(Exception):
+    """Raised when a child object's pinned template is incompatible with a slot target."""
+
+
+class ComponentOwnershipCycle(Exception):
+    """Raised when a structural ownership change would create an ownership cycle."""
