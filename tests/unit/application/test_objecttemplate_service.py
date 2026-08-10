@@ -35,6 +35,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateParentNotPublished,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
+    ObjectTemplateVersioningService,
     ObjectTemplateVersionNotFound,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
@@ -825,6 +826,96 @@ def test_omitted_version_chooses_highest_published_ignoring_newer_draft_and_depr
     )
 
     assert version.properties[0].datatype_version == 2
+
+
+def test_create_next_accepts_deprecated_source_and_commits_once() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    v1_published = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=parent,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+                required=True,
+            ),
+        ),
+        components=(
+            ObjectTemplateComponent(name="interfaces", template_id=uuid4()),
+        ),
+    )
+    versioning = ObjectTemplateVersioningService()
+    v2_draft = versioning.create_next_version(
+        v1_published,
+        existing_versions=(v1_published,),
+    )
+    v2_published = ObjectTemplateVersion(
+        template_id=v2_draft.template_id,
+        version=v2_draft.version,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=v2_draft.parent,
+        properties=v2_draft.properties,
+        components=v2_draft.components,
+    )
+    v1_deprecated = versioning.deprecate(v1_published)
+    v2_deprecated = versioning.deprecate(v2_published)
+    _store_object_template_versions(object_templates, template, (v1_deprecated, v2_deprecated))
+
+    next_version = service.create_next_version(template_id=template.id, source_version=2)
+
+    assert next_version.version == 3
+    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
+    assert next_version.parent == v2_deprecated.parent
+    assert next_version.properties == v2_deprecated.properties
+    assert next_version.components == v2_deprecated.components
+    assert object_templates.get_version(template.id, 2) == v2_deprecated
+    assert commits[0] == 1
+
+
+def test_create_next_from_draft_source_raises_without_commit() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=None,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+                required=False,
+            ),
+        ),
+    )
+    _store_object_template_versions(object_templates, template, (draft,))
+
+    with pytest.raises(InvalidObjectTemplateVersionTransition):
+        service.create_next_version(template_id=template.id, source_version=1)
+
+    assert commits[0] == 0
 
 
 def test_omitted_component_version_with_identity_but_no_published_version_rejected() -> None:

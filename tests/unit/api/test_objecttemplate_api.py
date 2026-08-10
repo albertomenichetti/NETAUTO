@@ -1395,6 +1395,86 @@ def test_create_next_returns_201_and_preserves_snapshot(
     assert payload["components"] == []
 
 
+def test_create_next_accepts_deprecated_source(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent = _create_published_parent_template(
+        client,
+        datatype_id=datatype.id,
+        name="base_deprecated",
+    )
+    created = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        parent={"template_id": parent["object_template"]["id"], "version": 1},
+        properties=[{"name": "serial", "datatype_id": str(datatype.id), "required": False}],
+        name="device_deprecated_source",
+    )
+    template_id = created["object_template"]["id"]
+
+    assert (
+        client.post(f"/api/v1/object-templates/{template_id}/versions/1/publish").status_code
+        == 200
+    )
+    created_v2 = client.post(
+        f"/api/v1/object-templates/{template_id}/versions",
+        json={"source_version": 1},
+    )
+    assert created_v2.status_code == 201
+    assert (
+        client.post(f"/api/v1/object-templates/{template_id}/versions/2/publish").status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/object-templates/{template_id}/versions/1/deprecate"
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/object-templates/{template_id}/versions/2/deprecate"
+        ).status_code
+        == 200
+    )
+
+    next_version = client.post(
+        f"/api/v1/object-templates/{template_id}/versions",
+        json={"source_version": 2},
+    )
+    versions = client.get(f"/api/v1/object-templates/{template_id}/versions")
+
+    assert next_version.status_code == 201
+    payload = next_version.json()
+    assert payload["version"] == 3
+    assert payload["status"] == "draft"
+    assert payload["parent"] == {
+        "template_id": parent["object_template"]["id"],
+        "version": 1,
+    }
+    assert payload["properties"] == [
+        {
+            "name": "serial",
+            "datatype_id": str(datatype.id),
+            "datatype_version": 1,
+            "required": False,
+        }
+    ]
+    assert payload["components"] == []
+    assert [(item["version"], item["status"]) for item in versions.json()] == [
+        (1, "deprecated"),
+        (2, "deprecated"),
+        (3, "draft"),
+    ]
+
+
 def test_create_next_does_not_upgrade_component_pins(
     client_context: tuple[
         TestClient,

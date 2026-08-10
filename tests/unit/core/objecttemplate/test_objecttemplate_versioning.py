@@ -282,6 +282,183 @@ def test_revise_draft_supports_generator_properties_with_downgrade_guard() -> No
     assert tuple(prop.datatype_version for prop in revised.properties) == (4, 1)
 
 
+def test_create_next_version_creates_v2_draft_from_published_source() -> None:
+    service = ObjectTemplateVersioningService()
+    template_id = uuid4()
+    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
+    source = _version(
+        template_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=parent,
+        properties=(_property("hostname"),),
+        components=(_component("interfaces"),),
+    )
+
+    next_version = service.create_next_version(source, existing_versions=(source,))
+
+    assert next_version.template_id == source.template_id
+    assert next_version.version == 2
+    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
+    assert next_version.parent == source.parent
+    assert next_version.properties == source.properties
+    assert next_version.components == source.components
+    assert source.version == 1
+    assert source.status is ObjectTemplateVersionStatus.PUBLISHED
+
+
+def test_create_next_version_creates_draft_from_deprecated_source_without_mutating_source() -> None:
+    service = ObjectTemplateVersioningService()
+    template_id = uuid4()
+    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
+    published = _version(
+        template_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=parent,
+        properties=(_property("hostname"),),
+        components=(_component("interfaces"),),
+    )
+    deprecated = service.deprecate(published)
+
+    next_version = service.create_next_version(
+        deprecated,
+        existing_versions=(published, deprecated),
+    )
+
+    assert next_version.template_id == deprecated.template_id
+    assert next_version.version == 2
+    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
+    assert next_version.parent == deprecated.parent
+    assert next_version.properties == deprecated.properties
+    assert next_version.components == deprecated.components
+    assert deprecated.version == 1
+    assert deprecated.status is ObjectTemplateVersionStatus.DEPRECATED
+    assert deprecated.parent == parent
+    assert deprecated.properties == published.properties
+    assert deprecated.components == published.components
+
+
+def test_create_next_version_uses_monotonic_max_existing_plus_one() -> None:
+    service = ObjectTemplateVersioningService()
+    template_id = uuid4()
+    source = _version(
+        template_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(_property("hostname"),),
+        components=(_component("interfaces"),),
+    )
+    existing_versions = (
+        source,
+        _version(
+            template_id,
+            2,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=source.properties,
+            components=source.components,
+        ),
+        _version(
+            template_id,
+            5,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+            properties=source.properties,
+            components=source.components,
+        ),
+    )
+
+    next_version = service.create_next_version(source, existing_versions=existing_versions)
+
+    assert next_version.version == 6
+
+
+def test_create_next_version_from_deprecated_source_uses_max_existing_plus_one() -> None:
+    service = ObjectTemplateVersioningService()
+    template_id = uuid4()
+    source = _version(
+        template_id,
+        1,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=3),
+        properties=(_property("hostname"),),
+        components=(_component("interfaces"),),
+    )
+    existing_versions = (
+        source,
+        _version(
+            template_id,
+            3,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+            parent=source.parent,
+            properties=source.properties,
+            components=source.components,
+        ),
+    )
+
+    next_version = service.create_next_version(source, existing_versions=existing_versions)
+
+    assert next_version.version == 4
+    assert next_version.parent == source.parent
+    assert next_version.properties == source.properties
+    assert next_version.components == source.components
+
+
+def test_create_next_version_supports_generator_existing_versions() -> None:
+    service = ObjectTemplateVersioningService()
+    template_id = uuid4()
+    v1 = _version(
+        template_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(_property("hostname"),),
+        components=(_component("interfaces"),),
+    )
+    v2 = _version(
+        template_id,
+        2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=v1.properties,
+        components=v1.components,
+    )
+    v5 = _version(
+        template_id,
+        5,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        properties=v1.properties,
+        components=v1.components,
+    )
+
+    next_version = service.create_next_version(
+        v1,
+        existing_versions=(version for version in (v1, v2, v5)),
+    )
+
+    assert next_version.version == 6
+    assert next_version.status is ObjectTemplateVersionStatus.DRAFT
+
+
+@pytest.mark.parametrize("status", [ObjectTemplateVersionStatus.DRAFT])
+def test_create_next_version_rejects_draft_source(status: ObjectTemplateVersionStatus) -> None:
+    service = ObjectTemplateVersioningService()
+    source = _version(uuid4(), 1, status=status)
+
+    with pytest.raises(InvalidObjectTemplateVersionTransition):
+        service.create_next_version(source, existing_versions=(source,))
+
+
+def test_create_next_version_rejects_mismatched_template_ids() -> None:
+    service = ObjectTemplateVersioningService()
+    source = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    other = _version(
+        uuid4(),
+        2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+    )
+
+    with pytest.raises(MismatchedObjectTemplateVersion):
+        service.create_next_version(source, existing_versions=(source, other))
+
+
 @pytest.mark.parametrize(
     "status",
     [ObjectTemplateVersionStatus.PUBLISHED, ObjectTemplateVersionStatus.DEPRECATED],

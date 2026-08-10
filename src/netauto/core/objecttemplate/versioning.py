@@ -74,9 +74,12 @@ class ObjectTemplateVersioningService:
         *,
         existing_versions: Iterable[ObjectTemplateVersion],
     ) -> ObjectTemplateVersion:
-        if source.status is not ObjectTemplateVersionStatus.PUBLISHED:
+        if source.status not in (
+            ObjectTemplateVersionStatus.PUBLISHED,
+            ObjectTemplateVersionStatus.DEPRECATED,
+        ):
             raise InvalidObjectTemplateVersionTransition(
-                "Only published versions may be used to create the next version."
+                "Only published or deprecated versions may be used to create the next version."
             )
 
         versions = tuple(existing_versions)
