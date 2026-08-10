@@ -561,6 +561,133 @@ def test_is_same_or_descendant_has_no_latest_or_fallback_behavior() -> None:
     assert result is False
 
 
+def test_is_same_or_descendant_template_returns_true_for_same_template_different_version() -> None:
+    template_id = uuid4()
+    candidate = _version(template_id, 2)
+
+    result = ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+        candidate,
+        required_template_id=template_id,
+        parent_lookup=lambda _: pytest.fail("parent_lookup should not be called"),
+    )
+
+    assert result is True
+
+
+def test_is_same_or_descendant_template_returns_true_for_direct_descendant() -> None:
+    required_id = uuid4()
+    direct_descendant_id = uuid4()
+    required = _version(required_id, 1)
+    candidate = _version(
+        direct_descendant_id,
+        3,
+        parent=ObjectTemplateVersionRef(template_id=required_id, version=1),
+    )
+    lookups: list[tuple[UUID, int]] = []
+    versions = {(required_id, 1): required}
+
+    result = ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+        candidate,
+        required_template_id=required_id,
+        parent_lookup=lambda ref: lookups.append((ref.template_id, ref.version))
+        or versions.get((ref.template_id, ref.version)),
+    )
+
+    assert result is True
+    assert lookups == [(required_id, 1)]
+
+
+def test_is_same_or_descendant_template_returns_true_for_multi_level_descendant() -> None:
+    required_id = uuid4()
+    parent_id = uuid4()
+    required = _version(required_id, 1)
+    parent = _version(
+        parent_id,
+        2,
+        parent=ObjectTemplateVersionRef(template_id=required_id, version=1),
+    )
+    candidate = _version(
+        uuid4(),
+        4,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=2),
+    )
+    versions = {
+        (required_id, 1): required,
+        (parent_id, 2): parent,
+    }
+
+    result = ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+        candidate,
+        required_template_id=required_id,
+        parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
+    )
+
+    assert result is True
+
+
+def test_is_same_or_descendant_template_returns_false_for_unrelated_candidate() -> None:
+    candidate = _version(uuid4(), 1)
+
+    result = ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+        candidate,
+        required_template_id=uuid4(),
+        parent_lookup=lambda _: None,
+    )
+
+    assert result is False
+
+
+def test_is_same_or_descendant_template_preserves_broken_ancestry_failures() -> None:
+    missing_parent_candidate = _version(
+        uuid4(),
+        1,
+        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=1),
+    )
+    with pytest.raises(ObjectTemplateParentNotFound):
+        ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+            missing_parent_candidate,
+            required_template_id=uuid4(),
+            parent_lookup=lambda _: None,
+        )
+
+    self_template_id = uuid4()
+    self_candidate = _version(
+        self_template_id,
+        2,
+        parent=ObjectTemplateVersionRef(template_id=self_template_id, version=1),
+    )
+    with pytest.raises(ObjectTemplateSelfInheritance):
+        ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+            self_candidate,
+            required_template_id=uuid4(),
+            parent_lookup=lambda _: pytest.fail("parent_lookup should not be called"),
+        )
+
+    first_id = uuid4()
+    second_id = uuid4()
+    first = _version(
+        first_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=second_id, version=1),
+    )
+    second = _version(
+        second_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=first_id, version=1),
+    )
+    versions = {
+        (first_id, 1): first,
+        (second_id, 1): second,
+    }
+
+    with pytest.raises(ObjectTemplateInheritanceCycle):
+        ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+            first,
+            required_template_id=uuid4(),
+            parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
+        )
+
+
 def test_effective_component_order_is_ancestor_first_and_preserves_local_order() -> None:
     grandparent_id = uuid4()
     parent_id = uuid4()

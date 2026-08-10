@@ -61,6 +61,20 @@ class ObjectTemplateInheritanceResolver:
             visited=set(),
         )
 
+    def is_same_or_descendant_template(
+        self,
+        candidate: ObjectTemplateVersion,
+        *,
+        required_template_id: UUID,
+        parent_lookup: ObjectTemplateVersionLookup,
+    ) -> bool:
+        return self._is_same_or_descendant_template(
+            candidate,
+            required_template_id=required_template_id,
+            parent_lookup=parent_lookup,
+            visited=set(),
+        )
+
     def _resolve_effective_properties(
         self,
         version: ObjectTemplateVersion,
@@ -133,6 +147,41 @@ class ObjectTemplateInheritanceResolver:
         return self._is_same_or_descendant(
             parent_version,
             required=required,
+            parent_lookup=parent_lookup,
+            visited=visited | {identity},
+        )
+
+    def _is_same_or_descendant_template(
+        self,
+        version: ObjectTemplateVersion,
+        *,
+        required_template_id: UUID,
+        parent_lookup: ObjectTemplateVersionLookup,
+        visited: set[tuple[UUID, int]],
+    ) -> bool:
+        identity = (version.template_id, version.version)
+        if version.template_id == required_template_id:
+            return True
+        if identity in visited:
+            raise ObjectTemplateInheritanceCycle(
+                "Object template inheritance cycle detected."
+            )
+        if version.parent is None:
+            return False
+        if version.parent.template_id == version.template_id:
+            raise ObjectTemplateSelfInheritance(
+                "Object template version cannot inherit from another version of the same "
+                "template."
+            )
+
+        parent_version = parent_lookup(version.parent)
+        if parent_version is None:
+            raise ObjectTemplateParentNotFound(
+                "Referenced parent object template version was not found."
+            )
+        return self._is_same_or_descendant_template(
+            parent_version,
+            required_template_id=required_template_id,
             parent_lookup=parent_lookup,
             visited=visited | {identity},
         )
