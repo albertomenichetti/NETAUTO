@@ -42,6 +42,9 @@ from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepos
 from netauto.persistence.memory.objecttemplate_repository import (
     InMemoryObjectTemplateRepository,
 )
+from netauto.persistence.memory.relationship_repository import (
+    InMemoryRelationshipDefinitionRepository,
+)
 
 
 class TrackingObjectTemplateRepository(InMemoryObjectTemplateRepository):
@@ -64,10 +67,12 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
         self,
         datatypes: InMemoryDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
+        relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
+        self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
     @property
@@ -77,6 +82,10 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
     @property
     def object_templates(self) -> TrackingObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
+        return self._relationship_definitions
 
     def __enter__(self) -> FakeUnitOfWork:
         return self
@@ -96,10 +105,16 @@ def _service() -> tuple[
 ]:
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(datatypes, object_templates, commit_counter)
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            relationship_definitions,
+            commit_counter,
+        )
 
     return (
         ObjectTemplateApplicationService(factory),

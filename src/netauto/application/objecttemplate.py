@@ -4,7 +4,10 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from netauto.application.unit_of_work import ObjectTemplateUnitOfWorkFactory
+from netauto.application.unit_of_work import (
+    ObjectTemplateUnitOfWork,
+    ObjectTemplateUnitOfWorkFactory,
+)
 from netauto.core.datatype import DataType, DataTypeVersion, DataTypeVersionStatus
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -20,6 +23,10 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionNotFound,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
+)
+from netauto.core.relationship import (
+    RelationshipDefinitionConflictSnapshot,
+    ensure_relationship_definition_set_has_no_conflicts,
 )
 
 
@@ -306,6 +313,14 @@ class ObjectTemplateApplicationService:
                 ),
                 template_versions_lister=uow.object_templates.list_versions,
             )
+            prospective_snapshot = self._build_relationship_conflict_snapshot(
+                uow,
+                prospective_published=published,
+            )
+            ensure_relationship_definition_set_has_no_conflicts(
+                uow.relationship_definitions.list(),
+                snapshot=prospective_snapshot,
+            )
             uow.object_templates.replace_version(published)
             uow.commit()
             return published
@@ -322,3 +337,37 @@ class ObjectTemplateApplicationService:
             uow.object_templates.replace_version(deprecated)
             uow.commit()
             return deprecated
+
+    def _build_relationship_conflict_snapshot(
+        self,
+        uow: ObjectTemplateUnitOfWork,
+        *,
+        prospective_published: ObjectTemplateVersion,
+    ) -> RelationshipDefinitionConflictSnapshot:
+        all_versions = tuple(
+            version
+            for template in uow.object_templates.list()
+            for version in uow.object_templates.list_versions(template.id)
+        )
+        replaced_versions = tuple(
+            prospective_published
+            if (
+                version.template_id == prospective_published.template_id
+                and version.version == prospective_published.version
+            )
+            else version
+            for version in all_versions
+        )
+        usable_versions = tuple(
+            version
+            for version in replaced_versions
+            if version.status
+            in (
+                ObjectTemplateVersionStatus.PUBLISHED,
+                ObjectTemplateVersionStatus.DEPRECATED,
+            )
+        )
+        return RelationshipDefinitionConflictSnapshot(
+            all_versions=replaced_versions,
+            usable_versions=usable_versions,
+        )

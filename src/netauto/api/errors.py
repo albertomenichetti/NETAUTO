@@ -73,6 +73,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionAlreadyExists,
     ObjectTemplateVersionNotFound,
 )
+from netauto.core.relationship import RelationshipDefinitionSemanticConflict
 
 
 def _response(
@@ -370,6 +371,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "object_template_version_already_exists",
         "Object template version already exists",
+    ),
+    (
+        RelationshipDefinitionSemanticConflict,
+        HTTPStatus.CONFLICT,
+        "relationship_definition_semantic_conflict",
+        "Relationship definition conflicts semantically with an existing definition",
     ),
     (
         InvalidObjectTemplateVersionTransition,

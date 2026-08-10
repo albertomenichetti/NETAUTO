@@ -16,10 +16,20 @@ from netauto.core.datatype import (
     DataTypeVersion,
     DataTypeVersioningService,
 )
-from netauto.core.objecttemplate import ObjectTemplate, ObjectTemplatePersistenceError
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplatePersistenceError,
+    ObjectTemplateVersion,
+    ObjectTemplateVersionRef,
+    ObjectTemplateVersionStatus,
+)
+from netauto.core.relationship import RelationshipDefinition
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
+from netauto.persistence.memory.relationship_repository import (
+    InMemoryRelationshipDefinitionRepository,
+)
 
 
 class FakeUnitOfWork(ObjectUnitOfWork):
@@ -28,11 +38,13 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
         objects: InMemoryObjectRepository,
+        relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
     @property
@@ -42,6 +54,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def object_templates(self) -> InMemoryObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
+        return self._relationship_definitions
 
     @property
     def objects(self) -> InMemoryObjectRepository:
@@ -73,6 +89,7 @@ class BrokenObjectTemplateUnitOfWork(FakeUnitOfWork):
             BrokenDataTypeRepository(),
             BrokenObjectTemplateRepository(),
             InMemoryObjectRepository(),
+            InMemoryRelationshipDefinitionRepository(),
             [0],
         )
 
@@ -93,10 +110,17 @@ def client_context() -> (
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(datatypes, object_templates, objects, commits)
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            objects,
+            relationship_definitions,
+            commits,
+        )
 
     with TestClient(create_app(factory)) as client:
         yield client, datatypes, object_templates, commits
@@ -297,6 +321,22 @@ def _component_request(
         "name": name,
         "template_id": template_id,
     }
+
+
+def _relationship_definition(
+    *,
+    source_template_id: UUID,
+    target_template_id: UUID,
+    forward_name: str = "uses",
+    reverse_name: str = "is_used_by",
+) -> RelationshipDefinition:
+    return RelationshipDefinition(
+        id=uuid4(),
+        source_template_id=source_template_id,
+        target_template_id=target_template_id,
+        forward_name=forward_name,
+        reverse_name=reverse_name,
+    )
 
 
 @pytest.mark.parametrize(
@@ -816,6 +856,102 @@ def test_create_component_reference_error_mapping(
     assert response.status_code == expected_status
     assert response.json()["error"]["code"] == expected_code
     assert commits[0] == before
+
+
+def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_keeps_draft() -> None:
+    datatypes = InMemoryDataTypeRepository()
+    object_templates = InMemoryObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
+    commits = [0]
+
+    def factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            objects,
+            relationship_definitions,
+            commits,
+        )
+
+    network_device = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_device",
+        description="network_device template",
+        abstract=False,
+    )
+    router = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description="router template",
+        abstract=False,
+    )
+    credential = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="credential",
+        description="credential template",
+        abstract=False,
+    )
+    object_templates.add(network_device)
+    object_templates.add(router)
+    object_templates.add(credential)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=network_device.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+        )
+    )
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+        )
+    )
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+        )
+    )
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=credential.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+        )
+    )
+    relationship_definitions.add(
+        _relationship_definition(
+            source_template_id=network_device.id,
+            target_template_id=credential.id,
+        )
+    )
+    relationship_definitions.add(
+        _relationship_definition(
+            source_template_id=router.id,
+            target_template_id=credential.id,
+        )
+    )
+
+    with TestClient(create_app(factory)) as client:
+        response = client.post(f"/api/v1/object-templates/{router.id}/versions/2/publish")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "relationship_definition_semantic_conflict"
+    assert commits[0] == 0
+    assert object_templates.get_version(router.id, 2) == ObjectTemplateVersion(
+        template_id=router.id,
+        version=2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+    )
 
 
 @pytest.mark.parametrize("route", ["create", "revise"])

@@ -19,6 +19,9 @@ from netauto.core.objecttemplate import (
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
+from netauto.persistence.memory.relationship_repository import (
+    InMemoryRelationshipDefinitionRepository,
+)
 
 
 class FakeUnitOfWork(ObjectUnitOfWork):
@@ -27,11 +30,13 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
         objects: InMemoryObjectRepository,
+        relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
     @property
@@ -41,6 +46,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def object_templates(self) -> InMemoryObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
+        return self._relationship_definitions
 
     @property
     def objects(self) -> InMemoryObjectRepository:
@@ -80,6 +89,7 @@ class BrokenObjectUnitOfWork(FakeUnitOfWork):
             InMemoryDataTypeRepository(),
             InMemoryObjectTemplateRepository(),
             objects,
+            InMemoryRelationshipDefinitionRepository(),
             [0],
         )
 
@@ -101,10 +111,17 @@ def client_context() -> (
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(datatypes, object_templates, objects, commits)
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            objects,
+            relationship_definitions,
+            commits,
+        )
 
     with TestClient(create_app(factory)) as client:
         yield client, datatypes, object_templates, objects, commits
