@@ -63,10 +63,10 @@ def _component(
     template_id: UUID | None = None,
     template_version: int = 1,
 ) -> ObjectTemplateComponent:
+    del template_version
     return ObjectTemplateComponent(
         name=name,
         template_id=template_id or uuid4(),
-        template_version=template_version,
     )
 
 
@@ -86,6 +86,24 @@ def _version(
         parent=parent,
         properties=properties,
         components=components,
+    )
+
+
+def _publish(
+    service: ObjectTemplateVersioningService,
+    version: ObjectTemplateVersion,
+    *,
+    parent_lookup,
+    datatype_lookup,
+    template_versions: dict[UUID, tuple[ObjectTemplateVersion, ...]] | None = None,
+) -> ObjectTemplateVersion:
+    component_versions = template_versions or {}
+    return service.publish(
+        version,
+        parent_lookup=parent_lookup,
+        datatype_lookup=datatype_lookup,
+        template_exists=lambda template_id: template_id in component_versions,
+        template_versions_lister=lambda template_id: component_versions.get(template_id, ()),
     )
 
 
@@ -158,12 +176,14 @@ def test_publish_valid_root_template() -> None:
     }
     template_versions = {(component_target_id, 1): component_target}
 
-    published = service.publish(
+    published = _publish(
+        service,
         draft,
         parent_lookup=lambda ref: template_versions.get((ref.template_id, ref.version)),
         datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(
             (datatype_uuid, version)
         ),
+        template_versions={component_target_id: (component_target,)},
     )
 
     assert published.template_id == draft.template_id
@@ -229,12 +249,17 @@ def test_publish_valid_inherited_template() -> None:
         ),
     }
 
-    published = service.publish(
+    published = _publish(
+        service,
         child,
         parent_lookup=lambda ref: parent_versions.get((ref.template_id, ref.version)),
         datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(
             (datatype_uuid, version)
         ),
+        template_versions={
+            inherited_component_target_id: (inherited_component_target,),
+            local_component_target_id: (local_component_target,),
+        },
     )
 
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
@@ -253,7 +278,8 @@ def test_publish_missing_parent() -> None:
     )
 
     with pytest.raises(ObjectTemplateParentNotFound):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda _: None,
             datatype_lookup=lambda _datatype_uuid, _version: None,
@@ -285,7 +311,8 @@ def test_publish_parent_not_published() -> None:
     }
 
     with pytest.raises(ObjectTemplateParentNotPublished):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda _ref: parent,
             datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(
@@ -313,7 +340,8 @@ def test_publish_inheritance_conflict_behavior_is_preserved() -> None:
     )
 
     with pytest.raises(InheritedObjectTemplatePropertyConflict):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda _ref: parent,
             datatype_lookup=lambda _datatype_uuid, _version: _datatype_version(
@@ -344,13 +372,15 @@ def test_publish_component_inheritance_conflict_behavior_is_preserved() -> None:
     )
 
     with pytest.raises(InheritedObjectTemplateComponentConflict):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda ref: {  # noqa: ARG005
                 (parent_id, 1): parent,
                 (target_id, 1): target,
             }.get((ref.template_id, ref.version)),
             datatype_lookup=lambda _datatype_uuid, _version: None,
+            template_versions={target_id: (target,)},
         )
 
 
@@ -379,7 +409,8 @@ def test_publish_inheritance_cycle_behavior_is_preserved() -> None:
     }
 
     with pytest.raises(ObjectTemplateInheritanceCycle):
-        service.publish(
+        _publish(
+            service,
             first,
             parent_lookup=lambda ref: parents.get((ref.template_id, ref.version)),
             datatype_lookup=lambda _datatype_uuid, _version: _datatype_version(
@@ -401,7 +432,8 @@ def test_publish_self_inheritance_behavior_is_preserved() -> None:
     )
 
     with pytest.raises(ObjectTemplateSelfInheritance):
-        service.publish(
+        _publish(
+            service,
             version,
             parent_lookup=lambda _: pytest.fail("parent_lookup should not be called"),
             datatype_lookup=lambda _datatype_uuid, _version: None,
@@ -418,7 +450,8 @@ def test_publish_missing_datatype_version() -> None:
     )
 
     with pytest.raises(ObjectTemplateDataTypeVersionNotFound):
-        service.publish(
+        _publish(
+            service,
             draft,
             parent_lookup=lambda _: None,
             datatype_lookup=lambda _datatype_uuid, _version: None,
@@ -443,7 +476,8 @@ def test_publish_rejects_non_published_datatype_versions(
     datatype_version = _datatype_version(datatype_id, 1, status=status)
 
     with pytest.raises(ObjectTemplateDataTypeVersionNotPublished):
-        service.publish(
+        _publish(
+            service,
             draft,
             parent_lookup=lambda _: None,
             datatype_lookup=lambda _datatype_uuid, _version: datatype_version,
@@ -482,7 +516,8 @@ def test_publish_checks_inherited_properties_datatypes_too() -> None:
     }
 
     with pytest.raises(ObjectTemplateDataTypeVersionNotPublished):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda _ref: parent,
             datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(
@@ -500,16 +535,14 @@ def test_publish_missing_component_target_version() -> None:
         status=ObjectTemplateVersionStatus.DRAFT,
         components=(_component("interfaces", template_id=target_id),),
     )
-    seen_refs: list[tuple[UUID, int]] = []
-
     with pytest.raises(ObjectTemplateComponentVersionNotFound):
-        service.publish(
+        _publish(
+            service,
             draft,
-            parent_lookup=lambda ref: seen_refs.append((ref.template_id, ref.version)) or None,
+            parent_lookup=lambda _ref: None,
             datatype_lookup=lambda _datatype_uuid, _version: None,
+            template_versions={},
         )
-
-    assert seen_refs == [(target_id, 1)]
 
 
 @pytest.mark.parametrize(
@@ -530,10 +563,12 @@ def test_publish_rejects_non_published_component_target_versions(
     )
 
     with pytest.raises(ObjectTemplateComponentVersionNotPublished):
-        service.publish(
+        _publish(
+            service,
             draft,
             parent_lookup=lambda _ref: target,
             datatype_lookup=lambda _datatype_uuid, _version: None,
+            template_versions={target_id: (target,)},
         )
 
 
@@ -562,10 +597,12 @@ def test_publish_checks_inherited_components_too() -> None:
     )
 
     with pytest.raises(ObjectTemplateComponentVersionNotFound):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
             datatype_lookup=lambda _datatype_uuid, _version: None,
+            template_versions={local_target_id: (local_target,)},
         )
 
 
@@ -602,14 +639,19 @@ def test_publish_rejects_non_published_inherited_component_target_versions(
     )
 
     with pytest.raises(ObjectTemplateComponentVersionNotPublished):
-        service.publish(
+        _publish(
+            service,
             child,
             parent_lookup=lambda ref: versions.get((ref.template_id, ref.version)),
             datatype_lookup=lambda _datatype_uuid, _version: None,
+            template_versions={
+                inherited_target_id: (inherited_target,),
+                local_target_id: (local_target,),
+            },
         )
 
 
-def test_create_next_version_clones_exact_component_refs() -> None:
+def test_create_next_version_clones_component_identity_refs() -> None:
     service = ObjectTemplateVersioningService()
     component = _component("interfaces", template_id=uuid4(), template_version=3)
     source = _version(
@@ -639,10 +681,12 @@ def test_publish_preserves_local_components() -> None:
         components=(component,),
     )
 
-    published = service.publish(
+    published = _publish(
+        service,
         draft,
         parent_lookup=lambda ref: {(target_id, 1): target}.get((ref.template_id, ref.version)),
         datatype_lookup=lambda _datatype_uuid, _version: None,
+        template_versions={target_id: (target,)},
     )
 
     assert published.components == (component,)
@@ -715,7 +759,8 @@ def test_ordinary_template_without_components_still_publishes() -> None:
         )
     }
 
-    published = service.publish(
+    published = _publish(
+        service,
         draft,
         parent_lookup=lambda _: None,
         datatype_lookup=lambda datatype_uuid, version: datatype_versions.get(

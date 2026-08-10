@@ -67,10 +67,10 @@ def _component(
     template_id: UUID | None = None,
     template_version: int = 1,
 ) -> ObjectTemplateComponent:
+    del template_version
     return ObjectTemplateComponent(
         name=name,
         template_id=template_id or uuid4(),
-        template_version=template_version,
     )
 
 
@@ -378,9 +378,7 @@ def test_multiple_ordered_components_round_trip_and_order_preserved(tmp_path: Pa
             "modules",
         )
         assert loaded.components[0].template_id == first_target
-        assert loaded.components[0].template_version == 2
         assert loaded.components[1].template_id == second_target
-        assert loaded.components[1].template_version == 5
     finally:
         session.close()
         engine.dispose()
@@ -721,7 +719,6 @@ def test_component_entry_non_object_produces_persistence_error(tmp_path: Path) -
 @pytest.mark.parametrize(
     "payload",
     [
-        [{"name": "interfaces", "template_id": str(uuid4())}],
         [
             {
                 "name": "interfaces",
@@ -762,7 +759,7 @@ def test_component_shape_errors_produce_persistence_error(
 def test_component_malformed_uuid_produces_persistence_error(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "component_bad_uuid.sqlite3")
     template = _template()
-    payload = [{"name": "interfaces", "template_id": "not-a-uuid", "template_version": 1}]
+    payload = [{"name": "interfaces", "template_id": "not-a-uuid"}]
     try:
         repo.add(template)
         session.add(
@@ -784,20 +781,13 @@ def test_component_malformed_uuid_produces_persistence_error(tmp_path: Path) -> 
         engine.dispose()
 
 
-@pytest.mark.parametrize("template_version", [True, 0, -1, 1.5, "1"])
-def test_component_invalid_template_version_produces_persistence_error(
+def test_legacy_component_entry_with_template_version_is_accepted_and_ignored(
     tmp_path: Path,
-    template_version: object,
 ) -> None:
-    repo, session, engine = _repo(tmp_path, "component_bad_version.sqlite3")
+    repo, session, engine = _repo(tmp_path, "component_legacy_version.sqlite3")
     template = _template()
-    payload = [
-        {
-            "name": "interfaces",
-            "template_id": str(uuid4()),
-            "template_version": template_version,
-        }
-    ]
+    target_id = uuid4()
+    payload = [{"name": "interfaces", "template_id": str(target_id), "template_version": 7}]
     try:
         repo.add(template)
         session.add(
@@ -812,8 +802,14 @@ def test_component_invalid_template_version_produces_persistence_error(
             )
         )
         session.flush()
-        with pytest.raises(ObjectTemplatePersistenceError):
-            repo.get_version(template.id, 1)
+        loaded = repo.get_version(template.id, 1)
+        assert loaded is not None
+        assert loaded.components == (
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=target_id,
+            ),
+        )
     finally:
         session.close()
         engine.dispose()

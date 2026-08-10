@@ -292,52 +292,16 @@ def _component_request(
     template_id: str,
     *,
     name: str = "interfaces",
-    template_version: object = None,
 ) -> dict[str, object]:
-    request: dict[str, object] = {
+    return {
         "name": name,
         "template_id": template_id,
     }
-    if template_version is not None:
-        request["template_version"] = template_version
-    return request
 
 
 @pytest.mark.parametrize(
     ("component", "path"),
     [
-        (
-            {
-                "name": "interfaces",
-                "template_id": str(uuid4()),
-                "template_version": True,
-            },
-            "/body/components/0/template_version",
-        ),
-        (
-            {
-                "name": "interfaces",
-                "template_id": str(uuid4()),
-                "template_version": 0,
-            },
-            "/body/components/0/template_version",
-        ),
-        (
-            {
-                "name": "interfaces",
-                "template_id": str(uuid4()),
-                "template_version": -1,
-            },
-            "/body/components/0/template_version",
-        ),
-        (
-            {
-                "name": "interfaces",
-                "template_id": str(uuid4()),
-                "template_version": "1",
-            },
-            "/body/components/0/template_version",
-        ),
         (
             {
                 "name": "interfaces",
@@ -680,7 +644,7 @@ def test_create_accepts_explicit_published_component_target_version(
     payload = _create_object_template(
         client,
         properties=[],
-        components=[_component_request(target["object_template"]["id"], template_version=1)],
+        components=[_component_request(target["object_template"]["id"])],
         name="network_device",
     )
 
@@ -688,12 +652,11 @@ def test_create_accepts_explicit_published_component_target_version(
         {
             "name": "interfaces",
             "template_id": target["object_template"]["id"],
-            "template_version": 1,
         }
     ]
 
 
-def test_create_with_omitted_component_version_resolves_highest_published(
+def test_create_component_target_identity_is_not_rewritten_by_newer_versions(
     client_context: tuple[
         TestClient,
         InMemoryDataTypeRepository,
@@ -715,7 +678,12 @@ def test_create_with_omitted_component_version_resolves_highest_published(
         name="network_device",
     )
 
-    assert payload["version"]["components"][0]["template_version"] == 2
+    assert payload["version"]["components"] == [
+        {
+            "name": "interfaces",
+            "template_id": target["object_template"]["id"],
+        }
+    ]
 
 
 def test_create_accepts_abstract_component_target_and_coexists_with_properties(
@@ -747,7 +715,6 @@ def test_create_accepts_abstract_component_target_and_coexists_with_properties(
     assert payload["version"]["components"][0] == {
         "name": "interfaces",
         "template_id": target["object_template"]["id"],
-        "template_version": 1,
     }
 
 
@@ -808,13 +775,11 @@ def test_create_invalid_or_non_published_datatype_reference_mapping(
     [
         (
             "missing",
-            _component_request(str(uuid4()), template_version=1),
+            _component_request(str(uuid4())),
             404,
             "object_template_component_version_not_found",
         ),
         ("unpublished_identity", None, 409, "object_template_component_version_not_published"),
-        ("draft_version", None, 409, "object_template_component_version_not_published"),
-        ("deprecated_version", None, 409, "object_template_component_version_not_published"),
     ],
 )
 def test_create_component_reference_error_mapping(
@@ -834,24 +799,6 @@ def test_create_component_reference_error_mapping(
     if setup == "unpublished_identity":
         target = _create_component_target(client, name="network_interface")
         component = _component_request(target["object_template"]["id"])
-    elif setup == "draft_version":
-        target = _create_published_component_target_versions(client, name="network_interface")
-        draft = client.post(
-            f"/api/v1/object-templates/{target['object_template']['id']}/versions",
-            json={"source_version": 1},
-        )
-        assert draft.status_code == 201
-        component = _component_request(target["object_template"]["id"], template_version=2)
-    elif setup == "deprecated_version":
-        target = _create_published_component_target_versions(client, name="network_interface")
-        next_version = client.post(
-            f"/api/v1/object-templates/{target['object_template']['id']}/versions",
-            json={"source_version": 1},
-        )
-        assert next_version.status_code == 201
-        _publish_object_template_version(client, target["object_template"]["id"], 2)
-        _deprecate_object_template_version(client, target["object_template"]["id"], 2)
-        component = _component_request(target["object_template"]["id"], template_version=2)
 
     before = commits[0]
     response = client.post(
@@ -997,7 +944,6 @@ def test_read_version_responses_return_local_components_only(
         {
             "name": "routing_engines",
             "template_id": child_target["object_template"]["id"],
-            "template_version": 1,
         }
     ]
     assert listed.status_code == 200
@@ -1087,7 +1033,6 @@ def test_revise_components_add_replace_and_clear_local_snapshot(
         {
             "name": "interfaces",
             "template_id": first_target["object_template"]["id"],
-            "template_version": 2,
         }
     ]
     assert replaced.status_code == 200
@@ -1095,7 +1040,6 @@ def test_revise_components_add_replace_and_clear_local_snapshot(
         {
             "name": "modules",
             "template_id": second_target["object_template"]["id"],
-            "template_version": 1,
         }
     ]
     assert cleared.status_code == 200
@@ -1203,7 +1147,7 @@ def test_create_next_does_not_upgrade_component_pins(
     created = _create_object_template(
         client,
         properties=[],
-        components=[_component_request(target["object_template"]["id"], template_version=1)],
+        components=[_component_request(target["object_template"]["id"])],
         name="network_device",
     )
     _publish_object_template_version(client, created["object_template"]["id"])
@@ -1225,7 +1169,6 @@ def test_create_next_does_not_upgrade_component_pins(
         {
             "name": "interfaces",
             "template_id": target["object_template"]["id"],
-            "template_version": 1,
         }
     ]
 
@@ -1340,7 +1283,7 @@ def test_publish_component_not_published_mapping(
     created = _create_object_template(
         client,
         properties=[],
-        components=[_component_request(target["object_template"]["id"], template_version=1)],
+        components=[_component_request(target["object_template"]["id"])],
         name="network_device",
     )
     _deprecate_object_template_version(client, target["object_template"]["id"], 1)
@@ -1351,6 +1294,36 @@ def test_publish_component_not_published_mapping(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "object_template_component_version_not_published"
+
+
+def test_publish_component_target_identity_with_another_published_version_still_succeeds(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, _datatypes, _object_templates, _commits = client_context
+    target = _create_published_component_target_versions(
+        client,
+        name="network_interface",
+        published_versions=2,
+    )
+    created = _create_object_template(
+        client,
+        properties=[],
+        components=[_component_request(target["object_template"]["id"])],
+        name="network_device",
+    )
+    _deprecate_object_template_version(client, target["object_template"]["id"], 1)
+
+    response = client.post(
+        f"/api/v1/object-templates/{created['object_template']['id']}/versions/1/publish"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "published"
 
 
 def test_publish_inheritance_conflict_mapping(
@@ -1483,11 +1456,5 @@ def test_openapi_includes_object_template_and_datatype_endpoints_and_schemas(
     assert "ObjectTemplateVersionResponse" in payload["components"]["schemas"]
     component_request = payload["components"]["schemas"]["ObjectTemplateComponentRequest"]
     component_response = payload["components"]["schemas"]["ObjectTemplateComponentResponse"]
-    assert component_request["properties"]["template_version"]["anyOf"] == [
-        {"minimum": 1, "type": "integer"},
-        {"type": "null"},
-    ]
-    assert component_response["properties"]["template_version"] == {
-        "title": "Template Version",
-        "type": "integer",
-    }
+    assert set(component_request["properties"]) == {"name", "template_id"}
+    assert set(component_response["properties"]) == {"name", "template_id"}

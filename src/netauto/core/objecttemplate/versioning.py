@@ -88,7 +88,15 @@ class ObjectTemplateVersioningService:
         *,
         parent_lookup: ObjectTemplateVersionLookup,
         datatype_lookup: DataTypeVersionLookup,
+        template_exists: Callable[[UUID], bool] | None = None,
+        template_versions_lister: (
+            Callable[[UUID], tuple[ObjectTemplateVersion, ...]] | None
+        ) = None,
     ) -> ObjectTemplateVersion:
+        component_template_exists = template_exists or (lambda _template_id: False)
+        component_template_versions_lister = template_versions_lister or (
+            lambda _template_id: ()
+        )
         if version.status is not ObjectTemplateVersionStatus.DRAFT:
             raise InvalidObjectTemplateVersionTransition("Only draft versions may be published.")
 
@@ -123,20 +131,20 @@ class ObjectTemplateVersioningService:
                 )
 
         for component in effective_components:
-            component_version = parent_lookup(
-                ObjectTemplateVersionRef(
-                    template_id=component.template_id,
-                    version=component.template_version,
-                )
+            published_versions = tuple(
+                candidate
+                for candidate in component_template_versions_lister(component.template_id)
+                if candidate.status is ObjectTemplateVersionStatus.PUBLISHED
             )
-            if component_version is None:
+            if published_versions:
+                continue
+            if not component_template_exists(component.template_id):
                 raise ObjectTemplateComponentVersionNotFound(
-                    "Referenced component target version was not found."
+                    "Referenced component target template was not found."
                 )
-            if component_version.status is not ObjectTemplateVersionStatus.PUBLISHED:
-                raise ObjectTemplateComponentVersionNotPublished(
-                    "Referenced component target version must be published."
-                )
+            raise ObjectTemplateComponentVersionNotPublished(
+                "Referenced component target template must have a published version."
+            )
 
         return ObjectTemplateVersion(
             template_id=version.template_id,

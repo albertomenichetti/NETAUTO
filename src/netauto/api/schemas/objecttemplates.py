@@ -41,13 +41,11 @@ class ObjectTemplatePropertyResponse(ApiModel):
 class ObjectTemplateComponentRequest(ApiModel):
     name: StrictStr
     template_id: UUID
-    template_version: PositiveStrictInt | None = None
 
 
 class ObjectTemplateComponentResponse(ApiModel):
     name: str
     template_id: UUID
-    template_version: int
 
 
 class CreateObjectTemplateRequest(ApiModel):

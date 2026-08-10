@@ -229,8 +229,7 @@ def render_object_template_version(
             lines.append(
                 "  - "
                 f"{_require_string(component, 'name')}: "
-                f"{_require_string(component, 'template_id')}@"
-                f"{_require_int(component, 'template_version')}"
+                f"{_require_string(component, 'template_id')}"
             )
     return "\n".join(lines)
 

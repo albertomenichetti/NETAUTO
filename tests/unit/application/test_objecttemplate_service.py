@@ -154,10 +154,10 @@ def _component_spec(
     template_id: UUID,
     template_version: int | None = None,
 ) -> ObjectTemplateComponentSpec:
+    del template_version
     return ObjectTemplateComponentSpec(
         name=name,
         template_id=template_id,
-        template_version=template_version,
     )
 
 
@@ -204,22 +204,6 @@ def test_objecttemplate_property_spec_accepts_none_and_positive_int() -> None:
     assert spec_one.datatype_version == 1
 
 
-def test_objecttemplate_component_spec_accepts_none_and_positive_int() -> None:
-    spec_none = ObjectTemplateComponentSpec(
-        name="interfaces",
-        template_id=uuid4(),
-        template_version=None,
-    )
-    spec_one = ObjectTemplateComponentSpec(
-        name="interfaces",
-        template_id=uuid4(),
-        template_version=1,
-    )
-
-    assert spec_none.template_version is None
-    assert spec_one.template_version == 1
-
-
 @pytest.mark.parametrize("value", [True, False, 0, -1, -5])
 def test_objecttemplate_property_spec_rejects_invalid_runtime_datatype_version(
     value: object,
@@ -232,21 +216,6 @@ def test_objecttemplate_property_spec_rejects_invalid_runtime_datatype_version(
             name="hostname",
             datatype_id=uuid4(),
             datatype_version=value,  # type: ignore[arg-type]
-        )
-
-
-@pytest.mark.parametrize("value", [True, False, 0, -1, -5, 1.0, "1"])
-def test_objecttemplate_component_spec_rejects_invalid_runtime_template_version(
-    value: object,
-) -> None:
-    with pytest.raises(
-        ValueError,
-        match="template_version must be a plain int >= 1 or None",
-    ):
-        ObjectTemplateComponentSpec(
-            name="interfaces",
-            template_id=uuid4(),
-            template_version=value,  # type: ignore[arg-type]
         )
 
 
@@ -332,7 +301,7 @@ def test_create_object_template_creates_identity_and_v1_draft() -> None:
     assert object_templates.get_version(template.id, 1) == version
 
 
-def test_create_object_template_stores_resolved_components_and_properties_together() -> None:
+def test_create_object_template_stores_identity_only_components_and_properties_together() -> None:
     service, datatypes, object_templates, commits = _service()
     datatype, datatype_version = _published_datatype()
     _store_datatype_versions(datatypes, datatype, (datatype_version,))
@@ -369,7 +338,6 @@ def test_create_object_template_stores_resolved_components_and_properties_togeth
         ObjectTemplateComponent(
             name="interfaces",
             template_id=component_target.id,
-            template_version=2,
         ),
     )
     assert object_templates.get(template.id) == template
@@ -400,7 +368,7 @@ def test_explicit_published_datatype_version_is_accepted() -> None:
     assert version.properties[0].datatype_version == published.version
 
 
-def test_explicit_published_component_target_version_is_accepted_and_pinned_exactly() -> None:
+def test_published_component_target_identity_is_accepted() -> None:
     service, datatypes, object_templates, _commits = _service()
     datatype, datatype_version = _published_datatype()
     _store_datatype_versions(datatypes, datatype, (datatype_version,))
@@ -425,13 +393,15 @@ def test_explicit_published_component_target_version_is_accepted_and_pinned_exac
             _component_spec(
                 "interfaces",
                 template_id=component_target.id,
-                template_version=published_target.version,
             ),
         ),
     )
 
-    assert version.components[0].template_version == published_target.version
-    assert (component_target.id, published_target.version) in object_templates.get_version_calls
+    assert version.components[0] == ObjectTemplateComponent(
+        name="interfaces",
+        template_id=component_target.id,
+    )
+    assert object_templates.list_versions_calls == [component_target.id]
 
 
 @pytest.mark.parametrize("status", [DataTypeVersionStatus.DRAFT, DataTypeVersionStatus.DEPRECATED])
@@ -509,7 +479,6 @@ def test_explicit_non_published_component_target_version_rejected(
                 _component_spec(
                     "interfaces",
                     template_id=component_target.id,
-                    template_version=target_version.version,
                 ),
             ),
         )
@@ -517,22 +486,11 @@ def test_explicit_non_published_component_target_version_rejected(
     assert commits[0] == 0
 
 
-def test_explicit_missing_component_target_version_rejected_and_does_not_commit() -> None:
+def test_missing_component_target_identity_rejected_and_does_not_commit() -> None:
     service, datatypes, object_templates, commits = _service()
     datatype, datatype_version = _published_datatype()
     _store_datatype_versions(datatypes, datatype, (datatype_version,))
-    component_target = ObjectTemplate(
-        id=uuid4(),
-        namespace="network",
-        name="network_interface",
-        description=None,
-        abstract=False,
-    )
-    _store_object_template_versions(
-        object_templates,
-        component_target,
-        (_published_object_template_version(component_target.id),),
-    )
+    missing_target_id = uuid4()
 
     with pytest.raises(ObjectTemplateComponentVersionNotFound):
         service.create_object_template(
@@ -545,14 +503,12 @@ def test_explicit_missing_component_target_version_rejected_and_does_not_commit(
             components=(
                 _component_spec(
                     "interfaces",
-                    template_id=component_target.id,
-                    template_version=99,
+                    template_id=missing_target_id,
                 ),
             ),
         )
 
     assert commits[0] == 0
-    assert (component_target.id, 99) in object_templates.get_version_calls
 
 
 def test_explicit_missing_datatype_version_rejected() -> None:
@@ -575,7 +531,7 @@ def test_explicit_missing_datatype_version_rejected() -> None:
     assert commits[0] == 0
 
 
-def test_omitted_component_version_chooses_highest_published_ignoring_newer_draft_and_deprecated(
+def test_component_target_identity_does_not_resolve_or_store_a_specific_version(
 ) -> None:
     service, datatypes, object_templates, _commits = _service()
     datatype, datatype_version = _published_datatype()
@@ -625,7 +581,10 @@ def test_omitted_component_version_chooses_highest_published_ignoring_newer_draf
         components=(_component_spec("interfaces", template_id=component_target.id),),
     )
 
-    assert version.components[0].template_version == 2
+    assert version.components[0] == ObjectTemplateComponent(
+        name="interfaces",
+        template_id=component_target.id,
+    )
     assert object_templates.list_versions_calls == [component_target.id]
 
 
@@ -856,7 +815,6 @@ def test_revise_replaces_components_with_newly_resolved_snapshot_and_can_clear()
             ObjectTemplateComponent(
                 name="old_components",
                 template_id=abstract_target.id,
-                template_version=1,
             ),
         ),
     )
@@ -877,7 +835,6 @@ def test_revise_replaces_components_with_newly_resolved_snapshot_and_can_clear()
         ObjectTemplateComponent(
             name="interfaces",
             template_id=abstract_target.id,
-            template_version=2,
         ),
     )
     assert object_templates.get(template.id) == template
@@ -973,7 +930,7 @@ def test_create_next_version_clones_exact_pinned_snapshot_without_reresolving() 
     assert next_version.properties == source.properties
 
 
-def test_create_next_version_clones_exact_component_pin_without_reresolving() -> None:
+def test_create_next_version_clones_component_identity_without_reresolving() -> None:
     service, datatypes, object_templates, commits = _service()
     datatype, published_datatype = _published_datatype()
     _store_datatype_versions(datatypes, datatype, (published_datatype,))
@@ -1014,7 +971,6 @@ def test_create_next_version_clones_exact_component_pin_without_reresolving() ->
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=component_target.id,
-                template_version=1,
             ),
         ),
     )
@@ -1116,7 +1072,6 @@ def test_publish_missing_or_non_published_component_target_blocks_publication() 
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=component_target.id,
-                template_version=1,
             ),
         ),
     )
@@ -1154,7 +1109,6 @@ def test_publish_missing_or_non_published_component_target_blocks_publication() 
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=uuid4(),
-                template_version=1,
             ),
         ),
     )
@@ -1261,7 +1215,6 @@ def test_publish_inherited_component_target_validation_and_conflict_propagate() 
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=inherited_target.id,
-                template_version=1,
             ),
         ),
     )
@@ -1314,7 +1267,6 @@ def test_publish_inherited_component_target_validation_and_conflict_propagate() 
                 ObjectTemplateComponent(
                     name="interfaces",
                     template_id=uuid4(),
-                    template_version=1,
                 ),
             ),
         )
@@ -1343,7 +1295,6 @@ def test_publish_inherited_component_target_validation_and_conflict_propagate() 
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=inherited_target.id,
-                template_version=1,
             ),
         ),
     )

@@ -64,7 +64,6 @@ def _to_component_spec(
     return ObjectTemplateComponentSpec(
         name=component_request.name,
         template_id=component_request.template_id,
-        template_version=component_request.template_version,
     )
 
 
@@ -94,7 +93,6 @@ def _to_component_response(
     return ObjectTemplateComponentResponse(
         name=component_value.name,
         template_id=component_value.template_id,
-        template_version=component_value.template_version,
     )
 
 

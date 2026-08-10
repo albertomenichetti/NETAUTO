@@ -147,10 +147,10 @@ def _component(
     template_id: UUID,
     template_version: int,
 ) -> ObjectTemplateComponent:
+    del template_version
     return ObjectTemplateComponent(
         name=name,
         template_id=template_id,
-        template_version=template_version,
     )
 
 
@@ -502,40 +502,12 @@ def test_attach_unknown_slot_raises_focused_exception() -> None:
     assert commits[0] == 0
 
 
-def test_attach_uses_exact_pinned_ancestry_compatibility_only() -> None:
+def test_attach_uses_exact_template_identity_compatibility_only() -> None:
     service, _datatypes, object_templates, objects, commits = _service()
     required = _template(name="network_interface")
     required_v1 = _version(required.id, version=1)
     required_v2 = _version(required.id, version=2)
     _store_template_versions(object_templates, required, (required_v1, required_v2))
-
-    direct_descendant = _template(name="physical_interface")
-    direct_descendant_v3 = _version(
-        direct_descendant.id,
-        version=3,
-        parent=ObjectTemplateVersionRef(template_id=required.id, version=1),
-    )
-    _store_template_versions(object_templates, direct_descendant, (direct_descendant_v3,))
-
-    multi_descendant = _template(name="optical_interface")
-    multi_descendant_v4 = _version(
-        multi_descendant.id,
-        version=4,
-        parent=ObjectTemplateVersionRef(template_id=direct_descendant.id, version=3),
-    )
-    _store_template_versions(object_templates, multi_descendant, (multi_descendant_v4,))
-
-    wrong_version_descendant = _template(name="v2_child")
-    wrong_version_descendant_v3 = _version(
-        wrong_version_descendant.id,
-        version=3,
-        parent=ObjectTemplateVersionRef(template_id=required.id, version=2),
-    )
-    _store_template_versions(
-        object_templates,
-        wrong_version_descendant,
-        (wrong_version_descendant_v3,),
-    )
 
     unrelated = _template(name="module")
     _store_template_versions(object_templates, unrelated, (_version(unrelated.id),))
@@ -555,50 +527,24 @@ def test_attach_uses_exact_pinned_ancestry_compatibility_only() -> None:
     )
     parent = _create_object(objects, template_id=parent_template.id, template_version=1)
 
-    exact_child = _create_object(objects, template_id=required.id, template_version=1)
-    direct_child = _create_object(objects, template_id=direct_descendant.id, template_version=3)
-    multi_child = _create_object(objects, template_id=multi_descendant.id, template_version=4)
-    wrong_same_id = _create_object(objects, template_id=required.id, template_version=2)
-    wrong_descendant = _create_object(
-        objects,
-        template_id=wrong_version_descendant.id,
-        template_version=3,
-    )
+    v1_child = _create_object(objects, template_id=required.id, template_version=1)
+    v2_child = _create_object(objects, template_id=required.id, template_version=2)
     unrelated_child = _create_object(objects, template_id=unrelated.id, template_version=1)
 
     assert service.attach_component(
         parent_object_id=parent.id,
         slot_name="interfaces",
-        child_object_id=exact_child.id,
-    ) == _membership(parent.id, "interfaces", exact_child.id)
-    service.detach_component(exact_child.id)
+        child_object_id=v1_child.id,
+    ) == _membership(parent.id, "interfaces", v1_child.id)
+    service.detach_component(v1_child.id)
 
-    service.attach_component(
+    assert service.attach_component(
         parent_object_id=parent.id,
         slot_name="interfaces",
-        child_object_id=direct_child.id,
-    )
-    service.detach_component(direct_child.id)
+        child_object_id=v2_child.id,
+    ) == _membership(parent.id, "interfaces", v2_child.id)
+    service.detach_component(v2_child.id)
 
-    service.attach_component(
-        parent_object_id=parent.id,
-        slot_name="interfaces",
-        child_object_id=multi_child.id,
-    )
-    service.detach_component(multi_child.id)
-
-    with pytest.raises(ObjectComponentTemplateIncompatible):
-        service.attach_component(
-            parent_object_id=parent.id,
-            slot_name="interfaces",
-            child_object_id=wrong_same_id.id,
-        )
-    with pytest.raises(ObjectComponentTemplateIncompatible):
-        service.attach_component(
-            parent_object_id=parent.id,
-            slot_name="interfaces",
-            child_object_id=wrong_descendant.id,
-        )
     with pytest.raises(ObjectComponentTemplateIncompatible):
         service.attach_component(
             parent_object_id=parent.id,
@@ -606,12 +552,11 @@ def test_attach_uses_exact_pinned_ancestry_compatibility_only() -> None:
             child_object_id=unrelated_child.id,
         )
 
-    assert object_templates.get_version_calls.count((required.id, 1)) >= 1
-    assert object_templates.get_version_calls.count((required.id, 2)) >= 1
-    assert commits[0] == 6
+    assert object_templates.get_version_calls.count((parent_template.id, 1)) >= 1
+    assert commits[0] == 4
 
 
-def test_attach_missing_exact_parent_or_child_template_version_raises() -> None:
+def test_attach_missing_exact_parent_template_version_raises() -> None:
     service, _datatypes, object_templates, objects, commits = _service()
     required = _template(name="interface")
     _store_template_versions(object_templates, required, (_version(required.id),))
@@ -631,7 +576,7 @@ def test_attach_missing_exact_parent_or_child_template_version_raises() -> None:
         ),
     )
     parent = _create_object(objects, template_id=parent_template.id, template_version=1)
-    child = _create_object(objects, template_id=required.id, template_version=1)
+    child = _create_object(objects, template_id=required.id, template_version=99)
 
     with pytest.raises(ObjectTemplateVersionNotFound):
         service.attach_component(
@@ -640,19 +585,10 @@ def test_attach_missing_exact_parent_or_child_template_version_raises() -> None:
             child_object_id=child.id,
         )
 
-    parent_ok = _create_object(objects, template_id=parent_template.id, template_version=2)
-    child_missing = _create_object(objects, template_id=required.id, template_version=2)
-    with pytest.raises(ObjectTemplateVersionNotFound):
-        service.attach_component(
-            parent_object_id=parent_ok.id,
-            slot_name="interfaces",
-            child_object_id=child_missing.id,
-        )
-
     assert commits[0] == 0
 
 
-def test_attach_preserves_resolver_failures_for_broken_template_ancestry() -> None:
+def test_attach_preserves_parent_slot_resolution_failures_for_broken_template_ancestry() -> None:
     service, _datatypes, object_templates, objects, commits = _service()
     required = _template(name="interface")
     _store_template_versions(object_templates, required, (_version(required.id),))
@@ -676,82 +612,39 @@ def test_attach_preserves_resolver_failures_for_broken_template_ancestry() -> No
             child_object_id=child.id,
         )
 
-    self_parent_template = _template(name="selfish")
+    self_parent_template = _template(name="selfish_device")
     self_parent_v1 = _version(
         self_parent_template.id,
         version=1,
+        parent=ObjectTemplateVersionRef(template_id=self_parent_template.id, version=1),
     )
-    self_parent_v2 = _version(
-        self_parent_template.id,
-        version=2,
-        parent=ObjectTemplateVersionRef(template_id=self_parent_template.id, version=2),
-    )
-    _store_template_versions(
-        object_templates,
-        self_parent_template,
-        (self_parent_v1, self_parent_v2),
-    )
-    self_child = _create_object(objects, template_id=self_parent_template.id, template_version=2)
-    good_parent_template = _template(name="good_device")
-    _store_template_versions(
-        object_templates,
-        good_parent_template,
-        (
-                _version(
-                    good_parent_template.id,
-                    components=(
-                        _component(
-                            "interfaces",
-                            template_id=self_parent_template.id,
-                            template_version=1,
-                        ),
-                    ),
-                ),
-            ),
-    )
-    good_parent = _create_object(objects, template_id=good_parent_template.id, template_version=1)
+    _store_template_versions(object_templates, self_parent_template, (self_parent_v1,))
+    self_parent = _create_object(objects, template_id=self_parent_template.id, template_version=1)
+    exact_child = _create_object(objects, template_id=required.id, template_version=1)
 
     with pytest.raises(ObjectTemplateSelfInheritance):
         service.attach_component(
-            parent_object_id=good_parent.id,
+            parent_object_id=self_parent.id,
             slot_name="interfaces",
-            child_object_id=self_child.id,
+            child_object_id=exact_child.id,
         )
 
-    cycle_a = _template(name="cycle_a")
-    cycle_b = _template(name="cycle_b")
-    cycle_a_v1 = _version(
-        cycle_a.id,
+    cycle_parent_a = _template(name="cycle_parent_a")
+    cycle_parent_b = _template(name="cycle_parent_b")
+    cycle_parent_a_v1 = _version(
+        cycle_parent_a.id,
         version=1,
-        parent=ObjectTemplateVersionRef(template_id=cycle_b.id, version=1),
+        parent=ObjectTemplateVersionRef(template_id=cycle_parent_b.id, version=1),
     )
-    cycle_a_v2 = _version(
-        cycle_a.id,
-        version=2,
-        parent=ObjectTemplateVersionRef(template_id=cycle_b.id, version=1),
-    )
-    cycle_b_v1 = _version(
-        cycle_b.id,
+    cycle_parent_b_v1 = _version(
+        cycle_parent_b.id,
         version=1,
-        parent=ObjectTemplateVersionRef(template_id=cycle_a.id, version=1),
+        parent=ObjectTemplateVersionRef(template_id=cycle_parent_a.id, version=1),
     )
-    _store_template_versions(object_templates, cycle_a, (cycle_a_v1, cycle_a_v2))
-    _store_template_versions(object_templates, cycle_b, (cycle_b_v1,))
-    cycle_child = _create_object(objects, template_id=cycle_a.id, template_version=2)
-    cycle_parent_template = _template(name="cycle_parent")
-    _store_template_versions(
-        object_templates,
-        cycle_parent_template,
-        (
-            _version(
-                cycle_parent_template.id,
-                components=(
-                    _component("interfaces", template_id=required.id, template_version=1),
-                ),
-            ),
-        ),
-    )
-    cycle_parent = _create_object(objects, template_id=cycle_parent_template.id, template_version=1)
+    _store_template_versions(object_templates, cycle_parent_a, (cycle_parent_a_v1,))
+    _store_template_versions(object_templates, cycle_parent_b, (cycle_parent_b_v1,))
+    cycle_parent = _create_object(objects, template_id=cycle_parent_a.id, template_version=1)
+    cycle_child = _create_object(objects, template_id=required.id, template_version=1)
 
     with pytest.raises(ObjectTemplateInheritanceCycle):
         service.attach_component(

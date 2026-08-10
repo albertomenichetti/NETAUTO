@@ -9,7 +9,6 @@ from netauto.core.objecttemplate.exceptions import (
     DuplicateObjectTemplateComponent,
     DuplicateObjectTemplateProperty,
     InvalidObjectTemplate,
-    InvalidObjectTemplateComponent,
     InvalidObjectTemplateIdentifier,
     InvalidObjectTemplateProperty,
     InvalidObjectTemplateVersion,
@@ -108,19 +107,9 @@ class ObjectTemplateComponent:
 
     name: str
     template_id: UUID
-    template_version: int
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _validate_identifier(self.name, "component name"))
-        if isinstance(self.template_version, bool) or not isinstance(self.template_version, int):
-            raise InvalidObjectTemplateComponent(
-                "ObjectTemplateComponent template_version must be an integer >= 1."
-            )
-        if self.template_version < 1:
-            raise InvalidObjectTemplateComponent(
-                f"Invalid template_version '{self.template_version}'. "
-                "ObjectTemplateComponent template_version must be >= 1."
-            )
 
 
 @dataclass(frozen=True, slots=True)

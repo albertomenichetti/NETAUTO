@@ -66,11 +66,11 @@ class ObjectTemplateDataTypeVersionNotPublished(Exception):
 
 
 class ObjectTemplateComponentVersionNotFound(Exception):
-    """Raised when a referenced component target version cannot be found."""
+    """Raised when a referenced component target template cannot be found."""
 
 
 class ObjectTemplateComponentVersionNotPublished(Exception):
-    """Raised when a referenced component target version is not published."""
+    """Raised when a referenced component target template has no published version."""
 
 
 class ObjectTemplateParentNotPublished(Exception):

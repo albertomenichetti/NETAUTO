@@ -124,7 +124,6 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                     {
                         "name": "interfaces",
                         "template_id": "target",
-                        "template_version": 2,
                     }
                 ],
             }
@@ -141,7 +140,6 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                     {
                         "name": "interfaces",
                         "template_id": "target",
-                        "template_version": 2,
                     }
                 ],
             },
@@ -168,7 +166,6 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                     {
                         "name": "interfaces",
                         "template_id": "target",
-                        "template_version": 2,
                     }
                 ],
             },
@@ -185,7 +182,6 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                     {
                         "name": "interfaces",
                         "template_id": "target",
-                        "template_version": 2,
                     }
                 ],
             },

@@ -143,12 +143,10 @@ def _component(
     name: str,
     *,
     template_id: UUID,
-    template_version: int,
 ) -> ObjectTemplateComponent:
     return ObjectTemplateComponent(
         name=name,
         template_id=template_id,
-        template_version=template_version,
     )
 
 
@@ -191,7 +189,7 @@ def test_attach_list_and_detach_component_successfully(
     device, _device_v1 = _store_template(
         templates,
         name="device",
-        components=(_component("interfaces", template_id=interface.id, template_version=1),),
+        components=(_component("interfaces", template_id=interface.id),),
     )
     parent = _object(objects, template_id=device.id, template_version=1)
     child = _object(objects, template_id=interface.id, template_version=1)
@@ -230,14 +228,14 @@ def test_detach_preserves_detached_component_subtree(
     node, _node_v1 = _store_template(
         templates,
         name="node",
-        components=(_component("children", template_id=uuid4(), template_version=1),),
+        components=(_component("children", template_id=uuid4()),),
     )
     templates.replace_version(
         ObjectTemplateVersion(
             template_id=node.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-            components=(_component("children", template_id=node.id, template_version=1),),
+            components=(_component("children", template_id=node.id),),
         )
     )
     parent = _object(objects, template_id=node.id, template_version=1)
@@ -307,7 +305,7 @@ def test_attach_missing_parent_child_and_slot_errors_flow_through_mapping(
     device, _device_v1 = _store_template(
         templates,
         name="device",
-        components=(_component("interfaces", template_id=interface.id, template_version=1),),
+        components=(_component("interfaces", template_id=interface.id),),
     )
     parent = _object(objects, template_id=device.id, template_version=1)
     child = _object(objects, template_id=interface.id, template_version=1)
@@ -349,7 +347,7 @@ def test_attach_incompatible_duplicate_and_cycle_errors_flow_through_mapping(
     device, _device_v1 = _store_template(
         templates,
         name="device",
-        components=(_component("interfaces", template_id=interface.id, template_version=1),),
+        components=(_component("interfaces", template_id=interface.id),),
     )
     node, _node_v1 = _store_template(
         templates,
@@ -361,7 +359,7 @@ def test_attach_incompatible_duplicate_and_cycle_errors_flow_through_mapping(
             template_id=node.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-            components=(_component("children", template_id=node.id, template_version=1),),
+            components=(_component("children", template_id=node.id),),
         )
     )
     parent = _object(objects, template_id=device.id, template_version=1)

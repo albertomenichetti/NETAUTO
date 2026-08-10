@@ -52,20 +52,6 @@ class ObjectTemplateComponentSpec:
 
     name: str
     template_id: UUID
-    template_version: int | None = None
-
-    def __post_init__(self) -> None:
-        if self.template_version is None:
-            return
-        if (
-            isinstance(self.template_version, bool)
-            or not isinstance(self.template_version, int)
-            or self.template_version < 1
-        ):
-            raise ValueError(
-                "ObjectTemplateComponentSpec template_version must be a plain int >= 1 "
-                "or None."
-            )
 
 
 class ObjectTemplateApplicationService:
@@ -134,50 +120,28 @@ class ObjectTemplateApplicationService:
         *,
         components: Iterable[ObjectTemplateComponentSpec],
         template_getter: Callable[[UUID], ObjectTemplate | None],
-        template_version_getter: Callable[[UUID, int], ObjectTemplateVersion | None],
         template_versions_lister: Callable[[UUID], tuple[ObjectTemplateVersion, ...]],
     ) -> tuple[ObjectTemplateComponent, ...]:
         resolved: list[ObjectTemplateComponent] = []
         for spec in components:
-            if spec.template_version is not None:
-                template_version = template_version_getter(
-                    spec.template_id,
-                    spec.template_version,
-                )
-                if template_version is None:
+            published_versions = tuple(
+                version
+                for version in template_versions_lister(spec.template_id)
+                if version.status is ObjectTemplateVersionStatus.PUBLISHED
+            )
+            if not published_versions:
+                if template_getter(spec.template_id) is None:
                     raise ObjectTemplateComponentVersionNotFound(
-                        "Referenced component target version was not found."
+                        "Referenced component target template was not found."
                     )
-                if template_version.status is not ObjectTemplateVersionStatus.PUBLISHED:
-                    raise ObjectTemplateComponentVersionNotPublished(
-                        "Referenced component target version must be published."
-                    )
-                concrete_version = template_version.version
-            else:
-                published_versions = tuple(
-                    version
-                    for version in template_versions_lister(spec.template_id)
-                    if version.status is ObjectTemplateVersionStatus.PUBLISHED
+                raise ObjectTemplateComponentVersionNotPublished(
+                    "Referenced component target template must have a published version."
                 )
-                if published_versions:
-                    concrete_version = max(
-                        published_versions,
-                        key=lambda version: version.version,
-                    ).version
-                else:
-                    if template_getter(spec.template_id) is None:
-                        raise ObjectTemplateComponentVersionNotFound(
-                            "Referenced component target version was not found."
-                        )
-                    raise ObjectTemplateComponentVersionNotPublished(
-                        "Referenced component target version must be published."
-                    )
 
             resolved.append(
                 ObjectTemplateComponent(
                     name=spec.name,
                     template_id=spec.template_id,
-                    template_version=concrete_version,
                 )
             )
         return tuple(resolved)
@@ -238,7 +202,6 @@ class ObjectTemplateApplicationService:
             resolved_components = self._resolve_components(
                 components=components,
                 template_getter=uow.object_templates.get,
-                template_version_getter=uow.object_templates.get_version,
                 template_versions_lister=uow.object_templates.list_versions,
             )
             template = ObjectTemplate(
@@ -286,7 +249,6 @@ class ObjectTemplateApplicationService:
             resolved_components = self._resolve_components(
                 components=components,
                 template_getter=uow.object_templates.get,
-                template_version_getter=uow.object_templates.get_version,
                 template_versions_lister=uow.object_templates.list_versions,
             )
             revised = self._versioning.revise_draft(
@@ -339,6 +301,10 @@ class ObjectTemplateApplicationService:
                     datatype_id,
                     datatype_version,
                 ),
+                template_exists=(
+                    lambda candidate_id: uow.object_templates.get(candidate_id) is not None
+                ),
+                template_versions_lister=uow.object_templates.list_versions,
             )
             uow.object_templates.replace_version(published)
             uow.commit()

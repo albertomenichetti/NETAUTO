@@ -322,7 +322,7 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         ObjectTemplateComponentVersionNotFound,
         HTTPStatus.NOT_FOUND,
         "object_template_component_version_not_found",
-        "Object template component version not found",
+        "Object template component target template not found",
     ),
     (
         ObjectTemplateAlreadyExists,
@@ -358,7 +358,7 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         ObjectTemplateComponentVersionNotPublished,
         HTTPStatus.CONFLICT,
         "object_template_component_version_not_published",
-        "Object template component version must be published",
+        "Object template component target template must have a published version",
     ),
     (
         ObjectTemplateInheritanceCycle,

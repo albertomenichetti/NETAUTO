@@ -199,7 +199,6 @@ def _object_template_version_payload() -> dict[str, object]:
             {
                 "name": "interfaces",
                 "template_id": component_template_id,
-                "template_version": 2,
             }
         ],
     }
@@ -480,7 +479,6 @@ def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch)
                 {
                     "name": "modules",
                     "template_id": second_component_id,
-                    "template_version": 4,
                 }
             ),
         ],
@@ -508,11 +506,7 @@ def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch)
                     ],
                     "components": [
                         {"name": "interfaces", "template_id": first_component_id},
-                        {
-                            "name": "modules",
-                            "template_id": second_component_id,
-                            "template_version": 4,
-                        },
+                        {"name": "modules", "template_id": second_component_id},
                     ],
                 },
             ),
@@ -785,7 +779,6 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
                 {
                     "name": "modules",
                     "template_id": second_component_id,
-                    "template_version": 5,
                 }
             ),
         ],
@@ -826,11 +819,7 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
                         }
                     ],
                     "components": [
-                        {
-                            "name": "modules",
-                            "template_id": second_component_id,
-                            "template_version": 5,
-                        }
+                        {"name": "modules", "template_id": second_component_id}
                     ],
                 },
             ),
@@ -1579,7 +1568,7 @@ def test_object_template_version_human_output_includes_pinned_local_components(
     assert result.exit_code == 0
     expected = (
         f"{component['name']}: "
-        f"{component['template_id']}@{component['template_version']}"
+        f"{component['template_id']}"
     )
     assert expected in result.stdout
 
@@ -1633,33 +1622,10 @@ def test_object_template_version_human_output_renders_empty_components(
             "status": "draft",
             "parent": None,
             "properties": [],
-            "components": [{"name": "interfaces", "template_id": str(uuid4())}],
-        },
-        {
-            "template_id": str(uuid4()),
-            "version": 1,
-            "status": "draft",
-            "parent": None,
-            "properties": [],
-            "components": [
-                {
-                    "name": "interfaces",
-                    "template_id": str(uuid4()),
-                    "template_version": True,
-                }
-            ],
-        },
-        {
-            "template_id": str(uuid4()),
-            "version": 1,
-            "status": "draft",
-            "parent": None,
-            "properties": [],
             "components": [
                 {
                     "name": "interfaces",
                     "template_id": 123,
-                    "template_version": 1,
                 }
             ],
         },

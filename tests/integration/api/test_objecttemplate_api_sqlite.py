@@ -200,7 +200,6 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
             {
                 "name": "interfaces",
                 "template_id": network_interface_id,
-                "template_version": 2,
             }
         ]
         published_device_v1 = await _publish_object_template_version(client, network_device_id, 1)
@@ -241,7 +240,6 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
                 {
                     "name": "interfaces",
                     "template_id": network_interface_id,
-                    "template_version": 2,
                 }
             ],
         }
@@ -256,11 +254,8 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
         publish_device_v2 = await client.post(
             f"/api/v1/object-templates/{network_device_id}/versions/2/publish"
         )
-        assert publish_device_v2.status_code == 409
-        assert (
-            publish_device_v2.json()["error"]["code"]
-            == "object_template_component_version_not_published"
-        )
+        assert publish_device_v2.status_code == 200
+        assert publish_device_v2.json()["status"] == "published"
 
         loaded_device_v2 = await client.get(
             f"/api/v1/object-templates/{network_device_id}/versions/2"
@@ -269,14 +264,13 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
         assert loaded_device_v2.json() == {
             "template_id": network_device_id,
             "version": 2,
-            "status": "draft",
+            "status": "published",
             "parent": None,
             "properties": [],
             "components": [
                 {
                     "name": "interfaces",
                     "template_id": network_interface_id,
-                    "template_version": 2,
                 }
             ],
         }
@@ -295,7 +289,6 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
                 {
                     "name": "interfaces",
                     "template_id": network_interface_id,
-                    "template_version": 2,
                 }
             ],
         }
@@ -334,11 +327,8 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
         publish_router_after_deprecation = await client.post(
             f"/api/v1/object-templates/{router_after_deprecation_id}/versions/1/publish"
         )
-        assert publish_router_after_deprecation.status_code == 409
-        assert (
-            publish_router_after_deprecation.json()["error"]["code"]
-            == "object_template_component_version_not_published"
-        )
+        assert publish_router_after_deprecation.status_code == 200
+        assert publish_router_after_deprecation.json()["status"] == "published"
 
         loaded_router_after_deprecation = await client.get(
             f"/api/v1/object-templates/{router_after_deprecation_id}/versions/1"
@@ -347,7 +337,7 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
         assert loaded_router_after_deprecation.json() == {
             "template_id": router_after_deprecation_id,
             "version": 1,
-            "status": "draft",
+            "status": "published",
             "parent": {"template_id": network_device_id, "version": 1},
             "properties": [],
             "components": [],
@@ -369,7 +359,6 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
             {
                 "name": "interfaces",
                 "template_id": network_interface_id,
-                "template_version": 2,
             }
         ],
     }

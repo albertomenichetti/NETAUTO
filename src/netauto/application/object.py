@@ -190,21 +190,7 @@ class ObjectApplicationService:
                     "Requested component slot is not defined in the parent template."
                 )
 
-            child_version = self._get_template_version(
-                uow,
-                template_id=child.template_id,
-                template_version=child.template_version,
-            )
-            required = ObjectTemplateVersionRef(
-                template_id=slot.template_id,
-                version=slot.template_version,
-            )
-            compatible = self._inheritance.is_same_or_descendant(
-                child_version,
-                required=required,
-                parent_lookup=lambda ref: self._lookup_parent_version(uow, ref),
-            )
-            if not compatible:
+            if child.template_id != slot.template_id:
                 raise ObjectComponentTemplateIncompatible(
                     "Child object template is incompatible with the requested component slot."
                 )

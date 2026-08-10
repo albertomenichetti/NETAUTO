@@ -524,7 +524,6 @@ def test_cli_objecttemplate_component_acceptance_flow(tmp_path: Path) -> None:
                 {
                     "name": "interfaces",
                     "template_id": network_interface_id,
-                    "template_version": 2,
                 }
             ]
 
@@ -556,7 +555,7 @@ def test_cli_objecttemplate_component_acceptance_flow(tmp_path: Path) -> None:
             )
             assert human_version_show.exit_code == 0
             assert "Components:" in human_version_show.stdout
-            assert f"interfaces: {network_interface_id}@2" in human_version_show.stdout
+            assert f"interfaces: {network_interface_id}" in human_version_show.stdout
 
             human_version_list = runner.invoke(
                 app,
@@ -634,7 +633,6 @@ def test_cli_objecttemplate_component_acceptance_flow(tmp_path: Path) -> None:
                     {
                         "name": "interfaces",
                         "template_id": network_interface_id,
-                        "template_version": 2,
                     }
                 ],
             }

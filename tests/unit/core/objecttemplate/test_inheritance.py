@@ -22,7 +22,7 @@ def _property(name: str) -> ObjectTemplateProperty:
 
 
 def _component(name: str) -> ObjectTemplateComponent:
-    return ObjectTemplateComponent(name=name, template_id=uuid4(), template_version=1)
+    return ObjectTemplateComponent(name=name, template_id=uuid4())
 
 
 def _version(
@@ -630,7 +630,6 @@ def test_inherited_component_name_same_target_redeclaration_is_rejected() -> Non
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=target_id,
-                template_version=1,
             ),
         ),
     )
@@ -642,7 +641,6 @@ def test_inherited_component_name_same_target_redeclaration_is_rejected() -> Non
             ObjectTemplateComponent(
                 name="interfaces",
                 template_id=target_id,
-                template_version=1,
             ),
         ),
     )

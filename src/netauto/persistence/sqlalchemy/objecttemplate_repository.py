@@ -83,7 +83,6 @@ def _serialize_components(components: tuple[ObjectTemplateComponent, ...]) -> st
         {
             "name": component.name,
             "template_id": str(component.template_id),
-            "template_version": component.template_version,
         }
         for component in components
     ]
@@ -108,7 +107,10 @@ def _deserialize_components(components_json: str) -> tuple[ObjectTemplateCompone
             raise ObjectTemplatePersistenceError(
                 "Stored object template component entry must be a JSON object."
             )
-        if set(item.keys()) != {"name", "template_id", "template_version"}:
+        if set(item.keys()) not in (
+            {"name", "template_id"},
+            {"name", "template_id", "template_version"},
+        ):
             raise ObjectTemplatePersistenceError(
                 "Stored object template component entry has an invalid shape."
             )
@@ -117,7 +119,6 @@ def _deserialize_components(components_json: str) -> tuple[ObjectTemplateCompone
                 ObjectTemplateComponent(
                     name=item["name"],
                     template_id=UUID(item["template_id"]),
-                    template_version=item["template_version"],
                 )
             )
         except Exception as error:
