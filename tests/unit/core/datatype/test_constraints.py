@@ -33,8 +33,13 @@ def test_datatype_version_with_no_constraints_is_valid() -> None:
     assert version.constraints == ()
 
 
-@pytest.mark.parametrize("primitive_name", ["core.date", "core.datetime"])
-def test_temporal_datatype_version_with_no_constraints_is_valid(primitive_name: str) -> None:
+@pytest.mark.parametrize(
+    "primitive_name",
+    ["core.date", "core.datetime", "core.ip", "core.ip_prefix"],
+)
+def test_temporal_and_network_datatype_version_with_no_constraints_is_valid(
+    primitive_name: str,
+) -> None:
     version = DataTypeVersion(
         datatype_id=uuid4(),
         version=1,
@@ -578,9 +583,25 @@ def test_asset_status_enum_example() -> None:
             "core.datetime",
             Constraint(name=ConstraintName.ENUM, value=("2026-08-10T15:14:00Z",)),
         ),
+        (
+            "core.ip",
+            Constraint(name=ConstraintName.PATTERN, value=r"^\d+\.\d+\.\d+\.\d+$"),
+        ),
+        (
+            "core.ip",
+            Constraint(name=ConstraintName.ENUM, value=("192.0.2.10",)),
+        ),
+        (
+            "core.ip_prefix",
+            Constraint(name=ConstraintName.PATTERN, value=r"^\d+\.\d+\.\d+\.\d+/\d+$"),
+        ),
+        (
+            "core.ip_prefix",
+            Constraint(name=ConstraintName.MIN_LENGTH, value=1),
+        ),
     ],
 )
-def test_temporal_primitives_reject_all_constraints(
+def test_temporal_and_network_primitives_reject_all_constraints(
     primitive_name: str, constraint: Constraint
 ) -> None:
     with pytest.raises(UnsupportedConstraint):

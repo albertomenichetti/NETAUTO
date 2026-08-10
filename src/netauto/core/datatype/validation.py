@@ -1,6 +1,7 @@
 """Runtime value validation for datatype versions."""
 
 import datetime as dt
+import ipaddress
 import math
 import re
 from dataclasses import dataclass
@@ -89,6 +90,37 @@ def _is_datetime(instance: object) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None
+
+
+@_FORMAT_CHECKER.checks("ip")
+def _is_ip(instance: object) -> bool:
+    if not isinstance(instance, str):
+        return True
+    if "%" in instance:
+        return False
+    try:
+        ipaddress.ip_address(instance)
+    except ValueError:
+        return False
+    return True
+
+
+@_FORMAT_CHECKER.checks("ip-prefix")
+def _is_ip_prefix(instance: object) -> bool:
+    if not isinstance(instance, str):
+        return True
+    if "%" in instance:
+        return False
+    if instance.count("/") != 1:
+        return False
+    address, prefix_length = instance.split("/", 1)
+    if not address or not prefix_length or not prefix_length.isdecimal():
+        return False
+    try:
+        ipaddress.ip_network(instance, strict=True)
+    except ValueError:
+        return False
+    return True
 
 
 @dataclass(frozen=True, slots=True)

@@ -46,6 +46,8 @@ def _compile(
         ("core.boolean", {"type": "boolean"}),
         ("core.date", {"type": "string", "format": "date"}),
         ("core.datetime", {"type": "string", "format": "date-time"}),
+        ("core.ip", {"type": "string", "format": "ip"}),
+        ("core.ip_prefix", {"type": "string", "format": "ip-prefix"}),
     ],
 )
 def test_unconstrained_primitive_compilation(

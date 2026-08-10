@@ -262,6 +262,123 @@ def test_non_string_datetime_values_are_rejected_with_type_error(value: object) 
     )
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "192.168.1.1",
+        "0.0.0.0",
+        "255.255.255.255",
+        "2001:db8::1",
+        "2001:DB8::1",
+        "::1",
+        "::",
+        "fe80::1",
+        "::ffff:192.0.2.1",
+    ],
+)
+def test_ip_values_accepted(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.ip"), value)
+
+    assert result.is_valid is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "192.168.1.999",
+        "192.168.001.001",
+        "192.168.1",
+        "256.0.0.1",
+        "2001:db8::gg",
+        "2001:db8:::1",
+        "192.168.1.1/24",
+        "2001:db8::1/64",
+        "fe80::1%eth0",
+        "fe80::1%3",
+        "not-an-ip",
+        "",
+    ],
+)
+def test_malformed_ip_strings_are_rejected_with_format_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.ip"), value)
+
+    assert result.errors == (
+        ValidationIssue(
+            path=(),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
+@pytest.mark.parametrize("value", [123, True, None, {}, []])
+def test_non_string_ip_values_are_rejected_with_type_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.ip"), value)
+
+    assert result.errors == (
+        ValidationIssue(path=(), code="type", message="Value is not of the expected type"),
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "192.168.1.0/24",
+        "10.0.0.0/8",
+        "0.0.0.0/0",
+        "192.168.1.1/32",
+        "2001:db8::/32",
+        "2001:db8:abcd:12::/64",
+        "::/0",
+        "2001:db8::1/128",
+    ],
+)
+def test_ip_prefix_values_accepted(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.ip_prefix"), value)
+
+    assert result.is_valid is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "192.168.1.12/24",
+        "192.168.1.255/24",
+        "192.168.1.0/33",
+        "192.168.1.0/-1",
+        "192.168.1.0",
+        "192.168.1.0/255.255.255.0",
+        "192.168.1.0/0.0.0.255",
+        "2001:db8::1/32",
+        "2001:db8::/129",
+        "2001:db8::/-1",
+        "2001:db8::",
+        "fe80::%eth0/64",
+        "not-a-prefix",
+        "",
+    ],
+)
+def test_malformed_ip_prefix_strings_are_rejected_with_format_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.ip_prefix"), value)
+
+    assert result.errors == (
+        ValidationIssue(
+            path=(),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
+@pytest.mark.parametrize("value", [123, True, None, {}, []])
+def test_non_string_ip_prefix_values_are_rejected_with_type_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.ip_prefix"), value)
+
+    assert result.errors == (
+        ValidationIssue(path=(), code="type", message="Value is not of the expected type"),
+    )
+
+
 def test_hostname_constraints_validate_string_values() -> None:
     datatype_version = _datatype_version(
         "core.string",

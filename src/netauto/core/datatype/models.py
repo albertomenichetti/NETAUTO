@@ -45,6 +45,8 @@ _SUPPORTED_CONSTRAINTS_BY_PRIMITIVE = {
     "core.boolean": frozenset({ConstraintName.ENUM}),
     "core.date": frozenset(),
     "core.datetime": frozenset(),
+    "core.ip": frozenset(),
+    "core.ip_prefix": frozenset(),
 }
 
 

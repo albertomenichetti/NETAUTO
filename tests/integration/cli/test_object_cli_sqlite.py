@@ -684,3 +684,166 @@ def test_cli_object_validation_accepts_and_rejects_temporal_date_properties(
             assert "[format]" in invalid.stderr
     finally:
         engine.dispose()
+
+
+def test_cli_object_validation_accepts_and_rejects_ip_and_prefix_properties(
+    tmp_path: Path,
+) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            management_ip_created = _invoke_json(
+                base_url,
+                [
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "management_ip",
+                    "--description",
+                    "IPv4 or IPv6 management address",
+                    "--base-type",
+                    "core.ip",
+                ],
+            )
+            connected_prefix_created = _invoke_json(
+                base_url,
+                [
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "connected_prefix",
+                    "--description",
+                    "IPv4 or IPv6 connected network",
+                    "--base-type",
+                    "core.ip_prefix",
+                ],
+            )
+            management_ip_id = management_ip_created["datatype"]["id"]
+            connected_prefix_id = connected_prefix_created["datatype"]["id"]
+            assert management_ip_created["version"]["base_type"] == "core.ip"
+            assert connected_prefix_created["version"]["base_type"] == "core.ip_prefix"
+
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "datatype",
+                        "version",
+                        "publish",
+                        management_ip_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "datatype",
+                        "version",
+                        "publish",
+                        connected_prefix_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            template_created = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "interface",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "management_ip",
+                            "datatype_id": management_ip_id,
+                            "required": True,
+                        }
+                    ),
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "connected_prefix",
+                            "datatype_id": connected_prefix_id,
+                            "required": True,
+                        }
+                    ),
+                ],
+            )
+            template_id = template_created["object_template"]["id"]
+
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "object-template",
+                        "version",
+                        "publish",
+                        template_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            created = _invoke_json(
+                base_url,
+                [
+                    "object",
+                    "create",
+                    "--template-id",
+                    template_id,
+                    "--template-version",
+                    "1",
+                    "--property-json",
+                    json.dumps({"management_ip": "2001:db8::10"}),
+                    "--property-json",
+                    json.dumps({"connected_prefix": "2001:db8:100::/48"}),
+                ],
+            )
+            assert created["properties"] == {
+                "management_ip": "2001:db8::10",
+                "connected_prefix": "2001:db8:100::/48",
+            }
+
+            invalid = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object",
+                    "create",
+                    "--template-id",
+                    template_id,
+                    "--template-version",
+                    "1",
+                    "--property-json",
+                    json.dumps({"management_ip": "192.0.2.999"}),
+                    "--property-json",
+                    json.dumps({"connected_prefix": "192.0.2.10/24"}),
+                ],
+            )
+            assert invalid.exit_code == 1
+            assert "object_validation_failed" in invalid.stderr
+            assert "/properties/management_ip" in invalid.stderr
+            assert "/properties/connected_prefix" in invalid.stderr
+            assert invalid.stderr.count("[format]") >= 2
+    finally:
+        engine.dispose()

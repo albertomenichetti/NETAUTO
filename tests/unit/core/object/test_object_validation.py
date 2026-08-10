@@ -314,6 +314,74 @@ def test_invalid_datetime_property_surfaces_format_error_with_property_path() ->
     )
 
 
+@pytest.mark.parametrize("value", ["192.0.2.10", "2001:db8::10"])
+def test_ip_property_validation_uses_existing_datatype_validation_path(value: str) -> None:
+    datatype_version = _datatype_version("core.ip")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"management_ip": value},
+        effective_properties=(
+            _property("management_ip", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.is_valid is True
+
+
+@pytest.mark.parametrize("value", ["192.0.2.999", "192.0.2.10/24"])
+def test_invalid_ip_property_surfaces_format_error_with_property_path(value: str) -> None:
+    datatype_version = _datatype_version("core.ip")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"management_ip": value},
+        effective_properties=(
+            _property("management_ip", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.errors == (
+        ObjectValidationIssue(
+            path=("properties", "management_ip"),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
+@pytest.mark.parametrize("value", ["192.0.2.0/24", "2001:db8:100::/48"])
+def test_ip_prefix_property_validation_uses_existing_datatype_validation_path(value: str) -> None:
+    datatype_version = _datatype_version("core.ip_prefix")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"connected_prefix": value},
+        effective_properties=(
+            _property("connected_prefix", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.is_valid is True
+
+
+@pytest.mark.parametrize("value", ["192.0.2.10/24", "2001:db8:100::1/48"])
+def test_invalid_ip_prefix_property_surfaces_format_error_with_property_path(value: str) -> None:
+    datatype_version = _datatype_version("core.ip_prefix")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"connected_prefix": value},
+        effective_properties=(
+            _property("connected_prefix", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.errors == (
+        ObjectValidationIssue(
+            path=("properties", "connected_prefix"),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
 def test_multiple_independent_errors_are_collected_in_deterministic_order() -> None:
     hostname_datatype = _datatype_version("core.string")
     serial_datatype = _datatype_version("core.string")

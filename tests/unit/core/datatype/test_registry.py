@@ -5,7 +5,7 @@ import pytest
 from netauto.core.datatype import PrimitiveTypeNotFound, PrimitiveTypeRegistry
 
 
-def test_all_six_built_in_primitives_exist() -> None:
+def test_all_eight_built_in_primitives_exist() -> None:
     registry = PrimitiveTypeRegistry()
 
     assert registry.exists("core.string")
@@ -14,6 +14,8 @@ def test_all_six_built_in_primitives_exist() -> None:
     assert registry.exists("core.boolean")
     assert registry.exists("core.date")
     assert registry.exists("core.datetime")
+    assert registry.exists("core.ip")
+    assert registry.exists("core.ip_prefix")
 
 
 @pytest.mark.parametrize(
@@ -25,6 +27,8 @@ def test_all_six_built_in_primitives_exist() -> None:
         ("core.boolean", "boolean", None),
         ("core.date", "string", "date"),
         ("core.datetime", "string", "date-time"),
+        ("core.ip", "string", "ip"),
+        ("core.ip_prefix", "string", "ip-prefix"),
     ],
 )
 def test_each_primitive_has_expected_json_schema_type(
@@ -55,6 +59,8 @@ def test_registry_contains_exactly_expected_primitive_names() -> None:
         "core.boolean",
         "core.date",
         "core.datetime",
+        "core.ip",
+        "core.ip_prefix",
     }
 
 
@@ -75,6 +81,8 @@ def test_primitive_objects_are_immutable() -> None:
         ("core.boolean", True),
         ("core.date", True),
         ("core.datetime", True),
+        ("core.ip", True),
+        ("core.ip_prefix", True),
         ("core.unknown", False),
     ],
 )

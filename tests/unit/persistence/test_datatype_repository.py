@@ -246,10 +246,12 @@ def test_version_add_and_get(backend: str, tmp_path: Path) -> None:
     [
         ("core.date", "lifecycle", "warranty_expiration", "date"),
         ("core.datetime", "inventory", "last_seen", "date-time"),
+        ("core.ip", "network", "ip_address", "ip"),
+        ("core.ip_prefix", "network", "ip_prefix", "ip-prefix"),
     ],
 )
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
-def test_temporal_datatype_version_round_trip_preserves_primitive_metadata(
+def test_formatted_string_datatype_version_round_trip_preserves_primitive_metadata(
     backend: str,
     tmp_path: Path,
     base_type: str,
@@ -391,6 +393,10 @@ def test_status_round_trip(backend: str, tmp_path: Path) -> None:
         ("core.integer", (Constraint(name=ConstraintName.MINIMUM, value=1),)),
         ("core.number", (Constraint(name=ConstraintName.MAXIMUM, value=1.5),)),
         ("core.boolean", (Constraint(name=ConstraintName.ENUM, value=(True, False)),)),
+        ("core.date", ()),
+        ("core.datetime", ()),
+        ("core.ip", ()),
+        ("core.ip_prefix", ()),
     ],
 )
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])

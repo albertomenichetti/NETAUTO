@@ -20,6 +20,16 @@ _PRIMITIVE_TYPES = {
         json_schema_type="string",
         json_schema_format="date-time",
     ),
+    "core.ip": PrimitiveType(
+        name="core.ip",
+        json_schema_type="string",
+        json_schema_format="ip",
+    ),
+    "core.ip_prefix": PrimitiveType(
+        name="core.ip_prefix",
+        json_schema_type="string",
+        json_schema_format="ip-prefix",
+    ),
 }
 
 
