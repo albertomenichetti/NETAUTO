@@ -23,13 +23,21 @@ from netauto.core.relationship.exceptions import (
     RelationshipObjectNotFound,
     RelationshipPersistenceError,
 )
-from netauto.core.relationship.models import Relationship, RelationshipDefinition
+from netauto.core.relationship.models import (
+    EffectiveRelationshipDefinition,
+    Relationship,
+    RelationshipDefinition,
+    RelationshipDirection,
+    RelationshipNavigationView,
+)
 from netauto.core.relationship.repository import (
     RelationshipDefinitionRepository,
     RelationshipRepository,
 )
 from netauto.core.relationship.semantics import (
     relationship_definition_applies,
+    relationship_definition_source_applies,
+    relationship_definition_target_applies,
     relationship_definitions_are_semantically_equivalent,
 )
 
@@ -37,6 +45,7 @@ __all__ = [
     "InvalidRelationship",
     "InvalidRelationshipDefinition",
     "InvalidRelationshipIdentifier",
+    "EffectiveRelationshipDefinition",
     "Relationship",
     "RelationshipAlreadyExists",
     "RelationshipDefinition",
@@ -53,10 +62,14 @@ __all__ = [
     "RelationshipNotFound",
     "RelationshipObjectNotFound",
     "RelationshipPersistenceError",
+    "RelationshipDirection",
+    "RelationshipNavigationView",
     "RelationshipRepository",
     "ensure_relationship_definition_does_not_conflict",
     "ensure_relationship_definition_set_has_no_conflicts",
     "relationship_definition_applies",
+    "relationship_definition_source_applies",
     "relationship_definitions_conflict",
     "relationship_definitions_are_semantically_equivalent",
+    "relationship_definition_target_applies",
 ]

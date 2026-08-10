@@ -15,6 +15,8 @@ from netauto.core.objecttemplate import (
 from netauto.core.relationship import (
     RelationshipDefinition,
     relationship_definition_applies,
+    relationship_definition_source_applies,
+    relationship_definition_target_applies,
     relationship_definitions_are_semantically_equivalent,
 )
 
@@ -320,6 +322,120 @@ def test_missing_exact_parent_propagates_existing_parent_not_found_error() -> No
         )
 
 
+def test_source_endpoint_applicability_exact_same_template_is_true() -> None:
+    source_id = uuid4()
+    definition = _definition(source_template_id=source_id, target_template_id=uuid4())
+    source_version = _version(source_id, 1)
+
+    assert relationship_definition_source_applies(
+        definition,
+        object_version=source_version,
+        parent_lookup=_lookup((source_version,)),
+    )
+
+
+def test_source_endpoint_applicability_exact_descendant_is_true() -> None:
+    source_id = uuid4()
+    child_source_id = uuid4()
+    definition = _definition(source_template_id=source_id, target_template_id=uuid4())
+    source_parent = _version(source_id, 1)
+    source_child = _version(
+        child_source_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=source_id, version=1),
+    )
+
+    assert relationship_definition_source_applies(
+        definition,
+        object_version=source_child,
+        parent_lookup=_lookup((source_parent, source_child)),
+    )
+
+
+def test_source_endpoint_applicability_is_exact_version_sensitive() -> None:
+    source_id = uuid4()
+    router_id = uuid4()
+    definition = _definition(source_template_id=source_id, target_template_id=uuid4())
+    source_parent = _version(source_id, 1)
+    router_v1 = _version(
+        router_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=source_id, version=1),
+    )
+    router_v2 = _version(router_id, 2)
+    lookup = _lookup((source_parent, router_v1, router_v2))
+
+    assert relationship_definition_source_applies(
+        definition,
+        object_version=router_v1,
+        parent_lookup=lookup,
+    )
+    assert (
+        relationship_definition_source_applies(
+            definition,
+            object_version=router_v2,
+            parent_lookup=lookup,
+        )
+        is False
+    )
+
+
+def test_source_and_target_endpoint_applicability_are_independent() -> None:
+    source_id = uuid4()
+    target_id = uuid4()
+    unrelated_id = uuid4()
+    definition = _definition(source_template_id=source_id, target_template_id=target_id)
+    source_version = _version(source_id, 1)
+    target_version = _version(target_id, 1)
+    unrelated_version = _version(unrelated_id, 1)
+    lookup = _lookup((source_version, target_version, unrelated_version))
+
+    assert relationship_definition_source_applies(
+        definition,
+        object_version=source_version,
+        parent_lookup=lookup,
+    )
+    assert (
+        relationship_definition_source_applies(
+            definition,
+            object_version=unrelated_version,
+            parent_lookup=lookup,
+        )
+        is False
+    )
+    assert relationship_definition_target_applies(
+        definition,
+        object_version=target_version,
+        parent_lookup=lookup,
+    )
+    assert (
+        relationship_definition_target_applies(
+            definition,
+            object_version=unrelated_version,
+            parent_lookup=lookup,
+        )
+        is False
+    )
+
+
+def test_target_endpoint_applicability_missing_parent_propagates_error() -> None:
+    target_id = uuid4()
+    child_target_id = uuid4()
+    definition = _definition(source_template_id=uuid4(), target_template_id=target_id)
+    target_child = _version(
+        child_target_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=target_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateParentNotFound):
+        relationship_definition_target_applies(
+            definition,
+            object_version=target_child,
+            parent_lookup=_lookup((target_child,)),
+        )
+
+
 def test_cycle_propagates_existing_inheritance_cycle_error() -> None:
     required_source_id = uuid4()
     source_id = uuid4()
@@ -350,6 +466,33 @@ def test_cycle_propagates_existing_inheritance_cycle_error() -> None:
         )
 
 
+def test_source_endpoint_cycle_propagates_existing_inheritance_cycle_error() -> None:
+    required_source_id = uuid4()
+    source_id = uuid4()
+    child_source_id = uuid4()
+    definition = _definition(
+        source_template_id=required_source_id,
+        target_template_id=uuid4(),
+    )
+    source_root = _version(
+        source_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=child_source_id, version=1),
+    )
+    source_child = _version(
+        child_source_id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=source_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateInheritanceCycle):
+        relationship_definition_source_applies(
+            definition,
+            object_version=source_child,
+            parent_lookup=_lookup((source_root, source_child)),
+        )
+
+
 def test_self_inheritance_propagates_existing_self_inheritance_error() -> None:
     required_source_id = uuid4()
     source_id = uuid4()
@@ -371,4 +514,25 @@ def test_self_inheritance_propagates_existing_self_inheritance_error() -> None:
             source_version=source_version,
             target_version=target_version,
             parent_lookup=_lookup((source_version, target_version)),
+        )
+
+
+def test_target_endpoint_self_inheritance_propagates_existing_error() -> None:
+    required_target_id = uuid4()
+    target_id = uuid4()
+    definition = _definition(
+        source_template_id=uuid4(),
+        target_template_id=required_target_id,
+    )
+    target_version = _version(
+        target_id,
+        2,
+        parent=ObjectTemplateVersionRef(template_id=target_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateSelfInheritance):
+        relationship_definition_target_applies(
+            definition,
+            object_version=target_version,
+            parent_lookup=_lookup((target_version,)),
         )

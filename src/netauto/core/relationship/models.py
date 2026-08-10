@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 from uuid import UUID
 
 from netauto.core.relationship.exceptions import (
@@ -65,3 +66,72 @@ class Relationship:
         ):
             if not isinstance(getattr(self, field_name), UUID):
                 raise InvalidRelationship(f"Relationship {field_name} must be a UUID.")
+
+
+class RelationshipDirection(StrEnum):
+    """Navigation direction for relationship read views."""
+
+    OUTGOING = "outgoing"
+    INCOMING = "incoming"
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveRelationshipDefinition:
+    """Oriented effective relationship definition view for one object."""
+
+    relationship_definition_id: UUID
+    direction: RelationshipDirection
+    name: str
+    related_template_id: UUID
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.relationship_definition_id, UUID):
+            raise InvalidRelationshipDefinition(
+                "EffectiveRelationshipDefinition relationship_definition_id must be a UUID."
+            )
+        if not isinstance(self.direction, RelationshipDirection):
+            raise InvalidRelationshipDefinition(
+                "EffectiveRelationshipDefinition direction is invalid."
+            )
+        if not isinstance(self.related_template_id, UUID):
+            raise InvalidRelationshipDefinition(
+                "EffectiveRelationshipDefinition related_template_id must be a UUID."
+            )
+        object.__setattr__(
+            self,
+            "name",
+            _validate_identifier(self.name, "effective relationship name"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipNavigationView:
+    """Oriented navigation view over one persisted runtime relationship."""
+
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    source_object_id: UUID
+    target_object_id: UUID
+    direction: RelationshipDirection
+    name: str
+    related_object_id: UUID
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "relationship_id",
+            "relationship_definition_id",
+            "source_object_id",
+            "target_object_id",
+            "related_object_id",
+        ):
+            if not isinstance(getattr(self, field_name), UUID):
+                raise InvalidRelationship(
+                    f"RelationshipNavigationView {field_name} must be a UUID."
+                )
+        if not isinstance(self.direction, RelationshipDirection):
+            raise InvalidRelationship("RelationshipNavigationView direction is invalid.")
+        object.__setattr__(
+            self,
+            "name",
+            _validate_identifier(self.name, "relationship navigation name"),
+        )

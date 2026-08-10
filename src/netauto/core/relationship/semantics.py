@@ -30,6 +30,36 @@ def relationship_definitions_are_semantically_equivalent(
     )
 
 
+def relationship_definition_source_applies(
+    definition: RelationshipDefinition,
+    *,
+    object_version: ObjectTemplateVersion,
+    parent_lookup: ObjectTemplateVersionLookup,
+) -> bool:
+    """Return True when one concrete version satisfies the definition source endpoint."""
+
+    return ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+        object_version,
+        required_template_id=definition.source_template_id,
+        parent_lookup=parent_lookup,
+    )
+
+
+def relationship_definition_target_applies(
+    definition: RelationshipDefinition,
+    *,
+    object_version: ObjectTemplateVersion,
+    parent_lookup: ObjectTemplateVersionLookup,
+) -> bool:
+    """Return True when one concrete version satisfies the definition target endpoint."""
+
+    return ObjectTemplateInheritanceResolver().is_same_or_descendant_template(
+        object_version,
+        required_template_id=definition.target_template_id,
+        parent_lookup=parent_lookup,
+    )
+
+
 def relationship_definition_applies(
     definition: RelationshipDefinition,
     *,
@@ -39,13 +69,12 @@ def relationship_definition_applies(
 ) -> bool:
     """Return True when both concrete endpoint versions satisfy the definition."""
 
-    resolver = ObjectTemplateInheritanceResolver()
-    return resolver.is_same_or_descendant_template(
-        source_version,
-        required_template_id=definition.source_template_id,
+    return relationship_definition_source_applies(
+        definition,
+        object_version=source_version,
         parent_lookup=parent_lookup,
-    ) and resolver.is_same_or_descendant_template(
-        target_version,
-        required_template_id=definition.target_template_id,
+    ) and relationship_definition_target_applies(
+        definition,
+        object_version=target_version,
         parent_lookup=parent_lookup,
     )

@@ -8,6 +8,7 @@ from netauto.application.unit_of_work import (
     RelationshipUnitOfWork,
     RelationshipUnitOfWorkFactory,
 )
+from netauto.core.object import ObjectNotFound
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateVersionLookup,
@@ -15,6 +16,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionStatus,
 )
 from netauto.core.relationship import (
+    EffectiveRelationshipDefinition,
     Relationship,
     RelationshipAlreadyExists,
     RelationshipDefinition,
@@ -23,11 +25,15 @@ from netauto.core.relationship import (
     RelationshipDefinitionNotFound,
     RelationshipDefinitionTemplateNotFound,
     RelationshipDefinitionTemplateNotPublished,
+    RelationshipDirection,
     RelationshipEndpointIncompatible,
+    RelationshipNavigationView,
     RelationshipNotFound,
     RelationshipObjectNotFound,
     ensure_relationship_definition_does_not_conflict,
     relationship_definition_applies,
+    relationship_definition_source_applies,
+    relationship_definition_target_applies,
 )
 
 
@@ -163,6 +169,85 @@ class RelationshipApplicationService:
                 raise RelationshipNotFound("Relationship does not exist.")
             return relationship
 
+    def list_effective_relationship_definitions(
+        self,
+        object_id: UUID,
+    ) -> tuple[EffectiveRelationshipDefinition, ...]:
+        with self._uow_factory() as uow:
+            object_value = uow.objects.get(object_id)
+            if object_value is None:
+                raise ObjectNotFound("Object does not exist.")
+
+            object_version = uow.object_templates.get_version(
+                object_value.template_id,
+                object_value.template_version,
+            )
+            if object_version is None:
+                raise ObjectTemplateVersionNotFound(
+                    "Referenced object template version was not found."
+                )
+
+            parent_lookup = self._build_parent_lookup(uow)
+            views: list[EffectiveRelationshipDefinition] = []
+            for definition in uow.relationship_definitions.list():
+                if relationship_definition_source_applies(
+                    definition,
+                    object_version=object_version,
+                    parent_lookup=parent_lookup,
+                ):
+                    views.append(
+                        EffectiveRelationshipDefinition(
+                            relationship_definition_id=definition.id,
+                            direction=RelationshipDirection.OUTGOING,
+                            name=definition.forward_name,
+                            related_template_id=definition.target_template_id,
+                        )
+                    )
+                if relationship_definition_target_applies(
+                    definition,
+                    object_version=object_version,
+                    parent_lookup=parent_lookup,
+                ):
+                    views.append(
+                        EffectiveRelationshipDefinition(
+                            relationship_definition_id=definition.id,
+                            direction=RelationshipDirection.INCOMING,
+                            name=definition.reverse_name,
+                            related_template_id=definition.source_template_id,
+                        )
+                    )
+            return tuple(views)
+
+    def list_outgoing_relationships(
+        self,
+        object_id: UUID,
+    ) -> tuple[RelationshipNavigationView, ...]:
+        return self._list_navigation_views(
+            object_id,
+            directions=(RelationshipDirection.OUTGOING,),
+        )
+
+    def list_incoming_relationships(
+        self,
+        object_id: UUID,
+    ) -> tuple[RelationshipNavigationView, ...]:
+        return self._list_navigation_views(
+            object_id,
+            directions=(RelationshipDirection.INCOMING,),
+        )
+
+    def list_neighbor_relationships(
+        self,
+        object_id: UUID,
+    ) -> tuple[RelationshipNavigationView, ...]:
+        return self._list_navigation_views(
+            object_id,
+            directions=(
+                RelationshipDirection.OUTGOING,
+                RelationshipDirection.INCOMING,
+            ),
+        )
+
     def create_relationship(
         self,
         *,
@@ -236,6 +321,60 @@ class RelationshipApplicationService:
                 raise RelationshipNotFound("Relationship does not exist.")
             uow.relationships.delete(relationship_id)
             uow.commit()
+
+    def _list_navigation_views(
+        self,
+        object_id: UUID,
+        *,
+        directions: tuple[RelationshipDirection, ...],
+    ) -> tuple[RelationshipNavigationView, ...]:
+        with self._uow_factory() as uow:
+            if uow.objects.get(object_id) is None:
+                raise ObjectNotFound("Object does not exist.")
+
+            relationships = uow.relationships.list_incident_to_objects({object_id})
+            definitions = {
+                definition.id: definition
+                for definition in uow.relationship_definitions.list()
+            }
+            views: list[RelationshipNavigationView] = []
+            for relationship in relationships:
+                definition = definitions.get(relationship.relationship_definition_id)
+                if definition is None:
+                    raise RelationshipDefinitionNotFound(
+                        "RelationshipDefinition does not exist."
+                    )
+                if (
+                    RelationshipDirection.OUTGOING in directions
+                    and relationship.source_object_id == object_id
+                ):
+                    views.append(
+                        RelationshipNavigationView(
+                            relationship_id=relationship.id,
+                            relationship_definition_id=definition.id,
+                            source_object_id=relationship.source_object_id,
+                            target_object_id=relationship.target_object_id,
+                            direction=RelationshipDirection.OUTGOING,
+                            name=definition.forward_name,
+                            related_object_id=relationship.target_object_id,
+                        )
+                    )
+                if (
+                    RelationshipDirection.INCOMING in directions
+                    and relationship.target_object_id == object_id
+                ):
+                    views.append(
+                        RelationshipNavigationView(
+                            relationship_id=relationship.id,
+                            relationship_definition_id=definition.id,
+                            source_object_id=relationship.source_object_id,
+                            target_object_id=relationship.target_object_id,
+                            direction=RelationshipDirection.INCOMING,
+                            name=definition.reverse_name,
+                            related_object_id=relationship.source_object_id,
+                        )
+                    )
+            return tuple(views)
 
     @staticmethod
     def _build_parent_lookup(
