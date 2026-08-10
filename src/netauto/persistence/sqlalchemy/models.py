@@ -100,6 +100,37 @@ class RelationshipDefinitionRow(Base):
     reverse_name: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class RelationshipRow(Base):
+    """Persisted runtime relationship row."""
+
+    __tablename__ = "relationships"
+    __table_args__ = (
+        UniqueConstraint(
+            "relationship_definition_id",
+            "source_object_id",
+            "target_object_id",
+            name="uq_relationships_definition_source_target",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    relationship_definition_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("relationship_definitions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source_object_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("objects.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    target_object_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("objects.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+
 class ObjectRow(Base):
     """Persisted object snapshot row."""
 

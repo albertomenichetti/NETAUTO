@@ -20,7 +20,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersion,
     ObjectTemplateVersionStatus,
 )
-from netauto.core.relationship import RelationshipDefinition
+from netauto.core.relationship import Relationship, RelationshipDefinition
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.object_repository import SqlAlchemyObjectRepository
@@ -29,6 +29,7 @@ from netauto.persistence.sqlalchemy.objecttemplate_repository import (
 )
 from netauto.persistence.sqlalchemy.relationship_repository import (
     SqlAlchemyRelationshipDefinitionRepository,
+    SqlAlchemyRelationshipRepository,
 )
 from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -79,6 +80,21 @@ def _relationship_definition(
         target_template_id=target_template_id,
         forward_name=forward_name,
         reverse_name=reverse_name,
+    )
+
+
+def _relationship(
+    *,
+    relationship_id: UUID | None = None,
+    relationship_definition_id: UUID,
+    source_object_id: UUID,
+    target_object_id: UUID,
+) -> Relationship:
+    return Relationship(
+        id=relationship_id or uuid4(),
+        relationship_definition_id=relationship_definition_id,
+        source_object_id=source_object_id,
+        target_object_id=target_object_id,
     )
 
 
@@ -152,6 +168,7 @@ def test_both_repositories_are_available_in_one_unit_of_work(tmp_path: Path) -> 
             assert isinstance(uow.datatypes, SqlAlchemyDataTypeRepository)
             assert isinstance(uow.object_templates, SqlAlchemyObjectTemplateRepository)
             assert isinstance(uow.objects, SqlAlchemyObjectRepository)
+            assert isinstance(uow.relationships, SqlAlchemyRelationshipRepository)
             assert isinstance(
                 uow.relationship_definitions,
                 SqlAlchemyRelationshipDefinitionRepository,
@@ -542,6 +559,42 @@ def test_unit_of_work_commit_persists_relationship_definitions(tmp_path: Path) -
         try:
             repo = SqlAlchemyRelationshipDefinitionRepository(session)
             assert repo.get(definition.id) == definition
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+
+def test_unit_of_work_commit_persists_runtime_relationships(tmp_path: Path) -> None:
+    source_template = _object_template(name="source")
+    target_template = _object_template(name="target")
+    relationship_definition = _relationship_definition(
+        source_template_id=source_template.id,
+        target_template_id=target_template.id,
+    )
+    source_object = _object(template_id=source_template.id)
+    target_object = _object(template_id=target_template.id)
+    relationship = _relationship(
+        relationship_definition_id=relationship_definition.id,
+        source_object_id=source_object.id,
+        target_object_id=target_object.id,
+    )
+    uow, engine = _uow(tmp_path, "runtime_relationship_commit.sqlite3")
+    try:
+        with uow:
+            uow.object_templates.add(source_template)
+            uow.object_templates.add(target_template)
+            uow.relationship_definitions.add(relationship_definition)
+            uow.objects.add(source_object)
+            uow.objects.add(target_object)
+            uow.relationships.add(relationship)
+            uow.commit()
+
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        try:
+            relationship_repo = SqlAlchemyRelationshipRepository(session)
+            assert relationship_repo.get(relationship.id) == relationship
         finally:
             session.close()
     finally:

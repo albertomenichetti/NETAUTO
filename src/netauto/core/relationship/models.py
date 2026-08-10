@@ -1,10 +1,11 @@
-"""Domain models for relationship definitions."""
+"""Domain models for relationship definitions and runtime relationships."""
 
 import re
 from dataclasses import dataclass
 from uuid import UUID
 
 from netauto.core.relationship.exceptions import (
+    InvalidRelationship,
     InvalidRelationshipDefinition,
     InvalidRelationshipIdentifier,
 )
@@ -44,3 +45,23 @@ class RelationshipDefinition:
                 raise InvalidRelationshipDefinition(
                     f"RelationshipDefinition {field_name} must be a UUID."
                 )
+
+
+@dataclass(frozen=True, slots=True)
+class Relationship:
+    """Canonical immutable runtime relationship edge."""
+
+    id: UUID
+    relationship_definition_id: UUID
+    source_object_id: UUID
+    target_object_id: UUID
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "id",
+            "relationship_definition_id",
+            "source_object_id",
+            "target_object_id",
+        ):
+            if not isinstance(getattr(self, field_name), UUID):
+                raise InvalidRelationship(f"Relationship {field_name} must be a UUID.")

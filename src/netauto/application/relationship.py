@@ -1,19 +1,32 @@
-"""Application service for relationship definition workflows."""
+"""Application services for relationship definition and runtime relationship workflows."""
 
 from uuid import UUID, uuid4
 
 from netauto.application.unit_of_work import (
     RelationshipDefinitionUnitOfWork,
     RelationshipDefinitionUnitOfWorkFactory,
+    RelationshipUnitOfWork,
+    RelationshipUnitOfWorkFactory,
 )
-from netauto.core.objecttemplate import ObjectTemplate, ObjectTemplateVersionStatus
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplateVersionLookup,
+    ObjectTemplateVersionNotFound,
+    ObjectTemplateVersionStatus,
+)
 from netauto.core.relationship import (
+    Relationship,
+    RelationshipAlreadyExists,
     RelationshipDefinition,
     RelationshipDefinitionConflictSnapshot,
     RelationshipDefinitionNotFound,
     RelationshipDefinitionTemplateNotFound,
     RelationshipDefinitionTemplateNotPublished,
+    RelationshipEndpointIncompatible,
+    RelationshipNotFound,
+    RelationshipObjectNotFound,
     ensure_relationship_definition_does_not_conflict,
+    relationship_definition_applies,
 )
 
 
@@ -128,3 +141,110 @@ class RelationshipDefinitionApplicationService:
             all_versions=all_versions,
             usable_versions=usable_versions,
         )
+
+
+class RelationshipApplicationService:
+    """Orchestrate runtime relationship workflows over a unit of work boundary."""
+
+    def __init__(self, uow_factory: RelationshipUnitOfWorkFactory) -> None:
+        self._uow_factory = uow_factory
+
+    def list_relationships(self) -> tuple[Relationship, ...]:
+        with self._uow_factory() as uow:
+            return uow.relationships.list()
+
+    def get_relationship(self, relationship_id: UUID) -> Relationship:
+        with self._uow_factory() as uow:
+            relationship = uow.relationships.get(relationship_id)
+            if relationship is None:
+                raise RelationshipNotFound("Relationship does not exist.")
+            return relationship
+
+    def create_relationship(
+        self,
+        *,
+        relationship_definition_id: UUID,
+        source_object_id: UUID,
+        target_object_id: UUID,
+    ) -> Relationship:
+        with self._uow_factory() as uow:
+            definition = uow.relationship_definitions.get(relationship_definition_id)
+            if definition is None:
+                raise RelationshipDefinitionNotFound("RelationshipDefinition does not exist.")
+
+            source_object = uow.objects.get(source_object_id)
+            if source_object is None:
+                raise RelationshipObjectNotFound("Source object does not exist.")
+            target_object = uow.objects.get(target_object_id)
+            if target_object is None:
+                raise RelationshipObjectNotFound("Target object does not exist.")
+
+            source_version = uow.object_templates.get_version(
+                source_object.template_id,
+                source_object.template_version,
+            )
+            if source_version is None:
+                raise ObjectTemplateVersionNotFound(
+                    "Referenced object template version was not found."
+                )
+            target_version = uow.object_templates.get_version(
+                target_object.template_id,
+                target_object.template_version,
+            )
+            if target_version is None:
+                raise ObjectTemplateVersionNotFound(
+                    "Referenced object template version was not found."
+                )
+
+            parent_lookup = self._build_parent_lookup(uow)
+            if not relationship_definition_applies(
+                definition,
+                source_version=source_version,
+                target_version=target_version,
+                parent_lookup=parent_lookup,
+            ):
+                raise RelationshipEndpointIncompatible(
+                    "Object endpoints do not satisfy the relationship definition."
+                )
+
+            if (
+                uow.relationships.get_by_endpoints(
+                    definition.id,
+                    source_object_id,
+                    target_object_id,
+                )
+                is not None
+            ):
+                raise RelationshipAlreadyExists("Relationship already exists.")
+
+            relationship = Relationship(
+                id=uuid4(),
+                relationship_definition_id=definition.id,
+                source_object_id=source_object_id,
+                target_object_id=target_object_id,
+            )
+            uow.relationships.add(relationship)
+            uow.commit()
+            return relationship
+
+    def delete_relationship(self, relationship_id: UUID) -> None:
+        with self._uow_factory() as uow:
+            if uow.relationships.get(relationship_id) is None:
+                raise RelationshipNotFound("Relationship does not exist.")
+            uow.relationships.delete(relationship_id)
+            uow.commit()
+
+    @staticmethod
+    def _build_parent_lookup(
+        uow: RelationshipUnitOfWork,
+    ) -> ObjectTemplateVersionLookup:
+        versions = {
+            (version.template_id, version.version): version
+            for template in uow.object_templates.list()
+            for version in uow.object_templates.list_versions(template.id)
+        }
+
+        def lookup(version_ref):
+            return versions.get((version_ref.template_id, version_ref.version))
+
+        return lookup
