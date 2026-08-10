@@ -109,8 +109,6 @@ def test_cli_acceptance_flow_and_large_integer_round_trip(tmp_path: Path) -> Non
                     "revise",
                     datatype_id,
                     "1",
-                    "--base-type",
-                    "core.integer",
                     "--constraint",
                     "minimum=1",
                     "--constraint",
@@ -331,5 +329,206 @@ def test_cli_end_to_end_api_error(tmp_path: Path) -> None:
             assert published_again.exit_code == 1
             assert published_again.stdout == ""
             assert "invalid_datatype_version_transition" in published_again.stderr
+    finally:
+        engine.dispose()
+
+
+def test_cli_datatype_revise_without_base_type_and_delete_lifecycle(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "common",
+                    "--name",
+                    "email",
+                    "--description",
+                    "Email address",
+                    "--base-type",
+                    "core.string",
+                ],
+            )
+            assert created.exit_code == 0
+            created_payload = json.loads(created.stdout)
+            datatype_id = created_payload["datatype"]["id"]
+
+            published_v1 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "datatype",
+                    "version",
+                    "publish",
+                    datatype_id,
+                    "1",
+                ],
+            )
+            assert published_v1.exit_code == 0
+
+            created_v2 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "version",
+                    "create",
+                    datatype_id,
+                    "--source-version",
+                    "1",
+                ],
+            )
+            assert created_v2.exit_code == 0
+            assert json.loads(created_v2.stdout)["base_type"] == "core.string"
+
+            revised_v2 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "version",
+                    "revise",
+                    datatype_id,
+                    "2",
+                    "--constraint",
+                    'pattern="^[^@]+@[^@]+[.][^@]+$"',
+                ],
+            )
+            assert revised_v2.exit_code == 0
+            revised_payload = json.loads(revised_v2.stdout)
+            assert revised_payload["base_type"] == "core.string"
+            assert revised_payload["constraints"] == [
+                {"name": "pattern", "value": "^[^@]+@[^@]+[.][^@]+$"}
+            ]
+
+            published_v2 = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "datatype",
+                    "version",
+                    "publish",
+                    datatype_id,
+                    "2",
+                ],
+            )
+            assert published_v2.exit_code == 0
+
+            template_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "common",
+                    "--name",
+                    "contact",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "email",
+                            "datatype_id": datatype_id,
+                            "datatype_version": 2,
+                            "required": True,
+                        }
+                    ),
+                ],
+            )
+            assert template_created.exit_code == 0
+
+            blocked_delete = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "delete", datatype_id],
+            )
+            assert blocked_delete.exit_code == 1
+            assert "datatype_in_use" in blocked_delete.stderr
+            datatype_show = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "show",
+                    datatype_id,
+                ],
+            )
+            assert datatype_show.exit_code == 0
+            assert json.loads(datatype_show.stdout)["id"] == datatype_id
+
+            listed_versions = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "version",
+                    "list",
+                    datatype_id,
+                ],
+            )
+            assert listed_versions.exit_code == 0
+            assert [
+                (item["version"], item["status"])
+                for item in json.loads(listed_versions.stdout)
+            ] == [(1, "published"), (2, "published")]
+
+            temp_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "common",
+                    "--name",
+                    "nickname",
+                    "--description",
+                    "Nickname",
+                    "--base-type",
+                    "core.string",
+                ],
+            )
+            assert temp_created.exit_code == 0
+            temp_id = json.loads(temp_created.stdout)["datatype"]["id"]
+
+            deleted = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "delete", temp_id],
+            )
+            assert deleted.exit_code == 0
+            assert f"Deleted datatype {temp_id}" in deleted.stdout
+
+            missing = runner.invoke(
+                app,
+                ["--api-url", base_url, "datatype", "show", temp_id],
+            )
+            assert missing.exit_code == 1
+            assert "datatype_not_found" in missing.stderr
     finally:
         engine.dispose()

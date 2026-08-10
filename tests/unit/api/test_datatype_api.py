@@ -10,6 +10,12 @@ import pytest
 
 from netauto.api.app import create_app
 from netauto.application.unit_of_work import ObjectUnitOfWork
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplateProperty,
+    ObjectTemplateVersion,
+    ObjectTemplateVersionStatus,
+)
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
@@ -68,9 +74,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
 
 
 @asynccontextmanager
-async def _client() -> (
-    AsyncIterator[tuple[httpx2.AsyncClient, InMemoryDataTypeRepository, list[int]]]
-):
+async def _client() -> AsyncIterator[
+    tuple[
+        httpx2.AsyncClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ]
+]:
     repo = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
@@ -89,7 +100,7 @@ async def _client() -> (
         )
 
     async with serve_app(create_app(factory)) as client:
-        yield client, repo, commits
+        yield client, repo, object_templates, commits
 
 
 async def _create_hostname(client: httpx2.AsyncClient) -> dict[str, Any]:
@@ -114,7 +125,7 @@ pytestmark = pytest.mark.anyio
 
 
 async def test_create_list_get_and_by_name() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         created = await _create_hostname(client)
         datatype_id = created["datatype"]["id"]
 
@@ -131,7 +142,7 @@ async def test_create_list_get_and_by_name() -> None:
 
 
 async def test_versions_lifecycle_endpoints() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         created = (
             await client.post(
                 "/api/v1/datatypes",
@@ -153,7 +164,6 @@ async def test_versions_lifecycle_endpoints() -> None:
         revised = await client.put(
             f"/api/v1/datatypes/{datatype_id}/versions/1",
             json={
-                "base_type": "core.integer",
                 "constraints": [
                     {"name": "minimum", "value": 1},
                     {"name": "maximum", "value": 4094},
@@ -180,7 +190,7 @@ async def test_versions_lifecycle_endpoints() -> None:
 
 
 async def test_not_found_and_conflict_mappings() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         missing = await client.get(f"/api/v1/datatypes/{uuid4()}")
         created = await _create_hostname(client)
         datatype_id = created["datatype"]["id"]
@@ -188,7 +198,7 @@ async def test_not_found_and_conflict_mappings() -> None:
         await client.post(f"/api/v1/datatypes/{datatype_id}/versions/1/publish")
         revise_published = await client.put(
             f"/api/v1/datatypes/{datatype_id}/versions/1",
-            json={"base_type": "core.string", "constraints": []},
+            json={"constraints": []},
         )
 
     assert missing.status_code == 404
@@ -281,7 +291,7 @@ async def test_not_found_and_conflict_mappings() -> None:
     ],
 )
 async def test_domain_errors_map_to_422(payload: dict[str, object], expected_code: str) -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         response = await client.post("/api/v1/datatypes", json=payload)
 
     assert response.status_code == 422
@@ -289,7 +299,7 @@ async def test_domain_errors_map_to_422(payload: dict[str, object], expected_cod
 
 
 async def test_duplicate_logical_name_maps_to_409() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         await _create_hostname(client)
         duplicate = await client.post(
             "/api/v1/datatypes",
@@ -307,7 +317,7 @@ async def test_duplicate_logical_name_maps_to_409() -> None:
 
 
 async def test_request_validation_envelope_and_no_default_detail_leak() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         response = await client.post(
             "/api/v1/datatypes",
             json={
@@ -328,8 +338,71 @@ async def test_request_validation_envelope_and_no_default_detail_leak() -> None:
     assert payload["error"]["details"][0]["path"].startswith("/body")
 
 
+async def test_revise_request_rejects_removed_base_type_field() -> None:
+    async with _client() as (client, _repo, _object_templates, _commits):
+        created = await _create_hostname(client)
+        datatype_id = created["datatype"]["id"]
+        response = await client.put(
+            f"/api/v1/datatypes/{datatype_id}/versions/1",
+            json={"base_type": "core.integer", "constraints": []},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "request_validation_failed"
+
+
+async def test_delete_unreferenced_datatype_returns_204_and_empty_body() -> None:
+    async with _client() as (client, _repo, _object_templates, _commits):
+        created = await _create_hostname(client)
+        datatype_id = created["datatype"]["id"]
+        deleted = await client.delete(f"/api/v1/datatypes/{datatype_id}")
+        missing = await client.get(f"/api/v1/datatypes/{datatype_id}")
+
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "datatype_not_found"
+
+
+async def test_delete_referenced_datatype_returns_409_datatype_in_use() -> None:
+    async with _client() as (client, repo, object_templates, _commits):
+        created = await _create_hostname(client)
+        datatype_id = created["datatype"]["id"]
+        datatype = repo.get_by_name("network", "hostname")
+        assert datatype is not None
+        template = ObjectTemplate(id=uuid4(), namespace="network", name="device")
+        template_version = ObjectTemplateVersion(
+            template_id=template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(
+                ObjectTemplateProperty(
+                    name="hostname_property",
+                    datatype_id=datatype.id,
+                    datatype_version=1,
+                    required=True,
+                ),
+            ),
+        )
+        object_templates.add(template)
+        object_templates.add_version(template_version)
+        response = await client.delete(f"/api/v1/datatypes/{datatype_id}")
+        still_exists = await client.get(f"/api/v1/datatypes/{datatype_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "datatype_in_use"
+    assert still_exists.status_code == 200
+
+
+async def test_delete_missing_datatype_returns_404() -> None:
+    async with _client() as (client, _repo, _object_templates, _commits):
+        response = await client.delete(f"/api/v1/datatypes/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "datatype_not_found"
+
 async def test_no_string_to_int_coercion_and_bool_edge_cases() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         created = (
             await client.post(
                 "/api/v1/datatypes",
@@ -372,7 +445,7 @@ async def test_no_string_to_int_coercion_and_bool_edge_cases() -> None:
 
 
 async def test_by_name_route_is_not_shadowed() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         await _create_hostname(client)
         response = await client.get("/api/v1/datatypes/by-name/network/hostname")
 
@@ -381,7 +454,7 @@ async def test_by_name_route_is_not_shadowed() -> None:
 
 
 async def test_openapi_documents_routes_and_schemas() -> None:
-    async with _client() as (client, _repo, _commits):
+    async with _client() as (client, _repo, _object_templates, _commits):
         openapi = (await client.get("/openapi.json")).json()
 
     paths = openapi["paths"]
@@ -394,6 +467,11 @@ async def test_openapi_documents_routes_and_schemas() -> None:
     assert "/api/v1/datatypes/{datatype_id}/versions/{version}" in paths
     assert "/api/v1/datatypes/{datatype_id}/versions/{version}/publish" in paths
     assert "/api/v1/datatypes/{datatype_id}/versions/{version}/deprecate" in paths
+    assert (
+        paths["/api/v1/datatypes/{datatype_id}"]["delete"]["responses"]["204"]["description"]
+        == "Successful Response"
+    )
+    assert "delete" not in paths["/api/v1/datatypes/{datatype_id}/versions/{version}"]
     assert (
         paths["/api/v1/datatypes"]["post"]["responses"]["201"]["description"]
         == "Successful Response"
@@ -417,3 +495,5 @@ async def test_openapi_documents_routes_and_schemas() -> None:
         ]["$ref"]
     )
     assert post_422_ref.endswith("/ErrorResponse")
+    revise_schema = schemas["ReviseDataTypeVersionRequest"]
+    assert set(revise_schema["properties"]) == {"constraints"}

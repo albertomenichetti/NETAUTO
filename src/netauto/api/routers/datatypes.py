@@ -108,6 +108,18 @@ def get_datatype(
     return _to_datatype_response(service.get_datatype(datatype_id))
 
 
+@router.delete(
+    "/{datatype_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=ERROR_RESPONSES,
+)
+def delete_datatype(
+    datatype_id: UUID,
+    service: Annotated[DataTypeApplicationService, Depends(get_datatype_service)],
+) -> None:
+    service.delete_datatype(datatype_id)
+
+
 @router.get(
     "/{datatype_id}/versions",
     response_model=list[DataTypeVersionResponse],
@@ -147,7 +159,6 @@ def revise_version(
     revised = service.revise_version(
         datatype_id=datatype_id,
         version=version,
-        base_type=request.base_type,
         constraints=tuple(_to_constraint(constraint) for constraint in request.constraints),
     )
     return _to_version_response(revised)

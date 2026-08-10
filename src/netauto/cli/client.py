@@ -58,6 +58,9 @@ class NetautoApiClient:
     def create_datatype(self, payload: JSONObject) -> JSONObject:
         return self._request_object("POST", "/datatypes", json_body=payload)
 
+    def delete_datatype(self, datatype_id: str) -> None:
+        self._request_empty("DELETE", f"/datatypes/{datatype_id}")
+
     def list_versions(self, datatype_id: str) -> JSONArray:
         return self._request_array("GET", f"/datatypes/{datatype_id}/versions")
 

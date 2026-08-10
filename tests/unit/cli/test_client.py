@@ -37,6 +37,7 @@ def test_client_builds_correct_urls_and_bodies() -> None:
                 "constraints": [],
             }
         )
+        client.delete_datatype("abc")
 
     assert seen == [
         ("GET", "http://127.0.0.1:8000/api/v1/datatypes", None),
@@ -51,6 +52,7 @@ def test_client_builds_correct_urls_and_bodies() -> None:
                 "constraints": [],
             },
         ),
+        ("DELETE", "http://127.0.0.1:8000/api/v1/datatypes/abc", None),
     ]
 
 
@@ -82,6 +84,19 @@ def test_client_returns_arrays_and_objects() -> None:
     ) as client:
         assert client.list_datatypes() == [{"id": "x"}]
         assert client.get_datatype("abc") == {"id": "x"}
+
+
+def test_datatype_client_returns_empty_delete() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return _response(200, {"id": "x"})
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.delete_datatype("abc") is None
 
 
 def test_object_template_client_builds_correct_urls_and_bodies() -> None:

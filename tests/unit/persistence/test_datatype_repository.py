@@ -184,6 +184,37 @@ def test_get_by_name(backend: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_delete_removes_datatype_identity_and_all_versions(backend: str, tmp_path: Path) -> None:
+    first, v1 = _hostname_pair()
+    second, v2 = _vlan_pair()
+    versioning = DataTypeVersioningService()
+    v1_published = versioning.publish(v1)
+    v1_next = versioning.create_next_version(v1_published, existing_versions=(v1_published,))
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(first)
+        repo.add_version(v1)
+        repo.add_version(v1_next)
+        repo.add(second)
+        repo.add_version(v2)
+
+        repo.delete(first.id)
+
+        assert repo.get(first.id) is None
+        assert repo.get_by_name(first.namespace, first.name) is None
+        assert repo.list_versions(first.id) == ()
+        assert repo.get(second.id) == second
+        assert repo.list_versions(second.id) == (v2,)
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_delete_missing_rejected(backend: str, tmp_path: Path) -> None:
+    with _repository_harness(backend, tmp_path) as repo:
+        with pytest.raises(DataTypeNotFound):
+            repo.delete(UUID(int=1))
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_list_returns_deterministic_ordering(backend: str, tmp_path: Path) -> None:
     zeta = _datatype(namespace="zeta", name="beta", description=None)
     vlan = _datatype(namespace="network", name="vlan_id", description=None)
@@ -328,7 +359,6 @@ def test_replace_version_existing(backend: str, tmp_path: Path) -> None:
     service = DataTypeVersioningService()
     revised = service.revise_draft(
         draft,
-        base_type=PrimitiveTypeRegistry().get("core.string"),
         constraints=(
             Constraint(name=ConstraintName.MIN_LENGTH, value=5),
             Constraint(name=ConstraintName.MAX_LENGTH, value=253),

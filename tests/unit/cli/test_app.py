@@ -47,6 +47,9 @@ class FakeClient:
     def create_datatype(self, payload: dict[str, object]) -> Any:
         return self._call("create_datatype", payload)
 
+    def delete_datatype(self, datatype_id: str) -> Any:
+        return self._call("delete_datatype", datatype_id)
+
     def list_versions(self, datatype_id: str) -> Any:
         return self._call("list_versions", datatype_id)
 
@@ -497,8 +500,6 @@ def test_datatype_version_commands(monkeypatch: pytest.MonkeyPatch) -> None:
                 "revise",
                 datatype_id,
                 "1",
-                "--base-type",
-                "core.integer",
                 "--constraint",
                 "minimum=1",
             ],
@@ -514,6 +515,107 @@ def test_datatype_version_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert runner.invoke(app, ["datatype", "version", "publish", datatype_id, "1"]).exit_code == 0
     assert runner.invoke(app, ["datatype", "version", "deprecate", datatype_id, "1"]).exit_code == 0
+    assert calls[2] == (
+        "revise_version",
+        (datatype_id, 1, {"constraints": [{"name": "minimum", "value": 1}]}),
+    )
+
+
+def test_datatype_delete_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    datatype = _datatype_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"delete_datatype": None}, calls)
+
+    result = runner.invoke(app, ["datatype", "delete", str(datatype["id"])])
+
+    assert result.exit_code == 0
+    assert f"Deleted datatype {datatype['id']}" in result.stdout
+    assert calls == [("delete_datatype", (str(datatype["id"]),))]
+
+
+def test_datatype_version_revise_without_constraints_clears_all_constraints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"revise_version": version}, calls)
+    datatype_id = str(version["datatype_id"])
+
+    result = runner.invoke(app, ["datatype", "version", "revise", datatype_id, "1"])
+
+    assert result.exit_code == 0
+    assert calls == [("revise_version", (datatype_id, 1, {"constraints": []}))]
+
+
+def test_datatype_version_revise_file_mode_remains_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"revise_version": version}, calls)
+    datatype_id = str(version["datatype_id"])
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "revise.json"
+        path.write_text(
+            json.dumps({"constraints": [{"name": "pattern", "value": "^[a-z]+$"}]}),
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            ["datatype", "version", "revise", datatype_id, "1", "--file", str(path)],
+        )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "revise_version",
+            (
+                datatype_id,
+                1,
+                {"constraints": [{"name": "pattern", "value": "^[a-z]+$"}]},
+            ),
+        )
+    ]
+
+
+def test_datatype_version_revise_rejects_removed_base_type_option() -> None:
+    datatype_id = str(uuid4())
+
+    result = runner.invoke(
+        app,
+        ["datatype", "version", "revise", datatype_id, "1", "--base-type", "core.string"],
+    )
+
+    assert result.exit_code == 2
+
+
+def test_datatype_version_delete_command_does_not_exist() -> None:
+    datatype_id = str(uuid4())
+
+    result = runner.invoke(app, ["datatype", "version", "delete", datatype_id, "1"])
+
+    assert result.exit_code == 2
+
+
+def test_datatype_delete_propagates_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"delete_datatype": None},
+        calls,
+        error=ApiError(
+            status_code=409,
+            code="datatype_in_use",
+            message="Datatype is still referenced by an object template",
+            details=[],
+        ),
+    )
+
+    result = runner.invoke(app, ["datatype", "delete", str(uuid4())])
+
+    assert result.exit_code == 1
+    assert "datatype_in_use" in result.stderr
 
 
 def test_object_template_read_commands(monkeypatch: pytest.MonkeyPatch) -> None:

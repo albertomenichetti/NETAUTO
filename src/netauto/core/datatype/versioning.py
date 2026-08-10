@@ -9,7 +9,6 @@ from netauto.core.datatype.exceptions import (
     MismatchedDataTypeVersion,
 )
 from netauto.core.datatype.models import DataTypeVersion, DataTypeVersionStatus
-from netauto.core.datatype.primitives import PrimitiveType
 
 
 class DataTypeVersioningService:
@@ -22,7 +21,6 @@ class DataTypeVersioningService:
         self,
         version: DataTypeVersion,
         *,
-        base_type: PrimitiveType,
         constraints: Iterable[Constraint],
     ) -> DataTypeVersion:
         if version.status is not DataTypeVersionStatus.DRAFT:
@@ -31,7 +29,7 @@ class DataTypeVersioningService:
             datatype_id=version.datatype_id,
             version=version.version,
             status=DataTypeVersionStatus.DRAFT,
-            base_type=base_type,
+            base_type=version.base_type,
             constraints=tuple(constraints),
         )
 

@@ -44,6 +44,20 @@ class InMemoryDataTypeRepository(DataTypeRepository):
             return None
         return self._datatypes[datatype_id]
 
+    def delete(self, datatype_id: UUID) -> None:
+        datatype = self._datatypes.get(datatype_id)
+        if datatype is None:
+            raise DataTypeNotFound("Datatype does not exist.")
+        del self._datatypes[datatype_id]
+        del self._datatype_names[(datatype.namespace, datatype.name)]
+        version_keys = [
+            version_key
+            for version_key in self._versions
+            if version_key[0] == datatype_id
+        ]
+        for version_key in version_keys:
+            del self._versions[version_key]
+
     def add_version(self, version: DataTypeVersion) -> None:
         if version.datatype_id not in self._datatypes:
             raise DataTypeNotFound("Parent datatype does not exist.")

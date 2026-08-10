@@ -121,6 +121,12 @@ def render_version(payload: JSONObject, mode: OutputMode, *, prefix: str | None 
     return "\n".join(lines)
 
 
+def render_datatype_delete_result(datatype_id: str, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json({"deleted_datatype_id": datatype_id})
+    return f"Deleted datatype {datatype_id}"
+
+
 def render_object_template_list(payload: JSONArray, mode: OutputMode) -> str:
     if mode is OutputMode.JSON:
         return render_json(payload)

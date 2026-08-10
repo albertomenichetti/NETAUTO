@@ -66,15 +66,14 @@ def test_revise_draft_returns_replacement_snapshot() -> None:
 
     revised = service.revise_draft(
         original,
-        base_type=_base_type("core.string"),
-        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=1),),
+        constraints=(Constraint(name=ConstraintName.MAXIMUM, value=4094),),
     )
 
     assert revised.datatype_id == original.datatype_id
     assert revised.version == original.version
     assert revised.status is DataTypeVersionStatus.DRAFT
-    assert revised.base_type.name == "core.string"
-    assert revised.constraints == (Constraint(name=ConstraintName.MIN_LENGTH, value=1),)
+    assert revised.base_type == original.base_type
+    assert revised.constraints == (Constraint(name=ConstraintName.MAXIMUM, value=4094),)
     assert original.base_type.name == "core.integer"
     assert original.constraints == (Constraint(name=ConstraintName.MINIMUM, value=1),)
 
@@ -96,7 +95,6 @@ def test_revise_draft_rejects_non_draft_versions(status: DataTypeVersionStatus) 
     with pytest.raises(InvalidDataTypeVersionTransition):
         service.revise_draft(
             version,
-            base_type=_base_type("core.string"),
             constraints=(),
         )
 
@@ -107,8 +105,7 @@ def test_revise_draft_propagates_constraint_validation_errors() -> None:
     with pytest.raises(InvalidConstraintValue):
         service.revise_draft(
             _draft_version(),
-            base_type=_base_type("core.string"),
-            constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=-1),),
+            constraints=(Constraint(name=ConstraintName.MINIMUM, value=True),),
         )
 
 

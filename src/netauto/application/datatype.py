@@ -8,11 +8,11 @@ from netauto.core.datatype import (
     Constraint,
     DataType,
     DataTypeFactory,
+    DataTypeInUse,
     DataTypeNotFound,
     DataTypeVersion,
     DataTypeVersioningService,
     DataTypeVersionNotFound,
-    PrimitiveTypeRegistry,
 )
 
 
@@ -23,7 +23,6 @@ class DataTypeApplicationService:
         self._uow_factory = uow_factory
         self._factory = DataTypeFactory()
         self._versioning = DataTypeVersioningService()
-        self._primitive_registry = PrimitiveTypeRegistry()
 
     def create_datatype(
         self,
@@ -87,7 +86,6 @@ class DataTypeApplicationService:
         *,
         datatype_id: UUID,
         version: int,
-        base_type: str,
         constraints: Iterable[Constraint],
     ) -> DataTypeVersion:
         with self._uow_factory() as uow:
@@ -97,10 +95,8 @@ class DataTypeApplicationService:
             current = uow.datatypes.get_version(datatype_id, version)
             if current is None:
                 raise DataTypeVersionNotFound("Datatype version does not exist.")
-            primitive = self._primitive_registry.get(base_type)
             revised = self._versioning.revise_draft(
                 current,
-                base_type=primitive,
                 constraints=constraints,
             )
             uow.datatypes.replace_version(revised)
@@ -154,3 +150,20 @@ class DataTypeApplicationService:
             uow.datatypes.replace_version(deprecated)
             uow.commit()
             return deprecated
+
+    def delete_datatype(self, datatype_id: UUID) -> None:
+        with self._uow_factory() as uow:
+            datatype = uow.datatypes.get(datatype_id)
+            if datatype is None:
+                raise DataTypeNotFound("Datatype does not exist.")
+
+            for template in uow.object_templates.list():
+                for version in uow.object_templates.list_versions(template.id):
+                    for property_definition in version.properties:
+                        if property_definition.datatype_id == datatype_id:
+                            raise DataTypeInUse(
+                                "Datatype is still referenced by an object template."
+                            )
+
+            uow.datatypes.delete(datatype_id)
+            uow.commit()

@@ -35,7 +35,6 @@ class CreateDataTypeRequest(ApiModel):
 
 
 class ReviseDataTypeVersionRequest(ApiModel):
-    base_type: StrictStr
     constraints: list[ConstraintRequest]
 
 

@@ -65,7 +65,6 @@ async def test_full_lifecycle_workflow_over_http_and_sqlite(tmp_path: Path) -> N
         revised = await client.put(
             f"/api/v1/datatypes/{datatype_id}/versions/1",
             json={
-                "base_type": "core.integer",
                 "constraints": [
                     {"name": "minimum", "value": 1},
                     {"name": "maximum", "value": 4094},

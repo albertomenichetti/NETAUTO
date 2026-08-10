@@ -25,6 +25,10 @@ class DataTypeRepository(Protocol):
         """Return a datatype by logical name or None."""
         ...
 
+    def delete(self, datatype_id: UUID) -> None:
+        """Delete a datatype identity and all of its versions."""
+        ...
+
     def add_version(self, version: DataTypeVersion) -> None:
         """Persist a new datatype version snapshot."""
         ...

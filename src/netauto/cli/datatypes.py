@@ -11,6 +11,7 @@ from netauto.cli.input import ensure_modes_are_exclusive, load_json_object, pars
 from netauto.cli.output import (
     render_create_result,
     render_datatype,
+    render_datatype_delete_result,
     render_datatype_list,
     render_version,
     render_version_list,
@@ -49,18 +50,14 @@ def _build_create_payload(
 
 def _build_revise_payload(
     *,
-    base_type: str | None,
     constraints: list[str],
     file: str | None,
 ) -> JSONObject:
-    inline_present = base_type is not None or bool(constraints)
+    inline_present = bool(constraints)
     ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
     if file is not None:
         return load_json_object(file)
-    if base_type is None:
-        raise InputError("Inline revise mode requires --base-type.")
     return {
-        "base_type": base_type,
         "constraints": parse_constraints(constraints),
     }
 
@@ -78,6 +75,15 @@ def show_datatype(ctx: typer.Context, datatype_id: UUID) -> None:
 @datatype_app.command("show-name")
 def show_datatype_name(ctx: typer.Context, namespace: str, name: str) -> None:
     run_action(ctx, lambda client: client.get_datatype_by_name(namespace, name), render_datatype)
+
+
+@datatype_app.command("delete")
+def delete_datatype(ctx: typer.Context, datatype_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.delete_datatype(uuid_text(datatype_id)),
+        lambda _payload, mode: render_datatype_delete_result(uuid_text(datatype_id), mode),
+    )
 
 
 @datatype_app.command("create")
@@ -131,13 +137,11 @@ def revise_version(
     ctx: typer.Context,
     datatype_id: UUID,
     version: int = typer.Argument(..., min=1),
-    base_type: str | None = typer.Option(None, "--base-type"),
     constraint: list[str] | None = typer.Option(None, "--constraint"),
     file: str | None = typer.Option(None, "--file"),
 ) -> None:
     try:
         payload = _build_revise_payload(
-            base_type=base_type,
             constraints=constraint or [],
             file=file,
         )

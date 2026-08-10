@@ -19,6 +19,10 @@ class DataTypeUnitOfWork(Protocol):
     def datatypes(self) -> DataTypeRepository:
         ...
 
+    @property
+    def object_templates(self) -> ObjectTemplateRepository:
+        ...
+
     def __enter__(self) -> Self:
         ...
 

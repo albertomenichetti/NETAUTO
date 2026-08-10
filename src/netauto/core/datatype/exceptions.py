@@ -71,3 +71,7 @@ class DataTypeVersionNotFound(Exception):
 
 class DataTypePersistenceError(Exception):
     """Raised when persisted datatype state cannot be mapped safely."""
+
+
+class DataTypeInUse(Exception):
+    """Raised when a datatype is still referenced by an object template."""

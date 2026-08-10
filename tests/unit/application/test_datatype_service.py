@@ -10,22 +10,40 @@ from netauto.core.datatype import (
     Constraint,
     ConstraintName,
     DataTypeFactory,
+    DataTypeInUse,
     DataTypeNotFound,
     DataTypeVersioningService,
     DataTypeVersionNotFound,
     DataTypeVersionStatus,
 )
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplateProperty,
+    ObjectTemplateVersion,
+    ObjectTemplateVersionStatus,
+)
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
 
 
 class FakeUnitOfWork(DataTypeUnitOfWork):
-    def __init__(self, repo: InMemoryDataTypeRepository, commit_counter: list[int]) -> None:
+    def __init__(
+        self,
+        repo: InMemoryDataTypeRepository,
+        object_templates: InMemoryObjectTemplateRepository,
+        commit_counter: list[int],
+    ) -> None:
         self._repo = repo
+        self._object_templates = object_templates
         self._commit_counter = commit_counter
 
     @property
     def datatypes(self) -> InMemoryDataTypeRepository:
         return self._repo
+
+    @property
+    def object_templates(self) -> InMemoryObjectTemplateRepository:
+        return self._object_templates
 
     def __enter__(self) -> FakeUnitOfWork:
         return self
@@ -37,18 +55,24 @@ class FakeUnitOfWork(DataTypeUnitOfWork):
         self._commit_counter[0] += 1
 
 
-def _service() -> tuple[DataTypeApplicationService, InMemoryDataTypeRepository, list[int]]:
+def _service() -> tuple[
+    DataTypeApplicationService,
+    InMemoryDataTypeRepository,
+    InMemoryObjectTemplateRepository,
+    list[int],
+]:
     repo = InMemoryDataTypeRepository()
+    object_templates = InMemoryObjectTemplateRepository()
     commit_counter = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(repo, commit_counter)
+        return FakeUnitOfWork(repo, object_templates, commit_counter)
 
-    return DataTypeApplicationService(factory), repo, commit_counter
+    return DataTypeApplicationService(factory), repo, object_templates, commit_counter
 
 
 def test_create_invokes_one_commit() -> None:
-    service, repo, commits = _service()
+    service, repo, _object_templates, commits = _service()
 
     datatype, version = service.create_datatype(
         namespace="network",
@@ -64,7 +88,7 @@ def test_create_invokes_one_commit() -> None:
 
 
 def test_reads_do_not_commit() -> None:
-    service, repo, commits = _service()
+    service, repo, _object_templates, commits = _service()
     datatype, version = DataTypeFactory().create(
         namespace="network",
         name="hostname",
@@ -83,7 +107,7 @@ def test_reads_do_not_commit() -> None:
 
 
 def test_missing_datatype_and_version_become_focused_exceptions() -> None:
-    service, repo, _ = _service()
+    service, repo, _object_templates, _ = _service()
     datatype, version = DataTypeFactory().create(
         namespace="network",
         name="hostname",
@@ -101,7 +125,7 @@ def test_missing_datatype_and_version_become_focused_exceptions() -> None:
 
 
 def test_revise_publish_deprecate_replace_and_commit() -> None:
-    service, repo, commits = _service()
+    service, repo, _object_templates, commits = _service()
     datatype, draft = DataTypeFactory().create(
         namespace="network",
         name="hostname",
@@ -115,7 +139,6 @@ def test_revise_publish_deprecate_replace_and_commit() -> None:
     revised = service.revise_version(
         datatype_id=datatype.id,
         version=1,
-        base_type="core.string",
         constraints=(
             Constraint(name=ConstraintName.MIN_LENGTH, value=5),
             Constraint(name=ConstraintName.MAX_LENGTH, value=253),
@@ -125,6 +148,7 @@ def test_revise_publish_deprecate_replace_and_commit() -> None:
     deprecated = service.deprecate_version(datatype_id=datatype.id, version=1)
 
     assert revised.status is DataTypeVersionStatus.DRAFT
+    assert revised.base_type == draft.base_type
     assert published.status is DataTypeVersionStatus.PUBLISHED
     assert deprecated.status is DataTypeVersionStatus.DEPRECATED
     assert repo.get_version(datatype.id, 1) == deprecated
@@ -132,7 +156,7 @@ def test_revise_publish_deprecate_replace_and_commit() -> None:
 
 
 def test_create_next_uses_exact_source_and_all_existing_versions() -> None:
-    service, repo, commits = _service()
+    service, repo, _object_templates, commits = _service()
     datatype, v1_draft = DataTypeFactory().create(
         namespace="network",
         name="hostname",
@@ -177,7 +201,7 @@ def test_create_next_uses_exact_source_and_all_existing_versions() -> None:
 
 
 def test_mutation_does_not_commit_after_exception() -> None:
-    service, _repo, commits = _service()
+    service, _repo, _object_templates, commits = _service()
 
     service.create_datatype(
         namespace="network",
@@ -196,4 +220,169 @@ def test_mutation_does_not_commit_after_exception() -> None:
             constraints=(),
         )
 
+    assert commits[0] == 1
+
+
+def test_delete_missing_datatype_raises_without_commit() -> None:
+    service, _repo, _object_templates, commits = _service()
+
+    with pytest.raises(DataTypeNotFound):
+        service.delete_datatype(uuid4())
+
+    assert commits[0] == 0
+
+
+def test_delete_unreferenced_datatype_removes_identity_and_all_versions() -> None:
+    service, repo, _object_templates, commits = _service()
+    datatype, draft = DataTypeFactory().create(
+        namespace="common",
+        name="email",
+        description="Email address",
+        base_type="core.string",
+        constraints=(),
+    )
+    versioning = DataTypeVersioningService()
+    published = versioning.publish(draft)
+    next_draft = versioning.create_next_version(published, existing_versions=(published,))
+    deprecated = versioning.deprecate(published)
+    deprecated = type(deprecated)(
+        datatype_id=deprecated.datatype_id,
+        version=3,
+        status=deprecated.status,
+        base_type=deprecated.base_type,
+        constraints=deprecated.constraints,
+    )
+    repo.add(datatype)
+    repo.add_version(draft)
+    repo.add_version(next_draft)
+    repo.add_version(deprecated)
+
+    service.delete_datatype(datatype.id)
+
+    assert repo.get(datatype.id) is None
+    assert repo.list_versions(datatype.id) == ()
+    assert commits[0] == 1
+
+
+@pytest.mark.parametrize("status", list(ObjectTemplateVersionStatus))
+def test_delete_referenced_datatype_is_blocked_for_all_template_statuses(
+    status: ObjectTemplateVersionStatus,
+) -> None:
+    service, repo, object_templates, commits = _service()
+    datatype, version = DataTypeFactory().create(
+        namespace="common",
+        name="email",
+        description="Email address",
+        base_type="core.string",
+        constraints=(),
+    )
+    repo.add(datatype)
+    repo.add_version(version)
+    template = ObjectTemplate(id=uuid4(), namespace="network", name=f"device_{status.value}")
+    template_version = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=status,
+        properties=(
+            ObjectTemplateProperty(
+                name="email",
+                datatype_id=datatype.id,
+                datatype_version=1,
+                required=False,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(template_version)
+
+    with pytest.raises(DataTypeInUse):
+        service.delete_datatype(datatype.id)
+
+    assert repo.get(datatype.id) == datatype
+    assert repo.list_versions(datatype.id) == (version,)
+    assert commits[0] == 0
+
+
+def test_delete_referenced_datatype_is_blocked_for_older_referenced_version() -> None:
+    service, repo, object_templates, commits = _service()
+    datatype, v1 = DataTypeFactory().create(
+        namespace="common",
+        name="email",
+        description="Email address",
+        base_type="core.string",
+        constraints=(),
+    )
+    published_v1 = DataTypeVersioningService().publish(v1)
+    v2 = DataTypeVersioningService().create_next_version(
+        published_v1,
+        existing_versions=(published_v1,),
+    )
+    repo.add(datatype)
+    repo.add_version(v1)
+    repo.add_version(v2)
+    template = ObjectTemplate(id=uuid4(), namespace="network", name="device")
+    template_version = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(
+            ObjectTemplateProperty(
+                name="email",
+                datatype_id=datatype.id,
+                datatype_version=1,
+                required=False,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(template_version)
+
+    with pytest.raises(DataTypeInUse):
+        service.delete_datatype(datatype.id)
+
+    assert repo.list_versions(datatype.id) == (v1, v2)
+    assert commits[0] == 0
+
+
+def test_delete_unrelated_datatype_ignores_other_template_references() -> None:
+    service, repo, object_templates, commits = _service()
+    datatype_a, version_a = DataTypeFactory().create(
+        namespace="common",
+        name="email",
+        description="Email address",
+        base_type="core.string",
+        constraints=(),
+    )
+    datatype_b, version_b = DataTypeFactory().create(
+        namespace="common",
+        name="hostname",
+        description="Hostname",
+        base_type="core.string",
+        constraints=(),
+    )
+    repo.add(datatype_a)
+    repo.add_version(version_a)
+    repo.add(datatype_b)
+    repo.add_version(version_b)
+    template = ObjectTemplate(id=uuid4(), namespace="network", name="device")
+    template_version = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype_b.id,
+                datatype_version=1,
+                required=False,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(template_version)
+
+    service.delete_datatype(datatype_a.id)
+
+    assert repo.get(datatype_a.id) is None
+    assert repo.get(datatype_b.id) == datatype_b
     assert commits[0] == 1

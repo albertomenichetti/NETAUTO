@@ -11,6 +11,7 @@ from netauto.api.schemas.datatypes import ErrorBody, ErrorDetail, ErrorResponse
 from netauto.core.datatype import (
     ConflictingConstraints,
     DataTypeAlreadyExists,
+    DataTypeInUse,
     DataTypeNotFound,
     DataTypePersistenceError,
     DataTypeVersionAlreadyExists,
@@ -225,6 +226,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "datatype_already_exists",
         "Datatype already exists",
+    ),
+    (
+        DataTypeInUse,
+        HTTPStatus.CONFLICT,
+        "datatype_in_use",
+        "Datatype is still referenced by an object template",
     ),
     (
         DataTypeVersionAlreadyExists,
