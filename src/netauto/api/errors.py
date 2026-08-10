@@ -39,6 +39,7 @@ from netauto.core.object import (
     ObjectComponentTemplateIncompatible,
     ObjectDataTypeVersionNotFound,
     ObjectMigrationBlocked,
+    ObjectMigrationTargetVersionNotNewer,
     ObjectMigrationTargetVersionNotPublished,
     ObjectNotFound,
     ObjectPersistenceError,
@@ -183,6 +184,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "component_ownership_cycle",
         "Component ownership cycle detected",
+    ),
+    (
+        ObjectMigrationTargetVersionNotNewer,
+        HTTPStatus.CONFLICT,
+        "object_migration_target_version_not_newer",
+        "Object migration target version must be newer than the source version",
     ),
     (
         ObjectMigrationTargetVersionNotPublished,

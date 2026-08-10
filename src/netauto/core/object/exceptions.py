@@ -76,6 +76,10 @@ class ObjectMigrationTargetVersionNotPublished(Exception):
     """Raised when automatic migration targets a non-published template version."""
 
 
+class ObjectMigrationTargetVersionNotNewer(Exception):
+    """Raised when automatic migration does not target a newer template version."""
+
+
 class ObjectMigrationBlocked(Exception):
     """Raised when structural migration analysis contains blocking changes."""
 

@@ -20,6 +20,7 @@ from netauto.core.object import (
     MissingObjectMigrationPropertyValue,
     Object,
     ObjectMigrationBlocked,
+    ObjectMigrationTargetVersionNotNewer,
     ObjectMigrationTargetVersionNotPublished,
     ObjectTemplateMigrationBlockingChangeKind,
     ObjectValidationFailed,
@@ -802,7 +803,10 @@ def test_target_version_must_be_published_for_analysis_and_execution() -> None:
     assert commits[0] == 0
 
 
-def test_zero_candidate_migration_is_noop_without_commit() -> None:
+@pytest.mark.parametrize("target_version", [2, 1])
+def test_forward_only_migration_rejects_non_newer_target_versions(
+    target_version: int,
+) -> None:
     service, datatypes, object_templates, objects, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
@@ -829,6 +833,55 @@ def test_zero_candidate_migration_is_noop_without_commit() -> None:
     _create_object(
         objects,
         template_id=template.id,
+        template_version=1,
+        properties={"hostname": "done"},
+    )
+
+    with pytest.raises(ObjectMigrationTargetVersionNotNewer):
+        service.analyze_object_migration(
+            template_id=template.id,
+            source_version=2,
+            target_version=target_version,
+        )
+    with pytest.raises(ObjectMigrationTargetVersionNotNewer):
+        service.migrate_objects(
+            template_id=template.id,
+            source_version=2,
+            target_version=target_version,
+            property_values={},
+        )
+
+    assert objects.replace_calls == []
+    assert commits[0] == 0
+
+
+def test_zero_candidate_migration_with_required_added_property_is_noop_without_commit() -> None:
+    service, datatypes, object_templates, objects, commits = _service()
+    hostname, hostname_v1 = _datatype(name="hostname")
+    serial, serial_v1 = _datatype(name="serial")
+    _store_datatype_versions(datatypes, hostname, (hostname_v1,))
+    _store_datatype_versions(datatypes, serial, (serial_v1,))
+
+    template = _template(name="device")
+    v1 = _version(
+        template.id,
+        version=1,
+        properties=(
+            _property("hostname", datatype_id=hostname.id, datatype_version=1, required=True),
+        ),
+    )
+    v2 = _version(
+        template.id,
+        version=2,
+        properties=(
+            _property("hostname", datatype_id=hostname.id, datatype_version=1, required=True),
+            _property("serialnumber", datatype_id=serial.id, datatype_version=1, required=True),
+        ),
+    )
+    _store_template_versions(object_templates, template, (v1, v2))
+    _create_object(
+        objects,
+        template_id=template.id,
         template_version=2,
         properties={"hostname": "done"},
     )
@@ -841,5 +894,42 @@ def test_zero_candidate_migration_is_noop_without_commit() -> None:
     )
 
     assert result.migrated_count == 0
+    assert objects.replace_calls == []
+    assert commits[0] == 0
+
+
+def test_zero_candidate_migration_still_rejects_unexpected_property_values() -> None:
+    service, datatypes, object_templates, objects, commits = _service()
+    hostname, hostname_v1 = _datatype(name="hostname")
+    serial, serial_v1 = _datatype(name="serial")
+    _store_datatype_versions(datatypes, hostname, (hostname_v1,))
+    _store_datatype_versions(datatypes, serial, (serial_v1,))
+
+    template = _template(name="device")
+    v1 = _version(
+        template.id,
+        version=1,
+        properties=(
+            _property("hostname", datatype_id=hostname.id, datatype_version=1, required=True),
+        ),
+    )
+    v2 = _version(
+        template.id,
+        version=2,
+        properties=(
+            _property("hostname", datatype_id=hostname.id, datatype_version=1, required=True),
+            _property("serialnumber", datatype_id=serial.id, datatype_version=1, required=True),
+        ),
+    )
+    _store_template_versions(object_templates, template, (v1, v2))
+
+    with pytest.raises(UnexpectedObjectMigrationPropertyValue):
+        service.migrate_objects(
+            template_id=template.id,
+            source_version=1,
+            target_version=2,
+            property_values={"hostname": "new"},
+        )
+
     assert objects.replace_calls == []
     assert commits[0] == 0

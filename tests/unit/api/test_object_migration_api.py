@@ -590,6 +590,82 @@ def test_migrate_structural_and_validation_failures_map_correctly(
     assert commits[0] == 0
 
 
+@pytest.mark.parametrize("target_version", [2, 1])
+def test_migration_direction_error_maps_to_409(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        list[int],
+    ],
+    target_version: int,
+) -> None:
+    client, datatypes, templates, objects, commits = client_context
+    hostname, hostname_v1 = _datatype(name="hostname")
+    _store_datatype_versions(datatypes, hostname, (hostname_v1,))
+
+    template_id = uuid4()
+    _store_template_versions(
+        templates,
+        name="device",
+        versions=(
+            _version(
+                template_id,
+                version=1,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname.id,
+                        datatype_version=1,
+                        required=True,
+                    ),
+                ),
+            ),
+            _version(
+                template_id,
+                version=2,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname.id,
+                        datatype_version=1,
+                        required=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+    source = _store_object(
+        objects,
+        template_id=template_id,
+        template_version=1,
+        properties={"hostname": "r1"},
+    )
+
+    analysis = client.get(
+        f"/api/v1/object-templates/{template_id}/versions/2/migration-analysis",
+        params={"target_version": target_version},
+    )
+    execute = client.post(
+        f"/api/v1/object-templates/{template_id}/versions/2/migrate-objects",
+        json={"target_version": target_version, "property_values": {}},
+    )
+
+    assert analysis.status_code == 409
+    assert (
+        analysis.json()["error"]["code"]
+        == "object_migration_target_version_not_newer"
+    )
+    assert execute.status_code == 409
+    assert (
+        execute.json()["error"]["code"]
+        == "object_migration_target_version_not_newer"
+    )
+    assert objects.get(source.id) == source
+    assert commits[0] == 0
+
+
 def test_object_migration_persistence_error_maps_to_500() -> None:
     def factory() -> BrokenObjectUnitOfWork:
         return BrokenObjectUnitOfWork()

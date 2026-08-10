@@ -17,6 +17,7 @@ from netauto.core.object import (
     ObjectComponentTemplateIncompatible,
     ObjectMigrationBlocked,
     ObjectMigrationResult,
+    ObjectMigrationTargetVersionNotNewer,
     ObjectMigrationTargetVersionNotPublished,
     ObjectNotFound,
     ObjectTemplateMigrationAddedComponent,
@@ -300,7 +301,7 @@ class ObjectApplicationService:
                 raise ObjectMigrationBlocked("Object migration contains blocking schema changes.")
 
             values_by_name = dict(property_values)
-            self._validate_migration_property_values(values_by_name, analysis=analysis)
+            self._validate_migration_property_names(values_by_name, analysis=analysis)
 
             target = self._get_template_version(
                 uow,
@@ -316,6 +317,11 @@ class ObjectApplicationService:
                     target_version=target_version,
                     migrated_count=0,
                 )
+
+            self._validate_required_migration_property_values(
+                values_by_name,
+                analysis=analysis,
+            )
 
             migrated_objects = [
                 self._build_migrated_object(
@@ -466,6 +472,10 @@ class ObjectApplicationService:
         template = uow.object_templates.get(template_id)
         if template is None:
             raise ObjectTemplateNotFound("Object template does not exist.")
+        if target_version <= source_version:
+            raise ObjectMigrationTargetVersionNotNewer(
+                "Object migration target version must be newer than the source version."
+            )
 
         source = self._get_template_version(
             uow,
@@ -578,7 +588,7 @@ class ObjectApplicationService:
                 )
         return added, tuple(blocking)
 
-    def _validate_migration_property_values(
+    def _validate_migration_property_names(
         self,
         property_values: Mapping[str, object],
         *,
@@ -593,6 +603,12 @@ class ObjectApplicationService:
                 "Migration supplied values may only target newly added properties."
             )
 
+    def _validate_required_migration_property_values(
+        self,
+        property_values: Mapping[str, object],
+        *,
+        analysis: ObjectTemplateMigrationAnalysis,
+    ) -> None:
         missing_required_names = [
             property_value.name
             for property_value in analysis.added_properties
