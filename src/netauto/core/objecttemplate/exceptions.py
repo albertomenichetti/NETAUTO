@@ -65,6 +65,10 @@ class ObjectTemplateDataTypeVersionNotPublished(Exception):
     """Raised when a referenced datatype version is not published."""
 
 
+class ObjectTemplateDataTypeVersionDowngrade(Exception):
+    """Raised when a property is revised to an older version of the same datatype."""
+
+
 class ObjectTemplateComponentVersionNotFound(Exception):
     """Raised when a referenced component target template cannot be found."""
 

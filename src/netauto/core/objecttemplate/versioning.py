@@ -9,6 +9,7 @@ from netauto.core.objecttemplate.exceptions import (
     MismatchedObjectTemplateVersion,
     ObjectTemplateComponentVersionNotFound,
     ObjectTemplateComponentVersionNotPublished,
+    ObjectTemplateDataTypeVersionDowngrade,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateParentNotPublished,
@@ -44,12 +45,26 @@ class ObjectTemplateVersioningService:
     ) -> ObjectTemplateVersion:
         if version.status is not ObjectTemplateVersionStatus.DRAFT:
             raise InvalidObjectTemplateVersionTransition("Only draft versions may be revised.")
+        proposed_properties = tuple(properties)
+        current_by_name = {prop.name: prop for prop in version.properties}
+
+        for proposed in proposed_properties:
+            current = current_by_name.get(proposed.name)
+            if current is None:
+                continue
+            if current.datatype_id != proposed.datatype_id:
+                continue
+            if proposed.datatype_version < current.datatype_version:
+                raise ObjectTemplateDataTypeVersionDowngrade(
+                    "Object template properties cannot downgrade datatype versions."
+                )
+
         return ObjectTemplateVersion(
             template_id=version.template_id,
             version=version.version,
             status=ObjectTemplateVersionStatus.DRAFT,
             parent=parent,
-            properties=tuple(properties),
+            properties=proposed_properties,
             components=tuple(components),
         )
 

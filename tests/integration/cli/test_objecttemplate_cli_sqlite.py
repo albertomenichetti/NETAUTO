@@ -638,3 +638,201 @@ def test_cli_objecttemplate_component_acceptance_flow(tmp_path: Path) -> None:
             }
     finally:
         engine.dispose()
+
+
+def test_cli_objecttemplate_revise_rejects_datatype_version_downgrade(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            email_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "common",
+                    "--name",
+                    "email",
+                    "--description",
+                    "Email",
+                    "--base-type",
+                    "core.string",
+                ],
+            )
+            assert email_created.exit_code == 0
+            datatype_id = json.loads(email_created.stdout)["datatype"]["id"]
+
+            for version in (1,):
+                assert (
+                    runner.invoke(
+                        app,
+                        [
+                            "--api-url",
+                            base_url,
+                            "datatype",
+                            "version",
+                            "publish",
+                            datatype_id,
+                            str(version),
+                        ],
+                    ).exit_code
+                    == 0
+                )
+
+            for source_version in ("1", "2"):
+                created_next = runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "datatype",
+                        "version",
+                        "create",
+                        datatype_id,
+                        "--source-version",
+                        source_version,
+                    ],
+                )
+                if source_version == "1":
+                    assert created_next.exit_code == 0
+                    assert (
+                        runner.invoke(
+                            app,
+                            [
+                                "--api-url",
+                                base_url,
+                                "datatype",
+                                "version",
+                                "publish",
+                                datatype_id,
+                                "2",
+                            ],
+                        ).exit_code
+                        == 0
+                    )
+                else:
+                    assert created_next.exit_code == 0
+                    assert (
+                        runner.invoke(
+                            app,
+                            [
+                                "--api-url",
+                                base_url,
+                                "datatype",
+                                "version",
+                                "publish",
+                                datatype_id,
+                                "3",
+                            ],
+                        ).exit_code
+                        == 0
+                    )
+
+            object_template_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "contact",
+                    "--description",
+                    "Contact template",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "e_mail",
+                            "datatype_id": datatype_id,
+                            "datatype_version": 3,
+                            "required": False,
+                        }
+                    ),
+                ],
+            )
+            assert object_template_created.exit_code == 0
+            template_id = json.loads(object_template_created.stdout)["object_template"]["id"]
+
+            downgraded = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "revise",
+                    template_id,
+                    "1",
+                    "--no-parent",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "e_mail",
+                            "datatype_id": datatype_id,
+                            "datatype_version": 2,
+                            "required": False,
+                        }
+                    ),
+                ],
+            )
+            assert downgraded.exit_code == 1
+            assert "object_template_datatype_version_downgrade" in downgraded.stderr
+
+            shown = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "show",
+                    template_id,
+                    "1",
+                ],
+            )
+            assert shown.exit_code == 0
+            shown_payload = json.loads(shown.stdout)
+            assert shown_payload["properties"][0]["datatype_version"] == 3
+
+            upgraded = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "revise",
+                    template_id,
+                    "1",
+                    "--no-parent",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "e_mail",
+                            "datatype_id": datatype_id,
+                            "datatype_version": 3,
+                            "required": True,
+                        }
+                    ),
+                ],
+            )
+            assert upgraded.exit_code == 0
+            upgraded_payload = json.loads(upgraded.stdout)
+            assert upgraded_payload["properties"][0]["datatype_version"] == 3
+            assert upgraded_payload["properties"][0]["required"] is True
+    finally:
+        engine.dispose()

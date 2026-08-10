@@ -27,6 +27,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateComponent,
     ObjectTemplateComponentVersionNotFound,
     ObjectTemplateComponentVersionNotPublished,
+    ObjectTemplateDataTypeVersionDowngrade,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateNotFound,
@@ -358,6 +359,180 @@ def test_create_object_template_stores_identity_only_components_and_properties_t
     assert object_templates.get(template.id) == template
     assert object_templates.get_version(template.id, 1) == version
     assert component_target.abstract is True
+
+
+def test_revise_version_rejects_same_datatype_version_downgrade_without_commit() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, v1 = _published_datatype(namespace="common", name="email")
+    versioning = DataTypeVersioningService()
+    v2 = DataTypeVersioningService().publish(
+        versioning.create_next_version(
+            v1,
+            existing_versions=(v1,),
+        )
+    )
+    v3 = DataTypeVersioningService().publish(
+        versioning.create_next_version(
+            v2,
+            existing_versions=(v1, v2),
+        )
+    )
+    _store_datatype_versions(datatypes, datatype, (v1, v2, v3))
+
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    current = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(
+            ObjectTemplateProperty(
+                name="e_mail",
+                datatype_id=datatype.id,
+                datatype_version=3,
+                required=False,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(current)
+
+    with pytest.raises(ObjectTemplateDataTypeVersionDowngrade):
+        service.revise_version(
+            template_id=template.id,
+            version=1,
+            parent=None,
+            properties=(
+                _spec("e_mail", datatype_id=datatype.id, datatype_version=2),
+            ),
+        )
+
+    assert object_templates.get_version(template.id, 1) == current
+    assert commits[0] == 0
+
+
+def test_revise_version_allows_same_datatype_upgrade_with_one_commit() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, v1 = _published_datatype(namespace="common", name="email")
+    versioning = DataTypeVersioningService()
+    v2 = DataTypeVersioningService().publish(
+        versioning.create_next_version(
+            v1,
+            existing_versions=(v1,),
+        )
+    )
+    v3 = DataTypeVersioningService().publish(
+        versioning.create_next_version(
+            v2,
+            existing_versions=(v1, v2),
+        )
+    )
+    v4 = DataTypeVersioningService().publish(
+        versioning.create_next_version(
+            v3,
+            existing_versions=(v1, v2, v3),
+        )
+    )
+    _store_datatype_versions(datatypes, datatype, (v1, v2, v3, v4))
+
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    current = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(
+            ObjectTemplateProperty(
+                name="e_mail",
+                datatype_id=datatype.id,
+                datatype_version=3,
+                required=False,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(current)
+
+    revised = service.revise_version(
+        template_id=template.id,
+        version=1,
+        parent=None,
+        properties=(
+            _spec("e_mail", datatype_id=datatype.id, datatype_version=4),
+        ),
+    )
+
+    assert revised.properties[0].datatype_version == 4
+    assert object_templates.get_version(template.id, 1) == revised
+    assert commits[0] == 1
+
+
+def test_revise_version_omitted_datatype_version_cannot_bypass_downgrade_guard() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, v1 = DataTypeFactory().create(
+        namespace="common",
+        name="email",
+        description="Email datatype",
+        base_type="core.string",
+    )
+    versioning = DataTypeVersioningService()
+    v1_published = versioning.publish(v1)
+    v2_published = versioning.publish(
+        versioning.create_next_version(v1_published, existing_versions=(v1_published,))
+    )
+    v3_deprecated = versioning.deprecate(
+        versioning.publish(
+            versioning.create_next_version(
+                v2_published,
+                existing_versions=(v1_published, v2_published),
+            )
+        )
+    )
+    _store_datatype_versions(datatypes, datatype, (v1_published, v2_published, v3_deprecated))
+
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    current = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(
+            ObjectTemplateProperty(
+                name="e_mail",
+                datatype_id=datatype.id,
+                datatype_version=3,
+                required=False,
+            ),
+        ),
+    )
+    object_templates.add(template)
+    object_templates.add_version(current)
+
+    with pytest.raises(ObjectTemplateDataTypeVersionDowngrade):
+        service.revise_version(
+            template_id=template.id,
+            version=1,
+            parent=None,
+            properties=(_spec("e_mail", datatype_id=datatype.id),),
+        )
+
+    assert object_templates.get_version(template.id, 1) == current
+    assert commits[0] == 0
 
 
 def test_explicit_published_datatype_version_is_accepted() -> None:

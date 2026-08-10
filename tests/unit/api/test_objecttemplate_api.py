@@ -586,6 +586,119 @@ def test_revise_parent_field_is_required_but_nullable(
     assert nullable_parent.status_code == 200
 
 
+def test_revise_endpoint_rejects_datatype_version_downgrade_and_preserves_snapshot(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, object_templates, commits = client_context
+    datatype, _versions = _store_datatype(
+        datatypes,
+        namespace="common",
+        name="email",
+        published_versions=3,
+    )
+    created = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        datatype_version=3,
+        properties=[
+            {
+                "name": "e_mail",
+                "datatype_id": str(datatype.id),
+                "datatype_version": 3,
+                "required": False,
+            }
+        ],
+        name="contact",
+    )
+    template_id = created["object_template"]["id"]
+    before = commits[0]
+
+    response = client.put(
+        f"/api/v1/object-templates/{template_id}/versions/1",
+        json={
+            "parent": None,
+            "properties": [
+                {
+                    "name": "e_mail",
+                    "datatype_id": str(datatype.id),
+                    "datatype_version": 2,
+                    "required": False,
+                }
+            ],
+            "components": [],
+        },
+    )
+    loaded = client.get(f"/api/v1/object-templates/{template_id}/versions/1")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_template_datatype_version_downgrade"
+    assert commits[0] == before
+    assert loaded.status_code == 200
+    assert loaded.json()["properties"][0]["datatype_version"] == 3
+    stored = object_templates.get_version(UUID(template_id), 1)
+    assert stored is not None
+    assert stored.properties[0].datatype_version == 3
+
+
+def test_revise_endpoint_allows_datatype_version_upgrade(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, commits = client_context
+    datatype, _versions = _store_datatype(
+        datatypes,
+        namespace="common",
+        name="email_upgrade",
+        published_versions=4,
+    )
+    created = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        datatype_version=3,
+        properties=[
+            {
+                "name": "e_mail",
+                "datatype_id": str(datatype.id),
+                "datatype_version": 3,
+                "required": False,
+            }
+        ],
+        name="contact_upgrade",
+    )
+    template_id = created["object_template"]["id"]
+    before = commits[0]
+
+    response = client.put(
+        f"/api/v1/object-templates/{template_id}/versions/1",
+        json={
+            "parent": None,
+            "properties": [
+                {
+                    "name": "e_mail",
+                    "datatype_id": str(datatype.id),
+                    "datatype_version": 4,
+                    "required": True,
+                }
+            ],
+            "components": [],
+        },
+    )
+
+    assert response.status_code == 200
+    assert commits[0] == before + 1
+    assert response.json()["properties"][0]["datatype_version"] == 4
+    assert response.json()["properties"][0]["required"] is True
+
+
 def test_create_response_contains_abstract_parent_and_resolved_datatype_version(
     client_context: tuple[
         TestClient,

@@ -118,6 +118,7 @@ printf "${RED}\n[INTERAZIONE DATATYPE E OBJECTTEMPLATE]\n${NC}"
 printf "\n${GREEN}(creazione datatype derivato common.email)\n${NC}"
 "${CMD[@]}" --output "json" datatype create --namespace "common" --name "email" --description "Indirizzo email" --base-type "core.string" 1>/dev/null 2>&1
 dtid=$("${CMD[@]}" --output "json" datatype show-name common email | jq -r '.id')
+echo -e "id:${dtid}"
 
 printf "\n${GREEN}(versioni e stato datatype common.email)\n${NC}"
 "${CMD[@]}" datatype version list ${dtid}
@@ -150,6 +151,7 @@ printf "\n${GREEN}(tentativo di cancellazione datatype common.email, deve fallir
 
 printf "\n${GREEN}(deprecate dell'unica versione common.email)\n${NC}"
 "${CMD[@]}" --output "json" datatype version deprecate ${dtid} 1 1>/dev/null 2>&1
+echo -e "done"
 
 printf "\n${GREEN}(versioni e stato datatype common.email)\n${NC}"
 "${CMD[@]}" datatype version list ${dtid}
@@ -177,7 +179,82 @@ echo -e "id:${otid}"
 printf "\n${GREEN}(versioni objecttemplate test_template2 presenti, json fmt)\n${NC}"
 "${CMD[@]}" --output json object-template version list ${otid}
 
-
 printf "\n${GREEN}(creazione objecttemplate test_template3 che usa common.email; pinning specifico su versione 2)\n${NC}"
 otid=$("${CMD[@]}" --output json object-template create --namespace test --name test_template3 --description "Template di test" --property-json "{\"name\": \"e_mail\", \"datatype_id\": \"$dtid\", \"datatype_version\": 2, \"required\": false}" | jq -r '.object_template.id')
 echo -e "id:${otid}"
+
+printf "\n${GREEN}(versioni objecttemplate test_template3 presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}
+
+printf "\n${GREEN}(tentativo di creazione di una nuova versione dell'objecttemplate test_template2; deve fallire perchè lo stato non è published)\n${NC}"
+otid=$("${CMD[@]}" --output json object-template show-name test test_template2 | jq -r '.id')
+echo -e "id:${otid}"
+"${CMD[@]}" --output json object-template version create ${otid} --source-version 1
+
+printf "\n${GREEN}(publish della versione 1 di test_template2)\n${NC}"
+"${CMD[@]}" --output json object-template version publish ${otid} 1 1>/dev/null 2>&1
+echo -e "pubblicata versione:1"
+
+printf "\n${GREEN}(versioni objecttemplate test_template2 presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}
+
+printf "\n${GREEN}(creazione di una nuova versione dell'objecttemplate test_template2)\n${NC}"
+otid=$("${CMD[@]}" --output json object-template show-name test test_template2 | jq -r '.id')
+echo -e "id:${otid}"
+"${CMD[@]}" --output json object-template version create ${otid} --source-version 1 1>/dev/null 2>&1
+
+printf "\n${GREEN}(versioni objecttemplate test_template2 presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}
+
+
+printf "\n${GREEN}(modifica su objecttemplate test_template2 v2 del valore required a true sul campo e_mail)\n${NC}"
+tmpfile=$(mktemp)
+"${CMD[@]}" --output json object-template version show ${otid} 2 |
+jq '
+{ parent: .parent,
+  properties: (
+    .properties
+    | map(
+        if .name == "e_mail"
+        then .required = true
+        else .
+        end
+      )
+  ),
+  components: .components
+}
+' > "$tmpfile"
+
+"${CMD[@]}" --output json object-template version revise ${otid} 2 --file "$tmpfile" 1>/dev/null 2>&1
+rm "$tmpfile"
+echo -e "done"
+
+
+printf "\n${GREEN}(versioni objecttemplate test_template2 presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}
+
+
+printf "\n${GREEN}(tentativo di modifica su objecttemplate test_template2 v2 del valore del datatype_version da 3 a 2 sul campo e_mail; deve fallire downgrade non ammesso)\n${NC}"
+tmpfile=$(mktemp)
+"${CMD[@]}" --output json object-template version show ${otid} 2 |
+jq '
+{ parent: .parent,
+  properties: (
+    .properties
+    | map(
+        if .name == "e_mail"
+        then .datatype_version = 2
+        else .
+        end
+      )
+  ),
+  components: .components
+}
+' > "$tmpfile"
+
+"${CMD[@]}" --output json object-template version revise ${otid} 2 --file "$tmpfile"
+echo -e "$tmpfile"
+
+
+printf "\n${GREEN}(versioni objecttemplate test_template2 presenti, json fmt)\n${NC}"
+"${CMD[@]}" --output json object-template version list ${otid}

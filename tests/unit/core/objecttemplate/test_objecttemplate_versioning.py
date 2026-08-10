@@ -15,6 +15,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateComponent,
     ObjectTemplateComponentVersionNotFound,
     ObjectTemplateComponentVersionNotPublished,
+    ObjectTemplateDataTypeVersionDowngrade,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
@@ -137,6 +138,148 @@ def test_revise_draft_returns_replacement_snapshot() -> None:
     assert original.parent is None
     assert tuple(prop.name for prop in original.properties) == ("hostname",)
     assert tuple(component.name for component in original.components) == ("interfaces",)
+
+
+def test_revise_draft_allows_same_datatype_same_version() -> None:
+    service = ObjectTemplateVersioningService()
+    datatype_id = uuid4()
+    original = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(_property("email", datatype_id=datatype_id, datatype_version=3),),
+    )
+
+    revised = service.revise_draft(
+        original,
+        parent=None,
+        properties=(_property("email", datatype_id=datatype_id, datatype_version=3),),
+        components=(),
+    )
+
+    assert revised.properties[0].datatype_version == 3
+
+
+def test_revise_draft_allows_same_datatype_higher_version() -> None:
+    service = ObjectTemplateVersioningService()
+    datatype_id = uuid4()
+    original = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(_property("email", datatype_id=datatype_id, datatype_version=3),),
+    )
+
+    revised = service.revise_draft(
+        original,
+        parent=None,
+        properties=(_property("email", datatype_id=datatype_id, datatype_version=4),),
+        components=(),
+    )
+
+    assert revised.properties[0].datatype_version == 4
+
+
+def test_revise_draft_rejects_same_datatype_lower_version_and_leaves_source_unchanged() -> None:
+    service = ObjectTemplateVersioningService()
+    datatype_id = uuid4()
+    original = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(_property("email", datatype_id=datatype_id, datatype_version=3),),
+    )
+
+    with pytest.raises(ObjectTemplateDataTypeVersionDowngrade):
+        service.revise_draft(
+            original,
+            parent=None,
+            properties=(_property("email", datatype_id=datatype_id, datatype_version=2),),
+            components=(),
+        )
+
+    assert original.properties == (_property("email", datatype_id=datatype_id, datatype_version=3),)
+
+
+def test_revise_draft_allows_different_datatype_identity_with_lower_numeric_version() -> None:
+    service = ObjectTemplateVersioningService()
+    original = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(_property("email", datatype_id=uuid4(), datatype_version=3),),
+    )
+    new_datatype_id = uuid4()
+
+    revised = service.revise_draft(
+        original,
+        parent=None,
+        properties=(_property("email", datatype_id=new_datatype_id, datatype_version=1),),
+        components=(),
+    )
+
+    assert revised.properties[0].datatype_id == new_datatype_id
+    assert revised.properties[0].datatype_version == 1
+
+
+def test_revise_draft_allows_added_removed_and_required_changes() -> None:
+    service = ObjectTemplateVersioningService()
+    datatype_id = uuid4()
+    other_datatype_id = uuid4()
+    original = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(
+            _property("hostname", datatype_id=datatype_id, datatype_version=1),
+            _property("serial", datatype_id=other_datatype_id, datatype_version=2),
+        ),
+    )
+
+    revised = service.revise_draft(
+        original,
+        parent=None,
+        properties=(
+            ObjectTemplateProperty(
+                name="hostname",
+                datatype_id=datatype_id,
+                datatype_version=1,
+                required=True,
+            ),
+            _property("email", datatype_id=uuid4(), datatype_version=1),
+        ),
+        components=(),
+    )
+
+    assert tuple(prop.name for prop in revised.properties) == ("hostname", "email")
+    assert revised.properties[0].required is True
+
+
+def test_revise_draft_supports_generator_properties_with_downgrade_guard() -> None:
+    service = ObjectTemplateVersioningService()
+    datatype_id = uuid4()
+    original = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        properties=(_property("email", datatype_id=datatype_id, datatype_version=3),),
+    )
+    proposed = (
+        prop
+        for prop in (
+            _property("email", datatype_id=datatype_id, datatype_version=4),
+            _property("hostname", datatype_id=uuid4(), datatype_version=1),
+        )
+    )
+
+    revised = service.revise_draft(
+        original,
+        parent=None,
+        properties=proposed,
+        components=(),
+    )
+
+    assert tuple(prop.datatype_version for prop in revised.properties) == (4, 1)
 
 
 @pytest.mark.parametrize(

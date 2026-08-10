@@ -63,6 +63,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateAlreadyExists,
     ObjectTemplateComponentVersionNotFound,
     ObjectTemplateComponentVersionNotPublished,
+    ObjectTemplateDataTypeVersionDowngrade,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
@@ -514,6 +515,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "mismatched_object_template_version",
         "Object template version set is inconsistent",
+    ),
+    (
+        ObjectTemplateDataTypeVersionDowngrade,
+        HTTPStatus.CONFLICT,
+        "object_template_datatype_version_downgrade",
+        "Object template properties cannot downgrade datatype versions",
     ),
     (
         InvalidObjectTemplate,
