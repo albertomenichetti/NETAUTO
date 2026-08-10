@@ -25,6 +25,23 @@ from netauto.core.datatype import (
     SchemaCompilationError,
     UnsupportedConstraint,
 )
+from netauto.core.object import (
+    AbstractObjectTemplateInstantiation,
+    ComponentMembershipAlreadyExists,
+    ComponentMembershipNotFound,
+    ComponentOwnershipCycle,
+    InvalidComponentMembership,
+    InvalidObject,
+    InvalidObjectPatch,
+    ObjectAlreadyExists,
+    ObjectComponentSlotNotFound,
+    ObjectComponentTemplateIncompatible,
+    ObjectDataTypeVersionNotFound,
+    ObjectNotFound,
+    ObjectPersistenceError,
+    ObjectTemplateVersionNotPublished,
+    ObjectValidationFailed,
+)
 from netauto.core.objecttemplate import (
     DuplicateObjectTemplateComponent,
     DuplicateObjectTemplateProperty,
@@ -91,13 +108,77 @@ async def request_validation_exception_handler(
     )
 
 
+async def object_validation_failed_exception_handler(
+    _request: Request,
+    exc: ObjectValidationFailed,
+) -> JSONResponse:
+    details = [
+        ErrorDetail(
+            path=_normalize_path(issue.path),
+            code=issue.code,
+            message=issue.message,
+        )
+        for issue in exc.result.errors
+    ]
+    details.sort(key=lambda item: (item.path, item.code, item.message))
+    return _response(
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        code="object_validation_failed",
+        message="Object validation failed",
+        details=details,
+    )
+
+
 _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
+    (ObjectNotFound, HTTPStatus.NOT_FOUND, "object_not_found", "Object not found"),
+    (
+        ComponentMembershipNotFound,
+        HTTPStatus.NOT_FOUND,
+        "component_membership_not_found",
+        "Component membership not found",
+    ),
     (DataTypeNotFound, HTTPStatus.NOT_FOUND, "datatype_not_found", "Datatype not found"),
     (
         DataTypeVersionNotFound,
         HTTPStatus.NOT_FOUND,
         "datatype_version_not_found",
         "Datatype version not found",
+    ),
+    (
+        ObjectAlreadyExists,
+        HTTPStatus.CONFLICT,
+        "object_already_exists",
+        "Object already exists",
+    ),
+    (
+        ComponentMembershipAlreadyExists,
+        HTTPStatus.CONFLICT,
+        "component_membership_already_exists",
+        "Component membership already exists",
+    ),
+    (
+        ObjectTemplateVersionNotPublished,
+        HTTPStatus.CONFLICT,
+        "object_template_version_not_published",
+        "Object template version must be published",
+    ),
+    (
+        AbstractObjectTemplateInstantiation,
+        HTTPStatus.CONFLICT,
+        "abstract_object_template_instantiation",
+        "Abstract object template cannot be instantiated",
+    ),
+    (
+        ObjectComponentTemplateIncompatible,
+        HTTPStatus.CONFLICT,
+        "object_component_template_incompatible",
+        "Object component template is incompatible",
+    ),
+    (
+        ComponentOwnershipCycle,
+        HTTPStatus.CONFLICT,
+        "component_ownership_cycle",
+        "Component ownership cycle detected",
     ),
     (
         DataTypeAlreadyExists,
@@ -166,10 +247,46 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Schema compilation failed",
     ),
     (
+        InvalidObject,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_object",
+        "Object is invalid",
+    ),
+    (
+        InvalidComponentMembership,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_component_membership",
+        "Component membership is invalid",
+    ),
+    (
+        InvalidObjectPatch,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_object_patch",
+        "Object patch is invalid",
+    ),
+    (
+        ObjectComponentSlotNotFound,
+        HTTPStatus.NOT_FOUND,
+        "object_component_slot_not_found",
+        "Object component slot not found",
+    ),
+    (
         InvalidDataTypeVersion,
         HTTPStatus.UNPROCESSABLE_ENTITY,
         "invalid_datatype_version",
         "Datatype version is invalid",
+    ),
+    (
+        ObjectDataTypeVersionNotFound,
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "object_datatype_version_not_found",
+        "Object datatype version not found",
+    ),
+    (
+        ObjectPersistenceError,
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "persistence_error",
+        "Persistence operation failed",
     ),
     (
         DataTypePersistenceError,
@@ -328,6 +445,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         RequestValidationError,
         cast("Any", request_validation_exception_handler),
+    )
+    app.add_exception_handler(
+        ObjectValidationFailed,
+        cast("Any", object_validation_failed_exception_handler),
     )
 
     for exception_type, status_code, code, message in _EXCEPTION_MAP:

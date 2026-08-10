@@ -3,6 +3,7 @@
 from fastapi import Request
 
 from netauto.application.datatype import DataTypeApplicationService
+from netauto.application.object import ObjectApplicationService
 from netauto.application.objecttemplate import ObjectTemplateApplicationService
 
 
@@ -12,3 +13,7 @@ def get_datatype_service(request: Request) -> DataTypeApplicationService:
 
 def get_object_template_service(request: Request) -> ObjectTemplateApplicationService:
     return request.app.state.object_template_service
+
+
+def get_object_service(request: Request) -> ObjectApplicationService:
+    return request.app.state.object_service

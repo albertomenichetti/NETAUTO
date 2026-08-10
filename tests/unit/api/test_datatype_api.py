@@ -9,21 +9,24 @@ import httpx2
 import pytest
 
 from netauto.api.app import create_app
-from netauto.application.unit_of_work import ObjectTemplateUnitOfWork
+from netauto.application.unit_of_work import ObjectUnitOfWork
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
 from support.http_server import serve_app
 
 
-class FakeUnitOfWork(ObjectTemplateUnitOfWork):
+class FakeUnitOfWork(ObjectUnitOfWork):
     def __init__(
         self,
         repo: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
+        objects: InMemoryObjectRepository,
         commit_counter: list[int],
     ) -> None:
         self._repo = repo
         self._object_templates = object_templates
+        self._objects = objects
         self._commit_counter = commit_counter
 
     @property
@@ -33,6 +36,10 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
     @property
     def object_templates(self) -> InMemoryObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def objects(self) -> InMemoryObjectRepository:
+        return self._objects
 
     def __enter__(self) -> FakeUnitOfWork:
         return self
@@ -50,10 +57,11 @@ async def _client() -> (
 ):
     repo = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
     commits = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(repo, object_templates, commits)
+        return FakeUnitOfWork(repo, object_templates, objects, commits)
 
     async with serve_app(create_app(factory)) as client:
         yield client, repo, commits

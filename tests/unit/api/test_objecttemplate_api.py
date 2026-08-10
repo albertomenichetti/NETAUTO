@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from netauto.api.app import create_app
-from netauto.application.unit_of_work import ObjectTemplateUnitOfWork
+from netauto.application.unit_of_work import ObjectUnitOfWork
 from netauto.core.datatype import (
     DataType,
     DataTypeFactory,
@@ -18,18 +18,21 @@ from netauto.core.datatype import (
 )
 from netauto.core.objecttemplate import ObjectTemplate, ObjectTemplatePersistenceError
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
 
 
-class FakeUnitOfWork(ObjectTemplateUnitOfWork):
+class FakeUnitOfWork(ObjectUnitOfWork):
     def __init__(
         self,
         datatypes: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
+        objects: InMemoryObjectRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
+        self._objects = objects
         self._commit_counter = commit_counter
 
     @property
@@ -39,6 +42,10 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
     @property
     def object_templates(self) -> InMemoryObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def objects(self) -> InMemoryObjectRepository:
+        return self._objects
 
     def __enter__(self) -> FakeUnitOfWork:
         return self
@@ -62,7 +69,12 @@ class BrokenObjectTemplateRepository(InMemoryObjectTemplateRepository):
 
 class BrokenObjectTemplateUnitOfWork(FakeUnitOfWork):
     def __init__(self) -> None:
-        super().__init__(BrokenDataTypeRepository(), BrokenObjectTemplateRepository(), [0])
+        super().__init__(
+            BrokenDataTypeRepository(),
+            BrokenObjectTemplateRepository(),
+            InMemoryObjectRepository(),
+            [0],
+        )
 
 
 @pytest.fixture
@@ -80,10 +92,11 @@ def client_context() -> (
 ):
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
     commits = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(datatypes, object_templates, commits)
+        return FakeUnitOfWork(datatypes, object_templates, objects, commits)
 
     with TestClient(create_app(factory)) as client:
         yield client, datatypes, object_templates, commits
