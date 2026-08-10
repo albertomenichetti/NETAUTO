@@ -158,6 +158,17 @@ def test_cli_runtime_relationship_acceptance_flow(tmp_path: Path) -> None:
 
             listed = _invoke_json(base_url, ["relationship", "list"])
             shown = _invoke_json(base_url, ["relationship", "show", relationship_id])
+            effective_source = _invoke_json(
+                base_url,
+                ["relationship", "effective-definitions", source_object_id],
+            )
+            effective_target = _invoke_json(
+                base_url,
+                ["relationship", "effective-definitions", target_object_id],
+            )
+            outgoing = _invoke_json(base_url, ["relationship", "outgoing", source_object_id])
+            incoming = _invoke_json(base_url, ["relationship", "incoming", target_object_id])
+            neighbors = _invoke_json(base_url, ["relationship", "neighbors", source_object_id])
 
             assert created == {
                 "id": relationship_id,
@@ -167,6 +178,46 @@ def test_cli_runtime_relationship_acceptance_flow(tmp_path: Path) -> None:
             }
             assert listed == [created]
             assert shown == created
+            assert effective_source == [
+                {
+                    "relationship_definition_id": definition_id,
+                    "direction": "outgoing",
+                    "name": "uses",
+                    "related_template_id": target_template_id,
+                }
+            ]
+            assert effective_target == [
+                {
+                    "relationship_definition_id": definition_id,
+                    "direction": "incoming",
+                    "name": "is_used_by",
+                    "related_template_id": source_template_id,
+                }
+            ]
+            assert outgoing == [
+                {
+                    "relationship_id": relationship_id,
+                    "relationship_definition_id": definition_id,
+                    "source_object_id": source_object_id,
+                    "target_object_id": target_object_id,
+                    "direction": "outgoing",
+                    "name": "uses",
+                    "related_object_id": target_object_id,
+                }
+            ]
+            assert incoming == [
+                {
+                    "relationship_id": relationship_id,
+                    "relationship_definition_id": definition_id,
+                    "source_object_id": source_object_id,
+                    "target_object_id": target_object_id,
+                    "direction": "incoming",
+                    "name": "is_used_by",
+                    "related_object_id": source_object_id,
+                }
+            ]
+            assert outgoing[0]["relationship_id"] == incoming[0]["relationship_id"]
+            assert neighbors == outgoing
 
             reversed_endpoints = _invoke_json_error(
                 base_url,
@@ -192,5 +243,109 @@ def test_cli_runtime_relationship_acceptance_flow(tmp_path: Path) -> None:
 
             missing_show = _invoke_json_error(base_url, ["relationship", "show", relationship_id])
             assert missing_show["error"]["code"] == "relationship_not_found"
+    finally:
+        engine.dispose()
+
+
+def test_cli_runtime_relationship_self_link_neighbors_show_two_views(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            device = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "device",
+                ],
+            )
+            template_id = device["object_template"]["id"]
+
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "object-template",
+                        "version",
+                        "publish",
+                        template_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            definition = _invoke_json(
+                base_url,
+                [
+                    "relationship-definition",
+                    "create",
+                    "--source-template-id",
+                    template_id,
+                    "--target-template-id",
+                    template_id,
+                    "--forward-name",
+                    "connects_to",
+                    "--reverse-name",
+                    "connected_from",
+                ],
+            )
+            definition_id = definition["id"]
+
+            object_value = _invoke_json(
+                base_url,
+                [
+                    "object",
+                    "create",
+                    "--template-id",
+                    template_id,
+                    "--template-version",
+                    "1",
+                ],
+            )
+            object_id = object_value["id"]
+
+            created = _invoke_json(
+                base_url,
+                [
+                    "relationship",
+                    "create",
+                    "--relationship-definition-id",
+                    definition_id,
+                    "--source-object-id",
+                    object_id,
+                    "--target-object-id",
+                    object_id,
+                ],
+            )
+            neighbors = _invoke_json(base_url, ["relationship", "neighbors", object_id])
+            listed = _invoke_json(base_url, ["relationship", "list"])
+
+            assert listed == [created]
+            assert neighbors == [
+                {
+                    "relationship_id": created["id"],
+                    "relationship_definition_id": definition_id,
+                    "source_object_id": object_id,
+                    "target_object_id": object_id,
+                    "direction": "outgoing",
+                    "name": "connects_to",
+                    "related_object_id": object_id,
+                },
+                {
+                    "relationship_id": created["id"],
+                    "relationship_definition_id": definition_id,
+                    "source_object_id": object_id,
+                    "target_object_id": object_id,
+                    "direction": "incoming",
+                    "name": "connected_from",
+                    "related_object_id": object_id,
+                },
+            ]
     finally:
         engine.dispose()

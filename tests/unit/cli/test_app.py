@@ -139,6 +139,18 @@ class FakeClient:
     def list_object_components(self, object_id: str) -> Any:
         return self._call("list_object_components", object_id)
 
+    def list_effective_relationship_definitions(self, object_id: str) -> Any:
+        return self._call("list_effective_relationship_definitions", object_id)
+
+    def list_outgoing_relationships(self, object_id: str) -> Any:
+        return self._call("list_outgoing_relationships", object_id)
+
+    def list_incoming_relationships(self, object_id: str) -> Any:
+        return self._call("list_incoming_relationships", object_id)
+
+    def list_neighbor_relationships(self, object_id: str) -> Any:
+        return self._call("list_neighbor_relationships", object_id)
+
     def attach_object_component(self, object_id: str, payload: dict[str, object]) -> Any:
         return self._call("attach_object_component", object_id, payload)
 
@@ -308,6 +320,27 @@ def _relationship_payload() -> dict[str, object]:
         "relationship_definition_id": str(uuid4()),
         "source_object_id": str(uuid4()),
         "target_object_id": str(uuid4()),
+    }
+
+
+def _effective_relationship_definition_payload() -> dict[str, object]:
+    return {
+        "relationship_definition_id": str(uuid4()),
+        "direction": "outgoing",
+        "name": "uses",
+        "related_template_id": str(uuid4()),
+    }
+
+
+def _relationship_navigation_payload() -> dict[str, object]:
+    return {
+        "relationship_id": str(uuid4()),
+        "relationship_definition_id": str(uuid4()),
+        "source_object_id": str(uuid4()),
+        "target_object_id": str(uuid4()),
+        "direction": "outgoing",
+        "name": "uses",
+        "related_object_id": str(uuid4()),
     }
 
 
@@ -1692,6 +1725,46 @@ def test_relationship_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
 
 
+def test_relationship_navigation_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    effective_definition = _effective_relationship_definition_payload()
+    navigation_view = _relationship_navigation_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {
+            "list_effective_relationship_definitions": [effective_definition],
+            "list_outgoing_relationships": [navigation_view],
+            "list_incoming_relationships": [navigation_view],
+            "list_neighbor_relationships": [navigation_view],
+        },
+        calls,
+    )
+    object_id = str(uuid4())
+
+    effective = runner.invoke(
+        app,
+        ["--output", "json", "relationship", "effective-definitions", object_id],
+    )
+    outgoing = runner.invoke(app, ["--output", "json", "relationship", "outgoing", object_id])
+    incoming = runner.invoke(app, ["--output", "json", "relationship", "incoming", object_id])
+    neighbors = runner.invoke(app, ["--output", "json", "relationship", "neighbors", object_id])
+
+    assert effective.exit_code == 0
+    assert json.loads(effective.stdout) == [effective_definition]
+    assert outgoing.exit_code == 0
+    assert json.loads(outgoing.stdout) == [navigation_view]
+    assert incoming.exit_code == 0
+    assert json.loads(incoming.stdout) == [navigation_view]
+    assert neighbors.exit_code == 0
+    assert json.loads(neighbors.stdout) == [navigation_view]
+    assert calls == [
+        ("list_effective_relationship_definitions", (object_id,)),
+        ("list_outgoing_relationships", (object_id,)),
+        ("list_incoming_relationships", (object_id,)),
+        ("list_neighbor_relationships", (object_id,)),
+    ]
+
+
 def test_relationship_definition_create_file_and_local_input_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1890,6 +1963,38 @@ def test_relationship_api_error_flows_through_existing_cli_error_handling(
     assert json.loads(result.stderr)["error"]["code"] == "relationship_endpoint_incompatible"
 
 
+def test_relationship_navigation_api_error_flows_through_existing_cli_error_handling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"list_neighbor_relationships": []},
+        calls,
+        error=ApiError(
+            status_code=404,
+            code="relationship_definition_not_found",
+            message="Relationship definition not found",
+            details=[],
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "relationship",
+            "neighbors",
+            str(uuid4()),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert json.loads(result.stderr)["error"]["code"] == "relationship_definition_not_found"
+
+
 def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     assert runner.invoke(app, ["datatype", "show", "not-a-uuid"]).exit_code == 2
     assert runner.invoke(app, ["datatype", "version", "show", str(uuid4()), "0"]).exit_code == 2
@@ -1923,6 +2028,16 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     )
     assert runner.invoke(app, ["relationship", "show", "not-a-uuid"]).exit_code == 2
     assert runner.invoke(app, ["relationship", "delete", "not-a-uuid"]).exit_code == 2
+    assert (
+        runner.invoke(
+            app,
+            ["relationship", "effective-definitions", "not-a-uuid"],
+        ).exit_code
+        == 2
+    )
+    assert runner.invoke(app, ["relationship", "outgoing", "not-a-uuid"]).exit_code == 2
+    assert runner.invoke(app, ["relationship", "incoming", "not-a-uuid"]).exit_code == 2
+    assert runner.invoke(app, ["relationship", "neighbors", "not-a-uuid"]).exit_code == 2
     assert (
         runner.invoke(
             app,
@@ -2135,6 +2250,30 @@ def test_object_human_rendering(
             ["relationship", "list"],
             {"list_relationships": [_relationship_payload()]},
             "RELATIONSHIP DEFINITION ID",
+        ),
+        (
+            ["relationship", "effective-definitions", str(uuid4())],
+            {
+                "list_effective_relationship_definitions": [
+                    _effective_relationship_definition_payload()
+                ]
+            },
+            "RELATED TEMPLATE ID",
+        ),
+        (
+            ["relationship", "outgoing", str(uuid4())],
+            {"list_outgoing_relationships": [_relationship_navigation_payload()]},
+            "RELATED OBJECT ID",
+        ),
+        (
+            ["relationship", "incoming", str(uuid4())],
+            {"list_incoming_relationships": [_relationship_navigation_payload()]},
+            "SOURCE OBJECT ID",
+        ),
+        (
+            ["relationship", "neighbors", str(uuid4())],
+            {"list_neighbor_relationships": [_relationship_navigation_payload()]},
+            "TARGET OBJECT ID",
         ),
         (
             ["relationship", "show", str(_relationship_payload()["id"])],

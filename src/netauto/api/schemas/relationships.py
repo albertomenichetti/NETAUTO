@@ -33,3 +33,20 @@ class RelationshipResponse(ApiModel):
     relationship_definition_id: UUID
     source_object_id: UUID
     target_object_id: UUID
+
+
+class EffectiveRelationshipDefinitionResponse(ApiModel):
+    relationship_definition_id: UUID
+    direction: StrictStr
+    name: str
+    related_template_id: UUID
+
+
+class RelationshipNavigationResponse(ApiModel):
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    source_object_id: UUID
+    target_object_id: UUID
+    direction: StrictStr
+    name: str
+    related_object_id: UUID

@@ -265,9 +265,10 @@ def _definition(
     target_template_id: UUID,
     forward_name: str = "uses",
     reverse_name: str = "is_used_by",
+    definition_id: UUID | None = None,
 ) -> RelationshipDefinition:
     return RelationshipDefinition(
-        id=uuid4(),
+        id=definition_id or uuid4(),
         source_template_id=source_template_id,
         target_template_id=target_template_id,
         forward_name=forward_name,
@@ -280,9 +281,10 @@ def _relationship(
     relationship_definition_id: UUID,
     source_object_id: UUID,
     target_object_id: UUID,
+    relationship_id: UUID | None = None,
 ) -> Relationship:
     return Relationship(
-        id=uuid4(),
+        id=relationship_id or uuid4(),
         relationship_definition_id=relationship_definition_id,
         source_object_id=source_object_id,
         target_object_id=target_object_id,
@@ -771,6 +773,28 @@ def test_openapi_contains_relationship_definition_routes() -> None:
     assert "delete" in paths["/api/v1/relationships/{relationship_id}"]
     assert "put" not in paths["/api/v1/relationships/{relationship_id}"]
     assert "patch" not in paths["/api/v1/relationships/{relationship_id}"]
+    assert "/api/v1/objects/{object_id}/relationship-definitions/effective" in paths
+    assert "get" in paths["/api/v1/objects/{object_id}/relationship-definitions/effective"]
+    assert "post" not in paths["/api/v1/objects/{object_id}/relationship-definitions/effective"]
+    assert "put" not in paths["/api/v1/objects/{object_id}/relationship-definitions/effective"]
+    assert "patch" not in paths["/api/v1/objects/{object_id}/relationship-definitions/effective"]
+    assert (
+        "delete"
+        not in paths["/api/v1/objects/{object_id}/relationship-definitions/effective"]
+    )
+    assert "/api/v1/objects/{object_id}/relationships/outgoing" in paths
+    assert "/api/v1/objects/{object_id}/relationships/incoming" in paths
+    assert "/api/v1/objects/{object_id}/relationships/neighbors" in paths
+    for path in (
+        "/api/v1/objects/{object_id}/relationships/outgoing",
+        "/api/v1/objects/{object_id}/relationships/incoming",
+        "/api/v1/objects/{object_id}/relationships/neighbors",
+    ):
+        assert "get" in paths[path]
+        assert "post" not in paths[path]
+        assert "put" not in paths[path]
+        assert "patch" not in paths[path]
+        assert "delete" not in paths[path]
 
 
 def test_runtime_relationship_list_create_show_and_delete(
@@ -963,3 +987,455 @@ def test_runtime_relationship_persistence_error_maps_to_500() -> None:
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "persistence_error"
+
+
+def test_effective_relationship_definitions_rest_semantics(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, relationship_definitions, _relationships, commits = (
+        client_context
+    )
+    network_device = _store_published_template(object_templates, name="network_device")
+    router = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description="router template",
+        abstract=False,
+    )
+    object_templates.add(router)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+        )
+    )
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+        )
+    )
+    credential = _store_published_template(object_templates, name="credential")
+    device = _store_published_template(object_templates, name="device")
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=device.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+        )
+    )
+    outgoing_definition = _definition(
+        source_template_id=network_device.id,
+        target_template_id=credential.id,
+        definition_id=UUID(int=3),
+    )
+    incoming_definition = _definition(
+        source_template_id=credential.id,
+        target_template_id=device.id,
+        forward_name="used_by",
+        reverse_name="uses_for",
+        definition_id=UUID(int=2),
+    )
+    both_definition = _definition(
+        source_template_id=device.id,
+        target_template_id=device.id,
+        forward_name="connects_to",
+        reverse_name="connected_from",
+        definition_id=UUID(int=1),
+    )
+    relationship_definitions.add(outgoing_definition)
+    relationship_definitions.add(incoming_definition)
+    relationship_definitions.add(both_definition)
+    router_v1_object = _store_object(objects, template_id=router.id, template_version=1)
+    router_v2_object = _store_object(objects, template_id=router.id, template_version=2)
+    deprecated_device_object = _store_object(
+        objects,
+        template_id=device.id,
+        template_version=2,
+    )
+
+    router_v1_response = client.get(
+        f"/api/v1/objects/{router_v1_object.id}/relationship-definitions/effective"
+    )
+    router_v2_response = client.get(
+        f"/api/v1/objects/{router_v2_object.id}/relationship-definitions/effective"
+    )
+    deprecated_response = client.get(
+        f"/api/v1/objects/{deprecated_device_object.id}/relationship-definitions/effective"
+    )
+    missing = client.get(f"/api/v1/objects/{uuid4()}/relationship-definitions/effective")
+    malformed = client.get("/api/v1/objects/not-a-uuid/relationship-definitions/effective")
+
+    assert router_v1_response.status_code == 200
+    assert router_v1_response.json() == []
+    assert router_v2_response.status_code == 200
+    assert router_v2_response.json() == [
+        {
+            "relationship_definition_id": str(outgoing_definition.id),
+            "direction": "outgoing",
+            "name": "uses",
+            "related_template_id": str(credential.id),
+        }
+    ]
+    assert deprecated_response.status_code == 200
+    assert deprecated_response.json() == [
+        {
+            "relationship_definition_id": str(both_definition.id),
+            "direction": "outgoing",
+            "name": "connects_to",
+            "related_template_id": str(device.id),
+        },
+        {
+            "relationship_definition_id": str(both_definition.id),
+            "direction": "incoming",
+            "name": "connected_from",
+            "related_template_id": str(device.id),
+        },
+        {
+            "relationship_definition_id": str(incoming_definition.id),
+            "direction": "incoming",
+            "name": "uses_for",
+            "related_template_id": str(credential.id),
+        },
+    ]
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "object_not_found"
+    assert malformed.status_code == 422
+    assert malformed.json()["error"]["code"] == "request_validation_failed"
+    assert commits[0] == 0
+
+
+def test_effective_relationship_definitions_rest_propagates_ancestry_error(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, relationship_definitions, _relationships, commits = (
+        client_context
+    )
+    network_device = _store_published_template(object_templates, name="network_device")
+    credential = _store_published_template(object_templates, name="credential")
+    router = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description="router template",
+        abstract=False,
+    )
+    object_templates.add(router)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=9),
+        )
+    )
+    relationship_definitions.add(
+        _definition(
+            source_template_id=network_device.id,
+            target_template_id=credential.id,
+        )
+    )
+    router_object = _store_object(objects, template_id=router.id, template_version=1)
+
+    response = client.get(
+        f"/api/v1/objects/{router_object.id}/relationship-definitions/effective"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "object_template_parent_not_found"
+    assert commits[0] == 0
+
+
+def test_runtime_relationship_navigation_rest_semantics_and_self_link(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, relationship_definitions, relationships, commits = (
+        client_context
+    )
+    network_device = _store_published_template(object_templates, name="network_device")
+    credential = _store_published_template(object_templates, name="credential")
+    device = _store_published_template(object_templates, name="device")
+    uses_definition = _definition(
+        source_template_id=network_device.id,
+        target_template_id=credential.id,
+    )
+    managed_definition = _definition(
+        source_template_id=network_device.id,
+        target_template_id=credential.id,
+        forward_name="manages",
+        reverse_name="managed_by",
+    )
+    self_definition = _definition(
+        source_template_id=device.id,
+        target_template_id=device.id,
+        forward_name="connects_to",
+        reverse_name="connected_from",
+    )
+    relationship_definitions.add(uses_definition)
+    relationship_definitions.add(managed_definition)
+    relationship_definitions.add(self_definition)
+    source_object = _store_object(objects, template_id=network_device.id, object_id=UUID(int=1))
+    target_object = _store_object(objects, template_id=credential.id, object_id=UUID(int=2))
+    other_source = _store_object(objects, template_id=network_device.id, object_id=UUID(int=3))
+    device_object = _store_object(objects, template_id=device.id, object_id=UUID(int=4))
+    uses_relationship = _relationship(
+        relationship_definition_id=uses_definition.id,
+        source_object_id=source_object.id,
+        target_object_id=target_object.id,
+        relationship_id=UUID(int=10),
+    )
+    manages_relationship = _relationship(
+        relationship_definition_id=managed_definition.id,
+        source_object_id=source_object.id,
+        target_object_id=target_object.id,
+        relationship_id=UUID(int=11),
+    )
+    incoming_relationship = _relationship(
+        relationship_definition_id=uses_definition.id,
+        source_object_id=other_source.id,
+        target_object_id=source_object.id,
+        relationship_id=UUID(int=12),
+    )
+    self_relationship = _relationship(
+        relationship_definition_id=self_definition.id,
+        source_object_id=device_object.id,
+        target_object_id=device_object.id,
+        relationship_id=UUID(int=13),
+    )
+    relationships.add(uses_relationship)
+    relationships.add(manages_relationship)
+    relationships.add(incoming_relationship)
+    relationships.add(self_relationship)
+
+    outgoing = client.get(f"/api/v1/objects/{source_object.id}/relationships/outgoing")
+    incoming = client.get(f"/api/v1/objects/{target_object.id}/relationships/incoming")
+    neighbors = client.get(f"/api/v1/objects/{source_object.id}/relationships/neighbors")
+    self_neighbors = client.get(f"/api/v1/objects/{device_object.id}/relationships/neighbors")
+
+    assert outgoing.status_code == 200
+    assert outgoing.json() == [
+        {
+            "relationship_id": str(uses_relationship.id),
+            "relationship_definition_id": str(uses_definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "direction": "outgoing",
+            "name": "uses",
+            "related_object_id": str(target_object.id),
+        },
+        {
+            "relationship_id": str(manages_relationship.id),
+            "relationship_definition_id": str(managed_definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "direction": "outgoing",
+            "name": "manages",
+            "related_object_id": str(target_object.id),
+        },
+    ]
+    assert incoming.status_code == 200
+    assert incoming.json() == [
+        {
+            "relationship_id": str(uses_relationship.id),
+            "relationship_definition_id": str(uses_definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "direction": "incoming",
+            "name": "is_used_by",
+            "related_object_id": str(source_object.id),
+        },
+        {
+            "relationship_id": str(manages_relationship.id),
+            "relationship_definition_id": str(managed_definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "direction": "incoming",
+            "name": "managed_by",
+            "related_object_id": str(source_object.id),
+        },
+    ]
+    assert outgoing.json()[0]["relationship_id"] == incoming.json()[0]["relationship_id"]
+    assert neighbors.status_code == 200
+    assert neighbors.json() == [
+        {
+            "relationship_id": str(uses_relationship.id),
+            "relationship_definition_id": str(uses_definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "direction": "outgoing",
+            "name": "uses",
+            "related_object_id": str(target_object.id),
+        },
+        {
+            "relationship_id": str(manages_relationship.id),
+            "relationship_definition_id": str(managed_definition.id),
+            "source_object_id": str(source_object.id),
+            "target_object_id": str(target_object.id),
+            "direction": "outgoing",
+            "name": "manages",
+            "related_object_id": str(target_object.id),
+        },
+        {
+            "relationship_id": str(incoming_relationship.id),
+            "relationship_definition_id": str(uses_definition.id),
+            "source_object_id": str(other_source.id),
+            "target_object_id": str(source_object.id),
+            "direction": "incoming",
+            "name": "is_used_by",
+            "related_object_id": str(other_source.id),
+        },
+    ]
+    assert self_neighbors.status_code == 200
+    assert self_neighbors.json() == [
+        {
+            "relationship_id": str(self_relationship.id),
+            "relationship_definition_id": str(self_definition.id),
+            "source_object_id": str(device_object.id),
+            "target_object_id": str(device_object.id),
+            "direction": "outgoing",
+            "name": "connects_to",
+            "related_object_id": str(device_object.id),
+        },
+        {
+            "relationship_id": str(self_relationship.id),
+            "relationship_definition_id": str(self_definition.id),
+            "source_object_id": str(device_object.id),
+            "target_object_id": str(device_object.id),
+            "direction": "incoming",
+            "name": "connected_from",
+            "related_object_id": str(device_object.id),
+        },
+    ]
+    assert commits[0] == 0
+
+
+def test_runtime_relationship_navigation_rest_missing_object_and_corruption(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, _relationship_definitions, relationships, commits = (
+        client_context
+    )
+    device = _store_published_template(object_templates, name="device")
+    object_value = _store_object(objects, template_id=device.id)
+    corrupted = _relationship(
+        relationship_definition_id=uuid4(),
+        source_object_id=object_value.id,
+        target_object_id=object_value.id,
+    )
+    relationships.add(corrupted)
+
+    missing_outgoing = client.get(f"/api/v1/objects/{uuid4()}/relationships/outgoing")
+    missing_incoming = client.get(f"/api/v1/objects/{uuid4()}/relationships/incoming")
+    missing_neighbors = client.get(f"/api/v1/objects/{uuid4()}/relationships/neighbors")
+    corrupted_neighbors = client.get(f"/api/v1/objects/{object_value.id}/relationships/neighbors")
+
+    assert missing_outgoing.status_code == 404
+    assert missing_outgoing.json()["error"]["code"] == "object_not_found"
+    assert missing_incoming.status_code == 404
+    assert missing_incoming.json()["error"]["code"] == "object_not_found"
+    assert missing_neighbors.status_code == 404
+    assert missing_neighbors.json()["error"]["code"] == "object_not_found"
+    assert corrupted_neighbors.status_code == 404
+    assert corrupted_neighbors.json()["error"]["code"] == "relationship_definition_not_found"
+    assert commits[0] == 0
+
+
+def test_runtime_relationship_navigation_rest_reports_persisted_incompatible_edge(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, objects, relationship_definitions, relationships, commits = (
+        client_context
+    )
+    network_device = _store_published_template(object_templates, name="network_device")
+    router = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description="router template",
+        abstract=False,
+    )
+    object_templates.add(router)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+        )
+    )
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+        )
+    )
+    credential = _store_published_template(object_templates, name="credential")
+    definition = _definition(
+        source_template_id=network_device.id,
+        target_template_id=credential.id,
+    )
+    relationship_definitions.add(definition)
+    router_object = _store_object(objects, template_id=router.id, template_version=1)
+    credential_object = _store_object(objects, template_id=credential.id, template_version=1)
+    incompatible_but_persisted = _relationship(
+        relationship_definition_id=definition.id,
+        source_object_id=router_object.id,
+        target_object_id=credential_object.id,
+    )
+    relationships.add(incompatible_but_persisted)
+
+    response = client.get(f"/api/v1/objects/{router_object.id}/relationships/outgoing")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "relationship_id": str(incompatible_but_persisted.id),
+            "relationship_definition_id": str(definition.id),
+            "source_object_id": str(router_object.id),
+            "target_object_id": str(credential_object.id),
+            "direction": "outgoing",
+            "name": "uses",
+            "related_object_id": str(credential_object.id),
+        }
+    ]
+    assert commits[0] == 0

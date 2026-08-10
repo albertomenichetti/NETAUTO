@@ -13,14 +13,21 @@ from netauto.api.errors import ERROR_RESPONSES
 from netauto.api.schemas.relationships import (
     CreateRelationshipDefinitionRequest,
     CreateRelationshipRequest,
+    EffectiveRelationshipDefinitionResponse,
     RelationshipDefinitionResponse,
+    RelationshipNavigationResponse,
     RelationshipResponse,
 )
 from netauto.application.relationship import (
     RelationshipApplicationService,
     RelationshipDefinitionApplicationService,
 )
-from netauto.core.relationship import Relationship, RelationshipDefinition
+from netauto.core.relationship import (
+    EffectiveRelationshipDefinition,
+    Relationship,
+    RelationshipDefinition,
+    RelationshipNavigationView,
+)
 
 router = APIRouter()
 relationship_definition_router = APIRouter(
@@ -28,6 +35,7 @@ relationship_definition_router = APIRouter(
     tags=["relationship-definitions"],
 )
 relationship_router = APIRouter(prefix="/relationships", tags=["relationships"])
+object_relationship_router = APIRouter(prefix="/objects", tags=["relationships"])
 
 
 def _to_relationship_definition_response(
@@ -48,6 +56,31 @@ def _to_relationship_response(relationship: Relationship) -> RelationshipRespons
         relationship_definition_id=relationship.relationship_definition_id,
         source_object_id=relationship.source_object_id,
         target_object_id=relationship.target_object_id,
+    )
+
+
+def _to_effective_relationship_definition_response(
+    definition: EffectiveRelationshipDefinition,
+) -> EffectiveRelationshipDefinitionResponse:
+    return EffectiveRelationshipDefinitionResponse(
+        relationship_definition_id=definition.relationship_definition_id,
+        direction=definition.direction.value,
+        name=definition.name,
+        related_template_id=definition.related_template_id,
+    )
+
+
+def _to_relationship_navigation_response(
+    view: RelationshipNavigationView,
+) -> RelationshipNavigationResponse:
+    return RelationshipNavigationResponse(
+        relationship_id=view.relationship_id,
+        relationship_definition_id=view.relationship_definition_id,
+        source_object_id=view.source_object_id,
+        target_object_id=view.target_object_id,
+        direction=view.direction.value,
+        name=view.name,
+        related_object_id=view.related_object_id,
     )
 
 
@@ -194,5 +227,78 @@ def delete_relationship(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@object_relationship_router.get(
+    "/{object_id}/relationship-definitions/effective",
+    response_model=list[EffectiveRelationshipDefinitionResponse],
+    responses=ERROR_RESPONSES,
+)
+def list_effective_relationship_definitions(
+    object_id: UUID,
+    service: Annotated[
+        RelationshipApplicationService,
+        Depends(get_relationship_service),
+    ],
+) -> list[EffectiveRelationshipDefinitionResponse]:
+    return [
+        _to_effective_relationship_definition_response(definition)
+        for definition in service.list_effective_relationship_definitions(object_id)
+    ]
+
+
+@object_relationship_router.get(
+    "/{object_id}/relationships/outgoing",
+    response_model=list[RelationshipNavigationResponse],
+    responses=ERROR_RESPONSES,
+)
+def list_outgoing_relationships(
+    object_id: UUID,
+    service: Annotated[
+        RelationshipApplicationService,
+        Depends(get_relationship_service),
+    ],
+) -> list[RelationshipNavigationResponse]:
+    return [
+        _to_relationship_navigation_response(view)
+        for view in service.list_outgoing_relationships(object_id)
+    ]
+
+
+@object_relationship_router.get(
+    "/{object_id}/relationships/incoming",
+    response_model=list[RelationshipNavigationResponse],
+    responses=ERROR_RESPONSES,
+)
+def list_incoming_relationships(
+    object_id: UUID,
+    service: Annotated[
+        RelationshipApplicationService,
+        Depends(get_relationship_service),
+    ],
+) -> list[RelationshipNavigationResponse]:
+    return [
+        _to_relationship_navigation_response(view)
+        for view in service.list_incoming_relationships(object_id)
+    ]
+
+
+@object_relationship_router.get(
+    "/{object_id}/relationships/neighbors",
+    response_model=list[RelationshipNavigationResponse],
+    responses=ERROR_RESPONSES,
+)
+def list_neighbor_relationships(
+    object_id: UUID,
+    service: Annotated[
+        RelationshipApplicationService,
+        Depends(get_relationship_service),
+    ],
+) -> list[RelationshipNavigationResponse]:
+    return [
+        _to_relationship_navigation_response(view)
+        for view in service.list_neighbor_relationships(object_id)
+    ]
+
+
 router.include_router(relationship_definition_router)
 router.include_router(relationship_router)
+router.include_router(object_relationship_router)

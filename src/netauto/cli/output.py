@@ -423,6 +423,57 @@ def render_relationship_delete_result(
     return f"Deleted relationship {relationship_id}"
 
 
+def render_effective_relationship_definition_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        definition = _require_object(item)
+        rows.append(
+            (
+                _require_string(definition, "relationship_definition_id"),
+                _require_string(definition, "direction"),
+                _require_string(definition, "name"),
+                _require_string(definition, "related_template_id"),
+            )
+        )
+    return _table(
+        ("RELATIONSHIP DEFINITION ID", "DIRECTION", "NAME", "RELATED TEMPLATE ID"),
+        rows,
+    )
+
+
+def render_relationship_navigation_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        view = _require_object(item)
+        rows.append(
+            (
+                _require_string(view, "relationship_id"),
+                _require_string(view, "relationship_definition_id"),
+                _require_string(view, "direction"),
+                _require_string(view, "name"),
+                _require_string(view, "related_object_id"),
+                _require_string(view, "source_object_id"),
+                _require_string(view, "target_object_id"),
+            )
+        )
+    return _table(
+        (
+            "RELATIONSHIP ID",
+            "RELATIONSHIP DEFINITION ID",
+            "DIRECTION",
+            "NAME",
+            "RELATED OBJECT ID",
+            "SOURCE OBJECT ID",
+            "TARGET OBJECT ID",
+        ),
+        rows,
+    )
+
+
 def render_object_delete_result(
     _payload: object,
     mode: OutputMode,

@@ -537,6 +537,68 @@ def test_relationship_client_returns_arrays_objects_and_empty_delete() -> None:
         assert client.delete_relationship("relationship-1") is None
 
 
+def test_relationship_navigation_client_builds_correct_urls() -> None:
+    seen: list[tuple[str, str, object]] = []
+    effective_payload = [
+        {
+            "relationship_definition_id": "definition-1",
+            "direction": "outgoing",
+            "name": "uses",
+            "related_template_id": "template-1",
+        }
+    ]
+    navigation_payload = [
+        {
+            "relationship_id": "relationship-1",
+            "relationship_definition_id": "definition-1",
+            "source_object_id": "source-object-1",
+            "target_object_id": "target-object-1",
+            "direction": "outgoing",
+            "name": "uses",
+            "related_object_id": "target-object-1",
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        seen.append((request.method, str(request.url), json.loads(body) if body else None))
+        if request.url.path.endswith("/relationship-definitions/effective"):
+            return _response(200, effective_payload)
+        return _response(200, navigation_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000/",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.list_effective_relationship_definitions("object-1") == effective_payload
+        assert client.list_outgoing_relationships("object-1") == navigation_payload
+        assert client.list_incoming_relationships("object-1") == navigation_payload
+        assert client.list_neighbor_relationships("object-1") == navigation_payload
+
+    assert seen == [
+        (
+            "GET",
+            "http://127.0.0.1:8000/api/v1/objects/object-1/relationship-definitions/effective",
+            None,
+        ),
+        (
+            "GET",
+            "http://127.0.0.1:8000/api/v1/objects/object-1/relationships/outgoing",
+            None,
+        ),
+        (
+            "GET",
+            "http://127.0.0.1:8000/api/v1/objects/object-1/relationships/incoming",
+            None,
+        ),
+        (
+            "GET",
+            "http://127.0.0.1:8000/api/v1/objects/object-1/relationships/neighbors",
+            None,
+        ),
+    ]
+
+
 @pytest.mark.parametrize("status_code", [404, 409, 422, 500])
 def test_client_raises_api_error_for_valid_netauto_error(status_code: int) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:

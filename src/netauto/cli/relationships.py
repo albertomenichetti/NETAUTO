@@ -9,12 +9,14 @@ from netauto.cli.common import fail, run_action, uuid_text
 from netauto.cli.errors import CliError, InputError
 from netauto.cli.input import ensure_modes_are_exclusive, load_json_object
 from netauto.cli.output import (
+    render_effective_relationship_definition_list,
     render_relationship,
     render_relationship_definition,
     render_relationship_definition_delete_result,
     render_relationship_definition_list,
     render_relationship_delete_result,
     render_relationship_list,
+    render_relationship_navigation_list,
 )
 
 relationship_app = typer.Typer(help="Manage runtime relationships.")
@@ -97,6 +99,42 @@ def list_relationships(ctx: typer.Context) -> None:
         ctx,
         lambda client: client.list_relationships(),
         render_relationship_list,
+    )
+
+
+@relationship_app.command("effective-definitions")
+def list_effective_relationship_definitions(ctx: typer.Context, object_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.list_effective_relationship_definitions(uuid_text(object_id)),
+        render_effective_relationship_definition_list,
+    )
+
+
+@relationship_app.command("outgoing")
+def list_outgoing_relationships(ctx: typer.Context, object_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.list_outgoing_relationships(uuid_text(object_id)),
+        render_relationship_navigation_list,
+    )
+
+
+@relationship_app.command("incoming")
+def list_incoming_relationships(ctx: typer.Context, object_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.list_incoming_relationships(uuid_text(object_id)),
+        render_relationship_navigation_list,
+    )
+
+
+@relationship_app.command("neighbors")
+def list_neighbor_relationships(ctx: typer.Context, object_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.list_neighbor_relationships(uuid_text(object_id)),
+        render_relationship_navigation_list,
     )
 
 
