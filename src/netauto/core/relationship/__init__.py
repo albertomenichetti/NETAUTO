@@ -8,6 +8,7 @@ from netauto.core.relationship.exceptions import (
     RelationshipDefinitionPersistenceError,
     RelationshipDefinitionSemanticConflict,
     RelationshipDefinitionTemplateNotFound,
+    RelationshipDefinitionTemplateNotPublished,
 )
 from netauto.core.relationship.models import RelationshipDefinition
 from netauto.core.relationship.repository import RelationshipDefinitionRepository
@@ -25,6 +26,7 @@ __all__ = [
     "RelationshipDefinitionPersistenceError",
     "RelationshipDefinitionRepository",
     "RelationshipDefinitionSemanticConflict",
+    "RelationshipDefinitionTemplateNotPublished",
     "RelationshipDefinitionTemplateNotFound",
     "relationship_definition_applies",
     "relationship_definitions_are_semantically_equivalent",

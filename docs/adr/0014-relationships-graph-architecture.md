@@ -77,6 +77,14 @@ Rules:
 - `id` is the stable primary identity.
 - `source_template_id` and `target_template_id` reference stable
   `ObjectTemplate` identities.
+- creating a new `RelationshipDefinition` requires each endpoint
+  `ObjectTemplate` identity to have at least one `PUBLISHED`
+  `ObjectTemplateVersion`;
+- the exact published version is not pinned into the definition;
+- abstract endpoint templates are valid provided they have at least one
+  `PUBLISHED` version;
+- identities with only `DRAFT` and/or `DEPRECATED` versions cannot be used to
+  create new definitions;
 - `forward_name` and `reverse_name` are mandatory semantic identifiers.
 - `RelationshipDefinition` is autonomous and not owned by either endpoint
   template.
@@ -161,6 +169,15 @@ Version independence does not mean that concrete Objects ignore versioned
 inheritance. Objects remain pinned to exact `ObjectTemplateVersion` values, and
 that exact pin determines the ancestry used to evaluate whether the Object
 qualifies for one endpoint of a version-independent RelationshipDefinition.
+
+Creation-time endpoint eligibility and runtime/effective applicability are
+separate rules:
+
+- creating a new definition requires each endpoint identity to have at least
+  one `PUBLISHED` template version;
+- existing definitions still apply and participate in conflict analysis through
+  exact `PUBLISHED` and `DEPRECATED` historical template versions;
+- no exact version is stored on the definition itself.
 
 ## Inheritance Semantics
 

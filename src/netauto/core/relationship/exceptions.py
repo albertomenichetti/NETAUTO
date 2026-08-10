@@ -21,6 +21,10 @@ class RelationshipDefinitionTemplateNotFound(Exception):
     """Raised when a referenced endpoint object template identity does not exist."""
 
 
+class RelationshipDefinitionTemplateNotPublished(Exception):
+    """Raised when a referenced endpoint object template has no published version."""
+
+
 class RelationshipDefinitionSemanticConflict(Exception):
     """Raised when a relationship definition conflicts semantically with an existing one."""
 

@@ -20,6 +20,7 @@ from netauto.core.relationship import (
     RelationshipDefinitionNotFound,
     RelationshipDefinitionSemanticConflict,
     RelationshipDefinitionTemplateNotFound,
+    RelationshipDefinitionTemplateNotPublished,
     relationship_definitions_are_semantically_equivalent,
 )
 
@@ -81,6 +82,16 @@ class RelationshipDefinitionApplicationService:
                 raise RelationshipDefinitionTemplateNotFound(
                     "Target object template does not exist."
                 )
+            self._ensure_template_has_published_version(
+                uow,
+                template=source_template,
+                endpoint_name="Source",
+            )
+            self._ensure_template_has_published_version(
+                uow,
+                template=target_template,
+                endpoint_name="Target",
+            )
 
             candidate = RelationshipDefinition(
                 id=uuid4(),
@@ -103,6 +114,22 @@ class RelationshipDefinitionApplicationService:
                 raise RelationshipDefinitionNotFound("RelationshipDefinition does not exist.")
             uow.relationship_definitions.delete(definition_id)
             uow.commit()
+
+    def _ensure_template_has_published_version(
+        self,
+        uow: RelationshipDefinitionUnitOfWork,
+        *,
+        template: ObjectTemplate,
+        endpoint_name: str,
+    ) -> None:
+        versions = uow.object_templates.list_versions(template.id)
+        if any(
+            version.status == ObjectTemplateVersionStatus.PUBLISHED for version in versions
+        ):
+            return
+        raise RelationshipDefinitionTemplateNotPublished(
+            f"{endpoint_name} object template has no published version."
+        )
 
     def _build_conflict_snapshot(
         self,

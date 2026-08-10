@@ -20,6 +20,7 @@ from netauto.core.relationship import (
     RelationshipDefinitionNotFound,
     RelationshipDefinitionSemanticConflict,
     RelationshipDefinitionTemplateNotFound,
+    RelationshipDefinitionTemplateNotPublished,
 )
 from netauto.persistence.memory.objecttemplate_repository import (
     InMemoryObjectTemplateRepository,
@@ -200,8 +201,8 @@ def test_create_relationship_definition_exact_endpoints() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     source = _template(name="source")
     target = _template(name="target")
-    _store_template_versions(object_templates, source, ())
-    _store_template_versions(object_templates, target, ())
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
 
     created = service.create_relationship_definition(
         source_template_id=source.id,
@@ -239,7 +240,7 @@ def test_missing_source_template_rejected() -> None:
 def test_missing_target_template_rejected() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     source = _template(name="source")
-    _store_template_versions(object_templates, source, ())
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
 
     with pytest.raises(RelationshipDefinitionTemplateNotFound):
         service.create_relationship_definition(
@@ -256,7 +257,7 @@ def test_missing_target_template_rejected() -> None:
 def test_same_template_definition_is_allowed() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     template = _template(name="device")
-    _store_template_versions(object_templates, template, ())
+    _store_template_versions(object_templates, template, (_version(template.id, version=1),))
 
     created = service.create_relationship_definition(
         source_template_id=template.id,
@@ -273,8 +274,8 @@ def test_abstract_endpoint_is_accepted() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     source = _template(name="device", abstract=True)
     target = _template(name="credential")
-    _store_template_versions(object_templates, source, ())
-    _store_template_versions(object_templates, target, ())
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
 
     created = service.create_relationship_definition(
         source_template_id=source.id,
@@ -291,8 +292,8 @@ def test_exact_canonical_duplicate_rejected_without_commit() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     source = _template(name="source")
     target = _template(name="target")
-    _store_template_versions(object_templates, source, ())
-    _store_template_versions(object_templates, target, ())
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
     existing = _definition(source_template_id=source.id, target_template_id=target.id)
     relationship_definitions.add(existing)
     relationship_definitions.events.clear()
@@ -308,13 +309,184 @@ def test_exact_canonical_duplicate_rejected_without_commit() -> None:
     assert relationship_definitions.events == ["list"]
     assert commits[0] == 0
 
+def test_source_with_only_draft_versions_is_rejected_before_mutation() -> None:
+    service, object_templates, relationship_definitions, commits = _service()
+    source = _template(name="source")
+    target = _template(name="target")
+    _store_template_versions(
+        object_templates,
+        source,
+        (_version(source.id, version=1, status=ObjectTemplateVersionStatus.DRAFT),),
+    )
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
+
+    with pytest.raises(RelationshipDefinitionTemplateNotPublished):
+        service.create_relationship_definition(
+            source_template_id=source.id,
+            target_template_id=target.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+
+    assert relationship_definitions.events == []
+    assert commits[0] == 0
+
+
+def test_target_with_only_draft_versions_is_rejected_before_mutation() -> None:
+    service, object_templates, relationship_definitions, commits = _service()
+    source = _template(name="source")
+    target = _template(name="target")
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
+    _store_template_versions(
+        object_templates,
+        target,
+        (_version(target.id, version=1, status=ObjectTemplateVersionStatus.DRAFT),),
+    )
+
+    with pytest.raises(RelationshipDefinitionTemplateNotPublished):
+        service.create_relationship_definition(
+            source_template_id=source.id,
+            target_template_id=target.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+
+    assert relationship_definitions.events == []
+    assert commits[0] == 0
+
+
+def test_source_with_only_deprecated_versions_is_rejected_before_mutation() -> None:
+    service, object_templates, relationship_definitions, commits = _service()
+    source = _template(name="source")
+    target = _template(name="target")
+    _store_template_versions(
+        object_templates,
+        source,
+        (
+            _version(
+                source.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+            ),
+        ),
+    )
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
+
+    with pytest.raises(RelationshipDefinitionTemplateNotPublished):
+        service.create_relationship_definition(
+            source_template_id=source.id,
+            target_template_id=target.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+
+    assert relationship_definitions.events == []
+    assert commits[0] == 0
+
+
+def test_target_with_only_deprecated_versions_is_rejected_before_mutation() -> None:
+    service, object_templates, relationship_definitions, commits = _service()
+    source = _template(name="source")
+    target = _template(name="target")
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
+    _store_template_versions(
+        object_templates,
+        target,
+        (
+            _version(
+                target.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+            ),
+        ),
+    )
+
+    with pytest.raises(RelationshipDefinitionTemplateNotPublished):
+        service.create_relationship_definition(
+            source_template_id=source.id,
+            target_template_id=target.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+
+    assert relationship_definitions.events == []
+    assert commits[0] == 0
+
+
+def test_draft_and_deprecated_without_published_is_rejected() -> None:
+    service, object_templates, relationship_definitions, commits = _service()
+    source = _template(name="source")
+    target = _template(name="target")
+    _store_template_versions(
+        object_templates,
+        source,
+        (
+            _version(source.id, version=1, status=ObjectTemplateVersionStatus.DRAFT),
+            _version(
+                source.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+            ),
+        ),
+    )
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
+
+    with pytest.raises(RelationshipDefinitionTemplateNotPublished):
+        service.create_relationship_definition(
+            source_template_id=source.id,
+            target_template_id=target.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+
+    assert relationship_definitions.events == []
+    assert commits[0] == 0
+
+
+def test_endpoint_with_at_least_one_published_version_is_accepted() -> None:
+    service, object_templates, relationship_definitions, commits = _service()
+    source = _template(name="source")
+    target = _template(name="target")
+    _store_template_versions(
+        object_templates,
+        source,
+        (
+            _version(source.id, version=1, status=ObjectTemplateVersionStatus.DRAFT),
+            _version(source.id, version=2, status=ObjectTemplateVersionStatus.PUBLISHED),
+            _version(
+                source.id,
+                version=3,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+            ),
+        ),
+    )
+    _store_template_versions(
+        object_templates,
+        target,
+        (
+            _version(target.id, version=1, status=ObjectTemplateVersionStatus.DEPRECATED),
+            _version(target.id, version=2, status=ObjectTemplateVersionStatus.PUBLISHED),
+        ),
+    )
+
+    created = service.create_relationship_definition(
+        source_template_id=source.id,
+        target_template_id=target.id,
+        forward_name="uses",
+        reverse_name="is_used_by",
+    )
+
+    assert relationship_definitions.get(created.id) == created
+    assert relationship_definitions.events == ["list", "add"]
+    assert commits[0] == 1
+
 
 def test_inverse_canonical_duplicate_rejected_without_commit() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     source = _template(name="source")
     target = _template(name="target")
-    _store_template_versions(object_templates, source, ())
-    _store_template_versions(object_templates, target, ())
+    _store_template_versions(object_templates, source, (_version(source.id, version=1),))
+    _store_template_versions(object_templates, target, (_version(target.id, version=1),))
     existing = _definition(source_template_id=source.id, target_template_id=target.id)
     relationship_definitions.add(existing)
     relationship_definitions.events.clear()
@@ -606,9 +778,10 @@ def test_deprecated_only_overlap_participates_in_conflict_detection() -> None:
         object_templates,
         source_child,
         (
+            _version(source_child.id, version=1, status=ObjectTemplateVersionStatus.PUBLISHED),
             _version(
                 source_child.id,
-                version=1,
+                version=2,
                 status=ObjectTemplateVersionStatus.DEPRECATED,
                 parent=ObjectTemplateVersionRef(template_id=source.id, version=1),
             ),
@@ -642,9 +815,10 @@ def test_draft_only_overlap_does_not_block_creation() -> None:
         object_templates,
         source_child,
         (
+            _version(source_child.id, version=1, status=ObjectTemplateVersionStatus.PUBLISHED),
             _version(
                 source_child.id,
-                version=1,
+                version=2,
                 status=ObjectTemplateVersionStatus.DRAFT,
                 parent=ObjectTemplateVersionRef(template_id=source.id, version=1),
             ),
