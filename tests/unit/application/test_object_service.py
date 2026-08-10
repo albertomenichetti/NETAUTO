@@ -43,6 +43,7 @@ from netauto.persistence.memory.objecttemplate_repository import (
 )
 from netauto.persistence.memory.relationship_repository import (
     InMemoryRelationshipDefinitionRepository,
+    InMemoryRelationshipRepository,
 )
 
 
@@ -92,12 +93,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: TrackingDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
         objects: TrackingObjectRepository,
+        relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -112,6 +115,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
         return self._relationship_definitions
+
+    @property
+    def relationships(self) -> InMemoryRelationshipRepository:
+        return self._relationships
 
     @property
     def objects(self) -> TrackingObjectRepository:
@@ -132,11 +139,13 @@ def _service() -> tuple[
     TrackingDataTypeRepository,
     TrackingObjectTemplateRepository,
     TrackingObjectRepository,
+    InMemoryRelationshipRepository,
     list[int],
 ]:
     datatypes = TrackingDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
     objects = TrackingObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
 
@@ -145,6 +154,7 @@ def _service() -> tuple[
             datatypes,
             object_templates,
             objects,
+            relationships,
             relationship_definitions,
             commit_counter,
         )
@@ -154,6 +164,7 @@ def _service() -> tuple[
         datatypes,
         object_templates,
         objects,
+        relationships,
         commit_counter,
     )
 
@@ -264,7 +275,7 @@ def _issue_details(exc: ObjectValidationFailed) -> tuple[tuple[tuple[str | int, 
 
 
 def test_create_object_persists_exact_template_pin_and_commits() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype()
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -300,7 +311,7 @@ def test_create_object_persists_exact_template_pin_and_commits() -> None:
 
 
 def test_create_missing_template_identity_or_version_raises_focused_exceptions() -> None:
-    service, datatypes, object_templates, _objects, commits = _service()
+    service, datatypes, object_templates, _objects, _relationships, commits = _service()
     datatype, draft = _datatype()
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -335,7 +346,7 @@ def test_create_missing_template_identity_or_version_raises_focused_exceptions()
 def test_create_rejects_non_published_template_versions(
     status: ObjectTemplateVersionStatus,
 ) -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype()
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -367,7 +378,7 @@ def test_create_rejects_non_published_template_versions(
 
 
 def test_create_rejects_abstract_template_instantiation() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype()
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -398,7 +409,7 @@ def test_create_rejects_abstract_template_instantiation() -> None:
 
 
 def test_create_validation_failure_preserves_structured_result() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype(
         constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=3),),
     )
@@ -435,7 +446,7 @@ def test_create_validation_failure_preserves_structured_result() -> None:
 
 
 def test_create_uses_effective_inherited_properties_for_required_and_datatype_validation() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname_datatype, hostname_draft = _datatype(
         name="hostname",
         constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=3),),
@@ -489,7 +500,7 @@ def test_create_uses_effective_inherited_properties_for_required_and_datatype_va
 
 
 def test_create_preserves_missing_parent_inheritance_error() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype()
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -521,7 +532,7 @@ def test_create_preserves_missing_parent_inheritance_error() -> None:
 
 
 def test_create_requires_exact_pinned_datatype_version_without_fallback() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, v1_draft = _datatype()
     v1_published = DataTypeVersioningService().publish(v1_draft)
     v2_published = DataTypeVersion(
@@ -560,7 +571,7 @@ def test_create_requires_exact_pinned_datatype_version_without_fallback() -> Non
 
 
 def test_create_accepts_deprecated_exact_pinned_datatype_version() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype()
     published = DataTypeVersioningService().publish(draft)
     deprecated = DataTypeVersioningService().deprecate(published)
@@ -592,7 +603,7 @@ def test_create_accepts_deprecated_exact_pinned_datatype_version() -> None:
 
 
 def test_list_and_get_are_read_only_and_do_not_revalidate_templates() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     first_template = _template(name="first")
     second_template = _template(name="second")
     first = _create_object(
@@ -622,7 +633,7 @@ def test_list_and_get_are_read_only_and_do_not_revalidate_templates() -> None:
 
 
 def test_update_sets_and_preserves_properties_then_replaces_and_commits() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname_datatype, hostname_draft = _datatype(name="hostname")
     hostname_published = DataTypeVersioningService().publish(hostname_draft)
     serial_datatype, serial_draft = _datatype(name="serial")
@@ -670,7 +681,7 @@ def test_update_sets_and_preserves_properties_then_replaces_and_commits() -> Non
 
 
 def test_update_remove_optional_property_and_absent_optional_removal_are_allowed() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname_datatype, hostname_draft = _datatype(name="hostname")
     hostname_published = DataTypeVersioningService().publish(hostname_draft)
     serial_datatype, serial_draft = _datatype(name="serial")
@@ -724,7 +735,7 @@ def test_update_remove_optional_property_and_absent_optional_removal_are_allowed
 
 
 def test_update_treats_none_as_value_not_removal() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype(name="hostname")
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -774,7 +785,7 @@ def test_update_rejects_invalid_patch_shape(
     remove_properties: tuple[object, ...],
     message: str,
 ) -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, draft = _datatype(name="hostname")
     published = DataTypeVersioningService().publish(draft)
     _store_datatype_versions(datatypes, datatype, (published,))
@@ -817,7 +828,7 @@ def test_update_rejects_invalid_patch_shape(
 
 
 def test_update_validates_complete_candidate_snapshot() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname_datatype, hostname_draft = _datatype(name="hostname")
     hostname_published = DataTypeVersioningService().publish(hostname_draft)
     serial_datatype, serial_draft = _datatype(name="serial", base_type="core.integer")
@@ -864,7 +875,7 @@ def test_update_validates_complete_candidate_snapshot() -> None:
 
 
 def test_update_rejects_required_removal_unknown_property_and_invalid_datatype() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname_datatype, hostname_draft = _datatype(name="hostname")
     hostname_published = DataTypeVersioningService().publish(hostname_draft)
     serial_datatype, serial_draft = _datatype(name="serial", base_type="core.integer")
@@ -924,7 +935,7 @@ def test_update_rejects_required_removal_unknown_property_and_invalid_datatype()
 
 
 def test_empty_patch_returns_current_without_replace_or_commit() -> None:
-    service, _datatypes, _object_templates, objects, commits = _service()
+    service, _datatypes, _object_templates, objects, _relationships, commits = _service()
     current = _create_object(
         objects,
         template_id=uuid4(),
@@ -944,7 +955,7 @@ def test_empty_patch_returns_current_without_replace_or_commit() -> None:
 
 
 def test_update_uses_exact_pinned_template_version_and_allows_deprecated_pins() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, v1_draft = _datatype(name="hostname")
     v1_published = DataTypeVersioningService().publish(v1_draft)
     v2_integer = DataTypeVersion(

@@ -37,6 +37,7 @@ from netauto.persistence.memory.objecttemplate_repository import (
 )
 from netauto.persistence.memory.relationship_repository import (
     InMemoryRelationshipDefinitionRepository,
+    InMemoryRelationshipRepository,
 )
 
 
@@ -76,12 +77,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
         objects: TrackingObjectRepository,
+        relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -96,6 +99,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
         return self._relationship_definitions
+
+    @property
+    def relationships(self) -> InMemoryRelationshipRepository:
+        return self._relationships
 
     @property
     def objects(self) -> TrackingObjectRepository:
@@ -116,11 +123,13 @@ def _service() -> tuple[
     InMemoryDataTypeRepository,
     TrackingObjectTemplateRepository,
     TrackingObjectRepository,
+    InMemoryRelationshipRepository,
     list[int],
 ]:
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
     objects = TrackingObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
 
@@ -129,6 +138,7 @@ def _service() -> tuple[
             datatypes,
             object_templates,
             objects,
+            relationships,
             relationship_definitions,
             commit_counter,
         )
@@ -138,6 +148,7 @@ def _service() -> tuple[
         datatypes,
         object_templates,
         objects,
+        relationships,
         commit_counter,
     )
 
@@ -226,7 +237,7 @@ def _membership(parent: UUID, slot_name: str, child: UUID) -> ComponentMembershi
 
 
 def test_attach_persists_membership_without_mutating_objects() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     slot_target = _template(name="interface")
     _store_template_versions(object_templates, slot_target, (_version(slot_target.id),))
 
@@ -271,7 +282,7 @@ def test_attach_persists_membership_without_mutating_objects() -> None:
 
 
 def test_attach_requires_existing_parent_and_child() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     slot_target = _template(name="interface")
     _store_template_versions(object_templates, slot_target, (_version(slot_target.id),))
     parent_template = _template(name="device")
@@ -319,7 +330,7 @@ def test_attach_preserves_componentmembership_local_invariants(
     slot_name: object,
     child_object_id: UUID | None,
 ) -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     slot_target = _template(name="interface")
     _store_template_versions(object_templates, slot_target, (_version(slot_target.id),))
     parent_template = _template(name="device")
@@ -349,7 +360,7 @@ def test_attach_preserves_componentmembership_local_invariants(
 
 
 def test_attach_child_must_be_unowned_and_is_never_implicitly_moved() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     slot_target = _template(name="interface")
     _store_template_versions(object_templates, slot_target, (_version(slot_target.id),))
     parent_template = _template(name="device")
@@ -394,7 +405,7 @@ def test_attach_child_must_be_unowned_and_is_never_implicitly_moved() -> None:
 
 
 def test_attach_allows_multiple_children_on_same_slot_and_different_slots() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     interface = _template(name="interface")
     module = _template(name="module")
     _store_template_versions(object_templates, interface, (_version(interface.id),))
@@ -444,7 +455,7 @@ def test_attach_allows_multiple_children_on_same_slot_and_different_slots() -> N
 
 
 def test_attach_uses_local_and_inherited_component_slots() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     interface = _template(name="interface", abstract=True)
     _store_template_versions(object_templates, interface, (_version(interface.id),))
 
@@ -488,7 +499,7 @@ def test_attach_uses_local_and_inherited_component_slots() -> None:
 
 
 def test_attach_unknown_slot_raises_focused_exception() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     interface = _template(name="interface")
     _store_template_versions(object_templates, interface, (_version(interface.id),))
     parent_template = _template(name="device")
@@ -519,7 +530,7 @@ def test_attach_unknown_slot_raises_focused_exception() -> None:
 
 
 def test_attach_accepts_same_identity_versions_and_descendant_templates() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     required = _template(name="network_interface")
     required_v1 = _version(required.id, version=1)
     required_v2 = _version(required.id, version=2)
@@ -619,7 +630,7 @@ def test_attach_accepts_same_identity_versions_and_descendant_templates() -> Non
 
 
 def test_attach_missing_exact_parent_or_child_template_version_raises() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     required = _template(name="interface")
     _store_template_versions(object_templates, required, (_version(required.id),))
 
@@ -661,7 +672,7 @@ def test_attach_missing_exact_parent_or_child_template_version_raises() -> None:
 
 
 def test_attach_preserves_parent_and_child_ancestry_failures() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     required = _template(name="interface")
     _store_template_versions(object_templates, required, (_version(required.id),))
 
@@ -798,7 +809,7 @@ def test_attach_preserves_parent_and_child_ancestry_failures() -> None:
 
 
 def test_attach_ignores_current_template_status_for_existing_objects() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     target = _template(name="interface", abstract=True)
     target_deprecated = _version(
         target.id,
@@ -832,7 +843,7 @@ def test_attach_ignores_current_template_status_for_existing_objects() -> None:
 
 
 def test_attach_prevents_owner_chain_cycles_without_graph_abstraction() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     node_template = _template(name="node")
     node_version = _version(
         node_template.id,
@@ -862,7 +873,7 @@ def test_attach_prevents_owner_chain_cycles_without_graph_abstraction() -> None:
 
 
 def test_attach_detects_preexisting_corrupt_owner_cycle() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     node_template = _template(name="node")
     node_version = _version(
         node_template.id,
@@ -888,7 +899,7 @@ def test_attach_detects_preexisting_corrupt_owner_cycle() -> None:
 
 
 def test_attach_preserves_existing_child_subtree() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     node_template = _template(name="node")
     node_version = _version(
         node_template.id,
@@ -922,7 +933,7 @@ def test_attach_preserves_existing_child_subtree() -> None:
 
 
 def test_detach_removes_only_incoming_membership_and_preserves_subtree() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     node_template = _template(name="node")
     node_version = _version(
         node_template.id,
@@ -967,7 +978,7 @@ def test_detach_removes_only_incoming_membership_and_preserves_subtree() -> None
 
 
 def test_detach_requires_existing_owned_child_and_commits_once() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     node_template = _template(name="node")
     node_version = _version(
         node_template.id,
@@ -998,7 +1009,7 @@ def test_detach_requires_existing_owned_child_and_commits_once() -> None:
 
 
 def test_get_owner_and_list_components_are_read_only_queries() -> None:
-    service, _datatypes, object_templates, objects, commits = _service()
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
     node_template = _template(name="node")
     node_version = _version(
         node_template.id,

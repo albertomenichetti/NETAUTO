@@ -15,6 +15,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionStatus,
 )
 from netauto.core.relationship import (
+    Relationship,
     RelationshipDefinition,
     RelationshipDefinitionPersistenceError,
 )
@@ -23,6 +24,7 @@ from netauto.persistence.memory.object_repository import InMemoryObjectRepositor
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
 from netauto.persistence.memory.relationship_repository import (
     InMemoryRelationshipDefinitionRepository,
+    InMemoryRelationshipRepository,
 )
 
 
@@ -32,12 +34,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
         objects: InMemoryObjectRepository,
+        relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -52,6 +56,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def objects(self) -> InMemoryObjectRepository:
         return self._objects
+
+    @property
+    def relationships(self) -> InMemoryRelationshipRepository:
+        return self._relationships
 
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
@@ -78,6 +86,7 @@ class BrokenRelationshipUnitOfWork(FakeUnitOfWork):
             InMemoryDataTypeRepository(),
             InMemoryObjectTemplateRepository(),
             InMemoryObjectRepository(),
+            InMemoryRelationshipRepository(),
             BrokenRelationshipDefinitionRepository(),
             [0],
         )
@@ -90,6 +99,7 @@ def client_context() -> (
             TestClient,
             InMemoryObjectTemplateRepository,
             InMemoryRelationshipDefinitionRepository,
+            InMemoryRelationshipRepository,
             list[int],
         ],
         None,
@@ -99,6 +109,7 @@ def client_context() -> (
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
@@ -107,12 +118,13 @@ def client_context() -> (
             datatypes,
             object_templates,
             objects,
+            relationships,
             relationship_definitions,
             commits,
         )
 
     with TestClient(create_app(factory)) as client:
-        yield client, object_templates, relationship_definitions, commits
+        yield client, object_templates, relationship_definitions, relationships, commits
 
 
 def _store_template(
@@ -166,15 +178,32 @@ def _definition(
     )
 
 
+def _relationship(
+    *,
+    relationship_definition_id: UUID,
+    source_object_id: UUID,
+    target_object_id: UUID,
+) -> Relationship:
+    return Relationship(
+        id=uuid4(),
+        relationship_definition_id=relationship_definition_id,
+        source_object_id=source_object_id,
+        target_object_id=target_object_id,
+    )
+
+
 def test_create_list_show_and_delete_relationship_definition(
     client_context: tuple[
         TestClient,
         InMemoryObjectTemplateRepository,
         InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, relationship_definitions, commits = client_context
+    client, object_templates, relationship_definitions, _relationships, commits = (
+        client_context
+    )
     source = ObjectTemplate(
         id=uuid4(),
         namespace="network",
@@ -250,10 +279,13 @@ def test_request_validation_and_identifier_errors(
         TestClient,
         InMemoryObjectTemplateRepository,
         InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, _relationship_definitions, _commits = client_context
+    client, object_templates, _relationship_definitions, _relationships, _commits = (
+        client_context
+    )
     source = ObjectTemplate(
         id=uuid4(),
         namespace="network",
@@ -341,10 +373,13 @@ def test_not_found_not_published_and_semantic_conflict_mappings(
         TestClient,
         InMemoryObjectTemplateRepository,
         InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, _relationship_definitions, commits = client_context
+    client, object_templates, _relationship_definitions, _relationships, commits = (
+        client_context
+    )
     missing_source = client.post(
         "/api/v1/relationship-definitions",
         json={
@@ -455,10 +490,13 @@ def test_inheritance_overlap_conflict_and_delete_missing(
         TestClient,
         InMemoryObjectTemplateRepository,
         InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
         list[int],
     ],
 ) -> None:
-    client, object_templates, _relationship_definitions, commits = client_context
+    client, object_templates, _relationship_definitions, _relationships, commits = (
+        client_context
+    )
     source = ObjectTemplate(
         id=uuid4(),
         namespace="network",
@@ -532,6 +570,44 @@ def test_inheritance_overlap_conflict_and_delete_missing(
     assert missing_delete.status_code == 404
     assert missing_delete.json()["error"]["code"] == "relationship_definition_not_found"
     assert commits[0] == 1
+
+
+def test_delete_in_use_relationship_definition_returns_conflict(
+    client_context: tuple[
+        TestClient,
+        InMemoryObjectTemplateRepository,
+        InMemoryRelationshipDefinitionRepository,
+        InMemoryRelationshipRepository,
+        list[int],
+    ],
+) -> None:
+    client, object_templates, relationship_definitions, relationships, commits = client_context
+    source = _store_template(
+        object_templates,
+        name="source",
+        versions=(),
+    )
+    target = _store_template(
+        object_templates,
+        name="target",
+        versions=(),
+    )
+    definition = _definition(source_template_id=source.id, target_template_id=target.id)
+    relationship_definitions.add(definition)
+    relationships.add(
+        _relationship(
+            relationship_definition_id=definition.id,
+            source_object_id=uuid4(),
+            target_object_id=uuid4(),
+        )
+    )
+
+    deleted = client.delete(f"/api/v1/relationship-definitions/{definition.id}")
+
+    assert deleted.status_code == 409
+    assert deleted.json()["error"]["code"] == "relationship_definition_in_use"
+    assert relationship_definitions.get(definition.id) == definition
+    assert commits[0] == 0
 
 
 def test_relationship_definition_persistence_error_mapping() -> None:

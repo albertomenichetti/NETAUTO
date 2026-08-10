@@ -33,6 +33,10 @@ class RelationshipDefinitionPersistenceError(Exception):
     """Raised when persisted relationship definition state cannot be mapped safely."""
 
 
+class RelationshipDefinitionInUse(Exception):
+    """Raised when a relationship definition is still referenced by runtime relationships."""
+
+
 class InvalidRelationship(Exception):
     """Raised when a runtime relationship has invalid local state."""
 

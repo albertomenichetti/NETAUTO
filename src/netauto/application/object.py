@@ -263,6 +263,9 @@ class ObjectApplicationService:
                 raise ObjectNotFound("Object does not exist.")
 
             deletion_order = self._collect_subtree_postorder(uow, target.id)
+            incident_relationships = uow.relationships.list_incident_to_objects(deletion_order)
+            for relationship in incident_relationships:
+                uow.relationships.delete(relationship.id)
             for candidate_id in deletion_order:
                 uow.objects.delete(candidate_id)
             uow.commit()

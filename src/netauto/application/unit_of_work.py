@@ -76,6 +76,10 @@ class ObjectUnitOfWork(Protocol):
         ...
 
     @property
+    def relationships(self) -> RelationshipRepository:
+        ...
+
+    @property
     def objects(self) -> ObjectRepository:
         ...
 
@@ -101,6 +105,10 @@ class RelationshipDefinitionUnitOfWork(Protocol):
 
     @property
     def object_templates(self) -> ObjectTemplateRepository:
+        ...
+
+    @property
+    def relationships(self) -> RelationshipRepository:
         ...
 
     def __enter__(self) -> Self:

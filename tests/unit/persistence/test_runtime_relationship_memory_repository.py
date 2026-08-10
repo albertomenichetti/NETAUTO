@@ -124,6 +124,76 @@ def test_self_link_persists() -> None:
     assert repo.get(relationship.id) == relationship
 
 
+def test_list_by_definition_filters_and_orders() -> None:
+    repo = InMemoryRelationshipRepository()
+    definition_id = uuid4()
+    first = _relationship(
+        relationship_id=UUID("00000000-0000-0000-0000-000000000001"),
+        relationship_definition_id=definition_id,
+    )
+    second = _relationship(
+        relationship_id=UUID("11111111-1111-1111-1111-111111111111"),
+        relationship_definition_id=definition_id,
+    )
+    other = _relationship(relationship_definition_id=uuid4())
+
+    repo.add(second)
+    repo.add(other)
+    repo.add(first)
+
+    assert repo.list_by_definition(definition_id) == (first, second)
+
+
+def test_list_incident_to_objects_matches_outgoing_incoming_internal_and_self_once() -> None:
+    repo = InMemoryRelationshipRepository()
+    source = uuid4()
+    child = uuid4()
+    target = uuid4()
+    external = uuid4()
+    unrelated_a = uuid4()
+    unrelated_b = uuid4()
+    outgoing = _relationship(
+        relationship_id=UUID("00000000-0000-0000-0000-000000000001"),
+        source_object_id=source,
+        target_object_id=external,
+        relationship_definition_id=uuid4(),
+    )
+    incoming = _relationship(
+        relationship_id=UUID("11111111-1111-1111-1111-111111111111"),
+        source_object_id=external,
+        target_object_id=child,
+        relationship_definition_id=uuid4(),
+    )
+    internal = _relationship(
+        relationship_id=UUID("22222222-2222-2222-2222-222222222222"),
+        source_object_id=source,
+        target_object_id=child,
+        relationship_definition_id=uuid4(),
+    )
+    self_link = _relationship(
+        relationship_id=UUID("33333333-3333-3333-3333-333333333333"),
+        source_object_id=child,
+        target_object_id=child,
+        relationship_definition_id=uuid4(),
+    )
+    unrelated = _relationship(
+        relationship_id=UUID("44444444-4444-4444-4444-444444444444"),
+        source_object_id=unrelated_a,
+        target_object_id=unrelated_b,
+        relationship_definition_id=uuid4(),
+    )
+
+    for relationship in (unrelated, self_link, internal, incoming, outgoing):
+        repo.add(relationship)
+
+    assert repo.list_incident_to_objects({source, child, target}) == (
+        outgoing,
+        incoming,
+        internal,
+        self_link,
+    )
+
+
 def test_delete_existing_relationship() -> None:
     repo = InMemoryRelationshipRepository()
     relationship = _relationship()

@@ -1,8 +1,9 @@
 """SQLAlchemy relationship repository implementations."""
 
+from collections.abc import Collection
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -173,6 +174,36 @@ class SqlAlchemyRelationshipRepository(RelationshipRepository):
             raise RelationshipPersistenceError("Relationship could not be persisted.") from error
         except Exception as error:
             raise RelationshipPersistenceError("Relationship could not be persisted.") from error
+
+    def list_by_definition(
+        self,
+        relationship_definition_id: UUID,
+    ) -> tuple[Relationship, ...]:
+        rows = self._session.scalars(
+            select(RelationshipRow)
+            .where(RelationshipRow.relationship_definition_id == str(relationship_definition_id))
+            .order_by(RelationshipRow.id.asc())
+        ).all()
+        return tuple(_row_to_relationship(row) for row in rows)
+
+    def list_incident_to_objects(
+        self,
+        object_ids: Collection[UUID],
+    ) -> tuple[Relationship, ...]:
+        object_id_strings = sorted({str(object_id) for object_id in object_ids})
+        if not object_id_strings:
+            return ()
+        rows = self._session.scalars(
+            select(RelationshipRow)
+            .where(
+                or_(
+                    RelationshipRow.source_object_id.in_(object_id_strings),
+                    RelationshipRow.target_object_id.in_(object_id_strings),
+                )
+            )
+            .order_by(RelationshipRow.id.asc())
+        ).all()
+        return tuple(_row_to_relationship(row) for row in rows)
 
     def delete(self, relationship_id: UUID) -> None:
         row = self._session.get(RelationshipRow, str(relationship_id))

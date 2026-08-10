@@ -1,5 +1,6 @@
 """Persistence-neutral repository contracts for relationships."""
 
+from collections.abc import Collection
 from typing import Protocol
 from uuid import UUID
 
@@ -48,6 +49,20 @@ class RelationshipRepository(Protocol):
 
     def add(self, relationship: Relationship) -> None:
         """Persist a new runtime relationship."""
+        ...
+
+    def list_by_definition(
+        self,
+        relationship_definition_id: UUID,
+    ) -> tuple[Relationship, ...]:
+        """Return relationships for one relationship definition ordered deterministically."""
+        ...
+
+    def list_incident_to_objects(
+        self,
+        object_ids: Collection[UUID],
+    ) -> tuple[Relationship, ...]:
+        """Return unique relationships incident to any supplied object ordered deterministically."""
         ...
 
     def delete(self, relationship_id: UUID) -> None:

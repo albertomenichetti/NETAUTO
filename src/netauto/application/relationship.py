@@ -19,6 +19,7 @@ from netauto.core.relationship import (
     RelationshipAlreadyExists,
     RelationshipDefinition,
     RelationshipDefinitionConflictSnapshot,
+    RelationshipDefinitionInUse,
     RelationshipDefinitionNotFound,
     RelationshipDefinitionTemplateNotFound,
     RelationshipDefinitionTemplateNotPublished,
@@ -100,6 +101,8 @@ class RelationshipDefinitionApplicationService:
         with self._uow_factory() as uow:
             if uow.relationship_definitions.get(definition_id) is None:
                 raise RelationshipDefinitionNotFound("RelationshipDefinition does not exist.")
+            if uow.relationships.list_by_definition(definition_id):
+                raise RelationshipDefinitionInUse("Relationship definition is in use.")
             uow.relationship_definitions.delete(definition_id)
             uow.commit()
 

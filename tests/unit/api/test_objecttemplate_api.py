@@ -29,6 +29,7 @@ from netauto.persistence.memory.object_repository import InMemoryObjectRepositor
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
 from netauto.persistence.memory.relationship_repository import (
     InMemoryRelationshipDefinitionRepository,
+    InMemoryRelationshipRepository,
 )
 
 
@@ -38,12 +39,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
         objects: InMemoryObjectRepository,
+        relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -58,6 +61,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
         return self._relationship_definitions
+
+    @property
+    def relationships(self) -> InMemoryRelationshipRepository:
+        return self._relationships
 
     @property
     def objects(self) -> InMemoryObjectRepository:
@@ -89,6 +96,7 @@ class BrokenObjectTemplateUnitOfWork(FakeUnitOfWork):
             BrokenDataTypeRepository(),
             BrokenObjectTemplateRepository(),
             InMemoryObjectRepository(),
+            InMemoryRelationshipRepository(),
             InMemoryRelationshipDefinitionRepository(),
             [0],
         )
@@ -110,6 +118,7 @@ def client_context() -> (
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
@@ -118,6 +127,7 @@ def client_context() -> (
             datatypes,
             object_templates,
             objects,
+            relationships,
             relationship_definitions,
             commits,
         )
@@ -862,6 +872,7 @@ def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_kee
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
@@ -870,6 +881,7 @@ def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_kee
             datatypes,
             object_templates,
             objects,
+            relationships,
             relationship_definitions,
             commits,
         )

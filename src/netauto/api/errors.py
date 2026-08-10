@@ -77,6 +77,7 @@ from netauto.core.relationship import (
     InvalidRelationshipDefinition,
     InvalidRelationshipIdentifier,
     RelationshipDefinitionAlreadyExists,
+    RelationshipDefinitionInUse,
     RelationshipDefinitionNotFound,
     RelationshipDefinitionPersistenceError,
     RelationshipDefinitionSemanticConflict,
@@ -398,6 +399,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "relationship_definition_already_exists",
         "Relationship definition already exists",
+    ),
+    (
+        RelationshipDefinitionInUse,
+        HTTPStatus.CONFLICT,
+        "relationship_definition_in_use",
+        "Relationship definition is in use",
     ),
     (
         RelationshipDefinitionSemanticConflict,

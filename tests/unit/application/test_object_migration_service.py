@@ -41,6 +41,7 @@ from netauto.persistence.memory.objecttemplate_repository import (
 )
 from netauto.persistence.memory.relationship_repository import (
     InMemoryRelationshipDefinitionRepository,
+    InMemoryRelationshipRepository,
 )
 
 
@@ -69,12 +70,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
         objects: TrackingObjectRepository,
+        relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -89,6 +92,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
         return self._relationship_definitions
+
+    @property
+    def relationships(self) -> InMemoryRelationshipRepository:
+        return self._relationships
 
     @property
     def objects(self) -> TrackingObjectRepository:
@@ -109,11 +116,13 @@ def _service() -> tuple[
     InMemoryDataTypeRepository,
     InMemoryObjectTemplateRepository,
     TrackingObjectRepository,
+    InMemoryRelationshipRepository,
     list[int],
 ]:
     datatypes = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = TrackingObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
 
@@ -122,6 +131,7 @@ def _service() -> tuple[
             datatypes,
             object_templates,
             objects,
+            relationships,
             relationship_definitions,
             commit_counter,
         )
@@ -131,6 +141,7 @@ def _service() -> tuple[
         datatypes,
         object_templates,
         objects,
+        relationships,
         commit_counter,
     )
 
@@ -244,7 +255,7 @@ def _create_object(
 
 
 def test_analyze_optional_property_addition_is_automatic() -> None:
-    service, datatypes, object_templates, _objects, commits = _service()
+    service, datatypes, object_templates, _objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -285,7 +296,7 @@ def test_analyze_optional_property_addition_is_automatic() -> None:
 
 
 def test_analyze_detects_effective_inherited_addition() -> None:
-    service, datatypes, object_templates, _objects, _commits = _service()
+    service, datatypes, object_templates, _objects, _relationships, _commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -336,7 +347,7 @@ def test_analyze_detects_effective_inherited_addition() -> None:
 
 
 def test_analyze_added_component_is_automatic() -> None:
-    service, _datatypes, object_templates, _objects, _commits = _service()
+    service, _datatypes, object_templates, _objects, _relationships, _commits = _service()
     interface = _template(name="interface")
     power_supply = _template(name="power_supply")
     _store_template_versions(object_templates, interface, (_version(interface.id, version=1),))
@@ -386,7 +397,7 @@ def test_analyze_detects_blocking_changes(
     builder: str,
     expected_kind: ObjectTemplateMigrationBlockingChangeKind,
 ) -> None:
-    service, datatypes, object_templates, _objects, _commits = _service()
+    service, datatypes, object_templates, _objects, _relationships, _commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     interface = _template(name="interface")
@@ -438,7 +449,7 @@ def test_analyze_detects_blocking_changes(
 
 
 def test_migrate_required_property_addition_applies_same_value_to_all_candidates() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -508,7 +519,7 @@ def test_migrate_required_property_addition_applies_same_value_to_all_candidates
 
 
 def test_migrate_optional_addition_and_added_component_preserve_memberships() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     child_template = _template(name="bundle")
@@ -590,7 +601,7 @@ def test_migrate_optional_addition_and_added_component_preserve_memberships() ->
 
 
 def test_required_property_addition_without_value_fails_before_mutation() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -634,7 +645,7 @@ def test_required_property_addition_without_value_fails_before_mutation() -> Non
 
 
 def test_unexpected_migration_property_value_fails_before_mutation() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -678,7 +689,7 @@ def test_unexpected_migration_property_value_fails_before_mutation() -> None:
 
 
 def test_invalid_supplied_value_fails_atomically_before_replace() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     vlan, vlan_v1 = _datatype(
         name="vlan",
@@ -733,7 +744,7 @@ def test_invalid_supplied_value_fails_atomically_before_replace() -> None:
 
 
 def test_blocked_migration_raises_and_does_not_mutate() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -776,7 +787,7 @@ def test_blocked_migration_raises_and_does_not_mutate() -> None:
 
 
 def test_target_version_must_be_published_for_analysis_and_execution() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
 
@@ -823,7 +834,7 @@ def test_target_version_must_be_published_for_analysis_and_execution() -> None:
 def test_forward_only_migration_rejects_non_newer_target_versions(
     target_version: int,
 ) -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -872,7 +883,7 @@ def test_forward_only_migration_rejects_non_newer_target_versions(
 
 
 def test_zero_candidate_migration_with_required_added_property_is_noop_without_commit() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
@@ -915,7 +926,7 @@ def test_zero_candidate_migration_with_required_added_property_is_noop_without_c
 
 
 def test_zero_candidate_migration_still_rejects_unexpected_property_values() -> None:
-    service, datatypes, object_templates, objects, commits = _service()
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
     hostname, hostname_v1 = _datatype(name="hostname")
     serial, serial_v1 = _datatype(name="serial")
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))

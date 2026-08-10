@@ -15,6 +15,7 @@ from netauto.persistence.memory.object_repository import InMemoryObjectRepositor
 from netauto.persistence.memory.objecttemplate_repository import InMemoryObjectTemplateRepository
 from netauto.persistence.memory.relationship_repository import (
     InMemoryRelationshipDefinitionRepository,
+    InMemoryRelationshipRepository,
 )
 from support.http_server import serve_app
 
@@ -25,12 +26,14 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         repo: InMemoryDataTypeRepository,
         object_templates: InMemoryObjectTemplateRepository,
         objects: InMemoryObjectRepository,
+        relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._repo = repo
         self._object_templates = object_templates
         self._objects = objects
+        self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -45,6 +48,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
         return self._relationship_definitions
+
+    @property
+    def relationships(self) -> InMemoryRelationshipRepository:
+        return self._relationships
 
     @property
     def objects(self) -> InMemoryObjectRepository:
@@ -67,11 +74,19 @@ async def _client() -> (
     repo = InMemoryDataTypeRepository()
     object_templates = InMemoryObjectTemplateRepository()
     objects = InMemoryObjectRepository()
+    relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
     def factory() -> FakeUnitOfWork:
-        return FakeUnitOfWork(repo, object_templates, objects, relationship_definitions, commits)
+        return FakeUnitOfWork(
+            repo,
+            object_templates,
+            objects,
+            relationships,
+            relationship_definitions,
+            commits,
+        )
 
     async with serve_app(create_app(factory)) as client:
         yield client, repo, commits

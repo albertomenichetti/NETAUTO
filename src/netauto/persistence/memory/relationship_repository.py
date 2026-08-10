@@ -1,5 +1,6 @@
 """In-memory relationship repository implementations."""
 
+from collections.abc import Collection
 from uuid import UUID
 
 from netauto.core.relationship import (
@@ -79,6 +80,32 @@ class InMemoryRelationshipRepository(RelationshipRepository):
             raise RelationshipAlreadyExists("Relationship already exists.")
         self._relationships[relationship.id] = relationship
         self._ids_by_endpoints[endpoint_key] = relationship.id
+
+    def list_by_definition(
+        self,
+        relationship_definition_id: UUID,
+    ) -> tuple[Relationship, ...]:
+        relationships = [
+            relationship
+            for relationship in self._relationships.values()
+            if relationship.relationship_definition_id == relationship_definition_id
+        ]
+        relationships.sort(key=lambda item: str(item.id))
+        return tuple(relationships)
+
+    def list_incident_to_objects(
+        self,
+        object_ids: Collection[UUID],
+    ) -> tuple[Relationship, ...]:
+        object_id_set = set(object_ids)
+        relationships = [
+            relationship
+            for relationship in self._relationships.values()
+            if relationship.source_object_id in object_id_set
+            or relationship.target_object_id in object_id_set
+        ]
+        relationships.sort(key=lambda item: str(item.id))
+        return tuple(relationships)
 
     def delete(self, relationship_id: UUID) -> None:
         relationship = self._relationships.get(relationship_id)
