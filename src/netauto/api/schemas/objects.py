@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 PositiveStrictInt = Annotated[StrictInt, Field(ge=1)]
 
@@ -20,7 +20,18 @@ class CreateObjectRequest(ApiModel):
 
 class UpdateObjectRequest(ApiModel):
     properties: dict[str, object] | None = None
-    remove_properties: list[str] = Field(default_factory=list)
+    remove_properties: list[StrictStr] = Field(default_factory=list)
+
+
+class AttachObjectComponentRequest(ApiModel):
+    slot_name: StrictStr
+    component_object_id: UUID
+
+
+class ComponentMembershipResponse(ApiModel):
+    parent_object_id: UUID
+    slot_name: str
+    component_object_id: UUID
 
 
 class ObjectResponse(ApiModel):

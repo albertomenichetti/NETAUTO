@@ -7,9 +7,15 @@ from fastapi import APIRouter, Depends, Response, status
 
 from netauto.api.dependencies import get_object_service
 from netauto.api.errors import ERROR_RESPONSES
-from netauto.api.schemas.objects import CreateObjectRequest, ObjectResponse, UpdateObjectRequest
+from netauto.api.schemas.objects import (
+    AttachObjectComponentRequest,
+    ComponentMembershipResponse,
+    CreateObjectRequest,
+    ObjectResponse,
+    UpdateObjectRequest,
+)
 from netauto.application.object import ObjectApplicationService
-from netauto.core.object import Object
+from netauto.core.object import ComponentMembership, ComponentMembershipNotFound, Object
 
 router = APIRouter(prefix="/objects", tags=["objects"])
 
@@ -20,6 +26,14 @@ def _to_object_response(object_value: Object) -> ObjectResponse:
         template_id=object_value.template_id,
         template_version=object_value.template_version,
         properties=dict(object_value.properties),
+    )
+
+
+def _to_membership_response(membership: ComponentMembership) -> ComponentMembershipResponse:
+    return ComponentMembershipResponse(
+        parent_object_id=membership.parent_object_id,
+        slot_name=membership.slot_name,
+        component_object_id=membership.child_object_id,
     )
 
 
@@ -77,3 +91,55 @@ def delete_object(
 ) -> Response:
     service.delete_object(object_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{object_id}/components",
+    response_model=list[ComponentMembershipResponse],
+    responses=ERROR_RESPONSES,
+)
+def list_components(
+    object_id: UUID,
+    service: Annotated[ObjectApplicationService, Depends(get_object_service)],
+) -> list[ComponentMembershipResponse]:
+    return [
+        _to_membership_response(membership)
+        for membership in service.list_components(object_id)
+    ]
+
+
+@router.post(
+    "/{object_id}/components",
+    response_model=ComponentMembershipResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses=ERROR_RESPONSES,
+)
+def attach_component(
+    object_id: UUID,
+    request: AttachObjectComponentRequest,
+    service: Annotated[ObjectApplicationService, Depends(get_object_service)],
+) -> ComponentMembershipResponse:
+    membership = service.attach_component(
+        parent_object_id=object_id,
+        slot_name=request.slot_name,
+        child_object_id=request.component_object_id,
+    )
+    return _to_membership_response(membership)
+
+
+@router.delete(
+    "/{object_id}/components/{component_object_id}",
+    response_model=ComponentMembershipResponse,
+    responses=ERROR_RESPONSES,
+)
+def detach_component(
+    object_id: UUID,
+    component_object_id: UUID,
+    service: Annotated[ObjectApplicationService, Depends(get_object_service)],
+) -> ComponentMembershipResponse:
+    owner = service.get_owner(component_object_id)
+    if owner is None or owner.parent_object_id != object_id:
+        raise ComponentMembershipNotFound("Component membership does not exist.")
+
+    membership = service.detach_component(component_object_id)
+    return _to_membership_response(membership)
