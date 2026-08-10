@@ -195,6 +195,18 @@ class NetautoApiClient:
     def detach_object_component(self, component_object_id: str) -> JSONObject:
         return self._request_object("DELETE", f"/objects/components/{component_object_id}")
 
+    def list_relationship_definitions(self) -> JSONArray:
+        return self._request_array("GET", "/relationship-definitions")
+
+    def get_relationship_definition(self, definition_id: str) -> JSONObject:
+        return self._request_object("GET", f"/relationship-definitions/{definition_id}")
+
+    def create_relationship_definition(self, payload: JSONObject) -> JSONObject:
+        return self._request_object("POST", "/relationship-definitions", json_body=payload)
+
+    def delete_relationship_definition(self, definition_id: str) -> None:
+        self._request_empty("DELETE", f"/relationship-definitions/{definition_id}")
+
     def _request_object(
         self,
         method: str,

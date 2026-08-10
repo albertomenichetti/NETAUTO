@@ -145,6 +145,18 @@ class FakeClient:
     def detach_object_component(self, component_object_id: str) -> Any:
         return self._call("detach_object_component", component_object_id)
 
+    def list_relationship_definitions(self) -> Any:
+        return self._call("list_relationship_definitions")
+
+    def get_relationship_definition(self, definition_id: str) -> Any:
+        return self._call("get_relationship_definition", definition_id)
+
+    def create_relationship_definition(self, payload: dict[str, object]) -> Any:
+        return self._call("create_relationship_definition", payload)
+
+    def delete_relationship_definition(self, definition_id: str) -> Any:
+        return self._call("delete_relationship_definition", definition_id)
+
 
 def _patch_client(
     monkeypatch: pytest.MonkeyPatch,
@@ -268,6 +280,16 @@ def _object_migration_result_payload() -> dict[str, object]:
     }
 
 
+def _relationship_definition_payload() -> dict[str, object]:
+    return {
+        "id": str(uuid4()),
+        "source_template_id": str(uuid4()),
+        "target_template_id": str(uuid4()),
+        "forward_name": "uses",
+        "reverse_name": "is_used_by",
+    }
+
+
 def test_version_and_help() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -280,6 +302,7 @@ def test_version_and_help() -> None:
     assert runner.invoke(app, ["object", "component", "--help"]).exit_code == 0
     assert runner.invoke(app, ["object-template", "--help"]).exit_code == 0
     assert runner.invoke(app, ["object-template", "version", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["relationship-definition", "--help"]).exit_code == 0
 
 
 def test_api_url_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1512,6 +1535,114 @@ def test_object_component_attach_file_and_local_input_errors(
     assert calls == [("attach_object_component", (parent_id, payload))]
 
 
+def test_relationship_definition_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    definition = _relationship_definition_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {
+            "list_relationship_definitions": [definition],
+            "get_relationship_definition": definition,
+            "create_relationship_definition": definition,
+            "delete_relationship_definition": None,
+        },
+        calls,
+    )
+    definition_id = str(definition["id"])
+
+    listed = runner.invoke(app, ["--output", "json", "relationship-definition", "list"])
+    shown = runner.invoke(
+        app,
+        ["--output", "json", "relationship-definition", "show", definition_id],
+    )
+    created = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "relationship-definition",
+            "create",
+            "--source-template-id",
+            str(definition["source_template_id"]),
+            "--target-template-id",
+            str(definition["target_template_id"]),
+            "--forward-name",
+            "uses",
+            "--reverse-name",
+            "is_used_by",
+        ],
+    )
+    deleted = runner.invoke(
+        app,
+        ["relationship-definition", "delete", definition_id],
+    )
+
+    assert listed.exit_code == 0
+    assert json.loads(listed.stdout) == [definition]
+    assert shown.exit_code == 0
+    assert json.loads(shown.stdout) == definition
+    assert created.exit_code == 0
+    assert json.loads(created.stdout) == definition
+    assert deleted.exit_code == 0
+    assert f"Deleted relationship definition {definition_id}" in deleted.stdout
+    assert calls == [
+        ("list_relationship_definitions", ()),
+        ("get_relationship_definition", (definition_id,)),
+        (
+            "create_relationship_definition",
+            (
+                {
+                    "source_template_id": str(definition["source_template_id"]),
+                    "target_template_id": str(definition["target_template_id"]),
+                    "forward_name": "uses",
+                    "reverse_name": "is_used_by",
+                },
+            ),
+        ),
+        ("delete_relationship_definition", (definition_id,)),
+    ]
+
+
+def test_relationship_definition_create_file_and_local_input_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    definition = _relationship_definition_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"create_relationship_definition": definition}, calls)
+    payload = {
+        "source_template_id": str(uuid4()),
+        "target_template_id": str(uuid4()),
+        "forward_name": "uses",
+        "reverse_name": "is_used_by",
+    }
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "relationship-definition.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        file_result = runner.invoke(
+            app,
+            ["relationship-definition", "create", "--file", str(path)],
+        )
+        mode_conflict = runner.invoke(
+            app,
+            [
+                "relationship-definition",
+                "create",
+                "--file",
+                str(path),
+                "--forward-name",
+                "uses",
+            ],
+        )
+
+    missing_inline = runner.invoke(app, ["relationship-definition", "create"])
+
+    assert file_result.exit_code == 0
+    assert mode_conflict.exit_code == 2
+    assert missing_inline.exit_code == 2
+    assert calls == [("create_relationship_definition", (payload,))]
+
+
 def test_object_semantic_api_error_flows_through_existing_cli_error_handling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1553,6 +1684,47 @@ def test_object_semantic_api_error_flows_through_existing_cli_error_handling(
     assert json.loads(result.stderr)["error"]["code"] == "object_validation_failed"
 
 
+def test_relationship_definition_api_error_flows_through_existing_cli_error_handling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"create_relationship_definition": {}},
+        calls,
+        error=ApiError(
+            status_code=409,
+            code="relationship_definition_semantic_conflict",
+            message="Relationship definition conflicts semantically with an existing definition",
+            details=[],
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--output",
+            "json",
+            "relationship-definition",
+            "create",
+            "--source-template-id",
+            str(uuid4()),
+            "--target-template-id",
+            str(uuid4()),
+            "--forward-name",
+            "uses",
+            "--reverse-name",
+            "is_used_by",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert json.loads(result.stderr)["error"]["code"] == (
+        "relationship_definition_semantic_conflict"
+    )
+
+
 def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     assert runner.invoke(app, ["datatype", "show", "not-a-uuid"]).exit_code == 2
     assert runner.invoke(app, ["datatype", "version", "show", str(uuid4()), "0"]).exit_code == 2
@@ -1580,6 +1752,10 @@ def test_bad_uuid_and_version_are_local_usage_errors() -> None:
     )
     assert runner.invoke(app, ["object", "show", "not-a-uuid"]).exit_code == 2
     assert runner.invoke(app, ["object", "delete", "not-a-uuid"]).exit_code == 2
+    assert runner.invoke(app, ["relationship-definition", "show", "not-a-uuid"]).exit_code == 2
+    assert (
+        runner.invoke(app, ["relationship-definition", "delete", "not-a-uuid"]).exit_code == 2
+    )
     assert (
         runner.invoke(
             app,
@@ -1771,6 +1947,41 @@ def test_object_template_human_rendering(
     ],
 )
 def test_object_human_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    payloads: dict[str, Any],
+    expected_text: str,
+) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, payloads, calls)
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == 0
+    assert expected_text in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("command", "payloads", "expected_text"),
+    [
+        (
+            ["relationship-definition", "list"],
+            {"list_relationship_definitions": [_relationship_definition_payload()]},
+            "SOURCE TEMPLATE ID",
+        ),
+        (
+            ["relationship-definition", "show", str(_relationship_definition_payload()["id"])],
+            {"get_relationship_definition": _relationship_definition_payload()},
+            "Forward Name:",
+        ),
+        (
+            ["relationship-definition", "delete", str(_relationship_definition_payload()["id"])],
+            {"delete_relationship_definition": None},
+            "Deleted relationship definition",
+        ),
+    ],
+)
+def test_relationship_definition_human_rendering(
     monkeypatch: pytest.MonkeyPatch,
     command: list[str],
     payloads: dict[str, Any],

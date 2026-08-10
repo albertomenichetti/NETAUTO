@@ -314,6 +314,61 @@ def render_component_membership(
     return "\n".join(lines)
 
 
+def render_relationship_definition_list(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    rows = []
+    for item in payload:
+        definition = _require_object(item)
+        rows.append(
+            (
+                _require_string(definition, "id"),
+                _require_string(definition, "source_template_id"),
+                _require_string(definition, "target_template_id"),
+                _require_string(definition, "forward_name"),
+                _require_string(definition, "reverse_name"),
+            )
+        )
+    return _table(
+        ("ID", "SOURCE TEMPLATE ID", "TARGET TEMPLATE ID", "FORWARD", "REVERSE"),
+        rows,
+    )
+
+
+def render_relationship_definition(
+    payload: JSONObject,
+    mode: OutputMode,
+    *,
+    prefix: str | None = None,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    lines = []
+    if prefix is not None:
+        lines.append(prefix)
+    lines.extend(
+        [
+            f"ID: {_require_string(payload, 'id')}",
+            f"Source Template ID: {_require_string(payload, 'source_template_id')}",
+            f"Target Template ID: {_require_string(payload, 'target_template_id')}",
+            f"Forward Name: {_require_string(payload, 'forward_name')}",
+            f"Reverse Name: {_require_string(payload, 'reverse_name')}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_relationship_definition_delete_result(
+    _payload: object,
+    mode: OutputMode,
+    *,
+    definition_id: str,
+) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(None)
+    return f"Deleted relationship definition {definition_id}"
+
+
 def render_object_delete_result(
     _payload: object,
     mode: OutputMode,

@@ -366,6 +366,94 @@ def test_object_client_returns_objects_arrays_and_empty_delete() -> None:
         assert client.delete_object("object-1") is None
 
 
+def test_relationship_definition_client_builds_correct_urls_and_bodies() -> None:
+    seen: list[tuple[str, str, object]] = []
+    definition_payload = {
+        "id": "definition-1",
+        "source_template_id": "source-1",
+        "target_template_id": "target-1",
+        "forward_name": "uses",
+        "reverse_name": "is_used_by",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        seen.append((request.method, str(request.url), json.loads(body) if body else None))
+        if request.method == "GET" and request.url.path.endswith("/relationship-definitions"):
+            return _response(200, [definition_payload])
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return _response(200 if request.method == "GET" else 201, definition_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000/",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        client.list_relationship_definitions()
+        client.get_relationship_definition("definition-1")
+        client.create_relationship_definition(
+            {
+                "source_template_id": "source-1",
+                "target_template_id": "target-1",
+                "forward_name": "uses",
+                "reverse_name": "is_used_by",
+            }
+        )
+        client.delete_relationship_definition("definition-1")
+
+    assert seen == [
+        ("GET", "http://127.0.0.1:8000/api/v1/relationship-definitions", None),
+        ("GET", "http://127.0.0.1:8000/api/v1/relationship-definitions/definition-1", None),
+        (
+            "POST",
+            "http://127.0.0.1:8000/api/v1/relationship-definitions",
+            {
+                "source_template_id": "source-1",
+                "target_template_id": "target-1",
+                "forward_name": "uses",
+                "reverse_name": "is_used_by",
+            },
+        ),
+        ("DELETE", "http://127.0.0.1:8000/api/v1/relationship-definitions/definition-1", None),
+    ]
+
+
+def test_relationship_definition_client_returns_arrays_objects_and_empty_delete() -> None:
+    definition_payload = {
+        "id": "definition-1",
+        "source_template_id": "source-1",
+        "target_template_id": "target-1",
+        "forward_name": "uses",
+        "reverse_name": "is_used_by",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.endswith("/relationship-definitions"):
+            return _response(200, [definition_payload])
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return _response(200, definition_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.list_relationship_definitions() == [definition_payload]
+        assert client.get_relationship_definition("definition-1") == definition_payload
+        assert (
+            client.create_relationship_definition(
+                {
+                    "source_template_id": "source-1",
+                    "target_template_id": "target-1",
+                    "forward_name": "uses",
+                    "reverse_name": "is_used_by",
+                }
+            )
+            == definition_payload
+        )
+        assert client.delete_relationship_definition("definition-1") is None
+
+
 @pytest.mark.parametrize("status_code", [404, 409, 422, 500])
 def test_client_raises_api_error_for_valid_netauto_error(status_code: int) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:

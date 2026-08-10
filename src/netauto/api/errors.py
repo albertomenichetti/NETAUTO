@@ -73,7 +73,16 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionAlreadyExists,
     ObjectTemplateVersionNotFound,
 )
-from netauto.core.relationship import RelationshipDefinitionSemanticConflict
+from netauto.core.relationship import (
+    InvalidRelationshipDefinition,
+    InvalidRelationshipIdentifier,
+    RelationshipDefinitionAlreadyExists,
+    RelationshipDefinitionNotFound,
+    RelationshipDefinitionPersistenceError,
+    RelationshipDefinitionSemanticConflict,
+    RelationshipDefinitionTemplateNotFound,
+    RelationshipDefinitionTemplateNotPublished,
+)
 
 
 def _response(
@@ -373,10 +382,34 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         "Object template version already exists",
     ),
     (
+        RelationshipDefinitionNotFound,
+        HTTPStatus.NOT_FOUND,
+        "relationship_definition_not_found",
+        "Relationship definition not found",
+    ),
+    (
+        RelationshipDefinitionTemplateNotFound,
+        HTTPStatus.NOT_FOUND,
+        "relationship_definition_template_not_found",
+        "Relationship definition template not found",
+    ),
+    (
+        RelationshipDefinitionAlreadyExists,
+        HTTPStatus.CONFLICT,
+        "relationship_definition_already_exists",
+        "Relationship definition already exists",
+    ),
+    (
         RelationshipDefinitionSemanticConflict,
         HTTPStatus.CONFLICT,
         "relationship_definition_semantic_conflict",
         "Relationship definition conflicts semantically with an existing definition",
+    ),
+    (
+        RelationshipDefinitionTemplateNotPublished,
+        HTTPStatus.CONFLICT,
+        "relationship_definition_template_not_published",
+        "Relationship definition template must have a published version",
     ),
     (
         InvalidObjectTemplateVersionTransition,
@@ -473,6 +506,24 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.UNPROCESSABLE_ENTITY,
         "duplicate_object_template_component",
         "Object template component names must be unique",
+    ),
+    (
+        InvalidRelationshipDefinition,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_relationship_definition",
+        "Relationship definition is invalid",
+    ),
+    (
+        InvalidRelationshipIdentifier,
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_relationship_identifier",
+        "Relationship identifier is invalid",
+    ),
+    (
+        RelationshipDefinitionPersistenceError,
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "persistence_error",
+        "Persistence operation failed",
     ),
     (
         ObjectTemplatePersistenceError,

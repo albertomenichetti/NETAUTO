@@ -5,6 +5,7 @@ from fastapi import Request
 from netauto.application.datatype import DataTypeApplicationService
 from netauto.application.object import ObjectApplicationService
 from netauto.application.objecttemplate import ObjectTemplateApplicationService
+from netauto.application.relationship import RelationshipDefinitionApplicationService
 
 
 def get_datatype_service(request: Request) -> DataTypeApplicationService:
@@ -17,3 +18,9 @@ def get_object_template_service(request: Request) -> ObjectTemplateApplicationSe
 
 def get_object_service(request: Request) -> ObjectApplicationService:
     return request.app.state.object_service
+
+
+def get_relationship_definition_service(
+    request: Request,
+) -> RelationshipDefinitionApplicationService:
+    return request.app.state.relationship_definition_service
