@@ -24,6 +24,8 @@ class SchemaCompiler:
 
     def compile_datatype(self, datatype_version: DataTypeVersion) -> dict[str, object]:
         schema: dict[str, object] = {"type": datatype_version.base_type.json_schema_type}
+        if datatype_version.base_type.json_schema_format is not None:
+            schema["format"] = datatype_version.base_type.json_schema_format
 
         for constraint in datatype_version.constraints:
             keyword = _SCHEMA_KEYWORDS.get(constraint.name)

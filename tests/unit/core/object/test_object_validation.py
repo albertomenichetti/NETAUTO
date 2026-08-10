@@ -250,6 +250,70 @@ def test_datatype_constraints_are_surfaced_without_reimplementation() -> None:
     )
 
 
+def test_date_property_validation_uses_existing_datatype_validation_path() -> None:
+    datatype_version = _datatype_version("core.date")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"installation_date": "2026-08-10"},
+        effective_properties=(
+            _property("installation_date", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.is_valid is True
+
+
+def test_invalid_date_property_surfaces_format_error_with_property_path() -> None:
+    datatype_version = _datatype_version("core.date")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"installation_date": "2026-02-31"},
+        effective_properties=(
+            _property("installation_date", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.errors == (
+        ObjectValidationIssue(
+            path=("properties", "installation_date"),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
+def test_datetime_property_validation_uses_existing_datatype_validation_path() -> None:
+    datatype_version = _datatype_version("core.datetime")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"last_seen": "2026-08-10T15:14:00Z"},
+        effective_properties=(
+            _property("last_seen", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.is_valid is True
+
+
+def test_invalid_datetime_property_surfaces_format_error_with_property_path() -> None:
+    datatype_version = _datatype_version("core.datetime")
+    result = ObjectValidationEngine().validate_properties(
+        properties={"last_seen": "2026-08-10T15:14:00"},
+        effective_properties=(
+            _property("last_seen", datatype_id=datatype_version.datatype_id),
+        ),
+        datatype_lookup=_lookup_for(datatype_version),
+    )
+
+    assert result.errors == (
+        ObjectValidationIssue(
+            path=("properties", "last_seen"),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
 def test_multiple_independent_errors_are_collected_in_deterministic_order() -> None:
     hostname_datatype = _datatype_version("core.string")
     serial_datatype = _datatype_version("core.string")

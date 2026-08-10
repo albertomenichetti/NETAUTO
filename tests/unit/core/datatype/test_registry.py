@@ -5,32 +5,37 @@ import pytest
 from netauto.core.datatype import PrimitiveTypeNotFound, PrimitiveTypeRegistry
 
 
-def test_all_four_built_in_primitives_exist() -> None:
+def test_all_six_built_in_primitives_exist() -> None:
     registry = PrimitiveTypeRegistry()
 
     assert registry.exists("core.string")
     assert registry.exists("core.integer")
     assert registry.exists("core.number")
     assert registry.exists("core.boolean")
+    assert registry.exists("core.date")
+    assert registry.exists("core.datetime")
 
 
 @pytest.mark.parametrize(
-    ("name", "json_schema_type"),
+    ("name", "json_schema_type", "json_schema_format"),
     [
-        ("core.string", "string"),
-        ("core.integer", "integer"),
-        ("core.number", "number"),
-        ("core.boolean", "boolean"),
+        ("core.string", "string", None),
+        ("core.integer", "integer", None),
+        ("core.number", "number", None),
+        ("core.boolean", "boolean", None),
+        ("core.date", "string", "date"),
+        ("core.datetime", "string", "date-time"),
     ],
 )
 def test_each_primitive_has_expected_json_schema_type(
-    name: str, json_schema_type: str
+    name: str, json_schema_type: str, json_schema_format: str | None
 ) -> None:
     registry = PrimitiveTypeRegistry()
 
     primitive_type = registry.get(name)
 
     assert primitive_type.json_schema_type == json_schema_type
+    assert primitive_type.json_schema_format == json_schema_format
 
 
 def test_unknown_primitive_lookup_raises_specific_exception() -> None:
@@ -48,6 +53,8 @@ def test_registry_contains_exactly_expected_primitive_names() -> None:
         "core.integer",
         "core.number",
         "core.boolean",
+        "core.date",
+        "core.datetime",
     }
 
 
@@ -66,6 +73,8 @@ def test_primitive_objects_are_immutable() -> None:
         ("core.integer", True),
         ("core.number", True),
         ("core.boolean", True),
+        ("core.date", True),
+        ("core.datetime", True),
         ("core.unknown", False),
     ],
 )

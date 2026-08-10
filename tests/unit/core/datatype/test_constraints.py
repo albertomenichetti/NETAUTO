@@ -33,6 +33,18 @@ def test_datatype_version_with_no_constraints_is_valid() -> None:
     assert version.constraints == ()
 
 
+@pytest.mark.parametrize("primitive_name", ["core.date", "core.datetime"])
+def test_temporal_datatype_version_with_no_constraints_is_valid(primitive_name: str) -> None:
+    version = DataTypeVersion(
+        datatype_id=uuid4(),
+        version=1,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=_base_type(primitive_name),
+    )
+
+    assert version.constraints == ()
+
+
 def test_constraint_objects_are_immutable() -> None:
     constraint = Constraint(name=ConstraintName.MIN_LENGTH, value=1)
 
@@ -549,3 +561,33 @@ def test_asset_status_enum_example() -> None:
 
     assert datatype.qualified_name == "asset.status"
     assert version.constraints[0].value == ("active", "planned", "retired")
+
+
+@pytest.mark.parametrize(
+    ("primitive_name", "constraint"),
+    [
+        (
+            "core.date",
+            Constraint(name=ConstraintName.PATTERN, value=r"^\d{4}-\d{2}-\d{2}$"),
+        ),
+        (
+            "core.datetime",
+            Constraint(name=ConstraintName.MINIMUM, value=1),
+        ),
+        (
+            "core.datetime",
+            Constraint(name=ConstraintName.ENUM, value=("2026-08-10T15:14:00Z",)),
+        ),
+    ],
+)
+def test_temporal_primitives_reject_all_constraints(
+    primitive_name: str, constraint: Constraint
+) -> None:
+    with pytest.raises(UnsupportedConstraint):
+        DataTypeVersion(
+            datatype_id=uuid4(),
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+            base_type=_base_type(primitive_name),
+            constraints=(constraint,),
+        )

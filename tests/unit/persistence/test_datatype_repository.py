@@ -111,6 +111,21 @@ def _status_pair() -> tuple[DataType, DataTypeVersion]:
     )
 
 
+def _temporal_pair(
+    *,
+    namespace: str,
+    name: str,
+    description: str,
+    base_type: str,
+) -> tuple[DataType, DataTypeVersion]:
+    return DataTypeFactory().create(
+        namespace=namespace,
+        name=name,
+        description=description,
+        base_type=base_type,
+    )
+
+
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_repository_datatype_round_trip(backend: str, tmp_path: Path) -> None:
     datatype = _datatype()
@@ -224,6 +239,40 @@ def test_version_add_and_get(backend: str, tmp_path: Path) -> None:
         loaded = repo.get_version(datatype.id, 1)
 
     assert loaded == version
+
+
+@pytest.mark.parametrize(
+    ("base_type", "namespace", "name", "expected_format"),
+    [
+        ("core.date", "lifecycle", "warranty_expiration", "date"),
+        ("core.datetime", "inventory", "last_seen", "date-time"),
+    ],
+)
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_temporal_datatype_version_round_trip_preserves_primitive_metadata(
+    backend: str,
+    tmp_path: Path,
+    base_type: str,
+    namespace: str,
+    name: str,
+    expected_format: str,
+) -> None:
+    datatype, version = _temporal_pair(
+        namespace=namespace,
+        name=name,
+        description="Temporal datatype",
+        base_type=base_type,
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(version)
+        loaded = repo.get_version(datatype.id, 1)
+
+    assert loaded is not None
+    assert loaded.base_type.name == base_type
+    assert loaded.base_type.json_schema_type == "string"
+    assert loaded.base_type.json_schema_format == expected_format
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])

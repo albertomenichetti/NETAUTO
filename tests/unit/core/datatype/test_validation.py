@@ -172,6 +172,93 @@ def test_no_coercion_is_performed(primitive_name: str, value: object) -> None:
     assert result.errors[0].code == "type"
 
 
+@pytest.mark.parametrize("value", ["2026-08-10", "2024-02-29"])
+def test_date_values_accepted(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.date"), value)
+
+    assert result.is_valid is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-02-29",
+        "2026-02-31",
+        "2026-13-01",
+        "2026-8-10",
+        "20260810",
+        "2026-08-10T00:00:00Z",
+    ],
+)
+def test_malformed_date_strings_are_rejected_with_format_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.date"), value)
+
+    assert result.errors == (
+        ValidationIssue(
+            path=(),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
+@pytest.mark.parametrize("value", [123, True, None])
+def test_non_string_date_values_are_rejected_with_type_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.date"), value)
+
+    assert result.errors == (
+        ValidationIssue(path=(), code="type", message="Value is not of the expected type"),
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-08-10T15:14:00Z",
+        "2026-08-10T17:14:00+02:00",
+        "2026-08-10T17:14:00.123456+02:00",
+        "2026-08-10T10:14:00-05:00",
+    ],
+)
+def test_datetime_values_accepted(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.datetime"), value)
+
+    assert result.is_valid is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-08-10",
+        "2026-08-10T17:14:00",
+        "2026-02-31T17:14:00Z",
+        "2026-08-10 17:14:00Z",
+        "2026-08-10T25:14:00Z",
+        "2026-08-10T17:60:00Z",
+        "2026-08-10t17:14:00z",
+    ],
+)
+def test_malformed_datetime_strings_are_rejected_with_format_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.datetime"), value)
+
+    assert result.errors == (
+        ValidationIssue(
+            path=(),
+            code="format",
+            message="Value does not match the required format",
+        ),
+    )
+
+
+@pytest.mark.parametrize("value", [123, True, None])
+def test_non_string_datetime_values_are_rejected_with_type_error(value: object) -> None:
+    result = ValidationEngine().validate_datatype(_datatype_version("core.datetime"), value)
+
+    assert result.errors == (
+        ValidationIssue(path=(), code="type", message="Value is not of the expected type"),
+    )
+
+
 def test_hostname_constraints_validate_string_values() -> None:
     datatype_version = _datatype_version(
         "core.string",
@@ -383,7 +470,7 @@ def test_unexpected_validator_failure_becomes_validation_engine_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class BrokenValidator:
-        def __init__(self, _schema: object) -> None:
+        def __init__(self, _schema: object, **_kwargs: object) -> None:
             pass
 
         def iter_errors(self, _value: object):
@@ -412,7 +499,7 @@ def test_unsupported_validation_keyword_becomes_validation_engine_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class UnknownKeywordValidator:
-        def __init__(self, _schema: object) -> None:
+        def __init__(self, _schema: object, **_kwargs: object) -> None:
             pass
 
         def iter_errors(self, _value: object):

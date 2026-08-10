@@ -10,6 +10,16 @@ _PRIMITIVE_TYPES = {
     "core.integer": PrimitiveType(name="core.integer", json_schema_type="integer"),
     "core.number": PrimitiveType(name="core.number", json_schema_type="number"),
     "core.boolean": PrimitiveType(name="core.boolean", json_schema_type="boolean"),
+    "core.date": PrimitiveType(
+        name="core.date",
+        json_schema_type="string",
+        json_schema_format="date",
+    ),
+    "core.datetime": PrimitiveType(
+        name="core.datetime",
+        json_schema_type="string",
+        json_schema_format="date-time",
+    ),
 }
 
 

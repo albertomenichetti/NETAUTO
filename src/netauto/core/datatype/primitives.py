@@ -9,3 +9,4 @@ class PrimitiveType:
 
     name: str
     json_schema_type: str
+    json_schema_format: str | None = None

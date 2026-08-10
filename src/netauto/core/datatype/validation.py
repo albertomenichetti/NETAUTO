@@ -1,10 +1,12 @@
 """Runtime value validation for datatype versions."""
 
+import datetime as dt
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, cast
 
-from jsonschema import Draft202012Validator, ValidationError, validators
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError, validators
 
 from netauto.core.datatype.compiler import SchemaCompiler
 from netauto.core.datatype.exceptions import ValidationEngineError
@@ -12,6 +14,7 @@ from netauto.core.datatype.models import DataTypeVersion
 
 _ERROR_CODES = {
     "type": "type",
+    "format": "format",
     "minLength": "min_length",
     "maxLength": "max_length",
     "pattern": "pattern",
@@ -22,6 +25,7 @@ _ERROR_CODES = {
 
 _ERROR_MESSAGES = {
     "type": "Value is not of the expected type",
+    "format": "Value does not match the required format",
     "min_length": "Value is shorter than the minimum allowed length",
     "max_length": "Value exceeds the maximum allowed length",
     "pattern": "Value does not match the required pattern",
@@ -29,6 +33,11 @@ _ERROR_MESSAGES = {
     "maximum": "Value exceeds the maximum allowed value",
     "enum": "Value is not one of the allowed values",
 }
+
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATETIME_PATTERN = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+)
 
 
 def _is_integer(_checker: Any, instance: object) -> bool:
@@ -52,6 +61,33 @@ _TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER.redefine_many(
     }
 )
 _Validator = validators.extend(Draft202012Validator, type_checker=_TYPE_CHECKER)
+_FORMAT_CHECKER = FormatChecker()
+
+
+@_FORMAT_CHECKER.checks("date")
+def _is_date(instance: object) -> bool:
+    if not isinstance(instance, str):
+        return True
+    if _DATE_PATTERN.fullmatch(instance) is None:
+        return False
+    try:
+        dt.date.fromisoformat(instance)
+    except ValueError:
+        return False
+    return True
+
+
+@_FORMAT_CHECKER.checks("date-time")
+def _is_datetime(instance: object) -> bool:
+    if not isinstance(instance, str):
+        return True
+    if _DATETIME_PATTERN.fullmatch(instance) is None:
+        return False
+    try:
+        parsed = dt.datetime.fromisoformat(instance.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +155,7 @@ class ValidationEngine:
         self, datatype_version: DataTypeVersion, value: object
     ) -> ValidationResult:
         schema = self._compiler.compile_datatype(datatype_version)
-        validator = _Validator(schema)
+        validator = _Validator(schema, format_checker=_FORMAT_CHECKER)
 
         try:
             issues = [_normalize_error(error) for error in validator.iter_errors(value)]

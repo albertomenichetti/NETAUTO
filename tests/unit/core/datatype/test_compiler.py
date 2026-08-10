@@ -44,12 +44,19 @@ def _compile(
         ("core.integer", {"type": "integer"}),
         ("core.number", {"type": "number"}),
         ("core.boolean", {"type": "boolean"}),
+        ("core.date", {"type": "string", "format": "date"}),
+        ("core.datetime", {"type": "string", "format": "date-time"}),
     ],
 )
 def test_unconstrained_primitive_compilation(
     primitive_name: str, expected: dict[str, object]
 ) -> None:
     assert _compile(primitive_name) == expected
+
+
+def test_existing_primitives_do_not_receive_format_field() -> None:
+    for primitive_name in ("core.string", "core.integer", "core.number", "core.boolean"):
+        assert "format" not in _compile(primitive_name)
 
 
 def test_string_constraints_compile_to_expected_fragment() -> None:

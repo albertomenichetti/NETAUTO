@@ -577,3 +577,110 @@ def test_cli_object_migration_flow(tmp_path: Path) -> None:
             }
     finally:
         engine.dispose()
+
+
+def test_cli_object_validation_accepts_and_rejects_temporal_date_properties(
+    tmp_path: Path,
+) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            datatype_created = _invoke_json(
+                base_url,
+                [
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "inventory",
+                    "--name",
+                    "installation_date",
+                    "--description",
+                    "Installation date",
+                    "--base-type",
+                    "core.date",
+                ],
+            )
+            datatype_id = datatype_created["datatype"]["id"]
+            assert datatype_created["version"]["base_type"] == "core.date"
+
+            assert (
+                runner.invoke(
+                    app,
+                    ["--api-url", base_url, "datatype", "version", "publish", datatype_id, "1"],
+                ).exit_code
+                == 0
+            )
+
+            template_created = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "inventory",
+                    "--name",
+                    "asset",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "installation_date",
+                            "datatype_id": datatype_id,
+                            "required": True,
+                        }
+                    ),
+                ],
+            )
+            template_id = template_created["object_template"]["id"]
+
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "object-template",
+                        "version",
+                        "publish",
+                        template_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            created = _invoke_json(
+                base_url,
+                [
+                    "object",
+                    "create",
+                    "--template-id",
+                    template_id,
+                    "--template-version",
+                    "1",
+                    "--property-json",
+                    json.dumps({"installation_date": "2026-08-10"}),
+                ],
+            )
+            assert created["properties"] == {"installation_date": "2026-08-10"}
+
+            invalid = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "object",
+                    "create",
+                    "--template-id",
+                    template_id,
+                    "--template-version",
+                    "1",
+                    "--property-json",
+                    json.dumps({"installation_date": "2026-02-31"}),
+                ],
+            )
+            assert invalid.exit_code == 1
+            assert "object_validation_failed" in invalid.stderr
+            assert "/properties/installation_date" in invalid.stderr
+            assert "[format]" in invalid.stderr
+    finally:
+        engine.dispose()
