@@ -22,7 +22,6 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionStatus,
 )
 from netauto.core.objecttemplate.repository import (
-    ObjectTemplateReplaceMode,
     validate_object_template_version_add,
     validate_object_template_version_replace,
 )

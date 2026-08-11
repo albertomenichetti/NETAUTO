@@ -72,6 +72,22 @@ def _version(template_id: UUID, *, version: int = 1) -> ObjectTemplateVersion:
     )
 
 
+def _store_published_template_version(
+    uow: SqlAlchemyUnitOfWork,
+    template_id: UUID,
+    *,
+    version: int = 1,
+) -> None:
+    uow.object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=template_id,
+            version=version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+        )
+    )
+    uow.object_templates.replace_version(_version(template_id, version=version))
+
+
 def _object(*, template_id: UUID, template_version: int = 1) -> Object:
     return Object(
         id=uuid4(),
@@ -178,7 +194,7 @@ def test_normal_read_connection_can_read_while_model_write_transaction_is_held(
     try:
         with SqlAlchemyUnitOfWork(session_factory) as uow:
             uow.object_templates.add(template)
-            uow.object_templates.add_version(_version(template.id))
+            _store_published_template_version(uow, template.id)
             uow.commit()
 
         with SqliteModelWriteUnitOfWork(session_factory):
@@ -206,7 +222,7 @@ def test_normal_writer_cannot_complete_while_model_write_transaction_holds_write
     try:
         with SqlAlchemyUnitOfWork(first_factory) as uow:
             uow.object_templates.add(template)
-            uow.object_templates.add_version(_version(template.id))
+            _store_published_template_version(uow, template.id)
             uow.commit()
 
         blocked_object = _object(template_id=template.id)
@@ -294,8 +310,8 @@ def test_relationship_definition_create_acquires_begin_immediate_before_decision
         with ordinary_factory() as uow:
             uow.object_templates.add(source)
             uow.object_templates.add(target)
-            uow.object_templates.add_version(_version(source.id))
-            uow.object_templates.add_version(_version(target.id))
+            _store_published_template_version(uow, source.id)
+            _store_published_template_version(uow, target.id)
             uow.commit()
 
         statements.clear()

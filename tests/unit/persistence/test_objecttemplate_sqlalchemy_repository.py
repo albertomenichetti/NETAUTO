@@ -1032,7 +1032,6 @@ def test_replace_lifecycle_snapshot_preserves_complete_replacement_snapshot(tmp_
     hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
     serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
     original_target = _store_template_identity(session, name="interface")
-    replacement_target = _store_template_identity(session, name="module")
     original = _version(
         template.id,
         1,
@@ -1199,7 +1198,11 @@ def test_replace_version_rejects_publication_property_order_change(tmp_path: Pat
     template = _template()
     hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
     serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
-    first = _property("hostname", datatype_id=hostname_datatype.id, datatype_version=hostname_v1.version)
+    first = _property(
+        "hostname",
+        datatype_id=hostname_datatype.id,
+        datatype_version=hostname_v1.version,
+    )
     second = _property("serial", datatype_id=serial_datatype.id, datatype_version=serial_v1.version)
     draft = _version(template.id, 1, properties=(first, second))
     illegal = _version(
@@ -1222,7 +1225,6 @@ def test_replace_version_rejects_publication_property_order_change(tmp_path: Pat
 def test_replace_version_allows_published_to_deprecated_status_only(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "published_to_deprecated.sqlite3")
     template = _template()
-    draft = _version(template.id, 1)
     published = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     deprecated = _version(template.id, 1, status=ObjectTemplateVersionStatus.DEPRECATED)
     try:
@@ -1412,10 +1414,22 @@ def test_publish_status_transition_does_not_rewrite_parent_or_child_rows(tmp_pat
         assert any("status" in statement for statement in version_updates)
         assert all("parent_template_id" not in statement for statement in version_updates)
         assert all("parent_version" not in statement for statement in version_updates)
-        assert not any("delete from object_template_properties" in statement for statement in statements)
-        assert not any("insert into object_template_properties" in statement for statement in statements)
-        assert not any("delete from object_template_components" in statement for statement in statements)
-        assert not any("insert into object_template_components" in statement for statement in statements)
+        assert not any(
+            "delete from object_template_properties" in statement
+            for statement in statements
+        )
+        assert not any(
+            "insert into object_template_properties" in statement
+            for statement in statements
+        )
+        assert not any(
+            "delete from object_template_components" in statement
+            for statement in statements
+        )
+        assert not any(
+            "insert into object_template_components" in statement
+            for statement in statements
+        )
     finally:
         session.close()
         engine.dispose()
@@ -1476,10 +1490,22 @@ def test_deprecate_status_transition_does_not_rewrite_parent_or_child_rows(tmp_p
         assert any("status" in statement for statement in version_updates)
         assert all("parent_template_id" not in statement for statement in version_updates)
         assert all("parent_version" not in statement for statement in version_updates)
-        assert not any("delete from object_template_properties" in statement for statement in statements)
-        assert not any("insert into object_template_properties" in statement for statement in statements)
-        assert not any("delete from object_template_components" in statement for statement in statements)
-        assert not any("insert into object_template_components" in statement for statement in statements)
+        assert not any(
+            "delete from object_template_properties" in statement
+            for statement in statements
+        )
+        assert not any(
+            "insert into object_template_properties" in statement
+            for statement in statements
+        )
+        assert not any(
+            "delete from object_template_components" in statement
+            for statement in statements
+        )
+        assert not any(
+            "insert into object_template_components" in statement
+            for statement in statements
+        )
     finally:
         session.close()
         engine.dispose()

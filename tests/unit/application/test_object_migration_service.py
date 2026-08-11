@@ -32,7 +32,6 @@ from netauto.core.objecttemplate import (
     ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
-    ObjectTemplateVersioningService,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )
@@ -270,7 +269,16 @@ def _store_template_versions(
         if version.status is ObjectTemplateVersionStatus.PUBLISHED:
             repo.replace_version(version)
         elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
-            repo.replace_version(ObjectTemplateVersioningService().publish(draft))
+            repo.replace_version(
+                ObjectTemplateVersion(
+                    template_id=draft.template_id,
+                    version=draft.version,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    parent=draft.parent,
+                    properties=draft.properties,
+                    components=draft.components,
+                )
+            )
             repo.replace_version(version)
 
 

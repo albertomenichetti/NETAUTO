@@ -33,7 +33,6 @@ from netauto.core.objecttemplate import (
     ObjectTemplateParentNotFound,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
-    ObjectTemplateVersioningService,
     ObjectTemplateVersionNotFound,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,

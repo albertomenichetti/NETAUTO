@@ -1315,8 +1315,7 @@ def test_revise_invalid_transition_does_not_commit() -> None:
         status=ObjectTemplateVersionStatus.PUBLISHED,
         properties=(),
     )
-    object_templates.add(template)
-    object_templates.add_version(published)
+    _store_object_template_versions(object_templates, template, (published,))
 
     with pytest.raises(InvalidObjectTemplateVersionTransition):
         service.revise_version(
@@ -1382,8 +1381,7 @@ def test_create_next_version_clones_exact_pinned_snapshot_without_reresolving() 
             ),
         ),
     )
-    object_templates.add(template)
-    object_templates.add_version(source)
+    _store_object_template_versions(object_templates, template, (source,))
     datatypes.replace_version(deprecated_datatype)
 
     next_version = service.create_next_version(template_id=template.id, source_version=1)
@@ -1439,8 +1437,7 @@ def test_create_next_version_clones_component_identity_without_reresolving() -> 
             ),
         ),
     )
-    object_templates.add(template)
-    object_templates.add_version(source)
+    _store_object_template_versions(object_templates, template, (source,))
     deprecated_target = ObjectTemplateVersion(
         template_id=component_target.id,
         version=1,
@@ -1550,6 +1547,15 @@ def test_publish_missing_or_non_published_component_target_blocks_publication() 
         ObjectTemplateVersion(
             template_id=component_target.id,
             version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(),
+            components=(),
+        )
+    )
+    object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=component_target.id,
+            version=1,
             status=ObjectTemplateVersionStatus.DEPRECATED,
             properties=(),
             components=(),
@@ -1630,10 +1636,8 @@ def test_publish_inherited_template_uses_exact_parent_lookup_and_validates_effec
             ),
         ),
     )
-    object_templates.add(parent_template)
-    object_templates.add_version(parent_version)
-    object_templates.add(child_template)
-    object_templates.add_version(child_draft)
+    _store_object_template_versions(object_templates, parent_template, (parent_version,))
+    _store_object_template_versions(object_templates, child_template, (child_draft,))
 
     published = service.publish_version(template_id=child_template.id, version=1)
 
@@ -1704,10 +1708,8 @@ def test_publish_inherited_component_target_validation_and_conflict_propagate() 
         ),
         components=(),
     )
-    object_templates.add(parent_template)
-    object_templates.add_version(parent_version)
-    object_templates.add(child_template)
-    object_templates.add_version(valid_child)
+    _store_object_template_versions(object_templates, parent_template, (parent_version,))
+    _store_object_template_versions(object_templates, child_template, (valid_child,))
 
     object_templates.replace_version(
         ObjectTemplateVersion(
@@ -1722,51 +1724,120 @@ def test_publish_inherited_component_target_validation_and_conflict_propagate() 
     with pytest.raises(ObjectTemplateComponentVersionNotPublished):
         service.publish_version(template_id=child_template.id, version=1)
 
-    object_templates.replace_version(
-        ObjectTemplateVersion(
-            template_id=parent_template.id,
-            version=1,
-            status=ObjectTemplateVersionStatus.PUBLISHED,
-            properties=parent_version.properties,
-            components=(
-                ObjectTemplateComponent(
-                    name="interfaces",
-                    template_id=uuid4(),
-                ),
+    parent_with_missing_target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device_missing_target",
+        description=None,
+        abstract=False,
+    )
+    parent_with_missing_target_version = _published_object_template_version(
+        parent_with_missing_target.id,
+        properties=parent_version.properties,
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=uuid4(),
             ),
-        )
+        ),
+    )
+    child_missing_target_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router_missing_target",
+        description=None,
+        abstract=False,
+    )
+    child_missing_target_draft = ObjectTemplateVersion(
+        template_id=child_missing_target_template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_with_missing_target.id, version=1),
+        properties=valid_child.properties,
+        components=(),
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_with_missing_target,
+        (parent_with_missing_target_version,),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child_missing_target_template,
+        (child_missing_target_draft,),
     )
 
     with pytest.raises(ObjectTemplateComponentVersionNotFound):
-        service.publish_version(template_id=child_template.id, version=1)
-
-    object_templates.replace_version(parent_version)
-    object_templates.replace_version(
-        ObjectTemplateVersion(
-            template_id=inherited_target.id,
+        service.publish_version(
+            template_id=child_missing_target_template.id,
             version=1,
-            status=ObjectTemplateVersionStatus.PUBLISHED,
-            properties=(),
-            components=(),
         )
+
+    inherited_target_conflict = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="network_interface_conflict",
+        description=None,
+        abstract=True,
+    )
+    inherited_target_conflict_published = _published_object_template_version(
+        inherited_target_conflict.id
+    )
+    _store_object_template_versions(
+        object_templates,
+        inherited_target_conflict,
+        (inherited_target_conflict_published,),
+    )
+    parent_conflict_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device_conflict",
+        description=None,
+        abstract=False,
+    )
+    parent_conflict_version = _published_object_template_version(
+        parent_conflict_template.id,
+        properties=parent_version.properties,
+        components=(
+            ObjectTemplateComponent(
+                name="interfaces",
+                template_id=inherited_target_conflict.id,
+            ),
+        ),
+    )
+    child_conflict_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router_conflict",
+        description=None,
+        abstract=False,
     )
     conflicting_child = ObjectTemplateVersion(
-        template_id=child_template.id,
-        version=2,
+        template_id=child_conflict_template.id,
+        version=1,
         status=ObjectTemplateVersionStatus.DRAFT,
-        parent=ObjectTemplateVersionRef(template_id=parent_template.id, version=1),
+        parent=ObjectTemplateVersionRef(template_id=parent_conflict_template.id, version=1),
         properties=(),
         components=(
             ObjectTemplateComponent(
                 name="interfaces",
-                template_id=inherited_target.id,
+                template_id=inherited_target_conflict.id,
             ),
         ),
     )
-    object_templates.add_version(conflicting_child)
+    _store_object_template_versions(
+        object_templates,
+        parent_conflict_template,
+        (parent_conflict_version,),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child_conflict_template,
+        (conflicting_child,),
+    )
 
     with pytest.raises(InheritedObjectTemplateComponentConflict):
-        service.publish_version(template_id=child_template.id, version=2)
+        service.publish_version(template_id=child_conflict_template.id, version=1)
 
     assert commits[0] == 0
 
@@ -1865,8 +1936,11 @@ def test_publish_missing_parent_or_non_published_parent_blocks_publication() -> 
             ),
         ),
     )
-    object_templates.add(non_published_parent)
-    object_templates.add_version(non_published_parent_version)
+    _store_object_template_versions(
+        object_templates,
+        non_published_parent,
+        (non_published_parent_version,),
+    )
     object_templates.add_version(blocked_child)
 
     with pytest.raises(ObjectTemplateParentNotPublished):
@@ -1917,10 +1991,8 @@ def test_publish_inheritance_resolver_failures_propagate_and_do_not_commit() -> 
             ),
         ),
     )
-    object_templates.add(parent_template)
-    object_templates.add_version(parent_version)
-    object_templates.add(child_template)
-    object_templates.add_version(conflicting_draft)
+    _store_object_template_versions(object_templates, parent_template, (parent_version,))
+    _store_object_template_versions(object_templates, child_template, (conflicting_draft,))
 
     with pytest.raises(InheritedObjectTemplatePropertyConflict):
         service.publish_version(template_id=child_template.id, version=1)
@@ -1944,8 +2016,7 @@ def test_deprecate_replaces_snapshot_and_commits_once() -> None:
         status=ObjectTemplateVersionStatus.PUBLISHED,
         properties=(),
     )
-    object_templates.add(template)
-    object_templates.add_version(published)
+    _store_object_template_versions(object_templates, template, (published,))
 
     deprecated = service.deprecate_version(template_id=template.id, version=1)
 

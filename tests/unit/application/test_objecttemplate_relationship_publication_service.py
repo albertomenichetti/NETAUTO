@@ -14,7 +14,6 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
-    ObjectTemplateVersioningService,
 )
 from netauto.core.relationship import (
     RelationshipDefinition,
@@ -206,11 +205,22 @@ def _store_template_versions(
             repo.replace_version(version)
 
 
+def _reset_tracking_state(
+    object_templates: TrackingObjectTemplateRepository,
+    relationship_definitions: TrackingRelationshipDefinitionRepository,
+) -> None:
+    object_templates.replace_version_calls.clear()
+    relationship_definitions.list_calls = 0
+    relationship_definitions.add_calls = 0
+    relationship_definitions.delete_calls = 0
+
+
 def test_publish_with_no_relationship_definitions_succeeds() -> None:
     service, object_templates, relationship_definitions, commits = _service()
     template = _template("router")
     draft = _version(template.id, 1, status=ObjectTemplateVersionStatus.DRAFT)
     _store_template_versions(object_templates, template, (draft,))
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     published = service.publish_version(template_id=template.id, version=1)
 
@@ -240,6 +250,7 @@ def test_unrelated_relationship_definitions_do_not_block_publish() -> None:
     relationship_definitions.add(
         _definition(source_template_id=source.id, target_template_id=target.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     published = service.publish_version(template_id=router.id, version=1)
 
@@ -276,13 +287,14 @@ def test_publish_rejects_source_side_prospective_conflict_before_replace() -> No
     relationship_definitions.add(
         _definition(source_template_id=router.id, target_template_id=credential.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(RelationshipDefinitionSemanticConflict):
         service.publish_version(template_id=router.id, version=2)
 
     assert object_templates.get_version(router.id, 2) == router_v2
     assert object_templates.replace_version_calls == []
-    assert relationship_definitions.add_calls == 2
+    assert relationship_definitions.add_calls == 0
     assert relationship_definitions.delete_calls == 0
     assert commits[0] == 0
 
@@ -315,6 +327,7 @@ def test_publish_rejects_target_side_prospective_conflict() -> None:
     relationship_definitions.add(
         _definition(source_template_id=network_device.id, target_template_id=tacacs.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(RelationshipDefinitionSemanticConflict):
         service.publish_version(template_id=tacacs.id, version=2)
@@ -357,6 +370,7 @@ def test_publish_rejects_inverse_orientation_conflict() -> None:
             reverse_name="uses",
         )
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(RelationshipDefinitionSemanticConflict):
         service.publish_version(template_id=router.id, version=2)
@@ -395,6 +409,7 @@ def test_publish_rejects_symmetric_name_conflict() -> None:
             reverse_name="connects_to",
         )
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
     relationship_definitions.add(
         _definition(
             source_template_id=credential.id,
@@ -403,6 +418,7 @@ def test_publish_rejects_symmetric_name_conflict() -> None:
             reverse_name="connects_to",
         )
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(RelationshipDefinitionSemanticConflict):
         service.publish_version(template_id=router.id, version=2)
@@ -444,6 +460,7 @@ def test_publish_allows_different_semantics_even_when_endpoint_spaces_overlap() 
             reverse_name="managed_by",
         )
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     published = service.publish_version(template_id=router.id, version=2)
 
@@ -521,6 +538,7 @@ def test_historical_published_and_deprecated_versions_remain_relevant(
     relationship_definitions.add(
         _definition(source_template_id=router.id, target_template_id=credential.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(RelationshipDefinitionSemanticConflict):
         service.publish_version(template_id=router.id, version=2)
@@ -563,6 +581,7 @@ def test_publish_uses_actual_exact_ancestry_of_the_version_being_published() -> 
     relationship_definitions.add(
         _definition(source_template_id=router.id, target_template_id=credential.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     published = service.publish_version(template_id=router.id, version=2)
 
@@ -614,6 +633,7 @@ def test_publish_conflict_engine_propagates_missing_parent_from_historical_ances
     relationship_definitions.add(
         _definition(source_template_id=router.id, target_template_id=credential.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(ObjectTemplateParentNotFound):
         service.publish_version(template_id=published_template.id, version=1)
@@ -661,6 +681,7 @@ def test_publish_conflict_engine_propagates_self_inheritance_from_historical_anc
     relationship_definitions.add(
         _definition(source_template_id=router.id, target_template_id=credential.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(ObjectTemplateSelfInheritance):
         service.publish_version(template_id=published_template.id, version=1)
@@ -721,6 +742,7 @@ def test_publish_conflict_engine_propagates_inheritance_cycle_from_historical_an
     relationship_definitions.add(
         _definition(source_template_id=router.id, target_template_id=credential.id)
     )
+    _reset_tracking_state(object_templates, relationship_definitions)
 
     with pytest.raises(ObjectTemplateInheritanceCycle):
         service.publish_version(template_id=published_template.id, version=1)

@@ -29,7 +29,6 @@ from netauto.core.objecttemplate import (
     ObjectTemplateInheritanceResolver,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
-    ObjectTemplateVersioningService,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )

@@ -421,35 +421,37 @@ def test_effective_relationship_definitions_propagate_ancestry_errors() -> None:
         template_version=3,
         object_id=UUID(int=12),
     )
-    templates.add(router)
-    templates.add(switch)
-    templates.add_version(
-        _version(
-            router.id,
-            1,
-            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=9),
-        )
+    _store_template_versions(
+        templates,
+        router,
+        (
+            _version(
+                router.id,
+                1,
+                parent=ObjectTemplateVersionRef(template_id=network_device.id, version=9),
+            ),
+            _version(
+                router.id,
+                2,
+                parent=ObjectTemplateVersionRef(template_id=switch.id, version=1),
+            ),
+            _version(
+                router.id,
+                3,
+                parent=ObjectTemplateVersionRef(template_id=router.id, version=1),
+            ),
+        ),
     )
-    templates.add_version(
-        _version(
-            router.id,
-            2,
-            parent=ObjectTemplateVersionRef(template_id=switch.id, version=1),
-        )
-    )
-    templates.add_version(
-        _version(
-            switch.id,
-            1,
-            parent=ObjectTemplateVersionRef(template_id=router.id, version=2),
-        )
-    )
-    templates.add_version(
-        _version(
-            router.id,
-            3,
-            parent=ObjectTemplateVersionRef(template_id=router.id, version=1),
-        )
+    _store_template_versions(
+        templates,
+        switch,
+        (
+            _version(
+                switch.id,
+                1,
+                parent=ObjectTemplateVersionRef(template_id=router.id, version=2),
+            ),
+        ),
     )
     objects.add(missing_parent_object)
     objects.add(cycle_object)

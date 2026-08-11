@@ -34,7 +34,6 @@ from netauto.core.objecttemplate import (
     ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
-    ObjectTemplateVersioningService,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )
