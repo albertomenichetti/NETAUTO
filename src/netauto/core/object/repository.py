@@ -37,6 +37,14 @@ class ObjectRepository(Protocol):
         """Replace an existing object snapshot."""
         ...
 
+    def replace_if_current(
+        self,
+        expected: Object,
+        replacement: Object,
+    ) -> None:
+        """Conditionally replace one object snapshot if the persisted current snapshot matches."""
+        ...
+
     def delete(self, object_id: UUID) -> None:
         """Delete an object and clean up incident membership edges."""
         ...

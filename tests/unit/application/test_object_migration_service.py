@@ -20,6 +20,7 @@ from netauto.core.object import (
     ComponentMembership,
     MissingObjectMigrationPropertyValue,
     Object,
+    ObjectConcurrentModification,
     ObjectMigrationBlocked,
     ObjectMigrationTargetVersionNotNewer,
     ObjectMigrationTargetVersionNotPublished,
@@ -54,6 +55,7 @@ class TrackingObjectRepository(InMemoryObjectRepository):
         super().__init__()
         self.list_by_template_version_calls: list[tuple[UUID, int]] = []
         self.replace_calls: list[Object] = []
+        self.replace_if_current_calls: list[tuple[Object, Object]] = []
 
     def list_by_template_version(
         self,
@@ -66,6 +68,10 @@ class TrackingObjectRepository(InMemoryObjectRepository):
     def replace(self, object_value: Object) -> None:
         self.replace_calls.append(object_value)
         super().replace(object_value)
+
+    def replace_if_current(self, expected: Object, replacement: Object) -> None:
+        self.replace_if_current_calls.append((expected, replacement))
+        super().replace_if_current(expected, replacement)
 
 
 class FakeUnitOfWork(ObjectUnitOfWork):
@@ -560,7 +566,8 @@ def test_migrate_required_property_addition_applies_same_value_to_all_candidates
     )
     assert objects.get(other.id) == other
     assert commits[0] == 1
-    assert len(objects.replace_calls) == 2
+    assert objects.replace_calls == []
+    assert len(objects.replace_if_current_calls) == 2
     assert objects.list_by_template_version_calls == [(template.id, 1)]
 
 
@@ -687,6 +694,7 @@ def test_required_property_addition_without_value_fails_before_mutation() -> Non
 
     assert objects.get(source.id) == source
     assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == []
     assert commits[0] == 0
 
 
@@ -731,6 +739,7 @@ def test_unexpected_migration_property_value_fails_before_mutation() -> None:
 
     assert objects.get(source.id) == source
     assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == []
     assert commits[0] == 0
 
 
@@ -786,6 +795,7 @@ def test_invalid_supplied_value_fails_atomically_before_replace() -> None:
     assert objects.get(first.id) == first
     assert objects.get(second.id) == second
     assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == []
     assert commits[0] == 0
 
 
@@ -829,6 +839,7 @@ def test_blocked_migration_raises_and_does_not_mutate() -> None:
 
     assert objects.get(source.id) == source
     assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == []
     assert commits[0] == 0
 
 
@@ -925,6 +936,7 @@ def test_forward_only_migration_rejects_non_newer_target_versions(
         )
 
     assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == []
     assert commits[0] == 0
 
 
@@ -968,6 +980,99 @@ def test_zero_candidate_migration_with_required_added_property_is_noop_without_c
 
     assert result.migrated_count == 0
     assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == []
+
+
+def test_migration_concurrent_modification_produces_no_history_and_no_commit() -> None:
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
+    hostname, hostname_v1 = _datatype(name="hostname")
+    serial, serial_v1 = _datatype(name="serial")
+    _store_datatype_versions(datatypes, hostname, (hostname_v1,))
+    _store_datatype_versions(datatypes, serial, (serial_v1,))
+
+    template = _template(name="device")
+    v1 = _version(
+        template.id,
+        version=1,
+        properties=(
+            _property("hostname", datatype_id=hostname.id, datatype_version=1, required=True),
+        ),
+    )
+    v2 = _version(
+        template.id,
+        version=2,
+        properties=(
+            _property("hostname", datatype_id=hostname.id, datatype_version=1, required=True),
+            _property("serialnumber", datatype_id=serial.id, datatype_version=1, required=False),
+        ),
+    )
+    _store_template_versions(object_templates, template, (v1, v2))
+
+    class ConflictOnFirstReplaceRepository(TrackingObjectRepository):
+        def replace_if_current(self, expected: Object, replacement: Object) -> None:
+            self._objects[expected.id] = Object(
+                id=expected.id,
+                template_id=expected.template_id,
+                template_version=expected.template_version,
+                properties={"hostname": "stale"},
+            )
+            super().replace_if_current(expected, replacement)
+
+    conflict_objects = ConflictOnFirstReplaceRepository()
+    first = _create_object(
+        conflict_objects,
+        template_id=template.id,
+        template_version=1,
+        properties={"hostname": "a"},
+    )
+    second = _create_object(
+        conflict_objects,
+        template_id=template.id,
+        template_version=1,
+        properties={"hostname": "b"},
+    )
+    object_changes = InMemoryObjectChangeRepository()
+    conflict_commits = [0]
+
+    def factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            conflict_objects,
+            object_changes,
+            InMemoryRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            conflict_commits,
+        )
+
+    conflict_service = ObjectApplicationService(factory)
+
+    with pytest.raises(ObjectConcurrentModification):
+        conflict_service.migrate_objects(
+            template_id=template.id,
+            source_version=1,
+            target_version=2,
+            property_values={},
+        )
+
+    persisted = {
+        first.id: conflict_objects.get(first.id),
+        second.id: conflict_objects.get(second.id),
+    }
+    assert Object(
+        id=first.id,
+        template_id=first.template_id,
+        template_version=first.template_version,
+        properties={"hostname": "stale"},
+    ) in tuple(value for value in persisted.values() if value is not None) or Object(
+        id=second.id,
+        template_id=second.template_id,
+        template_version=second.template_version,
+        properties={"hostname": "stale"},
+    ) in tuple(value for value in persisted.values() if value is not None)
+    assert object_changes.list_by_object(first.id) == ()
+    assert object_changes.list_by_object(second.id) == ()
+    assert conflict_commits[0] == 0
     assert commits[0] == 0
 
 

@@ -24,6 +24,7 @@ from netauto.core.object import (
     ObjectChange,
     ObjectChangeKind,
     ObjectChangeSnapshot,
+    ObjectConcurrentModification,
     ObjectPersistenceError,
 )
 from netauto.core.objecttemplate import (
@@ -104,6 +105,12 @@ class BrokenObjectRepository(InMemoryObjectRepository):
         raise ObjectPersistenceError("boom")
 
 
+class ConcurrentObjectRepository(InMemoryObjectRepository):
+    def replace_if_current(self, expected: Object, replacement: Object) -> None:
+        del expected, replacement
+        raise ObjectConcurrentModification("Object was modified concurrently")
+
+
 class BrokenRelationshipRepository(InMemoryRelationshipRepository):
     def list_incident_to_objects(self, object_ids: object) -> tuple[object, ...]:
         del object_ids
@@ -142,6 +149,74 @@ class BrokenLifecycleUnitOfWork(FakeUnitOfWork):
             objects,
             InMemoryObjectChangeRepository(),
             BrokenRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            [0],
+        )
+
+
+class ConcurrentConflictUnitOfWork(FakeUnitOfWork):
+    object_id = UUID("00000000-0000-0000-0000-000000000002")
+
+    def __init__(self) -> None:
+        datatype, datatype_version = DataTypeFactory().create(
+            namespace="network",
+            name="hostname",
+            description="Hostname",
+            base_type="core.string",
+        )
+        published = DataTypeVersioningService().publish(datatype_version)
+        datatypes = InMemoryDataTypeRepository()
+        datatypes.add(datatype)
+        datatypes.add_version(datatype_version)
+        datatypes.replace_version(published)
+
+        template = ObjectTemplate(
+            id=uuid4(),
+            namespace="network",
+            name="device",
+            description="device template",
+            abstract=False,
+        )
+        version = ObjectTemplateVersion(
+            template_id=template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(
+                ObjectTemplateProperty(
+                    name="hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        )
+        object_templates = InMemoryObjectTemplateRepository()
+        object_templates.add(template)
+        object_templates.add_version(
+            ObjectTemplateVersion(
+                template_id=template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=version.properties,
+            )
+        )
+        object_templates.replace_version(version)
+
+        objects = ConcurrentObjectRepository()
+        objects.add(
+            Object(
+                id=self.object_id,
+                template_id=template.id,
+                template_version=1,
+                properties={"hostname": "router-01"},
+            )
+        )
+        super().__init__(
+            datatypes,
+            object_templates,
+            objects,
+            InMemoryObjectChangeRepository(),
+            InMemoryRelationshipRepository(),
             InMemoryRelationshipDefinitionRepository(),
             [0],
         )
@@ -1014,6 +1089,20 @@ def test_patch_works_against_deprecated_pinned_template_version(
     assert patched.json()["template_id"] == str(template.id)
     assert patched.json()["template_version"] == 1
     assert patched.json()["properties"] == {"hostname": "router-02"}
+
+
+def test_patch_concurrent_modification_maps_to_409() -> None:
+    def factory() -> ConcurrentConflictUnitOfWork:
+        return ConcurrentConflictUnitOfWork()
+
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+        response = client.patch(
+            f"/api/v1/objects/{ConcurrentConflictUnitOfWork.object_id}",
+            json={"properties": {"hostname": "router-02"}},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_concurrent_modification"
 
 
 def test_delete_returns_204_and_delegates_subtree_cascade(

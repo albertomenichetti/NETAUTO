@@ -39,6 +39,7 @@ from netauto.core.object import (
     ObjectAlreadyExists,
     ObjectComponentSlotNotFound,
     ObjectComponentTemplateIncompatible,
+    ObjectConcurrentModification,
     ObjectDataTypeVersionNotFound,
     ObjectMigrationBlocked,
     ObjectMigrationTargetVersionNotNewer,
@@ -188,6 +189,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.NOT_FOUND,
         "datatype_version_not_found",
         "Datatype version not found",
+    ),
+    (
+        ObjectConcurrentModification,
+        HTTPStatus.CONFLICT,
+        "object_concurrent_modification",
+        "Object was modified concurrently",
     ),
     (
         ObjectAlreadyExists,

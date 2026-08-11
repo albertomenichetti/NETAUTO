@@ -7,8 +7,10 @@ from netauto.core.object import (
     ComponentMembership,
     ComponentMembershipAlreadyExists,
     ComponentMembershipNotFound,
+    InvalidObject,
     Object,
     ObjectAlreadyExists,
+    ObjectConcurrentModification,
     ObjectNotFound,
 )
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
@@ -139,6 +141,48 @@ def test_replace_missing_raises_object_not_found() -> None:
 
     with pytest.raises(ObjectNotFound):
         repo.replace(_object())
+
+
+def test_replace_if_current_matching_snapshot_succeeds() -> None:
+    repo = InMemoryObjectRepository()
+    original = _object(properties={"hostname": "router-01"})
+    replacement = replace(original, properties={"hostname": "router-02"})
+
+    repo.add(original)
+    repo.replace_if_current(original, replacement)
+
+    assert repo.get(original.id) == replacement
+
+
+def test_replace_if_current_stale_snapshot_raises_and_leaves_current_unchanged() -> None:
+    repo = InMemoryObjectRepository()
+    original = _object(properties={"hostname": "router-01"})
+    current = replace(original, properties={"hostname": "current"})
+    stale_replacement = replace(original, properties={"hostname": "stale-write"})
+
+    repo.add(original)
+    repo.replace(current)
+
+    with pytest.raises(ObjectConcurrentModification):
+        repo.replace_if_current(original, stale_replacement)
+
+    assert repo.get(original.id) == current
+
+
+def test_replace_if_current_rejects_identity_change() -> None:
+    repo = InMemoryObjectRepository()
+    original = _object(properties={"hostname": "router-01"})
+    replacement = _object(
+        object_id=uuid4(),
+        template_id=original.template_id,
+        template_version=original.template_version,
+        properties={"hostname": "router-02"},
+    )
+
+    repo.add(original)
+
+    with pytest.raises(InvalidObject):
+        repo.replace_if_current(original, replacement)
 
 
 def test_delete_existing_object() -> None:

@@ -4,7 +4,8 @@ import json
 from collections.abc import Mapping
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,8 +13,10 @@ from netauto.core.object import (
     ComponentMembership,
     ComponentMembershipAlreadyExists,
     ComponentMembershipNotFound,
+    InvalidObject,
     Object,
     ObjectAlreadyExists,
+    ObjectConcurrentModification,
     ObjectNotFound,
     ObjectPersistenceError,
     ObjectRepository,
@@ -121,6 +124,41 @@ class SqlAlchemyObjectRepository(ObjectRepository):
             row.template_id = str(object_value.template_id)
             row.template_version = object_value.template_version
             row.properties_json = properties_json
+            self._session.flush()
+        except IntegrityError as error:
+            raise ObjectPersistenceError("Object persistence failed.") from error
+
+    def replace_if_current(
+        self,
+        expected: Object,
+        replacement: Object,
+    ) -> None:
+        if expected.id != replacement.id:
+            raise InvalidObject("Conditional object replacement cannot change object identity.")
+
+        expected_properties_json = _serialize_properties(expected.properties)
+        replacement_properties_json = _serialize_properties(replacement.properties)
+        statement = (
+            update(ObjectRow)
+            .where(
+                ObjectRow.id == str(expected.id),
+                ObjectRow.template_id == str(expected.template_id),
+                ObjectRow.template_version == expected.template_version,
+                ObjectRow.properties_json == expected_properties_json,
+            )
+            .values(
+                template_id=str(replacement.template_id),
+                template_version=replacement.template_version,
+                properties_json=replacement_properties_json,
+            )
+        )
+        try:
+            result = self._session.execute(statement)
+            cursor_result = result if isinstance(result, CursorResult) else None
+            if cursor_result is None:
+                raise ObjectPersistenceError("Object persistence failed.")
+            if cursor_result.rowcount != 1:
+                raise ObjectConcurrentModification("Object was modified concurrently.")
             self._session.flush()
         except IntegrityError as error:
             raise ObjectPersistenceError("Object persistence failed.") from error

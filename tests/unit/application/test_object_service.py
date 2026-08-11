@@ -22,6 +22,7 @@ from netauto.core.object import (
     InvalidObjectPatch,
     Object,
     ObjectChange,
+    ObjectConcurrentModification,
     ObjectDataTypeVersionNotFound,
     ObjectNotFound,
     ObjectTemplateVersionNotPublished,
@@ -81,6 +82,7 @@ class TrackingObjectRepository(InMemoryObjectRepository):
         super().__init__()
         self.add_calls: list[Object] = []
         self.replace_calls: list[Object] = []
+        self.replace_if_current_calls: list[tuple[Object, Object]] = []
 
     def add(self, object_value: Object) -> None:
         self.add_calls.append(object_value)
@@ -89,6 +91,10 @@ class TrackingObjectRepository(InMemoryObjectRepository):
     def replace(self, object_value: Object) -> None:
         self.replace_calls.append(object_value)
         super().replace(object_value)
+
+    def replace_if_current(self, expected: Object, replacement: Object) -> None:
+        self.replace_if_current_calls.append((expected, replacement))
+        super().replace_if_current(expected, replacement)
 
 
 class TrackingObjectChangeRepository(InMemoryObjectChangeRepository):
@@ -956,8 +962,80 @@ def test_update_sets_and_preserves_properties_then_replaces_and_commits() -> Non
     assert updated.template_version == current.template_version
     assert dict(updated.properties) == {"hostname": "router-02", "serial": "ABC123"}
     assert objects.get(current.id) == updated
-    assert objects.replace_calls == [updated]
+    assert objects.replace_calls == []
+    assert objects.replace_if_current_calls == [(current, updated)]
     assert commits[0] == 1
+
+
+def test_update_concurrent_modification_raises_without_history_or_commit() -> None:
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
+    datatype, draft = _datatype(name="hostname")
+    published = DataTypeVersioningService().publish(draft)
+    _store_datatype_versions(datatypes, datatype, (published,))
+
+    template = _template()
+    version = _version(
+        template.id,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=datatype.id,
+                datatype_version=published.version,
+                required=True,
+            ),
+        ),
+    )
+    _store_template_versions(object_templates, template, (version,))
+    current = _create_object(
+        objects,
+        template_id=template.id,
+        template_version=1,
+        properties={"hostname": "router-01"},
+    )
+
+    class StaleTrackingObjectRepository(TrackingObjectRepository):
+        def replace_if_current(self, expected: Object, replacement: Object) -> None:
+            self._objects[expected.id] = Object(
+                id=expected.id,
+                template_id=expected.template_id,
+                template_version=expected.template_version,
+                properties={"hostname": "newer"},
+            )
+            super().replace_if_current(expected, replacement)
+
+    stale_objects = StaleTrackingObjectRepository()
+    stale_objects.add(current)
+    commit_counter = [0]
+    object_changes = TrackingObjectChangeRepository()
+
+    def factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            stale_objects,
+            object_changes,
+            InMemoryRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            commit_counter,
+        )
+
+    stale_service = ObjectApplicationService(factory)
+
+    with pytest.raises(ObjectConcurrentModification):
+        stale_service.update_object(
+            object_id=current.id,
+            properties={"hostname": "router-02"},
+        )
+
+    assert stale_objects.get(current.id) == Object(
+        id=current.id,
+        template_id=current.template_id,
+        template_version=current.template_version,
+        properties={"hostname": "newer"},
+    )
+    assert len(stale_objects.replace_if_current_calls) == 1
+    assert object_changes.add_calls == []
+    assert commit_counter[0] == 0
 
 
 def test_update_remove_optional_property_and_absent_optional_removal_are_allowed() -> None:

@@ -6,8 +6,10 @@ from netauto.core.object import (
     ComponentMembership,
     ComponentMembershipAlreadyExists,
     ComponentMembershipNotFound,
+    InvalidObject,
     Object,
     ObjectAlreadyExists,
+    ObjectConcurrentModification,
     ObjectNotFound,
     ObjectRepository,
 )
@@ -51,6 +53,18 @@ class InMemoryObjectRepository(ObjectRepository):
         if object_value.id not in self._objects:
             raise ObjectNotFound("Object does not exist.")
         self._objects[object_value.id] = object_value
+
+    def replace_if_current(
+        self,
+        expected: Object,
+        replacement: Object,
+    ) -> None:
+        if expected.id != replacement.id:
+            raise InvalidObject("Conditional object replacement cannot change object identity.")
+        current = self._objects.get(expected.id)
+        if current is None or current != expected:
+            raise ObjectConcurrentModification("Object was modified concurrently.")
+        self._objects[expected.id] = replacement
 
     def delete(self, object_id: UUID) -> None:
         if object_id not in self._objects:

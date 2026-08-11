@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy import event
 from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,7 @@ from netauto.core.object import (
     Object,
     ObjectChange,
     ObjectChangeKind,
+    ObjectConcurrentModification,
 )
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -179,7 +181,7 @@ def _persist_template_version(
 
 @dataclass
 class ScenarioHooks:
-    before_object_replace: Callable[[str, Object], None] | None = None
+    before_object_replace_if_current: Callable[[str, Object, Object], None] | None = None
     before_add_membership: Callable[[str, ComponentMembership], None] | None = None
     before_object_change_add: Callable[[str, ObjectChange], None] | None = None
     before_relationship_add: Callable[[str, Relationship], None] | None = None
@@ -191,10 +193,14 @@ class HookedObjectRepository(SqlAlchemyObjectRepository):
         self._role = role
         self._hooks = hooks
 
-    def replace(self, object_value: Object) -> None:
-        if self._hooks.before_object_replace is not None:
-            self._hooks.before_object_replace(self._role, object_value)
-        super().replace(object_value)
+    def replace_if_current(self, expected: Object, replacement: Object) -> None:
+        if self._hooks.before_object_replace_if_current is not None:
+            self._hooks.before_object_replace_if_current(
+                self._role,
+                expected,
+                replacement,
+            )
+        super().replace_if_current(expected, replacement)
 
     def add_membership(self, membership: ComponentMembership) -> None:
         if self._hooks.before_add_membership is not None:
@@ -648,7 +654,9 @@ def test_characterizes_current_concurrent_object_update_race(tmp_path: Path) -> 
     session_factory = sessionmaker(engine, expire_on_commit=False)
     _, object_value = _create_property_fixture(session_factory)
     gate = OrderedWriteGate(first_role="update_a")
-    hooks = ScenarioHooks(before_object_replace=lambda role, object_value: gate.wait(role))
+    hooks = ScenarioHooks(
+        before_object_replace_if_current=lambda role, expected, replacement: gate.wait(role)
+    )
     service_a = _make_object_service(session_factory, role="update_a", hooks=hooks)
     service_b = _make_object_service(session_factory, role="update_b", hooks=hooks)
     outcome_a = OperationOutcome()
@@ -675,30 +683,15 @@ def test_characterizes_current_concurrent_object_update_race(tmp_path: Path) -> 
     persisted = _read_object(session_factory, object_value.id)
     history = _read_history(session_factory, object_value.id)
     assert persisted is not None
-    # Characterization: both updates report success, but the later stale replace
-    # silently overwrites the earlier committed update.
+    # C1a regression: one stale writer must lose via optimistic concurrency.
     assert outcome_a.succeeded is True
-    assert outcome_b.succeeded is True
-    assert persisted.properties == {"a": "old-a", "b": "new-b"}
-    assert [change.kind for change in history] == [
-        ObjectChangeKind.UPDATED,
-        ObjectChangeKind.UPDATED,
-    ]
-    before_snapshots = []
-    after_snapshots = []
-    for change in history:
-        assert change.before is not None
-        assert change.after is not None
-        before_snapshots.append(dict(change.before.properties))
-        after_snapshots.append(dict(change.after.properties))
-    assert before_snapshots == [
-        {"a": "old-a", "b": "old-b"},
-        {"a": "old-a", "b": "old-b"},
-    ]
-    assert {tuple(sorted(snapshot.items())) for snapshot in after_snapshots} == {
-        (("a", "new-a"), ("b", "old-b")),
-        (("a", "old-a"), ("b", "new-b")),
-    }
+    assert isinstance(outcome_b.error, ObjectConcurrentModification)
+    assert persisted.properties == {"a": "new-a", "b": "old-b"}
+    assert [change.kind for change in history] == [ObjectChangeKind.UPDATED]
+    assert history[0].before is not None
+    assert history[0].after is not None
+    assert history[0].before.properties == {"a": "old-a", "b": "old-b"}
+    assert history[0].after.properties == {"a": "new-a", "b": "old-b"}
 
     engine.dispose()
 
@@ -709,7 +702,9 @@ def test_characterizes_current_update_vs_migration_race(tmp_path: Path) -> None:
     session_factory = sessionmaker(engine, expire_on_commit=False)
     template, object_value = _create_migration_fixture(session_factory)
     gate = OrderedWriteGate(first_role="migrate")
-    hooks = ScenarioHooks(before_object_replace=lambda role, object_value: gate.wait(role))
+    hooks = ScenarioHooks(
+        before_object_replace_if_current=lambda role, expected, replacement: gate.wait(role)
+    )
     update_service = _make_object_service(session_factory, role="update", hooks=hooks)
     migrate_service = _make_object_service(session_factory, role="migrate", hooks=hooks)
     outcome_update = OperationOutcome()
@@ -738,38 +733,99 @@ def test_characterizes_current_update_vs_migration_race(tmp_path: Path) -> None:
     persisted = _read_object(session_factory, object_value.id)
     history = _read_history(session_factory, object_value.id)
     assert persisted is not None
-    # Characterization: the later stale object update silently reverts the
-    # successfully committed migration back to template version 1.
+    # C1a regression: stale update must conflict after successful migration.
     assert outcome_migrate.succeeded is True
-    assert outcome_update.succeeded is True
-    assert persisted.template_version == 1
-    assert persisted.properties == {"a": "old-a", "b": "new-b"}
-    assert {change.kind for change in history} == {
-        ObjectChangeKind.MIGRATED,
-        ObjectChangeKind.UPDATED,
-    }
-    after_states = set()
-    for change in history:
-        assert change.after is not None
-        after_states.add(
-            (
-                change.kind,
-                change.after.template_version,
-                tuple(sorted(dict(change.after.properties).items())),
-            )
+    assert isinstance(outcome_update.error, ObjectConcurrentModification)
+    assert persisted.template_version == 2
+    assert persisted.properties == {"a": "old-a", "b": "old-b"}
+    assert [change.kind for change in history] == [ObjectChangeKind.MIGRATED]
+    assert history[0].after is not None
+    assert history[0].after.template_version == 2
+    assert history[0].after.properties == {"a": "old-a", "b": "old-b"}
+
+    engine.dispose()
+
+
+def test_migration_cas_conflict_rolls_back_whole_batch(tmp_path: Path) -> None:
+    engine = _engine(tmp_path, "c1a_migration_batch_rollback.sqlite3")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    template, first_seed = _create_migration_fixture(session_factory)
+    with SqlAlchemyUnitOfWork(session_factory) as uow:
+        second_seed = _object(
+            template_id=template.id,
+            template_version=1,
+            properties={"a": "old-a-2", "b": "old-b-2"},
         )
-    assert after_states == {
-        (
-            ObjectChangeKind.MIGRATED,
-            2,
-            (("a", "old-a"), ("b", "old-b")),
-        ),
-        (
-            ObjectChangeKind.UPDATED,
-            1,
-            (("a", "old-a"), ("b", "new-b")),
-        ),
-    }
+        uow.objects.add(second_seed)
+        uow.commit()
+
+    with SqlAlchemyUnitOfWork(session_factory) as uow:
+        candidates = uow.objects.list_by_template_version(template.id, 1)
+        first = next(candidate for candidate in candidates if candidate.id == first_seed.id)
+        second = next(candidate for candidate in candidates if candidate.id == second_seed.id)
+
+    conflict_triggered = False
+
+    class ConflictOnSecondCasObjectRepository(HookedObjectRepository):
+        def __init__(self, session: Session, *, role: str, hooks: ScenarioHooks) -> None:
+            super().__init__(session, role=role, hooks=hooks)
+            self._cas_count = 0
+
+        def replace_if_current(self, expected: Object, replacement: Object) -> None:
+            nonlocal conflict_triggered
+            self._cas_count += 1
+            if self._cas_count == 2:
+                conflict_triggered = True
+                raise ObjectConcurrentModification("Object was modified concurrently.")
+            super().replace_if_current(expected, replacement)
+
+    class ConflictUow(HookedSqlAlchemyUnitOfWork):
+        def _initialize_repositories(self) -> None:
+            if self._session is None:
+                raise RuntimeError("Unit of work is not active.")
+            self.datatypes = SqlAlchemyDataTypeRepository(self._session)
+            self.object_changes = HookedObjectChangeRepository(
+                self._session,
+                role=self._role,
+                hooks=self._hooks,
+            )
+            self.objects = ConflictOnSecondCasObjectRepository(
+                self._session,
+                role=self._role,
+                hooks=self._hooks,
+            )
+            self.relationships = HookedRelationshipRepository(
+                self._session,
+                role=self._role,
+                hooks=self._hooks,
+            )
+            self.relationship_definitions = SqlAlchemyRelationshipDefinitionRepository(
+                self._session
+            )
+            self.object_templates = SqlAlchemyObjectTemplateRepository(self._session)
+
+    service = ObjectApplicationService(
+        lambda: ConflictUow(session_factory, role="migrate", hooks=ScenarioHooks())
+    )
+
+    with pytest.raises(ObjectConcurrentModification):
+        service.migrate_objects(
+            template_id=template.id,
+            source_version=1,
+            target_version=2,
+            property_values={},
+        )
+
+    assert conflict_triggered is True
+    persisted_first = _read_object(session_factory, first.id)
+    persisted_second = _read_object(session_factory, second.id)
+    assert persisted_first is not None
+    assert persisted_second is not None
+    assert persisted_first.template_version == 1
+    assert persisted_second.template_version == 1
+    assert _read_history(session_factory, first.id) == ()
+    assert _read_history(session_factory, second.id) == ()
 
     engine.dispose()
 

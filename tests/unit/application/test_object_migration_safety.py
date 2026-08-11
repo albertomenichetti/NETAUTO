@@ -55,12 +55,17 @@ class TrackingObjectRepository(InMemoryObjectRepository):
     def __init__(self) -> None:
         super().__init__()
         self.replace_calls: list[Object] = []
+        self.replace_if_current_calls: list[tuple[Object, Object]] = []
         self.add_membership_calls: list[ComponentMembership] = []
         self.remove_membership_calls: list[UUID] = []
 
     def replace(self, object_value: Object) -> None:
         self.replace_calls.append(object_value)
         super().replace(object_value)
+
+    def replace_if_current(self, expected: Object, replacement: Object) -> None:
+        self.replace_if_current_calls.append((expected, replacement))
+        super().replace_if_current(expected, replacement)
 
     def add_membership(self, membership: ComponentMembership) -> None:
         self.add_membership_calls.append(membership)

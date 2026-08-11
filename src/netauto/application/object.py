@@ -188,7 +188,7 @@ class ObjectApplicationService:
                 before=current,
                 after=updated,
             )
-            uow.objects.replace(updated)
+            uow.objects.replace_if_current(expected=current, replacement=updated)
             uow.object_changes.add(updated_change)
             uow.commit()
             return updated
@@ -397,8 +397,8 @@ class ObjectApplicationService:
                 for current, migrated in zip(candidates, migrated_objects, strict=True)
             )
 
-            for migrated in migrated_objects:
-                uow.objects.replace(migrated)
+            for current, migrated in zip(candidates, migrated_objects, strict=True):
+                uow.objects.replace_if_current(expected=current, replacement=migrated)
             for change in migrated_changes:
                 uow.object_changes.add(change)
             uow.commit()

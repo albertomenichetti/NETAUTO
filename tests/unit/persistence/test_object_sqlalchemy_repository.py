@@ -3,7 +3,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, inspect
+from sqlalchemy import Engine, event, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -11,8 +11,10 @@ from netauto.core.object import (
     ComponentMembership,
     ComponentMembershipAlreadyExists,
     ComponentMembershipNotFound,
+    InvalidObject,
     Object,
     ObjectAlreadyExists,
+    ObjectConcurrentModification,
     ObjectNotFound,
     ObjectPersistenceError,
 )
@@ -291,6 +293,116 @@ def test_replace_complete_snapshot(tmp_path: Path) -> None:
         repo.add(original)
         repo.replace(updated)
         assert repo.get(original.id) == updated
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_if_current_matching_snapshot_updates_one_row(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_if_current.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    updated = replace(original, properties={"hostname": "router-02"})
+    try:
+        repo.add(original)
+        repo.replace_if_current(original, updated)
+        assert repo.get(original.id) == updated
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_if_current_stale_properties_raise_and_leave_row_unchanged(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_if_current_stale_properties.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    current = replace(original, properties={"hostname": "current"})
+    stale_replacement = replace(original, properties={"hostname": "stale"})
+    try:
+        repo.add(original)
+        repo.replace(current)
+        with pytest.raises(ObjectConcurrentModification):
+            repo.replace_if_current(original, stale_replacement)
+        assert repo.get(original.id) == current
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_if_current_stale_template_version_raises(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_if_current_stale_version.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    moved_template_id = uuid4()
+    _store_template_version(session, template_id=moved_template_id, version=2)
+    current = replace(
+        original,
+        template_id=moved_template_id,
+        template_version=2,
+        properties={"hostname": "router-01"},
+    )
+    stale_replacement = replace(original, properties={"hostname": "router-02"})
+    try:
+        repo.add(original)
+        repo.replace(current)
+        with pytest.raises(ObjectConcurrentModification):
+            repo.replace_if_current(original, stale_replacement)
+        assert repo.get(original.id) == current
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_if_current_rejects_identity_change(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_if_current_identity.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    replacement = _object(
+        object_id=uuid4(),
+        template_id=original.template_id,
+        template_version=original.template_version,
+        properties={"hostname": "router-02"},
+    )
+    try:
+        repo.add(original)
+        with pytest.raises(InvalidObject):
+            repo.replace_if_current(original, replacement)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_if_current_uses_single_conditional_update_without_python_side_select(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_if_current_sql_shape.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    updated = replace(original, properties={"hostname": "router-02"})
+    statements: list[str] = []
+
+    def recorder(
+        conn: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: object,
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        statements.append(statement.lower())
+
+    try:
+        repo.add(original)
+        event.listen(engine, "before_cursor_execute", recorder)
+        try:
+            repo.replace_if_current(original, updated)
+        finally:
+            event.remove(engine, "before_cursor_execute", recorder)
+
+        assert sum("update objects" in statement for statement in statements) == 1
+        assert not any(statement.lstrip().startswith("select") for statement in statements)
+        update_statement = next(
+            statement for statement in statements if "update objects" in statement
+        )
+        assert "template_id" in update_statement
+        assert "template_version" in update_statement
+        assert "properties_json" in update_statement
     finally:
         session.close()
         engine.dispose()

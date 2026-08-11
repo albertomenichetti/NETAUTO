@@ -25,6 +25,7 @@ from netauto.core.object import (
     Object,
     ObjectChange,
     ObjectChangeKind,
+    ObjectConcurrentModification,
     ObjectNotFound,
     ObjectTemplateVersionNotPublished,
     ObjectValidationFailed,
@@ -57,6 +58,7 @@ class TrackingObjectRepository(InMemoryObjectRepository):
         super().__init__()
         self.add_calls: list[Object] = []
         self.replace_calls: list[Object] = []
+        self.replace_if_current_calls: list[tuple[Object, Object]] = []
         self.delete_calls: list[UUID] = []
 
     def add(self, object_value: Object) -> None:
@@ -66,6 +68,10 @@ class TrackingObjectRepository(InMemoryObjectRepository):
     def replace(self, object_value: Object) -> None:
         self.replace_calls.append(object_value)
         super().replace(object_value)
+
+    def replace_if_current(self, expected: Object, replacement: Object) -> None:
+        self.replace_if_current_calls.append((expected, replacement))
+        super().replace_if_current(expected, replacement)
 
     def delete(self, object_id: UUID) -> None:
         self.delete_calls.append(object_id)
@@ -834,6 +840,7 @@ def test_update_semantic_noop_produces_no_history_and_no_commit(
     assert object_changes.list_by_object(current.id) == ()
     assert commits[0] == 0
     assert tracked_objects.replace_calls == []
+    assert tracked_objects.replace_if_current_calls == []
 
 
 def test_invalid_update_produces_no_history_and_no_commit() -> None:
@@ -1054,8 +1061,86 @@ def test_migration_candidate_failure_produces_zero_history_zero_mutation_and_zer
     tracked_objects = cast(TrackingObjectRepository, objects)
     assert object_changes.list_by_object(current.id) == ()
     assert tracked_objects.replace_calls == []
+    assert tracked_objects.replace_if_current_calls == []
+
+
+def test_update_concurrent_modification_produces_no_history_and_no_commit() -> None:
+    (
+        _service_value,
+        datatypes,
+        object_templates,
+        _objects,
+        _object_changes,
+        _relationships,
+        _commits,
+    ) = _service()
+    hostname = _datatype(name="hostname")
+    _store_datatypes(datatypes, (hostname,))
+    template = _template()
+    _store_template_versions(
+        object_templates,
+        template,
+        (
+            _template_version(
+                template.id,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname[0].id,
+                        datatype_version=hostname[1].version,
+                        required=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    class StaleTrackingObjectRepository(TrackingObjectRepository):
+        def replace_if_current(self, expected: Object, replacement: Object) -> None:
+            self._objects[expected.id] = _object(
+                object_id=expected.id,
+                template_id=expected.template_id,
+                template_version=expected.template_version,
+                properties={"hostname": "newer"},
+            )
+            super().replace_if_current(expected, replacement)
+
+    stale_objects = StaleTrackingObjectRepository()
+    current = _store_object(
+        stale_objects,
+        _object(template_id=template.id, properties={"hostname": "router-01"}),
+    )
+    object_changes = TrackingObjectChangeRepository()
+    commits = [0]
+
+    def factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            stale_objects,
+            object_changes,
+            InMemoryRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            commits,
+        )
+
+    service = ObjectApplicationService(factory)
+
+    with pytest.raises(ObjectConcurrentModification):
+        service.update_object(
+            object_id=current.id,
+            properties={"hostname": "router-02"},
+            remove_properties=(),
+        )
+
+    assert object_changes.list_by_object(current.id) == ()
     assert commits[0] == 0
-    assert tracked_objects.get(current.id) == current
+    assert stale_objects.get(current.id) == _object(
+        object_id=current.id,
+        template_id=current.template_id,
+        template_version=current.template_version,
+        properties={"hostname": "newer"},
+    )
 
 
 def test_migration_zero_candidates_is_noop_with_zero_history_and_zero_commit() -> None:

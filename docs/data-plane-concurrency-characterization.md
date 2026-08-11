@@ -106,6 +106,23 @@ Only demonstrated `UNSAFE` SQLite races belong here.
 - C0.6 subtree delete vs attach
   Mechanism family: delete/attach coordination
 
+## Remediation Status
+
+- C0.3 concurrent Object updates
+  remediated by M2.C1a optimistic conditional Object replace
+- C0.4 Object update vs migration
+  remediated by M2.C1a optimistic conditional Object replace
+- C0.2 reciprocal attach / ownership cycle race
+  pending C1b ownership-graph coordination
+- C0.6 subtree delete vs attach
+  pending C1b ownership-graph coordination
+- C0.1 same-child competing owners
+  unchanged; remains protected by physical constraint
+- C0.5 duplicate runtime Relationship create
+  unchanged; remains protected by physical constraint
+- C0.7 Relationship create vs endpoint delete
+  unchanged; remains fail-safe via physical FK protection
+
 ## PostgreSQL Revisit
 
 None of the characterized mandatory scenarios were safe only because of SQLite
