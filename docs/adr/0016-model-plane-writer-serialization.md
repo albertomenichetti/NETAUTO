@@ -50,6 +50,8 @@ Data read/write:
 For the current SQLite backend, the model-write unit of work acquires the
 writer reservation with `BEGIN IMMEDIATE` at unit-of-work entry. The
 reservation is transaction-scoped and remains active until commit or rollback.
+If another writer already holds SQLite's writer slot, acquisition may wait and
+retry a bounded number of times before the model operation begins.
 
 The persistence-neutral application contract is the logical model-plane writer
 serialization, not SQLite's `BEGIN IMMEDIATE` itself. A future PostgreSQL
@@ -60,6 +62,20 @@ such as a transaction-scoped advisory lock.
 
 Supported model-plane mutations cannot concurrently execute their
 `check -> mutate` critical sections on SQLite.
+
+Model-plane REST APIs remain synchronous request/response operations. NETAUTO
+does not introduce asynchronous queues, background workers, durable command
+storage, or command replay for model mutations in this phase.
+
+On SQLite, bounded acquisition retry applies only to writer reservation
+acquisition at `BEGIN IMMEDIATE`, before repositories are initialized and
+before the first decision read. The application command itself is not retried,
+semantic validation is not replayed, and commit is not retried.
+
+Retryable contention is classified from the DBAPI SQLite error code as
+`SQLITE_BUSY`. If bounded acquisition is exhausted, the persistence layer
+surfaces a persistence-neutral temporary-unavailability signal that REST maps
+to HTTP 503 with `Retry-After`.
 
 Model-plane reads remain ordinary concurrent reads. Data-plane operations
 continue using the ordinary unit of work and do not explicitly acquire the

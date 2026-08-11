@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from netauto.application.objecttemplate import ObjectTemplateApplicationService
 from netauto.application.relationship import RelationshipDefinitionApplicationService
+from netauto.application.unit_of_work import ModelWriteUnavailable
 from netauto.core.object import Object
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -27,6 +28,7 @@ from netauto.persistence.sqlalchemy.objecttemplate_repository import (
 from netauto.persistence.sqlalchemy.unit_of_work import (
     SqlAlchemyUnitOfWork,
     SqliteModelWriteUnitOfWork,
+    _is_sqlite_busy,
 )
 
 
@@ -97,6 +99,20 @@ def _object(*, template_id: UUID, template_version: int = 1) -> Object:
     )
 
 
+class _SqliteErrorWithCode(sqlite3.OperationalError):
+    def __init__(self, sqlite_errorcode: int) -> None:
+        super().__init__("sqlite error")
+        self.sqlite_errorcode = sqlite_errorcode
+
+
+def _busy_operational_error(sqlite_errorcode: int = sqlite3.SQLITE_BUSY) -> OperationalError:
+    return OperationalError("BEGIN IMMEDIATE", {}, _SqliteErrorWithCode(sqlite_errorcode))
+
+
+def _locked_operational_error() -> OperationalError:
+    return OperationalError("BEGIN IMMEDIATE", {}, _SqliteErrorWithCode(sqlite3.SQLITE_LOCKED))
+
+
 def test_model_write_uow_emits_begin_immediate_before_repository_reads(tmp_path: Path) -> None:
     engine = _engine(tmp_path, "begin-order.sqlite3")
     create_schema(engine)
@@ -127,7 +143,9 @@ def test_model_write_uow_emits_begin_immediate_before_repository_reads(tmp_path:
         engine.dispose()
 
 
-def test_second_model_write_uow_cannot_acquire_while_first_is_active(tmp_path: Path) -> None:
+def test_second_model_write_uow_raises_model_write_unavailable_when_writer_stays_busy(
+    tmp_path: Path,
+) -> None:
     database = "serialized-writers.sqlite3"
     first_engine = _engine(tmp_path, database)
     second_engine = _engine(tmp_path, database, timeout=0.0)
@@ -137,9 +155,10 @@ def test_second_model_write_uow_cannot_acquire_while_first_is_active(tmp_path: P
 
     try:
         with SqliteModelWriteUnitOfWork(first_factory):
-            with pytest.raises(OperationalError):
-                with SqliteModelWriteUnitOfWork(second_factory):
+            with pytest.raises(ModelWriteUnavailable) as exc_info:
+                with SqliteModelWriteUnitOfWork(second_factory, retry_delay_seconds=0.0):
                     pass
+        assert isinstance(exc_info.value.__cause__, OperationalError)
     finally:
         first_engine.dispose()
         second_engine.dispose()
@@ -271,15 +290,144 @@ def test_model_write_uow_closes_session_when_begin_immediate_acquisition_fails(
 
     try:
         with SqliteModelWriteUnitOfWork(first_factory):
-            with pytest.raises(OperationalError):
-                with SqliteModelWriteUnitOfWork(contender_factory):
+            with pytest.raises(ModelWriteUnavailable):
+                with SqliteModelWriteUnitOfWork(
+                    contender_factory,
+                    retry_delay_seconds=0.0,
+                ):
                     pass
 
         assert len(closed_sessions) == 1
         assert closed_sessions[0].closed is True
+
+        with SqliteModelWriteUnitOfWork(contender_factory):
+            pass
     finally:
         first_engine.dispose()
         second_engine.dispose()
+
+
+def test_busy_classifier_accepts_primary_and_extended_busy_codes() -> None:
+    assert _is_sqlite_busy(_busy_operational_error(sqlite3.SQLITE_BUSY)) is True
+    assert _is_sqlite_busy(_busy_operational_error(sqlite3.SQLITE_BUSY_TIMEOUT)) is True
+
+
+def test_busy_classifier_rejects_non_busy_sqlite_codes() -> None:
+    assert _is_sqlite_busy(_locked_operational_error()) is False
+
+
+def test_model_write_uow_retries_busy_reservation_then_succeeds(tmp_path: Path) -> None:
+    database = "retry-then-success.sqlite3"
+    first_engine = _engine(tmp_path, database)
+    second_engine = _engine(tmp_path, database, timeout=0.0)
+    create_schema(first_engine)
+    first_factory = sessionmaker(first_engine, expire_on_commit=False)
+    second_factory = sessionmaker(second_engine, expire_on_commit=False)
+    attempt_statements: list[str] = []
+    init_calls: list[str] = []
+
+    class TrackingModelWriteUnitOfWork(SqliteModelWriteUnitOfWork):
+        def _initialize_repositories(self) -> None:
+            init_calls.append("initialized")
+            super()._initialize_repositories()
+
+    def sleeper(_delay: float) -> None:
+        first.__exit__(None, None, None)
+
+    event.listen(
+        second_engine,
+        "before_cursor_execute",
+        lambda *_args: attempt_statements.append(cast(str, _args[2])),
+    )
+
+    first = SqliteModelWriteUnitOfWork(first_factory)
+    first.__enter__()
+    try:
+        with TrackingModelWriteUnitOfWork(
+            second_factory,
+            max_reservation_attempts=2,
+            retry_delay_seconds=0.0,
+            sleeper=sleeper,
+        ) as contender:
+            assert init_calls == ["initialized"]
+            contender.object_templates.list()
+    finally:
+        first.__exit__(None, None, None)
+        first_engine.dispose()
+        second_engine.dispose()
+
+    begin_attempts = [
+        statement for statement in attempt_statements if statement == "BEGIN IMMEDIATE"
+    ]
+    assert len(begin_attempts) == 2
+    select_statements = [
+        statement
+        for statement in attempt_statements
+        if statement.lstrip().upper().startswith("SELECT")
+    ]
+    assert len(select_statements) >= 1
+    assert attempt_statements.index("BEGIN IMMEDIATE") < attempt_statements.index(
+        select_statements[0]
+    )
+
+
+def test_model_write_uow_exhausts_busy_retries_with_exact_attempt_count(tmp_path: Path) -> None:
+    database = "retry-exhaustion.sqlite3"
+    first_engine = _engine(tmp_path, database)
+    second_engine = _engine(tmp_path, database, timeout=0.0)
+    create_schema(first_engine)
+    first_factory = sessionmaker(first_engine, expire_on_commit=False)
+    second_factory = sessionmaker(second_engine, expire_on_commit=False)
+    attempt_statements: list[str] = []
+    sleeps: list[float] = []
+
+    event.listen(
+        second_engine,
+        "before_cursor_execute",
+        lambda *_args: attempt_statements.append(cast(str, _args[2])),
+    )
+
+    try:
+        with SqliteModelWriteUnitOfWork(first_factory):
+            with pytest.raises(ModelWriteUnavailable):
+                with SqliteModelWriteUnitOfWork(
+                    second_factory,
+                    max_reservation_attempts=2,
+                    retry_delay_seconds=0.0,
+                    sleeper=sleeps.append,
+                ):
+                    pass
+        begin_attempts = [
+            statement for statement in attempt_statements if statement == "BEGIN IMMEDIATE"
+        ]
+        assert len(begin_attempts) == 2
+        assert sleeps == [0.0]
+    finally:
+        first_engine.dispose()
+        second_engine.dispose()
+
+
+def test_non_busy_operational_error_is_not_retried() -> None:
+    session_factory = sessionmaker(bind=create_engine("sqlite:///:memory:"), expire_on_commit=False)
+    attempts: list[str] = []
+    sleeps: list[float] = []
+
+    class NonBusyFailureUnitOfWork(SqliteModelWriteUnitOfWork):
+        def _begin_immediate(self) -> None:
+            attempts.append("attempt")
+            raise _locked_operational_error()
+
+    with pytest.raises(OperationalError):
+        with NonBusyFailureUnitOfWork(
+            session_factory,
+            max_reservation_attempts=2,
+            retry_delay_seconds=0.0,
+            sleeper=sleeps.append,
+        ):
+            pass
+
+    assert attempts == ["attempt"]
+    assert sleeps == []
 
 
 def test_relationship_definition_create_acquires_begin_immediate_before_decision_reads(

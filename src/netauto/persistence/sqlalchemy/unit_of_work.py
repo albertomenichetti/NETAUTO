@@ -1,12 +1,15 @@
 """SQLAlchemy unit of work for shared persistence repositories."""
 
+import sqlite3
 from collections.abc import Callable
+from time import sleep as _sleep
 from typing import Self
 
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from netauto.application.unit_of_work import ModelWriteUnavailable
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.object_change_repository import (
     SqlAlchemyObjectChangeRepository,
@@ -76,15 +79,63 @@ class SqlAlchemyUnitOfWork(_SqlAlchemyUnitOfWorkBase):
     """Ordinary SQLAlchemy unit of work."""
 
 
+def _is_sqlite_busy(error: OperationalError) -> bool:
+    """Return whether the DBAPI error is in the SQLITE_BUSY family."""
+
+    sqlite_errorcode = getattr(error.orig, "sqlite_errorcode", None)
+    if not isinstance(sqlite_errorcode, int):
+        return False
+    return sqlite_errorcode & 0xFF == sqlite3.SQLITE_BUSY
+
+
 class SqliteModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
     """SQLite-backed model-plane writer UoW using a transaction-scoped writer reservation."""
+
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        *,
+        max_reservation_attempts: int = 2,
+        retry_delay_seconds: float = 0.1,
+        sleeper: Callable[[float], None] = _sleep,
+    ) -> None:
+        super().__init__(session_factory)
+        if max_reservation_attempts < 1:
+            raise ValueError("max_reservation_attempts must be at least 1.")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must be non-negative.")
+        self._max_reservation_attempts = max_reservation_attempts
+        self._retry_delay_seconds = retry_delay_seconds
+        self._sleeper = sleeper
+
+    def _begin_immediate(self) -> None:
+        if self._session is None:
+            raise RuntimeError("Unit of work is not active.")
+        self._session.connection().execute(text("BEGIN IMMEDIATE"))
 
     def _after_session_created(self) -> None:
         if self._session is None:
             raise RuntimeError("Unit of work is not active.")
-        try:
-            self._session.connection().execute(text("BEGIN IMMEDIATE"))
-        except SQLAlchemyError:
-            if self._session.in_transaction():
-                self._session.rollback()
-            raise
+        last_busy_error: OperationalError | None = None
+        for attempt in range(1, self._max_reservation_attempts + 1):
+            try:
+                self._begin_immediate()
+                return
+            except OperationalError as error:
+                if self._session.in_transaction():
+                    self._session.rollback()
+                if not _is_sqlite_busy(error):
+                    raise
+                last_busy_error = error
+                if attempt == self._max_reservation_attempts:
+                    break
+                self._sleeper(self._retry_delay_seconds)
+            except SQLAlchemyError:
+                if self._session.in_transaction():
+                    self._session.rollback()
+                raise
+        if last_busy_error is None:
+            raise RuntimeError("Model writer acquisition failed without a captured cause.")
+        raise ModelWriteUnavailable(
+            "Model mutation is temporarily unavailable."
+        ) from last_busy_error

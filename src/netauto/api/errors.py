@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from netauto.api.schemas.datatypes import ErrorBody, ErrorDetail, ErrorResponse
+from netauto.application.unit_of_work import ModelWriteUnavailable
 from netauto.core.datatype import (
     ConflictingConstraints,
     DataTypeAlreadyExists,
@@ -103,11 +104,16 @@ def _response(
     code: str,
     message: str,
     details: list[ErrorDetail] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     payload = ErrorResponse(
         error=ErrorBody(code=code, message=message, details=details or []),
     )
-    return JSONResponse(status_code=status_code, content=payload.model_dump(mode="json"))
+    return JSONResponse(
+        status_code=status_code,
+        content=payload.model_dump(mode="json"),
+        headers=headers,
+    )
 
 
 def _normalize_path(location: tuple[object, ...]) -> str:
@@ -153,6 +159,18 @@ async def object_validation_failed_exception_handler(
         code="object_validation_failed",
         message="Object validation failed",
         details=details,
+    )
+
+
+async def model_write_unavailable_exception_handler(
+    _request: Request,
+    _exc: ModelWriteUnavailable,
+) -> JSONResponse:
+    return _response(
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        code="model_write_busy",
+        message="Model mutation is temporarily unavailable",
+        headers={"Retry-After": "1"},
     )
 
 
@@ -627,6 +645,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         ObjectValidationFailed,
         cast("Any", object_validation_failed_exception_handler),
     )
+    app.add_exception_handler(
+        ModelWriteUnavailable,
+        cast("Any", model_write_unavailable_exception_handler),
+    )
 
     for exception_type, status_code, code, message in _EXCEPTION_MAP:
         async def _handler(
@@ -646,5 +668,6 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"model": ErrorResponse, "description": "Not found"},
     409: {"model": ErrorResponse, "description": "Conflict"},
     422: {"model": ErrorResponse, "description": "Validation error"},
+    503: {"model": ErrorResponse, "description": "Model mutation temporarily unavailable"},
     500: {"model": ErrorResponse, "description": "Persistence error"},
 }

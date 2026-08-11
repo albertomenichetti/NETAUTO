@@ -9,7 +9,7 @@ import httpx2
 import pytest
 
 from netauto.api.app import create_app
-from netauto.application.unit_of_work import ObjectUnitOfWork
+from netauto.application.unit_of_work import ModelWriteUnavailable, ObjectUnitOfWork
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateProperty,
@@ -80,6 +80,11 @@ class FakeUnitOfWork(ObjectUnitOfWork):
 
     def commit(self) -> None:
         self._commit_counter[0] += 1
+
+
+class BusyModelWriteUnitOfWork(FakeUnitOfWork):
+    def __enter__(self) -> BusyModelWriteUnitOfWork:
+        raise ModelWriteUnavailable("Model mutation is temporarily unavailable")
 
 
 @asynccontextmanager
@@ -359,6 +364,56 @@ async def test_duplicate_logical_name_maps_to_409() -> None:
 
     assert duplicate.status_code == 409
     assert duplicate.json()["error"]["code"] == "datatype_already_exists"
+
+
+async def test_model_write_unavailable_maps_to_503_with_retry_after() -> None:
+    repo = InMemoryDataTypeRepository()
+    object_templates = InMemoryObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
+    object_changes = InMemoryObjectChangeRepository()
+    relationships = InMemoryRelationshipRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
+    commits = [0]
+
+    def ordinary_factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            repo,
+            object_templates,
+            objects,
+            object_changes,
+            relationships,
+            relationship_definitions,
+            commits,
+        )
+
+    def busy_model_factory() -> BusyModelWriteUnitOfWork:
+        return BusyModelWriteUnitOfWork(
+            repo,
+            object_templates,
+            objects,
+            object_changes,
+            relationships,
+            relationship_definitions,
+            commits,
+        )
+
+    async with serve_app(
+        create_app(ordinary_factory, model_write_uow_factory=busy_model_factory)
+    ) as client:
+        response = await client.post(
+            "/api/v1/datatypes",
+            json={
+                "namespace": "network",
+                "name": "hostname",
+                "description": "Network hostname",
+                "base_type": "core.string",
+                "constraints": [],
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "1"
+    assert response.json()["error"]["code"] == "model_write_busy"
 
 
 async def test_request_validation_envelope_and_no_default_detail_leak() -> None:
