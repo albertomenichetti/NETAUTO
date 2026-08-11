@@ -390,6 +390,34 @@ def test_validate_parent_evolution_rejects_cycle_before_persistence() -> None:
         _validate_parent_evolution(service, second, parent_versions=(first,))
 
 
+def test_validate_parent_evolution_rejects_long_cycle_before_persistence() -> None:
+    service = ObjectTemplateVersioningService()
+    first_id = uuid4()
+    second_id = uuid4()
+    third_id = uuid4()
+    first = _version(
+        first_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=second_id, version=1),
+    )
+    second = _version(
+        second_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=third_id, version=1),
+    )
+    third = _version(
+        third_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=first_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateInheritanceCycle):
+        _validate_parent_evolution(service, third, parent_versions=(first, second))
+
+
 def test_validate_parent_evolution_freezes_parent_identity_after_first_publication() -> None:
     service = ObjectTemplateVersioningService()
     parent_p = _version(uuid4(), 3, status=ObjectTemplateVersionStatus.PUBLISHED)
