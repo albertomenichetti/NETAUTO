@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Protocol, Self, TypeAlias
 
 from netauto.core.datatype import DataTypeRepository
-from netauto.core.object import ObjectRepository
+from netauto.core.object import ObjectChangeRepository, ObjectRepository
 from netauto.core.objecttemplate import ObjectTemplateRepository
 from netauto.core.relationship import (
     RelationshipDefinitionRepository,
@@ -85,6 +85,10 @@ class ObjectUnitOfWork(Protocol):
 
     @property
     def objects(self) -> ObjectRepository:
+        ...
+
+    @property
+    def object_changes(self) -> ObjectChangeRepository:
         ...
 
     def __enter__(self) -> Self:

@@ -5,6 +5,9 @@ from collections.abc import Callable
 from sqlalchemy.orm import Session
 
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
+from netauto.persistence.sqlalchemy.object_change_repository import (
+    SqlAlchemyObjectChangeRepository,
+)
 from netauto.persistence.sqlalchemy.object_repository import SqlAlchemyObjectRepository
 from netauto.persistence.sqlalchemy.objecttemplate_repository import (
     SqlAlchemyObjectTemplateRepository,
@@ -22,6 +25,7 @@ class SqlAlchemyUnitOfWork:
         self._session_factory = session_factory
         self._session: Session | None = None
         self.datatypes: SqlAlchemyDataTypeRepository
+        self.object_changes: SqlAlchemyObjectChangeRepository
         self.objects: SqlAlchemyObjectRepository
         self.relationships: SqlAlchemyRelationshipRepository
         self.relationship_definitions: SqlAlchemyRelationshipDefinitionRepository
@@ -30,6 +34,7 @@ class SqlAlchemyUnitOfWork:
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
         self.datatypes = SqlAlchemyDataTypeRepository(self._session)
+        self.object_changes = SqlAlchemyObjectChangeRepository(self._session)
         self.objects = SqlAlchemyObjectRepository(self._session)
         self.relationships = SqlAlchemyRelationshipRepository(self._session)
         self.relationship_definitions = SqlAlchemyRelationshipDefinitionRepository(self._session)

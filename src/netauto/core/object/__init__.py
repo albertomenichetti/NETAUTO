@@ -7,9 +7,11 @@ from netauto.core.object.exceptions import (
     ComponentOwnershipCycle,
     InvalidComponentMembership,
     InvalidObject,
+    InvalidObjectChange,
     InvalidObjectPatch,
     MissingObjectMigrationPropertyValue,
     ObjectAlreadyExists,
+    ObjectChangeAlreadyExists,
     ObjectComponentSlotNotFound,
     ObjectComponentTemplateIncompatible,
     ObjectDataTypeVersionNotFound,
@@ -30,8 +32,14 @@ from netauto.core.object.migration import (
     ObjectTemplateMigrationBlockingChange,
     ObjectTemplateMigrationBlockingChangeKind,
 )
-from netauto.core.object.models import ComponentMembership, Object
-from netauto.core.object.repository import ObjectRepository
+from netauto.core.object.models import (
+    ComponentMembership,
+    Object,
+    ObjectChange,
+    ObjectChangeKind,
+    ObjectChangeSnapshot,
+)
+from netauto.core.object.repository import ObjectChangeRepository, ObjectRepository
 from netauto.core.object.validation import (
     DataTypeVersionLookup,
     ObjectValidationEngine,
@@ -48,10 +56,16 @@ __all__ = [
     "DataTypeVersionLookup",
     "InvalidObjectPatch",
     "InvalidComponentMembership",
+    "InvalidObjectChange",
     "InvalidObject",
     "MissingObjectMigrationPropertyValue",
     "Object",
     "ObjectAlreadyExists",
+    "ObjectChange",
+    "ObjectChangeAlreadyExists",
+    "ObjectChangeKind",
+    "ObjectChangeRepository",
+    "ObjectChangeSnapshot",
     "ObjectComponentSlotNotFound",
     "ObjectComponentTemplateIncompatible",
     "ObjectDataTypeVersionNotFound",

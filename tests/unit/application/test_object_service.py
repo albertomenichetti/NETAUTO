@@ -21,6 +21,7 @@ from netauto.core.object import (
     AbstractObjectTemplateInstantiation,
     InvalidObjectPatch,
     Object,
+    ObjectChange,
     ObjectDataTypeVersionNotFound,
     ObjectNotFound,
     ObjectTemplateVersionNotPublished,
@@ -37,6 +38,9 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionStatus,
 )
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.object_change_repository import (
+    InMemoryObjectChangeRepository,
+)
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import (
     InMemoryObjectTemplateRepository,
@@ -87,12 +91,23 @@ class TrackingObjectRepository(InMemoryObjectRepository):
         super().replace(object_value)
 
 
+class TrackingObjectChangeRepository(InMemoryObjectChangeRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.add_calls: list[ObjectChange] = []
+
+    def add(self, change: ObjectChange) -> None:
+        self.add_calls.append(change)
+        super().add(change)
+
+
 class FakeUnitOfWork(ObjectUnitOfWork):
     def __init__(
         self,
         datatypes: TrackingDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
         objects: TrackingObjectRepository,
+        object_changes: TrackingObjectChangeRepository,
         relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
@@ -100,6 +115,7 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._object_changes = object_changes
         self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
@@ -124,6 +140,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     def objects(self) -> TrackingObjectRepository:
         return self._objects
 
+    @property
+    def object_changes(self) -> TrackingObjectChangeRepository:
+        return self._object_changes
+
     def __enter__(self) -> FakeUnitOfWork:
         return self
 
@@ -145,6 +165,7 @@ def _service() -> tuple[
     datatypes = TrackingDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
     objects = TrackingObjectRepository()
+    object_changes = TrackingObjectChangeRepository()
     relationships = InMemoryRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
@@ -154,6 +175,7 @@ def _service() -> tuple[
             datatypes,
             object_templates,
             objects,
+            object_changes,
             relationships,
             relationship_definitions,
             commit_counter,
@@ -731,7 +753,7 @@ def test_update_remove_optional_property_and_absent_optional_removal_are_allowed
         remove_properties=("serial",),
     )
     assert dict(unchanged.properties) == {"hostname": "router-02"}
-    assert commits[0] == 2
+    assert commits[0] == 1
 
 
 def test_update_treats_none_as_value_not_removal() -> None:

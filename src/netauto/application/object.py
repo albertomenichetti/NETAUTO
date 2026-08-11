@@ -1,6 +1,7 @@
 """Application service for runtime object workflows."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from netauto.application.unit_of_work import ObjectUnitOfWork, ObjectUnitOfWorkFactory
@@ -13,6 +14,9 @@ from netauto.core.object import (
     InvalidObjectPatch,
     MissingObjectMigrationPropertyValue,
     Object,
+    ObjectChange,
+    ObjectChangeKind,
+    ObjectChangeSnapshot,
     ObjectComponentSlotNotFound,
     ObjectComponentTemplateIncompatible,
     ObjectMigrationBlocked,
@@ -45,10 +49,15 @@ from netauto.core.objecttemplate import (
 class ObjectApplicationService:
     """Orchestrate object workflows over a unit of work boundary."""
 
-    def __init__(self, uow_factory: ObjectUnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: ObjectUnitOfWorkFactory,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._uow_factory = uow_factory
         self._validation = ObjectValidationEngine()
         self._inheritance = ObjectTemplateInheritanceResolver()
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     def create_object(
         self,
@@ -91,7 +100,15 @@ class ObjectApplicationService:
                 template_version=template_version,
                 properties=properties,
             )
+            created_change = self._build_change(
+                object_id=created.id,
+                occurred_at=self._clock(),
+                kind=ObjectChangeKind.CREATED,
+                before=None,
+                after=created,
+            )
             uow.objects.add(created)
+            uow.object_changes.add(created_change)
             uow.commit()
             return created
 
@@ -105,6 +122,15 @@ class ObjectApplicationService:
             if object_value is None:
                 raise ObjectNotFound("Object does not exist.")
             return object_value
+
+    def list_object_history(self, object_id: UUID) -> tuple[ObjectChange, ...]:
+        with self._uow_factory() as uow:
+            history = uow.object_changes.list_by_object(object_id)
+            if history:
+                return history
+            if uow.objects.get(object_id) is None:
+                raise ObjectNotFound("Object does not exist.")
+            return ()
 
     def update_object(
         self,
@@ -157,7 +183,17 @@ class ObjectApplicationService:
                 template_version=current.template_version,
                 properties=candidate,
             )
+            if updated == current:
+                return current
+            updated_change = self._build_change(
+                object_id=current.id,
+                occurred_at=self._clock(),
+                kind=ObjectChangeKind.UPDATED,
+                before=current,
+                after=updated,
+            )
             uow.objects.replace(updated)
+            uow.object_changes.add(updated_change)
             uow.commit()
             return updated
 
@@ -264,8 +300,25 @@ class ObjectApplicationService:
 
             deletion_order = self._collect_subtree_postorder(uow, target.id)
             incident_relationships = uow.relationships.list_incident_to_objects(deletion_order)
+            before_objects = tuple(
+                self._require_existing_object_snapshot(uow, candidate_id)
+                for candidate_id in deletion_order
+            )
+            occurred_at = self._clock()
+            delete_changes = tuple(
+                self._build_change(
+                    object_id=object_value.id,
+                    occurred_at=occurred_at,
+                    kind=ObjectChangeKind.DELETED,
+                    before=object_value,
+                    after=None,
+                )
+                for object_value in before_objects
+            )
             for relationship in incident_relationships:
                 uow.relationships.delete(relationship.id)
+            for change in delete_changes:
+                uow.object_changes.add(change)
             for candidate_id in deletion_order:
                 uow.objects.delete(candidate_id)
             uow.commit()
@@ -336,9 +389,22 @@ class ObjectApplicationService:
                 )
                 for current in candidates
             ]
+            occurred_at = self._clock()
+            migrated_changes = tuple(
+                self._build_change(
+                    object_id=current.id,
+                    occurred_at=occurred_at,
+                    kind=ObjectChangeKind.MIGRATED,
+                    before=current,
+                    after=migrated,
+                )
+                for current, migrated in zip(candidates, migrated_objects, strict=True)
+            )
 
             for migrated in migrated_objects:
                 uow.objects.replace(migrated)
+            for change in migrated_changes:
+                uow.object_changes.add(change)
             uow.commit()
             return ObjectMigrationResult(
                 template_id=template_id,
@@ -385,6 +451,41 @@ class ObjectApplicationService:
         ref: ObjectTemplateVersionRef,
     ) -> ObjectTemplateVersion | None:
         return uow.object_templates.get_version(ref.template_id, ref.version)
+
+    def _require_existing_object_snapshot(
+        self,
+        uow: ObjectUnitOfWork,
+        object_id: UUID,
+    ) -> Object:
+        object_value = uow.objects.get(object_id)
+        if object_value is None:
+            raise ObjectNotFound("Object does not exist.")
+        return object_value
+
+    def _to_change_snapshot(self, object_value: Object) -> ObjectChangeSnapshot:
+        return ObjectChangeSnapshot(
+            template_id=object_value.template_id,
+            template_version=object_value.template_version,
+            properties=object_value.properties,
+        )
+
+    def _build_change(
+        self,
+        *,
+        object_id: UUID,
+        occurred_at: datetime,
+        kind: ObjectChangeKind,
+        before: Object | None,
+        after: Object | None,
+    ) -> ObjectChange:
+        return ObjectChange(
+            id=uuid4(),
+            object_id=object_id,
+            occurred_at=occurred_at,
+            kind=kind,
+            before=None if before is None else self._to_change_snapshot(before),
+            after=None if after is None else self._to_change_snapshot(after),
+        )
 
     def _validate_patch_shape(
         self,

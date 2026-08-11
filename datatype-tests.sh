@@ -98,6 +98,35 @@ printf "\n${GREEN}(stato attuale versioni)\n${NC}"
 printf "\n${GREEN}(stato attuale versioni, json fmt)\n${NC}"
 "${CMD[@]}" --output "json" datatype version list ${dtid}
 
+
+printf "\n${GREEN}(aggiunta ulteriore constraint max_length su nuova versione non pubblicata)\n${NC}"
+tmpfile=$(mktemp)
+"${CMD[@]}" --output json datatype version show ${dtid} ${versnew} |
+jq '
+{
+  constraints: (
+    .constraints
+    + [
+        {
+          "name": "max_length",
+          "value": 254
+        }
+      ]
+  )
+}
+' > "$tmpfile"
+
+"${CMD[@]}" --output json datatype version revise ${dtid} ${versnew} --file "$tmpfile" 1>/dev/null 2>&1
+rm "$tmpfile"
+echo -e "modificata versione:${versnew}"
+
+
+printf "\n${GREEN}(stato attuale versioni)\n${NC}"
+"${CMD[@]}" datatype version list ${dtid}
+
+printf "\n${GREEN}(stato attuale versioni, json fmt)\n${NC}"
+"${CMD[@]}" --output "json" datatype version list ${dtid}
+
 printf "\n${GREEN}(publish nuova versione e deprecate dell'altra)\n${NC}"
 "${CMD[@]}" --output "json" datatype version publish ${dtid} ${versnew} 1>/dev/null 2>&1
 "${CMD[@]}" --output "json" datatype version deprecate ${dtid} 1 1>/dev/null 2>&1

@@ -1,9 +1,13 @@
-"""Persistence-neutral repository contract for objects and composition membership."""
+"""Persistence-neutral repository contracts for objects, history, and composition membership."""
 
 from typing import Protocol
 from uuid import UUID
 
-from netauto.core.object.models import ComponentMembership, Object
+from netauto.core.object.models import (
+    ComponentMembership,
+    Object,
+    ObjectChange,
+)
 
 
 class ObjectRepository(Protocol):
@@ -55,4 +59,16 @@ class ObjectRepository(Protocol):
 
     def remove_membership(self, child_object_id: UUID) -> None:
         """Remove the ownership edge for a child object."""
+        ...
+
+
+class ObjectChangeRepository(Protocol):
+    """Append-only repository contract for runtime object history."""
+
+    def add(self, change: ObjectChange) -> None:
+        """Persist a new object history entry."""
+        ...
+
+    def list_by_object(self, object_id: UUID) -> tuple[ObjectChange, ...]:
+        """Return the append-only history for one object deterministically."""
         ...

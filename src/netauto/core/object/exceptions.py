@@ -12,12 +12,20 @@ class InvalidObject(Exception):
     """Raised when an object has invalid local state."""
 
 
+class InvalidObjectChange(Exception):
+    """Raised when an object change or change snapshot has invalid local state."""
+
+
 class InvalidComponentMembership(Exception):
     """Raised when a component membership has invalid local state."""
 
 
 class ObjectAlreadyExists(Exception):
     """Raised when an object UUID already exists in persistence."""
+
+
+class ObjectChangeAlreadyExists(Exception):
+    """Raised when an object change UUID already exists in persistence."""
 
 
 class ObjectNotFound(Exception):

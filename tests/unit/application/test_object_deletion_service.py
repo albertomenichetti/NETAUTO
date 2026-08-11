@@ -11,6 +11,9 @@ from netauto.core.object import ComponentMembership, ComponentOwnershipCycle, Ob
 from netauto.core.objecttemplate import ObjectTemplate
 from netauto.core.relationship import Relationship
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.object_change_repository import (
+    InMemoryObjectChangeRepository,
+)
 from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import (
     InMemoryObjectTemplateRepository,
@@ -128,6 +131,7 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         datatypes: InMemoryDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
         objects: InMemoryObjectRepository,
+        object_changes: InMemoryObjectChangeRepository,
         relationships: InMemoryRelationshipRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
@@ -135,6 +139,7 @@ class FakeUnitOfWork(ObjectUnitOfWork):
         self._datatypes = datatypes
         self._object_templates = object_templates
         self._objects = objects
+        self._object_changes = object_changes
         self._relationships = relationships
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
@@ -159,6 +164,10 @@ class FakeUnitOfWork(ObjectUnitOfWork):
     def objects(self) -> InMemoryObjectRepository:
         return self._objects
 
+    @property
+    def object_changes(self) -> InMemoryObjectChangeRepository:
+        return self._object_changes
+
     def __enter__(self) -> FakeUnitOfWork:
         return self
 
@@ -181,6 +190,7 @@ def _service_with_repo(
 ]:
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
+    object_changes = InMemoryObjectChangeRepository()
     relationships = TrackingRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
@@ -190,6 +200,7 @@ def _service_with_repo(
             datatypes,
             object_templates,
             objects,
+            object_changes,
             relationships,
             relationship_definitions,
             commit_counter,
@@ -555,6 +566,7 @@ def test_delete_discovers_complete_subtree_before_first_mutation() -> None:
     relationship_repo = RecordingRelationshipRepository(repo)
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
+    object_changes = InMemoryObjectChangeRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
 
@@ -563,6 +575,7 @@ def test_delete_discovers_complete_subtree_before_first_mutation() -> None:
             datatypes,
             object_templates,
             repo,
+            object_changes,
             relationship_repo,
             relationship_definitions,
             commits,
@@ -607,6 +620,7 @@ def test_delete_corrupt_cycle_raises_before_any_mutation_or_commit() -> None:
     repo.add(c)
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
+    object_changes = InMemoryObjectChangeRepository()
     relationships = TrackingRelationshipRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commits = [0]
@@ -616,6 +630,7 @@ def test_delete_corrupt_cycle_raises_before_any_mutation_or_commit() -> None:
             datatypes,
             object_templates,
             repo,
+            object_changes,
             relationships,
             relationship_definitions,
             commits,

@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
@@ -140,6 +141,22 @@ class ObjectRow(Base):
     template_id: Mapped[str] = mapped_column(Text, nullable=False)
     template_version: Mapped[int] = mapped_column(nullable=False)
     properties_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ObjectChangeRow(Base):
+    """Persisted append-only object history row."""
+
+    __tablename__ = "object_changes"
+    __table_args__ = (
+        Index("ix_object_changes_object_id_occurred_at", "object_id", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    object_id: Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_at: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    before_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    after_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ObjectComponentRow(Base):
