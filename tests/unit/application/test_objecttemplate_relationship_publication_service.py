@@ -228,7 +228,12 @@ def test_publish_rejects_source_side_prospective_conflict_before_replace() -> No
     router = _template("router")
     credential = _template("credential")
     nd_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    router_v1 = _version(router.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    router_v1 = _version(
+        router.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+    )
     router_v2 = _version(
         router.id,
         2,
@@ -263,7 +268,12 @@ def test_publish_rejects_target_side_prospective_conflict() -> None:
     tacacs = _template("tacacs_credential")
     nd_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     cred_v1 = _version(credential.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    tacacs_v1 = _version(tacacs.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    tacacs_v1 = _version(
+        tacacs.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=credential.id, version=1),
+    )
     tacacs_v2 = _version(
         tacacs.id,
         2,
@@ -294,7 +304,12 @@ def test_publish_rejects_inverse_orientation_conflict() -> None:
     router = _template("router")
     credential = _template("credential")
     nd_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    router_v1 = _version(router.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    router_v1 = _version(
+        router.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+    )
     router_v2 = _version(
         router.id,
         2,
@@ -330,7 +345,12 @@ def test_publish_rejects_symmetric_name_conflict() -> None:
     router = _template("router")
     credential = _template("credential")
     nd_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    router_v1 = _version(router.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    router_v1 = _version(
+        router.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+    )
     router_v2 = _version(
         router.id,
         2,
@@ -371,7 +391,12 @@ def test_publish_allows_different_semantics_even_when_endpoint_spaces_overlap() 
     router = _template("router")
     credential = _template("credential")
     nd_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    router_v1 = _version(router.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    router_v1 = _version(
+        router.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+    )
     router_v2 = _version(
         router.id,
         2,
@@ -444,17 +469,15 @@ def test_historical_published_and_deprecated_versions_remain_relevant(
     historical_status: ObjectTemplateVersionStatus,
 ) -> None:
     service, object_templates, relationship_definitions, commits = _service()
-    legacy_device = _template("legacy_device")
     network_device = _template("network_device")
     router = _template("router")
     credential = _template("credential")
-    legacy_v1 = _version(legacy_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     network_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     router_v1 = _version(
         router.id,
         1,
         status=historical_status,
-        parent=ObjectTemplateVersionRef(template_id=legacy_device.id, version=1),
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
     )
     router_v2 = _version(
         router.id,
@@ -463,7 +486,6 @@ def test_historical_published_and_deprecated_versions_remain_relevant(
         parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
     )
     credential_v1 = _version(credential.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    _store_template_versions(object_templates, legacy_device, (legacy_v1,))
     _store_template_versions(object_templates, network_device, (network_v1,))
     _store_template_versions(object_templates, router, (router_v1, router_v2))
     _store_template_versions(object_templates, credential, (credential_v1,))
@@ -487,15 +509,21 @@ def test_publish_uses_actual_exact_ancestry_of_the_version_being_published() -> 
     router = _template("router")
     credential = _template("credential")
     nd_v1 = _version(network_device.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    nd_v2 = _version(network_device.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED)
     router_v1 = _version(
         router.id,
         1,
         status=ObjectTemplateVersionStatus.DEPRECATED,
         parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
     )
-    router_v2 = _version(router.id, 2, status=ObjectTemplateVersionStatus.DRAFT)
+    router_v2 = _version(
+        router.id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=network_device.id, version=2),
+    )
     cred_v1 = _version(credential.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
-    _store_template_versions(object_templates, network_device, (nd_v1,))
+    _store_template_versions(object_templates, network_device, (nd_v1, nd_v2))
     _store_template_versions(object_templates, router, (router_v1, router_v2))
     _store_template_versions(object_templates, credential, (cred_v1,))
     relationship_definitions.add(
@@ -513,7 +541,10 @@ def test_publish_uses_actual_exact_ancestry_of_the_version_being_published() -> 
     published = service.publish_version(template_id=router.id, version=2)
 
     assert published.status is ObjectTemplateVersionStatus.PUBLISHED
-    assert published.parent is None
+    assert published.parent == ObjectTemplateVersionRef(
+        template_id=network_device.id,
+        version=2,
+    )
     assert object_templates.replace_version_calls == [published]
     assert commits[0] == 1
 

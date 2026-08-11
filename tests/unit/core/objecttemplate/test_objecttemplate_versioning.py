@@ -19,8 +19,11 @@ from netauto.core.objecttemplate import (
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
+    ObjectTemplateParentIdentityChanged,
     ObjectTemplateParentNotFound,
     ObjectTemplateParentNotPublished,
+    ObjectTemplateParentVersionDowngrade,
+    ObjectTemplatePersistenceError,
     ObjectTemplateProperty,
     ObjectTemplateSelfInheritance,
     ObjectTemplateVersion,
@@ -105,6 +108,30 @@ def _publish(
         datatype_lookup=datatype_lookup,
         template_exists=lambda template_id: template_id in component_versions,
         template_versions_lister=lambda template_id: component_versions.get(template_id, ()),
+    )
+
+
+def _validate_parent_evolution(
+    service: ObjectTemplateVersioningService,
+    prospective: ObjectTemplateVersion,
+    *existing_versions: ObjectTemplateVersion,
+    parent_versions: tuple[ObjectTemplateVersion, ...] = (),
+) -> None:
+    lookup_versions = {
+        (candidate.template_id, candidate.version): candidate
+        for candidate in existing_versions + parent_versions
+    }
+    service.validate_parent_evolution(
+        prospective,
+        existing_versions=existing_versions,
+        parent_lookup=lambda ref: (
+            prospective
+            if (
+                ref.template_id == prospective.template_id
+                and ref.version == prospective.version
+            )
+            else lookup_versions.get((ref.template_id, ref.version))
+        ),
     )
 
 
@@ -280,6 +307,331 @@ def test_revise_draft_supports_generator_properties_with_downgrade_guard() -> No
     )
 
     assert tuple(prop.datatype_version for prop in revised.properties) == (4, 1)
+
+
+def test_validate_parent_evolution_allows_initial_draft_parent_changes() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_p = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.DRAFT)
+    parent_q = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.DEPRECATED)
+    initial = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_p.template_id, version=1),
+    )
+    changed = _version(
+        initial.template_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_q.template_id, version=1),
+    )
+    root = _version(
+        initial.template_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=None,
+    )
+
+    _validate_parent_evolution(service, initial, parent_versions=(parent_p, parent_q))
+    _validate_parent_evolution(service, changed, parent_versions=(parent_p, parent_q))
+    _validate_parent_evolution(service, root, parent_versions=(parent_p, parent_q))
+
+
+def test_validate_parent_evolution_requires_exact_parent_to_exist() -> None:
+    service = ObjectTemplateVersioningService()
+    draft = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=7),
+    )
+
+    with pytest.raises(ObjectTemplateParentNotFound):
+        _validate_parent_evolution(service, draft)
+
+
+def test_validate_parent_evolution_rejects_self_inheritance_before_persistence() -> None:
+    service = ObjectTemplateVersioningService()
+    draft = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=None,
+    )
+    self_parented = _version(
+        draft.template_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=draft.template_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateSelfInheritance):
+        _validate_parent_evolution(service, self_parented)
+
+
+def test_validate_parent_evolution_rejects_cycle_before_persistence() -> None:
+    service = ObjectTemplateVersioningService()
+    first_id = uuid4()
+    second_id = uuid4()
+    first = _version(
+        first_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=second_id, version=1),
+    )
+    second = _version(
+        second_id,
+        1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=first_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplateInheritanceCycle):
+        _validate_parent_evolution(service, second, parent_versions=(first,))
+
+
+def test_validate_parent_evolution_freezes_parent_identity_after_first_publication() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_p = _version(uuid4(), 3, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent_q = _version(uuid4(), 4, status=ObjectTemplateVersionStatus.PUBLISHED)
+    published = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_p.template_id, version=3),
+    )
+    same_parent = _version(
+        published.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_p.template_id, version=3),
+    )
+    changed_parent = _version(
+        published.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_q.template_id, version=4),
+    )
+    removed_parent = _version(
+        published.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=None,
+    )
+
+    _validate_parent_evolution(
+        service,
+        same_parent,
+        published,
+        parent_versions=(parent_p, parent_q),
+    )
+    with pytest.raises(ObjectTemplateParentIdentityChanged):
+        _validate_parent_evolution(
+            service,
+            changed_parent,
+            published,
+            parent_versions=(parent_p, parent_q),
+        )
+    with pytest.raises(ObjectTemplateParentIdentityChanged):
+        _validate_parent_evolution(
+            service,
+            removed_parent,
+            published,
+            parent_versions=(parent_p, parent_q),
+        )
+
+
+def test_validate_parent_evolution_freezes_root_lineage_after_publication() -> None:
+    service = ObjectTemplateVersioningService()
+    root_published = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=None,
+    )
+    parent = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    later_root = _version(
+        root_published.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=None,
+    )
+    later_non_root = _version(
+        root_published.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent.template_id, version=1),
+    )
+
+    _validate_parent_evolution(
+        service,
+        later_root,
+        root_published,
+        parent_versions=(parent,),
+    )
+    with pytest.raises(ObjectTemplateParentIdentityChanged):
+        _validate_parent_evolution(
+            service,
+            later_non_root,
+            root_published,
+            parent_versions=(parent,),
+        )
+
+
+def test_validate_parent_evolution_allows_non_decreasing_parent_versions() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    parent_v1 = _version(parent_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent_v5 = _version(parent_id, 5, status=ObjectTemplateVersionStatus.PUBLISHED)
+    v1 = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
+    )
+    same = _version(
+        v1.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
+    )
+    higher = _version(
+        v1.template_id,
+        3,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=5),
+    )
+
+    _validate_parent_evolution(service, same, v1, parent_versions=(parent_v1, parent_v5))
+    _validate_parent_evolution(
+        service,
+        higher,
+        v1,
+        same,
+        parent_versions=(parent_v1, parent_v5),
+    )
+
+
+def test_validate_parent_evolution_rejects_parent_version_downgrade() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    parent_v3 = _version(parent_id, 3, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent_v4 = _version(parent_id, 4, status=ObjectTemplateVersionStatus.PUBLISHED)
+    v1 = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=4),
+    )
+    downgraded = _version(
+        v1.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=3),
+    )
+
+    with pytest.raises(ObjectTemplateParentVersionDowngrade):
+        _validate_parent_evolution(
+            service,
+            downgraded,
+            v1,
+            parent_versions=(parent_v3, parent_v4),
+        )
+
+
+def test_validate_parent_evolution_rejects_create_next_from_old_source_parent_version() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    parent_v1 = _version(parent_id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent_v4 = _version(parent_id, 4, status=ObjectTemplateVersionStatus.PUBLISHED)
+    v1 = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=1),
+    )
+    v2 = _version(
+        v1.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=4),
+    )
+    v3_from_v1 = service.create_next_version(v1, existing_versions=(v1, v2))
+
+    with pytest.raises(ObjectTemplateParentVersionDowngrade):
+        _validate_parent_evolution(
+            service,
+            v3_from_v1,
+            v1,
+            v2,
+            parent_versions=(parent_v1, parent_v4),
+        )
+
+
+def test_validate_parent_evolution_treats_deprecated_versions_as_stable_lineage() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_id = uuid4()
+    parent_v2 = _version(parent_id, 2, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent_v4 = _version(parent_id, 4, status=ObjectTemplateVersionStatus.PUBLISHED)
+    published = _version(
+        uuid4(),
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=2),
+    )
+    deprecated = _version(
+        published.template_id,
+        1,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=published.parent,
+    )
+    next_version = _version(
+        published.template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_id, version=4),
+    )
+
+    _validate_parent_evolution(
+        service,
+        next_version,
+        deprecated,
+        parent_versions=(parent_v2, parent_v4),
+    )
+
+
+def test_validate_parent_evolution_rejects_inconsistent_published_lineage() -> None:
+    service = ObjectTemplateVersioningService()
+    parent_p = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    parent_q = _version(uuid4(), 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    template_id = uuid4()
+    v1 = _version(
+        template_id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent_p.template_id, version=1),
+    )
+    v2 = _version(
+        template_id,
+        2,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=ObjectTemplateVersionRef(template_id=parent_q.template_id, version=1),
+    )
+    v3 = _version(
+        template_id,
+        3,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_p.template_id, version=1),
+    )
+
+    with pytest.raises(ObjectTemplatePersistenceError):
+        _validate_parent_evolution(
+            service,
+            v3,
+            v1,
+            v2,
+            parent_versions=(parent_p, parent_q),
+        )
 
 
 def test_create_next_version_creates_v2_draft_from_published_source() -> None:

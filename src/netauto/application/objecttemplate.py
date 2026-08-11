@@ -69,6 +69,26 @@ class ObjectTemplateApplicationService:
         self._uow_factory = uow_factory
         self._versioning = ObjectTemplateVersioningService()
 
+    def _validate_parent_evolution(
+        self,
+        uow: ObjectTemplateUnitOfWork,
+        *,
+        prospective: ObjectTemplateVersion,
+        existing_versions: Iterable[ObjectTemplateVersion],
+    ) -> None:
+        self._versioning.validate_parent_evolution(
+            prospective,
+            existing_versions=existing_versions,
+            parent_lookup=lambda ref: (
+                prospective
+                if (
+                    ref.template_id == prospective.template_id
+                    and ref.version == prospective.version
+                )
+                else uow.object_templates.get_version(ref.template_id, ref.version)
+            ),
+        )
+
     def _resolve_properties(
         self,
         *,
@@ -266,6 +286,11 @@ class ObjectTemplateApplicationService:
                 properties=resolved_properties,
                 components=resolved_components,
             )
+            self._validate_parent_evolution(
+                uow,
+                prospective=version,
+                existing_versions=(),
+            )
             uow.object_templates.add(template)
             uow.object_templates.add_version(version)
             uow.commit()
@@ -304,6 +329,11 @@ class ObjectTemplateApplicationService:
                 properties=resolved_properties,
                 components=resolved_components,
             )
+            self._validate_parent_evolution(
+                uow,
+                prospective=revised,
+                existing_versions=uow.object_templates.list_versions(template_id),
+            )
             uow.object_templates.replace_version(revised)
             uow.commit()
             return revised
@@ -324,6 +354,11 @@ class ObjectTemplateApplicationService:
             existing_versions = uow.object_templates.list_versions(template_id)
             next_version = self._versioning.create_next_version(
                 source,
+                existing_versions=existing_versions,
+            )
+            self._validate_parent_evolution(
+                uow,
+                prospective=next_version,
                 existing_versions=existing_versions,
             )
             uow.object_templates.add_version(next_version)
@@ -352,6 +387,11 @@ class ObjectTemplateApplicationService:
                     lambda candidate_id: uow.object_templates.get(candidate_id) is not None
                 ),
                 template_versions_lister=uow.object_templates.list_versions,
+            )
+            self._validate_parent_evolution(
+                uow,
+                prospective=published,
+                existing_versions=uow.object_templates.list_versions(template_id),
             )
             prospective_snapshot = self._build_relationship_conflict_snapshot(
                 uow,

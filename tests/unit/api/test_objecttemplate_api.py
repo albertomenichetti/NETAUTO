@@ -721,7 +721,22 @@ def test_create_response_contains_abstract_parent_and_resolved_datatype_version(
 ) -> None:
     client, datatypes, _object_templates, commits = client_context
     datatype, versions = _store_datatype(datatypes, published_versions=3)
-    parent_id = uuid4()
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="parent_device",
+        description=None,
+        abstract=False,
+    )
+    _object_templates.add(parent_template)
+    _object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=parent_template.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(),
+        )
+    )
 
     response = client.post(
         "/api/v1/object-templates",
@@ -730,7 +745,7 @@ def test_create_response_contains_abstract_parent_and_resolved_datatype_version(
             "name": "router",
             "description": "Router template",
             "abstract": True,
-            "parent": {"template_id": str(parent_id), "version": 2},
+            "parent": {"template_id": str(parent_template.id), "version": 2},
             "properties": [{"name": "hostname", "datatype_id": str(datatype.id), "required": True}],
         },
     )
@@ -740,7 +755,10 @@ def test_create_response_contains_abstract_parent_and_resolved_datatype_version(
     assert commits[0] == 1
     assert payload["object_template"]["abstract"] is True
     assert payload["version"]["status"] == "draft"
-    assert payload["version"]["parent"] == {"template_id": str(parent_id), "version": 2}
+    assert payload["version"]["parent"] == {
+        "template_id": str(parent_template.id),
+        "version": 2,
+    }
     assert payload["version"]["properties"][0]["datatype_version"] == versions[-1].version
     assert payload["version"]["components"] == []
 
@@ -1049,6 +1067,7 @@ def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_kee
             template_id=router.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
         )
     )
     object_templates.add_version(
@@ -1237,11 +1256,26 @@ def test_revise_replaces_parent_and_properties_and_resolves_datatype_version(
 ) -> None:
     client, datatypes, _object_templates, _commits = client_context
     datatype, versions = _store_datatype(datatypes, published_versions=2)
-    parent_id = uuid4()
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device",
+        description=None,
+        abstract=False,
+    )
+    _object_templates.add(parent_template)
+    _object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=parent_template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(),
+        )
+    )
     created = _create_object_template(
         client,
         datatype_id=datatype.id,
-        parent={"template_id": str(parent_id), "version": 1},
+        parent={"template_id": str(parent_template.id), "version": 1},
     )
 
     revised = client.put(
@@ -1589,6 +1623,110 @@ def test_publish_parent_not_published_mapping(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "object_template_parent_not_published"
+
+
+def test_revise_parent_identity_change_maps_to_conflict(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent_p = _create_object_template(client, datatype_id=datatype.id, name="device")
+    parent_q = _create_object_template(client, datatype_id=datatype.id, name="service")
+    _publish_object_template_version(client, parent_p["object_template"]["id"])
+    _publish_object_template_version(client, parent_q["object_template"]["id"])
+    child = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        name="router",
+        parent={"template_id": parent_p["object_template"]["id"], "version": 1},
+        properties=[
+            {
+                "name": "serial",
+                "datatype_id": str(datatype.id),
+                "required": False,
+            }
+        ],
+    )
+    child_id = child["object_template"]["id"]
+    _publish_object_template_version(client, child_id)
+    assert client.post(
+        f"/api/v1/object-templates/{child_id}/versions",
+        json={"source_version": 1},
+    ).status_code == 201
+
+    response = client.put(
+        f"/api/v1/object-templates/{child_id}/versions/2",
+        json={
+            "parent": {"template_id": parent_q["object_template"]["id"], "version": 1},
+            "properties": child["version"]["properties"],
+            "components": [],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_template_parent_identity_changed"
+
+
+def test_revise_parent_version_downgrade_maps_to_conflict(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent = _create_object_template(client, datatype_id=datatype.id, name="device")
+    parent_id = parent["object_template"]["id"]
+    _publish_object_template_version(client, parent_id)
+    assert client.post(
+        f"/api/v1/object-templates/{parent_id}/versions",
+        json={"source_version": 1},
+    ).status_code == 201
+    _publish_object_template_version(client, parent_id, 2)
+    assert client.post(
+        f"/api/v1/object-templates/{parent_id}/versions",
+        json={"source_version": 2},
+    ).status_code == 201
+    _publish_object_template_version(client, parent_id, 3)
+
+    child = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        name="router",
+        parent={"template_id": parent_id, "version": 3},
+        properties=[
+            {
+                "name": "serial",
+                "datatype_id": str(datatype.id),
+                "required": False,
+            }
+        ],
+    )
+    child_id = child["object_template"]["id"]
+    _publish_object_template_version(client, child_id)
+    assert client.post(
+        f"/api/v1/object-templates/{child_id}/versions",
+        json={"source_version": 1},
+    ).status_code == 201
+
+    response = client.put(
+        f"/api/v1/object-templates/{child_id}/versions/2",
+        json={
+            "parent": {"template_id": parent_id, "version": 1},
+            "properties": child["version"]["properties"],
+            "components": [],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_template_parent_version_downgrade"
 
 
 def test_publish_datatype_not_published_mapping(

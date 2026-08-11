@@ -434,6 +434,22 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
                 "published"
             )
 
+            standalone_router = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "standalone_router",
+                ],
+            )
+            standalone_router_id = standalone_router["object_template"]["id"]
+            assert _publish_object_template_version(base_url, standalone_router_id, 1)[
+                "status"
+            ] == ("published")
+
             router = _invoke_json(
                 base_url,
                 [
@@ -443,10 +459,30 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
                     "network",
                     "--name",
                     "router",
+                    "--parent-template-id",
+                    network_device_id,
+                    "--parent-version",
+                    "1",
                 ],
             )
             router_id = router["object_template"]["id"]
             assert _publish_object_template_version(base_url, router_id, 1)["status"] == (
+                "published"
+            )
+
+            network_device_v2_created = _invoke_json(
+                base_url,
+                [
+                    "object-template",
+                    "version",
+                    "create",
+                    network_device_id,
+                    "--source-version",
+                    "1",
+                ],
+            )
+            assert network_device_v2_created["version"] == 2
+            assert _publish_object_template_version(base_url, network_device_id, 2)["status"] == (
                 "published"
             )
 
@@ -473,14 +509,14 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
                     "--parent-template-id",
                     network_device_id,
                     "--parent-version",
-                    "1",
+                    "2",
                     "--component-json",
                     json.dumps({"name": "modules", "template_id": module_id}),
                 ],
             )
             assert router_v2_revised["parent"] == {
                 "template_id": network_device_id,
-                "version": 1,
+                "version": 2,
             }
             assert router_v2_revised["components"] == [
                 {"name": "modules", "template_id": module_id}
@@ -506,18 +542,18 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
             )
             definition_id = definition["id"]
 
-            router_v1_object = _invoke_json(
+            standalone_router_object = _invoke_json(
                 base_url,
                 [
                     "object",
                     "create",
                     "--template-id",
-                    router_id,
+                    standalone_router_id,
                     "--template-version",
                     "1",
                 ],
             )
-            router_v1_object_id = router_v1_object["id"]
+            standalone_router_object_id = standalone_router_object["id"]
             router_v2_object = _invoke_json(
                 base_url,
                 [
@@ -598,9 +634,9 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
                 "component_object_id": module_object_id,
             }
 
-            router_v1_effective = _invoke_json(
+            standalone_router_effective = _invoke_json(
                 base_url,
-                ["relationship", "effective-definitions", router_v1_object_id],
+                ["relationship", "effective-definitions", standalone_router_object_id],
             )
             router_v2_effective = _invoke_json(
                 base_url,
@@ -611,7 +647,7 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
                 ["relationship", "effective-definitions", credential_object_id],
             )
 
-            assert router_v1_effective == []
+            assert standalone_router_effective == []
             assert router_v2_effective == [
                 {
                     "relationship_definition_id": definition_id,
@@ -833,12 +869,12 @@ def test_cli_relationship_integration_closure_flow(tmp_path: Path) -> None:
                 base_url,
                 ["object", "show", unrelated_credential_id],
             )["id"] == unrelated_credential_id
-            assert _invoke_json(base_url, ["object", "show", router_v1_object_id])["id"] == (
-                router_v1_object_id
-            )
+            assert _invoke_json(base_url, ["object", "show", standalone_router_object_id])[
+                "id"
+            ] == (standalone_router_object_id)
             assert _invoke_json(
                 base_url,
-                ["relationship", "effective-definitions", router_v1_object_id],
+                ["relationship", "effective-definitions", standalone_router_object_id],
             ) == []
 
             assert database_path.exists()

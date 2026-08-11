@@ -33,8 +33,11 @@ from netauto.core.objecttemplate import (
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInUse,
     ObjectTemplateNotFound,
+    ObjectTemplateParentIdentityChanged,
     ObjectTemplateParentNotFound,
     ObjectTemplateParentNotPublished,
+    ObjectTemplateParentVersionDowngrade,
+    ObjectTemplatePersistenceError,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersioningService,
@@ -344,7 +347,26 @@ def test_create_object_template_creates_identity_and_v1_draft() -> None:
     service, datatypes, object_templates, commits = _service()
     datatype, datatype_version = _published_datatype()
     _store_datatype_versions(datatypes, datatype, (datatype_version,))
-    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_template,
+        (
+            ObjectTemplateVersion(
+                template_id=parent_template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            ),
+        ),
+    )
+    parent = ObjectTemplateVersionRef(template_id=parent_template.id, version=2)
 
     template, version = service.create_object_template(
         namespace="network",
@@ -882,7 +904,26 @@ def test_create_next_accepts_deprecated_source_and_commits_once() -> None:
     service, datatypes, object_templates, commits = _service()
     datatype, datatype_version = _published_datatype()
     _store_datatype_versions(datatypes, datatype, (datatype_version,))
-    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_template,
+        (
+            ObjectTemplateVersion(
+                template_id=parent_template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+                properties=(),
+            ),
+        ),
+    )
+    parent = ObjectTemplateVersionRef(template_id=parent_template.id, version=2)
     template = ObjectTemplate(
         id=uuid4(),
         namespace="network",
@@ -1234,7 +1275,26 @@ def test_create_next_version_clones_exact_pinned_snapshot_without_reresolving() 
         description=None,
         abstract=False,
     )
-    parent = ObjectTemplateVersionRef(template_id=uuid4(), version=2)
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_template,
+        (
+            ObjectTemplateVersion(
+                template_id=parent_template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+            ),
+        ),
+    )
+    parent = ObjectTemplateVersionRef(template_id=parent_template.id, version=2)
     source = ObjectTemplateVersion(
         template_id=template.id,
         version=1,
@@ -2185,6 +2245,344 @@ def test_delete_object_template_discovers_late_blocker_before_mutation() -> None
     assert commits[0] == 0
     assert object_templates.delete_calls == []
     assert object_templates.get(target.id) == target
+
+
+def test_create_object_template_rejects_missing_exact_parent_before_mutation() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+
+    with pytest.raises(ObjectTemplateParentNotFound):
+        service.create_object_template(
+            namespace="network",
+            name="router",
+            description=None,
+            abstract=False,
+            parent=ObjectTemplateVersionRef(template_id=uuid4(), version=3),
+            properties=(_spec("hostname", datatype_id=datatype.id),),
+        )
+
+    assert commits[0] == 0
+    assert object_templates.list() == ()
+
+
+def test_revise_version_rejects_parent_identity_change_after_publication() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    parent_p = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    parent_q = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="service",
+        description=None,
+        abstract=False,
+    )
+    child = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_p,
+        (_published_object_template_version(parent_p.id),),
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_q,
+        (_published_object_template_version(parent_q.id),),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child,
+        (
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=ObjectTemplateVersionRef(template_id=parent_p.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                parent=ObjectTemplateVersionRef(template_id=parent_p.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateParentIdentityChanged):
+        service.revise_version(
+            template_id=child.id,
+            version=2,
+            parent=ObjectTemplateVersionRef(template_id=parent_q.id, version=1),
+            properties=(_spec("hostname", datatype_id=datatype.id),),
+        )
+
+    assert commits[0] == 0
+    stored_version = object_templates.get_version(child.id, 2)
+    assert stored_version is not None
+    assert stored_version.parent == ObjectTemplateVersionRef(
+        template_id=parent_p.id,
+        version=1,
+    )
+
+
+def test_revise_version_rejects_parent_version_downgrade_after_publication() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    parent = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    child = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent,
+        (
+            _published_object_template_version(parent.id),
+            ObjectTemplateVersion(
+                template_id=parent.id,
+                version=4,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+                components=(),
+            ),
+        ),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child,
+        (
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=4),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=4),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateParentVersionDowngrade):
+        service.revise_version(
+            template_id=child.id,
+            version=2,
+            parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+            properties=(_spec("hostname", datatype_id=datatype.id),),
+        )
+
+    assert commits[0] == 0
+
+
+def test_create_next_version_rejects_old_source_parent_version_downgrade() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    parent = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    child = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent,
+        (
+            _published_object_template_version(parent.id),
+            ObjectTemplateVersion(
+                template_id=parent.id,
+                version=4,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+                components=(),
+            ),
+        ),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child,
+        (
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=4),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateParentVersionDowngrade):
+        service.create_next_version(template_id=child.id, source_version=1)
+
+    assert commits[0] == 0
+
+
+def test_publish_version_rejects_inconsistent_historical_published_lineage() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    parent_p = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    parent_q = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="service",
+        description=None,
+        abstract=False,
+    )
+    child = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_p,
+        (_published_object_template_version(parent_p.id),),
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_q,
+        (_published_object_template_version(parent_q.id),),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child,
+        (
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=ObjectTemplateVersionRef(template_id=parent_p.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+                parent=ObjectTemplateVersionRef(template_id=parent_q.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=3,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                parent=ObjectTemplateVersionRef(template_id=parent_p.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplatePersistenceError):
+        service.publish_version(template_id=child.id, version=3)
+
+    assert commits[0] == 0
 
 
 def test_objecttemplate_application_module_has_no_sqlalchemy_or_concrete_persistence_imports(

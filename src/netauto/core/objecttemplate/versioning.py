@@ -12,7 +12,13 @@ from netauto.core.objecttemplate.exceptions import (
     ObjectTemplateDataTypeVersionDowngrade,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
+    ObjectTemplateInheritanceCycle,
+    ObjectTemplateParentIdentityChanged,
+    ObjectTemplateParentNotFound,
     ObjectTemplateParentNotPublished,
+    ObjectTemplateParentVersionDowngrade,
+    ObjectTemplatePersistenceError,
+    ObjectTemplateSelfInheritance,
 )
 from netauto.core.objecttemplate.models import (
     ObjectTemplateComponent,
@@ -67,6 +73,97 @@ class ObjectTemplateVersioningService:
             properties=proposed_properties,
             components=tuple(components),
         )
+
+    def validate_parent_evolution(
+        self,
+        prospective: ObjectTemplateVersion,
+        *,
+        existing_versions: Iterable[ObjectTemplateVersion],
+        parent_lookup: ObjectTemplateVersionLookup,
+    ) -> None:
+        versions = tuple(existing_versions)
+        for candidate in versions:
+            if candidate.template_id != prospective.template_id:
+                raise MismatchedObjectTemplateVersion(
+                    "All existing versions must belong to the same object template."
+                )
+
+        self._assert_parent_chain_is_structurally_valid(
+            prospective,
+            parent_lookup=parent_lookup,
+        )
+
+        published_lineage = tuple(
+            candidate
+            for candidate in versions
+            if candidate.status
+            in (
+                ObjectTemplateVersionStatus.PUBLISHED,
+                ObjectTemplateVersionStatus.DEPRECATED,
+            )
+        )
+        if not published_lineage:
+            return
+
+        stable_parent = published_lineage[0].parent
+        for candidate in published_lineage[1:]:
+            if not self._same_parent_identity(candidate.parent, stable_parent):
+                raise ObjectTemplatePersistenceError(
+                    "Stored object template lineage is internally inconsistent."
+                )
+
+        first_published_version = min(candidate.version for candidate in published_lineage)
+        relevant_versions = list(versions)
+        replaced = False
+        for index, candidate in enumerate(relevant_versions):
+            if (
+                candidate.template_id == prospective.template_id
+                and candidate.version == prospective.version
+            ):
+                relevant_versions[index] = prospective
+                replaced = True
+                break
+        if not replaced:
+            relevant_versions.append(prospective)
+        relevant_versions.sort(key=lambda candidate: candidate.version)
+
+        if stable_parent is None:
+            for candidate in relevant_versions:
+                if candidate.version < first_published_version:
+                    continue
+                if candidate.parent is None:
+                    continue
+                if candidate is prospective:
+                    raise ObjectTemplateParentIdentityChanged(
+                        "Object template parent identity cannot change after publication."
+                    )
+                raise ObjectTemplatePersistenceError(
+                    "Stored object template lineage is internally inconsistent."
+                )
+            return
+
+        highest_parent_version = 0
+        for candidate in relevant_versions:
+            if candidate.version < first_published_version:
+                continue
+            parent = candidate.parent
+            if parent is None or parent.template_id != stable_parent.template_id:
+                if candidate is prospective:
+                    raise ObjectTemplateParentIdentityChanged(
+                        "Object template parent identity cannot change after publication."
+                    )
+                raise ObjectTemplatePersistenceError(
+                    "Stored object template lineage is internally inconsistent."
+                )
+            if parent.version < highest_parent_version:
+                if candidate is prospective:
+                    raise ObjectTemplateParentVersionDowngrade(
+                        "Object template parent version cannot move backwards."
+                    )
+                raise ObjectTemplatePersistenceError(
+                    "Stored object template lineage is internally inconsistent."
+                )
+            highest_parent_version = parent.version
 
     def create_next_version(
         self,
@@ -186,3 +283,49 @@ class ObjectTemplateVersioningService:
             properties=version.properties,
             components=version.components,
         )
+
+    def _assert_parent_chain_is_structurally_valid(
+        self,
+        prospective: ObjectTemplateVersion,
+        *,
+        parent_lookup: ObjectTemplateVersionLookup,
+    ) -> None:
+        parent = prospective.parent
+        if parent is None:
+            return
+        if parent.template_id == prospective.template_id:
+            raise ObjectTemplateSelfInheritance(
+                "Object template version cannot inherit from another version of the same "
+                "template."
+            )
+
+        visited = {(prospective.template_id, prospective.version)}
+        current_ref = parent
+        while current_ref is not None:
+            identity = (current_ref.template_id, current_ref.version)
+            if identity in visited:
+                raise ObjectTemplateInheritanceCycle(
+                    "Object template inheritance cycle detected."
+                )
+            visited.add(identity)
+            current = parent_lookup(current_ref)
+            if current is None:
+                raise ObjectTemplateParentNotFound(
+                    "Referenced parent object template version was not found."
+                )
+            next_parent = current.parent
+            if next_parent is not None and next_parent.template_id == current.template_id:
+                raise ObjectTemplateSelfInheritance(
+                    "Object template version cannot inherit from another version of the same "
+                    "template."
+                )
+            current_ref = next_parent
+
+    def _same_parent_identity(
+        self,
+        left: ObjectTemplateVersionRef | None,
+        right: ObjectTemplateVersionRef | None,
+    ) -> bool:
+        if left is None or right is None:
+            return left is None and right is None
+        return left.template_id == right.template_id

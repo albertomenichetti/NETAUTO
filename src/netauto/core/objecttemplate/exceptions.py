@@ -69,6 +69,14 @@ class ObjectTemplateDataTypeVersionDowngrade(Exception):
     """Raised when a property is revised to an older version of the same datatype."""
 
 
+class ObjectTemplateParentIdentityChanged(Exception):
+    """Raised when an object template version changes parent template identity."""
+
+
+class ObjectTemplateParentVersionDowngrade(Exception):
+    """Raised when an object template version regresses its exact parent version."""
+
+
 class ObjectTemplateComponentVersionNotFound(Exception):
     """Raised when a referenced component target template cannot be found."""
 
