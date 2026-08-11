@@ -6,7 +6,11 @@ from sqlalchemy import Engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from netauto.core.object import Object
-from netauto.core.objecttemplate import ObjectTemplate
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplateVersion,
+    ObjectTemplateVersionStatus,
+)
 from netauto.core.relationship import (
     Relationship,
     RelationshipDefinition,
@@ -290,6 +294,22 @@ def test_delete_referenced_definition_raises_persistence_error(tmp_path: Path) -
     try:
         template_repo.add(source)
         template_repo.add(target)
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=source.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=target.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
         repo.add(definition)
         source_object = Object(id=uuid4(), template_id=source.id, template_version=1, properties={})
         target_object = Object(id=uuid4(), template_id=target.id, template_version=1, properties={})

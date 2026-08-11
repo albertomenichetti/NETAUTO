@@ -14,12 +14,19 @@ from netauto.core.object import (
     ObjectChangeSnapshot,
     ObjectPersistenceError,
 )
+from netauto.core.objecttemplate import ObjectTemplateVersionStatus
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.models import ObjectChangeRow
+from netauto.persistence.sqlalchemy.models import (
+    ObjectChangeRow,
+    ObjectTemplateRow,
+    ObjectTemplateVersionRow,
+)
 from netauto.persistence.sqlalchemy.object_change_repository import (
     SqlAlchemyObjectChangeRepository,
 )
 from netauto.persistence.sqlalchemy.object_repository import SqlAlchemyObjectRepository
+
+DEFAULT_TEMPLATE_ID = UUID("00000000-0000-0000-0000-0000000000ab")
 
 
 def _repos(
@@ -29,6 +36,7 @@ def _repos(
     engine = create_sqlite_engine(f"sqlite:///{tmp_path / filename}")
     create_schema(engine)
     session = sessionmaker(engine, expire_on_commit=False)()
+    _store_template_version(session, template_id=DEFAULT_TEMPLATE_ID)
     return (
         SqlAlchemyObjectChangeRepository(session),
         SqlAlchemyObjectRepository(session),
@@ -71,10 +79,39 @@ def _change(
 def _object(*, object_id: UUID | None = None) -> Object:
     return Object(
         id=object_id or uuid4(),
-        template_id=uuid4(),
+        template_id=DEFAULT_TEMPLATE_ID,
         template_version=1,
         properties={},
     )
+
+
+def _store_template_version(
+    session: Session,
+    *,
+    template_id: UUID,
+    version: int = 1,
+    status: ObjectTemplateVersionStatus = ObjectTemplateVersionStatus.PUBLISHED,
+) -> None:
+    session.add(
+        ObjectTemplateRow(
+            id=str(template_id),
+            namespace=f"network_{template_id.hex[:8]}",
+            name=f"template_{template_id.hex[:8]}",
+            description=None,
+            abstract=False,
+        )
+    )
+    session.flush()
+    session.add(
+        ObjectTemplateVersionRow(
+            template_id=str(template_id),
+            version=version,
+            status=status.value,
+            parent_template_id=None,
+            parent_version=None,
+        )
+    )
+    session.flush()
 
 
 def test_schema_encodes_object_change_history_without_object_fk(tmp_path: Path) -> None:

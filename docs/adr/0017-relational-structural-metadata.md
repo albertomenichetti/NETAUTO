@@ -40,6 +40,8 @@ Applied in this phase:
 - ObjectTemplate component declarations -> relational, implemented in S3b
 - ObjectTemplate parent references -> relational exact-version columns plus
   physical composite foreign key, implemented in S3c
+- Object exact template pins -> relational exact-version columns plus physical
+  composite foreign key, implemented in S3d
 - Object properties -> remain JSON as runtime dynamic values
 - ObjectChange before/after snapshots -> remain JSON as historical snapshots
 - DataTypeVersion constraints -> remain JSON as embedded constraint values, not
@@ -64,10 +66,13 @@ ObjectTemplate structural declarations:
   nonexistent exact DataTypeVersion.
 - SQLite can physically reject an ObjectTemplate component declaration that
   references a nonexistent target ObjectTemplate identity.
+- SQLite can physically reject an Object that references a nonexistent exact
+  ObjectTemplateVersion.
 - Whole-owner deletion of an exact ObjectTemplateVersion can cascade cleanly to
   owned property rows and component rows.
 - Repository and test fixtures must create real referenced DataTypeVersion
   rows and real referenced ObjectTemplate identity rows rather than relying on
-  arbitrary UUID text in JSON.
+  arbitrary UUID text in JSON, and real referenced exact ObjectTemplateVersion
+  rows for persisted Objects.
 - Existing dogfood databases are recreated rather than migrated during this
   development stage.

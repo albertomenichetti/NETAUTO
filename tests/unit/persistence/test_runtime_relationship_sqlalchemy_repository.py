@@ -6,7 +6,11 @@ from sqlalchemy import Engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from netauto.core.object import Object
-from netauto.core.objecttemplate import ObjectTemplate
+from netauto.core.objecttemplate import (
+    ObjectTemplate,
+    ObjectTemplateVersion,
+    ObjectTemplateVersionStatus,
+)
 from netauto.core.relationship import (
     Relationship,
     RelationshipAlreadyExists,
@@ -119,6 +123,22 @@ def _seed_definition_and_objects(
     target_template = _template(name="target")
     template_repo.add(source_template)
     template_repo.add(target_template)
+    template_repo.add_version(
+        ObjectTemplateVersion(
+            template_id=source_template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(),
+        )
+    )
+    template_repo.add_version(
+        ObjectTemplateVersion(
+            template_id=target_template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(),
+        )
+    )
     definition_row = _relationship_definition_row(
         source_template_id=source_template.id,
         target_template_id=target_template.id,
@@ -468,6 +488,22 @@ def test_list_incident_to_objects_matches_outgoing_incoming_internal_and_self_on
         unrelated_template = _template(name="unrelated")
         template_repo.add(external_template)
         template_repo.add(unrelated_template)
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=external_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=unrelated_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
         incoming_definition = _relationship_definition_row(
             source_template_id=external_template.id,
             target_template_id=subtree_source.template_id,
@@ -642,6 +678,22 @@ def test_missing_relationship_definition_fk_is_persistence_error(tmp_path: Path)
         target_template = _template(name="target")
         template_repo.add(source_template)
         template_repo.add(target_template)
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=source_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=target_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
         source_object = _object(template_id=source_template.id)
         target_object = _object(template_id=target_template.id)
         object_repo.add(source_object)

@@ -76,6 +76,8 @@ class SqlAlchemyObjectRepository(ObjectRepository):
         return tuple(_row_to_object(row) for row in rows)
 
     def add(self, object_value: Object) -> None:
+        if self._session.get(ObjectRow, str(object_value.id)) is not None:
+            raise ObjectAlreadyExists("Object UUID already exists.")
         self._session.add(
             ObjectRow(
                 id=str(object_value.id),
@@ -87,7 +89,7 @@ class SqlAlchemyObjectRepository(ObjectRepository):
         try:
             self._session.flush()
         except IntegrityError as error:
-            raise ObjectAlreadyExists("Object UUID already exists.") from error
+            raise ObjectPersistenceError("Object persistence failed.") from error
 
     def get(self, object_id: UUID) -> Object | None:
         row = self._session.get(ObjectRow, str(object_id))
@@ -115,10 +117,13 @@ class SqlAlchemyObjectRepository(ObjectRepository):
         if row is None:
             raise ObjectNotFound("Object does not exist.")
         properties_json = _serialize_properties(object_value.properties)
-        row.template_id = str(object_value.template_id)
-        row.template_version = object_value.template_version
-        row.properties_json = properties_json
-        self._session.flush()
+        try:
+            row.template_id = str(object_value.template_id)
+            row.template_version = object_value.template_version
+            row.properties_json = properties_json
+            self._session.flush()
+        except IntegrityError as error:
+            raise ObjectPersistenceError("Object persistence failed.") from error
 
     def delete(self, object_id: UUID) -> None:
         row = self._session.get(ObjectRow, str(object_id))

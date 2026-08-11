@@ -33,11 +33,35 @@ from netauto.persistence.sqlalchemy.relationship_repository import (
 )
 from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
 
+DEFAULT_TEMPLATE_ID = UUID("00000000-0000-0000-0000-0000000000ac")
+
 
 def _uow(tmp_path: Path, filename: str) -> tuple[SqlAlchemyUnitOfWork, Engine]:
     engine = create_sqlite_engine(f"sqlite:///{tmp_path / filename}")
     create_schema(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
+    seed_session = session_factory()
+    try:
+        template_repo = SqlAlchemyObjectTemplateRepository(seed_session)
+        default_template = ObjectTemplate(
+            id=DEFAULT_TEMPLATE_ID,
+            namespace="network",
+            name="default_object_template",
+            description=None,
+            abstract=False,
+        )
+        template_repo.add(default_template)
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=default_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
+        seed_session.commit()
+    finally:
+        seed_session.close()
     return SqlAlchemyUnitOfWork(session_factory), engine
 
 
@@ -107,7 +131,7 @@ def _object(
 ) -> Object:
     return Object(
         id=object_id or uuid4(),
-        template_id=template_id or uuid4(),
+        template_id=template_id or DEFAULT_TEMPLATE_ID,
         template_version=template_version,
         properties=properties or {},
     )
@@ -379,6 +403,28 @@ def test_real_sqlite_file_survives_engine_and_session_recreation(tmp_path: Path)
     first_engine = create_sqlite_engine(f"sqlite:///{database_path}")
     create_schema(first_engine)
     first_session_factory = sessionmaker(first_engine, expire_on_commit=False)
+    seed_session = first_session_factory()
+    try:
+        template_repo = SqlAlchemyObjectTemplateRepository(seed_session)
+        default_template = ObjectTemplate(
+            id=DEFAULT_TEMPLATE_ID,
+            namespace="network",
+            name="default_object_template",
+            description=None,
+            abstract=False,
+        )
+        template_repo.add(default_template)
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=default_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
+        seed_session.commit()
+    finally:
+        seed_session.close()
     first_uow = SqlAlchemyUnitOfWork(first_session_factory)
     with first_uow:
         first_uow.datatypes.add(datatype)
@@ -518,6 +564,28 @@ def test_real_sqlite_file_reconstruction_preserves_objects_and_memberships(
     first_engine = create_sqlite_engine(f"sqlite:///{database_path}")
     create_schema(first_engine)
     first_session_factory = sessionmaker(first_engine, expire_on_commit=False)
+    seed_session = first_session_factory()
+    try:
+        template_repo = SqlAlchemyObjectTemplateRepository(seed_session)
+        default_template = ObjectTemplate(
+            id=DEFAULT_TEMPLATE_ID,
+            namespace="network",
+            name="default_object_template",
+            description=None,
+            abstract=False,
+        )
+        template_repo.add(default_template)
+        template_repo.add_version(
+            ObjectTemplateVersion(
+                template_id=default_template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            )
+        )
+        seed_session.commit()
+    finally:
+        seed_session.close()
     first_uow = SqlAlchemyUnitOfWork(first_session_factory)
     with first_uow:
         first_uow.objects.add(parent)
@@ -584,6 +652,8 @@ def test_unit_of_work_commit_persists_runtime_relationships(tmp_path: Path) -> N
         with uow:
             uow.object_templates.add(source_template)
             uow.object_templates.add(target_template)
+            uow.object_templates.add_version(_object_template_version(source_template.id))
+            uow.object_templates.add_version(_object_template_version(target_template.id))
             uow.relationship_definitions.add(relationship_definition)
             uow.objects.add(source_object)
             uow.objects.add(target_object)

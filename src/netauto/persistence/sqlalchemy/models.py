@@ -241,6 +241,15 @@ class ObjectRow(Base):
     """Persisted object snapshot row."""
 
     __tablename__ = "objects"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["template_id", "template_version"],
+            ["object_template_versions.template_id", "object_template_versions.version"],
+            ondelete="RESTRICT",
+            name="fk_objects_template_version",
+        ),
+        Index("ix_objects_template_version", "template_id", "template_version"),
+    )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     template_id: Mapped[str] = mapped_column(Text, nullable=False)

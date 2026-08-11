@@ -16,9 +16,17 @@ from netauto.core.object import (
     ObjectNotFound,
     ObjectPersistenceError,
 )
+from netauto.core.objecttemplate import ObjectTemplateVersionStatus
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.models import ObjectComponentRow, ObjectRow
+from netauto.persistence.sqlalchemy.models import (
+    ObjectComponentRow,
+    ObjectRow,
+    ObjectTemplateRow,
+    ObjectTemplateVersionRow,
+)
 from netauto.persistence.sqlalchemy.object_repository import SqlAlchemyObjectRepository
+
+DEFAULT_TEMPLATE_ID = UUID("00000000-0000-0000-0000-0000000000aa")
 
 
 def _repo(
@@ -29,6 +37,7 @@ def _repo(
     create_schema(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
     session = session_factory()
+    _store_template_version(session, template_id=DEFAULT_TEMPLATE_ID)
     return SqlAlchemyObjectRepository(session), session, engine
 
 
@@ -41,10 +50,51 @@ def _object(
 ) -> Object:
     return Object(
         id=object_id or uuid4(),
-        template_id=template_id or uuid4(),
+        template_id=template_id or DEFAULT_TEMPLATE_ID,
         template_version=template_version,
         properties=properties or {},
     )
+
+
+def _store_template_identity(
+    session: Session,
+    *,
+    template_id: UUID,
+    namespace: str | None = None,
+    name: str | None = None,
+) -> None:
+    logical_suffix = template_id.hex[:8]
+    session.add(
+        ObjectTemplateRow(
+            id=str(template_id),
+            namespace=namespace or f"network_{logical_suffix}",
+            name=name or f"template_{logical_suffix}",
+            description=None,
+            abstract=False,
+        )
+    )
+    session.flush()
+
+
+def _store_template_version(
+    session: Session,
+    *,
+    template_id: UUID,
+    version: int = 1,
+    status: ObjectTemplateVersionStatus = ObjectTemplateVersionStatus.PUBLISHED,
+) -> None:
+    if session.get(ObjectTemplateRow, str(template_id)) is None:
+        _store_template_identity(session, template_id=template_id)
+    session.add(
+        ObjectTemplateVersionRow(
+            template_id=str(template_id),
+            version=version,
+            status=status.value,
+            parent_template_id=None,
+            parent_version=None,
+        )
+    )
+    session.flush()
 
 
 def _membership(
@@ -69,6 +119,7 @@ def test_schema_encodes_object_and_membership_invariants(tmp_path: Path) -> None
         object_pk = inspector.get_pk_constraint("objects")
         component_pk = inspector.get_pk_constraint("object_components")
         object_fks = inspector.get_foreign_keys("objects")
+        object_indexes = inspector.get_indexes("objects")
         component_fks = inspector.get_foreign_keys("object_components")
         component_columns = {
             column["name"] for column in inspector.get_columns("object_components")
@@ -76,9 +127,19 @@ def test_schema_encodes_object_and_membership_invariants(tmp_path: Path) -> None
 
         assert object_pk["constrained_columns"] == ["id"]
         assert component_pk["constrained_columns"] == ["child_object_id"]
-        assert object_fks == []
+        assert len(object_fks) == 1
         assert component_columns == {"parent_object_id", "slot_name", "child_object_id"}
         assert len(component_fks) == 2
+
+        template_fk = object_fks[0]
+        assert template_fk["name"] == "fk_objects_template_version"
+        assert template_fk["constrained_columns"] == ["template_id", "template_version"]
+        assert template_fk["referred_table"] == "object_template_versions"
+        assert template_fk["referred_columns"] == ["template_id", "version"]
+        assert template_fk.get("options", {}).get("ondelete") == "RESTRICT"
+        assert {
+            index["name"]: index["column_names"] for index in object_indexes
+        }["ix_objects_template_version"] == ["template_id", "template_version"]
 
         parent_fk = next(
             fk for fk in component_fks if fk["constrained_columns"] == ["parent_object_id"]
@@ -175,6 +236,10 @@ def test_get_missing_returns_none(tmp_path: Path) -> None:
 def test_list_by_template_version_filters_exact_pin_deterministically(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "list_by_template_version.sqlite3")
     template_id = uuid4()
+    other_template_id = uuid4()
+    _store_template_version(session, template_id=template_id, version=1)
+    _store_template_version(session, template_id=template_id, version=2)
+    _store_template_version(session, template_id=other_template_id, version=1)
     low = _object(
         object_id=UUID("00000000-0000-0000-0000-000000000001"),
         template_id=template_id,
@@ -186,7 +251,7 @@ def test_list_by_template_version_filters_exact_pin_deterministically(tmp_path: 
         template_version=1,
     )
     other_version = _object(template_id=template_id, template_version=2)
-    other_template = _object(template_id=uuid4(), template_version=1)
+    other_template = _object(template_id=other_template_id, template_version=1)
     try:
         for object_value in (high, other_version, other_template, low):
             repo.add(object_value)
@@ -199,9 +264,11 @@ def test_list_by_template_version_filters_exact_pin_deterministically(tmp_path: 
 def test_replace_complete_snapshot(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "replace.sqlite3")
     original = _object(properties={"hostname": "router-01"})
+    replacement_template_id = uuid4()
+    _store_template_version(session, template_id=replacement_template_id, version=3)
     updated = replace(
         original,
-        template_id=uuid4(),
+        template_id=replacement_template_id,
         template_version=3,
         properties={"serial": "ABC123"},
     )
@@ -219,9 +286,11 @@ def test_replace_serialization_failure_does_not_partially_mutate_persisted_row(
 ) -> None:
     repo, session, engine = _repo(tmp_path, "replace_atomicity.sqlite3")
     original = _object(properties={"hostname": "router-01"})
+    replacement_template_id = uuid4()
+    _store_template_version(session, template_id=replacement_template_id, version=2)
     replacement = replace(
         original,
-        template_id=uuid4(),
+        template_id=replacement_template_id,
         template_version=2,
         properties={"bad": object()},
     )
@@ -306,7 +375,7 @@ def test_malformed_stored_object_uuid_raises_object_persistence_error(tmp_path: 
     session.add(
         ObjectRow(
             id="not-a-uuid",
-            template_id=str(uuid4()),
+            template_id=str(DEFAULT_TEMPLATE_ID),
             template_version=1,
             properties_json="{}",
         )
@@ -320,21 +389,13 @@ def test_malformed_stored_object_uuid_raises_object_persistence_error(tmp_path: 
         engine.dispose()
 
 
-def test_malformed_stored_template_uuid_raises_object_persistence_error(tmp_path: Path) -> None:
-    repo, session, engine = _repo(tmp_path, "bad_template_uuid.sqlite3")
-    object_id = uuid4()
-    session.add(
-        ObjectRow(
-            id=str(object_id),
-            template_id="not-a-uuid",
-            template_version=1,
-            properties_json="{}",
-        )
-    )
-    session.commit()
+def test_add_rejects_missing_template_identity_with_object_persistence_error(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "missing_template_identity.sqlite3")
     try:
         with pytest.raises(ObjectPersistenceError):
-            repo.get(object_id)
+            repo.add(_object(template_id=uuid4(), template_version=1))
     finally:
         session.close()
         engine.dispose()
@@ -346,7 +407,7 @@ def test_malformed_properties_json_raises_object_persistence_error(tmp_path: Pat
     session.add(
         ObjectRow(
             id=str(object_id),
-            template_id=str(uuid4()),
+            template_id=str(DEFAULT_TEMPLATE_ID),
             template_version=1,
             properties_json="{bad json",
         )
@@ -368,7 +429,7 @@ def test_top_level_properties_json_that_is_not_object_raises_object_persistence_
     session.add(
         ObjectRow(
             id=str(object_id),
-            template_id=str(uuid4()),
+            template_id=str(DEFAULT_TEMPLATE_ID),
             template_version=1,
             properties_json="[]",
         )
@@ -385,10 +446,22 @@ def test_top_level_properties_json_that_is_not_object_raises_object_persistence_
 def test_invalid_stored_template_version_raises_object_persistence_error(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "bad_template_version.sqlite3")
     object_id = uuid4()
+    invalid_template_id = uuid4()
+    _store_template_identity(session, template_id=invalid_template_id)
+    session.add(
+        ObjectTemplateVersionRow(
+            template_id=str(invalid_template_id),
+            version=0,
+            status=ObjectTemplateVersionStatus.PUBLISHED.value,
+            parent_template_id=None,
+            parent_version=None,
+        )
+    )
+    session.flush()
     session.add(
         ObjectRow(
             id=str(object_id),
-            template_id=str(uuid4()),
+            template_id=str(invalid_template_id),
             template_version=0,
             properties_json="{}",
         )
@@ -397,6 +470,120 @@ def test_invalid_stored_template_version_raises_object_persistence_error(tmp_pat
     try:
         with pytest.raises(ObjectPersistenceError):
             repo.get(object_id)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_rejects_missing_exact_template_version_with_object_persistence_error(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "missing_template_version.sqlite3")
+    template_id = uuid4()
+    _store_template_version(session, template_id=template_id, version=1)
+    _store_template_version(session, template_id=template_id, version=3)
+    try:
+        with pytest.raises(ObjectPersistenceError):
+            repo.add(_object(template_id=template_id, template_version=2))
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_accepts_valid_exact_draft_template_version_at_persistence_layer(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "draft_template_version.sqlite3")
+    template_id = uuid4()
+    _store_template_version(
+        session,
+        template_id=template_id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+    )
+    object_value = _object(template_id=template_id, template_version=1)
+    try:
+        repo.add(object_value)
+        assert repo.get(object_value.id) == object_value
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_raw_delete_of_referenced_exact_template_version_is_restricted(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "delete_referenced_template_version.sqlite3")
+    template_id = uuid4()
+    _store_template_version(session, template_id=template_id, version=1)
+    object_value = _object(template_id=template_id, template_version=1)
+    try:
+        repo.add(object_value)
+        row = session.get(
+            ObjectTemplateVersionRow,
+            {"template_id": str(template_id), "version": 1},
+        )
+        assert row is not None
+        session.delete(row)
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.rollback()
+        session.close()
+        engine.dispose()
+
+
+def test_raw_delete_of_unreferenced_sibling_template_version_succeeds(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "delete_unreferenced_template_version.sqlite3")
+    template_id = uuid4()
+    _store_template_version(session, template_id=template_id, version=1)
+    _store_template_version(session, template_id=template_id, version=2)
+    object_value = _object(template_id=template_id, template_version=1)
+    try:
+        repo.add(object_value)
+        row = session.get(
+            ObjectTemplateVersionRow,
+            {"template_id": str(template_id), "version": 2},
+        )
+        assert row is not None
+        session.delete(row)
+        session.flush()
+        assert (
+            session.get(
+                ObjectTemplateVersionRow,
+                {"template_id": str(template_id), "version": 2},
+            )
+            is None
+        )
+    finally:
+        session.rollback()
+        session.close()
+        engine.dispose()
+
+
+def test_replace_rejects_missing_exact_template_version_without_partial_mutation(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_missing_template_version.sqlite3")
+    original = _object(properties={"hostname": "router-01"})
+    invalid_replacement = replace(
+        original,
+        template_version=2,
+        properties={"hostname": "router-02"},
+    )
+    try:
+        repo.add(original)
+        session.commit()
+
+        with pytest.raises(ObjectPersistenceError):
+            repo.replace(invalid_replacement)
+
+        session.rollback()
+
+        fresh_session = sessionmaker(engine, expire_on_commit=False)()
+        try:
+            fresh_repo = SqlAlchemyObjectRepository(fresh_session)
+            assert fresh_repo.get(original.id) == original
+        finally:
+            fresh_session.close()
     finally:
         session.close()
         engine.dispose()
