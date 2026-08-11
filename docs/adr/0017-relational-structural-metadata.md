@@ -42,6 +42,8 @@ Applied in this phase:
   physical composite foreign key, implemented in S3c
 - Object exact template pins -> relational exact-version columns plus physical
   composite foreign key, implemented in S3d
+- Runtime ComponentMembership edges -> relational current structural edge,
+  existing model retained and hardened in S3e
 - Object properties -> remain JSON as runtime dynamic values
 - ObjectChange before/after snapshots -> remain JSON as historical snapshots
 - DataTypeVersion constraints -> remain JSON as embedded constraint values, not

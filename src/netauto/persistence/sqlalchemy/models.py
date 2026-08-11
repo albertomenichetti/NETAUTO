@@ -290,6 +290,20 @@ class ObjectComponentRow(Base):
             ondelete="CASCADE",
             name="fk_object_components_child_object_id",
         ),
+        CheckConstraint(
+            "parent_object_id <> child_object_id",
+            name="ck_object_components_distinct_objects",
+        ),
+        CheckConstraint(
+            "slot_name <> ''",
+            name="ck_object_components_slot_name_not_empty",
+        ),
+        Index(
+            "ix_object_components_parent_slot_child",
+            "parent_object_id",
+            "slot_name",
+            "child_object_id",
+        ),
     )
 
     parent_object_id: Mapped[str] = mapped_column(Text, nullable=False)

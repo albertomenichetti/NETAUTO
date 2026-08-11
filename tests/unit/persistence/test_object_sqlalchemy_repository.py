@@ -121,6 +121,8 @@ def test_schema_encodes_object_and_membership_invariants(tmp_path: Path) -> None
         object_fks = inspector.get_foreign_keys("objects")
         object_indexes = inspector.get_indexes("objects")
         component_fks = inspector.get_foreign_keys("object_components")
+        component_checks = inspector.get_check_constraints("object_components")
+        component_indexes = inspector.get_indexes("object_components")
         component_columns = {
             column["name"] for column in inspector.get_columns("object_components")
         }
@@ -130,6 +132,19 @@ def test_schema_encodes_object_and_membership_invariants(tmp_path: Path) -> None
         assert len(object_fks) == 1
         assert component_columns == {"parent_object_id", "slot_name", "child_object_id"}
         assert len(component_fks) == 2
+        assert {
+            check["name"]: check["sqltext"] for check in component_checks
+        } == {
+            "ck_object_components_distinct_objects": "parent_object_id <> child_object_id",
+            "ck_object_components_slot_name_not_empty": "slot_name <> ''",
+        }
+        assert {
+            index["name"]: index["column_names"] for index in component_indexes
+        }["ix_object_components_parent_slot_child"] == [
+            "parent_object_id",
+            "slot_name",
+            "child_object_id",
+        ]
 
         template_fk = object_fks[0]
         assert template_fk["name"] == "fk_objects_template_version"
@@ -604,6 +619,40 @@ def test_add_membership_and_get_owner_round_trip(tmp_path: Path) -> None:
         engine.dispose()
 
 
+def test_same_template_parent_and_child_membership_is_allowed(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "same_template_membership.sqlite3")
+    parent = _object()
+    child = _object()
+    membership = _membership(parent_object_id=parent.id, child_object_id=child.id)
+    try:
+        repo.add(parent)
+        repo.add(child)
+        repo.add_membership(membership)
+        assert repo.get_owner(child.id) == membership
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_same_template_chain_is_allowed_when_objects_are_distinct(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "same_template_chain.sqlite3")
+    root = _object()
+    middle = _object()
+    leaf = _object()
+    root_edge = _membership(parent_object_id=root.id, child_object_id=middle.id)
+    middle_edge = _membership(parent_object_id=middle.id, child_object_id=leaf.id)
+    try:
+        for object_value in (root, middle, leaf):
+            repo.add(object_value)
+        repo.add_membership(root_edge)
+        repo.add_membership(middle_edge)
+        assert repo.get_owner(middle.id) == root_edge
+        assert repo.get_owner(leaf.id) == middle_edge
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_add_membership_parent_missing_or_child_missing_raises_object_not_found(
     tmp_path: Path,
 ) -> None:
@@ -617,6 +666,46 @@ def test_add_membership_parent_missing_or_child_missing_raises_object_not_found(
         with pytest.raises(ObjectNotFound):
             repo.add_membership(_membership(parent_object_id=parent.id, child_object_id=child.id))
     finally:
+        session.close()
+        engine.dispose()
+
+
+def test_database_rejects_missing_parent_endpoint_membership_row(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "membership_missing_parent_fk.sqlite3")
+    child = _object()
+    try:
+        repo.add(child)
+        session.add(
+            ObjectComponentRow(
+                parent_object_id=str(uuid4()),
+                slot_name="children",
+                child_object_id=str(child.id),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.rollback()
+        session.close()
+        engine.dispose()
+
+
+def test_database_rejects_missing_child_endpoint_membership_row(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "membership_missing_child_fk.sqlite3")
+    parent = _object()
+    try:
+        repo.add(parent)
+        session.add(
+            ObjectComponentRow(
+                parent_object_id=str(parent.id),
+                slot_name="children",
+                child_object_id=str(uuid4()),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.rollback()
         session.close()
         engine.dispose()
 
@@ -677,6 +766,48 @@ def test_database_physically_enforces_unique_child_ownership(tmp_path: Path) -> 
             ObjectComponentRow(
                 parent_object_id=str(parent_two.id),
                 slot_name="modules",
+                child_object_id=str(child.id),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.rollback()
+        session.close()
+        engine.dispose()
+
+
+def test_database_rejects_same_object_instance_as_parent_and_child(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "same_instance_membership.sqlite3")
+    object_value = _object()
+    try:
+        repo.add(object_value)
+        session.add(
+            ObjectComponentRow(
+                parent_object_id=str(object_value.id),
+                slot_name="children",
+                child_object_id=str(object_value.id),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.rollback()
+        session.close()
+        engine.dispose()
+
+
+def test_database_rejects_empty_slot_name_membership_row(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "empty_slot_membership.sqlite3")
+    parent = _object()
+    child = _object()
+    try:
+        repo.add(parent)
+        repo.add(child)
+        session.add(
+            ObjectComponentRow(
+                parent_object_id=str(parent.id),
+                slot_name="",
                 child_object_id=str(child.id),
             )
         )

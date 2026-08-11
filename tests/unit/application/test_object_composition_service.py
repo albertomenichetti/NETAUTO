@@ -292,6 +292,30 @@ def test_attach_persists_membership_without_mutating_objects() -> None:
     assert commits[0] == 1
 
 
+def test_attach_allows_same_template_parent_and_child_when_objects_are_distinct() -> None:
+    service, _datatypes, object_templates, objects, _relationships, commits = _service()
+    node_template = _template(name="node")
+    node_version = _version(
+        node_template.id,
+        components=(
+            _component("children", template_id=node_template.id, template_version=1),
+        ),
+    )
+    _store_template_versions(object_templates, node_template, (node_version,))
+    parent = _create_object(objects, template_id=node_template.id, template_version=1)
+    child = _create_object(objects, template_id=node_template.id, template_version=1)
+
+    membership = service.attach_component(
+        parent_object_id=parent.id,
+        slot_name="children",
+        child_object_id=child.id,
+    )
+
+    assert membership == _membership(parent.id, "children", child.id)
+    assert objects.get_owner(child.id) == membership
+    assert commits[0] == 1
+
+
 def test_attach_requires_existing_parent_and_child() -> None:
     service, _datatypes, object_templates, objects, _relationships, commits = _service()
     slot_target = _template(name="interface")
