@@ -22,8 +22,10 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionStatus,
 )
 from netauto.persistence.sqlalchemy.models import (
+    ObjectRow,
     ObjectTemplateRow,
     ObjectTemplateVersionRow,
+    RelationshipDefinitionRow,
 )
 
 
@@ -221,10 +223,63 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
             return None
         return _row_to_object_template(row)
 
+    def _assert_delete_dependencies_absent(self, template_id: UUID) -> None:
+        template_id_text = str(template_id)
+
+        object_reference = self._session.scalar(
+            select(ObjectRow.id)
+            .where(ObjectRow.template_id == template_id_text)
+            .limit(1)
+        )
+        if object_reference is not None:
+            raise ObjectTemplatePersistenceError(
+                "ObjectTemplate deletion blocked by a persisted object reference."
+            )
+
+        inherited_reference = self._session.scalar(
+            select(ObjectTemplateVersionRow.template_id)
+            .where(
+                ObjectTemplateVersionRow.template_id != template_id_text,
+                ObjectTemplateVersionRow.parent_template_id == template_id_text,
+            )
+            .limit(1)
+        )
+        if inherited_reference is not None:
+            raise ObjectTemplatePersistenceError(
+                "ObjectTemplate deletion blocked by a persisted inheritance reference."
+            )
+
+        component_rows = self._session.scalars(
+            select(ObjectTemplateVersionRow).where(
+                ObjectTemplateVersionRow.template_id != template_id_text,
+            )
+        ).all()
+        for row in component_rows:
+            components = _deserialize_components(row.components_json)
+            if any(component.template_id == template_id for component in components):
+                raise ObjectTemplatePersistenceError(
+                    "ObjectTemplate deletion blocked by a persisted component reference."
+                )
+
+        relationship_reference = self._session.scalar(
+            select(RelationshipDefinitionRow.id)
+            .where(
+                (RelationshipDefinitionRow.source_template_id == template_id_text)
+                | (RelationshipDefinitionRow.target_template_id == template_id_text)
+            )
+            .limit(1)
+        )
+        if relationship_reference is not None:
+            raise ObjectTemplatePersistenceError(
+                "ObjectTemplate deletion blocked by a persisted relationship-definition "
+                "reference."
+            )
+
     def delete(self, template_id: UUID) -> None:
         owner = self._session.get(ObjectTemplateRow, str(template_id))
         if owner is None:
             raise ObjectTemplateNotFound("ObjectTemplate does not exist.")
+        self._assert_delete_dependencies_absent(template_id)
         self._session.execute(
             delete(ObjectTemplateVersionRow).where(
                 ObjectTemplateVersionRow.template_id == str(template_id)

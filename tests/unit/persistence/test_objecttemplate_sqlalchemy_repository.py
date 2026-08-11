@@ -3,7 +3,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from netauto.core.objecttemplate import (
@@ -21,6 +22,7 @@ from netauto.core.objecttemplate import (
 )
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
 from netauto.persistence.sqlalchemy.models import (
+    ObjectRow,
     ObjectTemplateRow,
     ObjectTemplateVersionRow,
     RelationshipDefinitionRow,
@@ -435,30 +437,201 @@ def test_delete_does_not_commit_inside_repository(tmp_path: Path) -> None:
         engine.dispose()
 
 
-def test_delete_relationship_definition_fk_restrict_maps_to_persistence_error(
+def test_delete_blocked_by_runtime_object_persistence_safety_net(
     tmp_path: Path,
 ) -> None:
-    repo, session, engine = _repo(tmp_path, "delete_fk_restrict.sqlite3")
-    source = _template(name="device")
-    target = _template(name="credential")
+    repo, session, engine = _repo(tmp_path, "delete_object_ref.sqlite3")
+    target = _template(name="device")
     try:
-        repo.add(source)
         repo.add(target)
-        repo.add_version(_version(source.id, 1))
         repo.add_version(_version(target.id, 1))
+        session.add(
+            ObjectRow(
+                id=str(uuid4()),
+                template_id=str(target.id),
+                template_version=1,
+                properties_json="{}",
+            )
+        )
+        session.flush()
+
+        with pytest.raises(ObjectTemplatePersistenceError, match="object reference"):
+            repo.delete(target.id)
+
+        assert repo.get(target.id) == target
+        assert tuple(version.version for version in repo.list_versions(target.id)) == (1,)
+        assert session.get(ObjectRow, session.scalar(select(ObjectRow.id))) is not None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_delete_blocked_by_inheritance_persistence_safety_net(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "delete_inheritance_ref.sqlite3")
+    target = _template(name="device")
+    child = _template(name="router")
+    try:
+        repo.add(target)
+        repo.add(child)
+        repo.add_version(_version(target.id, 1))
+        repo.add_version(
+            _version(
+                child.id,
+                1,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+                parent=ObjectTemplateVersionRef(template_id=target.id, version=1),
+            )
+        )
+
+        with pytest.raises(ObjectTemplatePersistenceError, match="inheritance reference"):
+            repo.delete(target.id)
+
+        assert repo.get(target.id) == target
+        assert tuple(version.version for version in repo.list_versions(target.id)) == (1,)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_delete_blocked_by_component_persistence_safety_net(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "delete_component_ref.sqlite3")
+    target = _template(name="interface")
+    owner = _template(name="device")
+    try:
+        repo.add(target)
+        repo.add(owner)
+        repo.add_version(_version(target.id, 1))
+        repo.add_version(
+            _version(
+                owner.id,
+                1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                components=(
+                    _component("ports", template_id=target.id),
+                    _component("backup", template_id=uuid4()),
+                ),
+            )
+        )
+
+        with pytest.raises(ObjectTemplatePersistenceError, match="component reference"):
+            repo.delete(target.id)
+
+        assert repo.get(target.id) == target
+        assert tuple(version.version for version in repo.list_versions(target.id)) == (1,)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_delete_blocked_by_relationship_definition_repository_precheck(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "delete_relationship_ref.sqlite3")
+    target = _template(name="device")
+    other = _template(name="credential")
+    try:
+        repo.add(target)
+        repo.add(other)
+        repo.add_version(_version(target.id, 1))
+        repo.add_version(_version(other.id, 1))
         session.add(
             RelationshipDefinitionRow(
                 id=str(uuid4()),
-                source_template_id=str(source.id),
-                target_template_id=str(target.id),
+                source_template_id=str(target.id),
+                target_template_id=str(other.id),
                 forward_name="uses",
                 reverse_name="is_used_by",
             )
         )
         session.flush()
 
+        with pytest.raises(
+            ObjectTemplatePersistenceError,
+            match="relationship-definition reference",
+        ):
+            repo.delete(target.id)
+
+        assert repo.get(target.id) == target
+        assert tuple(version.version for version in repo.list_versions(target.id)) == (1,)
+        assert session.get(
+            RelationshipDefinitionRow,
+            session.scalar(select(RelationshipDefinitionRow.id)),
+        ) is not None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_delete_discovers_late_relationship_blocker_before_mutation(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "delete_late_relationship_ref.sqlite3")
+    target = _template(name="device")
+    other = _template(name="credential")
+    try:
+        repo.add(target)
+        repo.add(other)
+        repo.add_version(_version(target.id, 1))
+        repo.add_version(_version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED))
+        repo.add_version(_version(other.id, 1))
+        session.add(
+            RelationshipDefinitionRow(
+                id=str(uuid4()),
+                source_template_id=str(other.id),
+                target_template_id=str(target.id),
+                forward_name="binds",
+                reverse_name="bound_by",
+            )
+        )
+        session.flush()
+
         with pytest.raises(ObjectTemplatePersistenceError):
-            repo.delete(source.id)
+            repo.delete(target.id)
+
+        assert tuple(version.version for version in repo.list_versions(target.id)) == (1, 2)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_raw_session_delete_still_hits_relationship_definition_fk_restrict(
+    tmp_path: Path,
+) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "raw_fk_restrict.sqlite3")
+    target = _template(name="device")
+    other = _template(name="credential")
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(target.id),
+                namespace=target.namespace,
+                name=target.name,
+                description=target.description,
+                abstract=target.abstract,
+            )
+        )
+        session.add(
+            ObjectTemplateRow(
+                id=str(other.id),
+                namespace=other.namespace,
+                name=other.name,
+                description=other.description,
+                abstract=other.abstract,
+            )
+        )
+        session.add(
+            RelationshipDefinitionRow(
+                id=str(uuid4()),
+                source_template_id=str(target.id),
+                target_template_id=str(other.id),
+                forward_name="uses",
+                reverse_name="is_used_by",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(IntegrityError):
+            session.execute(
+                delete(ObjectTemplateRow).where(ObjectTemplateRow.id == str(target.id))
+            )
     finally:
         session.close()
         engine.dispose()

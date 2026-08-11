@@ -351,7 +351,7 @@ printf "\n${GREEN}(versioni objecttemplate router presenti, json fmt)\n${NC}"
 
 
 printf "\n${GREEN}(tenativo di eliminazione objecttemplate network_interface; deve fallire)\n${NC}"
-netid=$("${CMD[@]}" --output "json" datatype show-name network network_interface | jq -r '.id')
+netid=$("${CMD[@]}" --output "json" object-template show-name network network_interface | jq -r '.id')
 echo -e "id:${netid}"
 "${CMD[@]}" --output "json" object-template delete ${netid}
 
@@ -383,3 +383,8 @@ echo -e "done"
 printf "\n${GREEN}(versioni objecttemplate router presenti, json fmt)\n${NC}"
 "${CMD[@]}" --output json object-template version list ${otid3}
 
+
+printf "\n${GREEN}(eliminazione objecttemplate router)\n${NC}"
+netid=$("${CMD[@]}" --output "json" object-template show-name network router | jq -r '.id')
+echo -e "id:${netid}"
+"${CMD[@]}" --output "json" object-template delete ${netid}
