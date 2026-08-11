@@ -55,6 +55,9 @@ The platform intentionally relies on stable ancestry identity for:
 - Exact parent versions may move forward, but never backward.
 - Historical DEPRECATED lineage remains authoritative for parent identity and
   monotonic parent-version evolution.
+- Repository replacement now also prevents changing the exact parent pin of an
+  already PUBLISHED or DEPRECATED ObjectTemplateVersion, because the exact
+  published/deprecated schema snapshot is immutable in S4b.
 - Supported create, revise, create-next, and publish workflows must validate:
   - exact parent existence
   - self-inheritance and inheritance cycles
@@ -64,6 +67,9 @@ The platform intentionally relies on stable ancestry identity for:
   - non-null parent -> exact existing ObjectTemplateVersion
   - parent columns -> both NULL or both non-NULL
   - referenced exact parent version -> `RESTRICT` deletion
+- Repository immutability enforcement now also guarantees:
+  - PUBLISHED -> parent pin cannot be rewritten through replacement
+  - DEPRECATED -> parent pin cannot be rewritten through replacement
 - Stable parent identity, monotonic parent-version evolution, self-inheritance
   prevention, cycle prevention, and parent publication status remain semantic
   invariants enforced by supported workflows.

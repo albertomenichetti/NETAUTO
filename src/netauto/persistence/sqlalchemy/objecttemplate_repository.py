@@ -21,6 +21,11 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )
+from netauto.core.objecttemplate.repository import (
+    ObjectTemplateReplaceMode,
+    validate_object_template_version_add,
+    validate_object_template_version_replace,
+)
 from netauto.persistence.sqlalchemy.models import (
     ObjectRow,
     ObjectTemplateComponentRow,
@@ -345,6 +350,7 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
         )
         if existing is not None:
             raise ObjectTemplateVersionAlreadyExists("ObjectTemplate version already exists.")
+        validate_object_template_version_add(version)
         self._session.add(
             ObjectTemplateVersionRow(
                 template_id=str(version.template_id),
@@ -405,7 +411,18 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
         )
         if row is None:
             raise ObjectTemplateVersionNotFound("ObjectTemplate version does not exist.")
+        current = _row_to_object_template_version(
+            row,
+            self._property_rows_for_version(version.template_id, version.version),
+            self._component_rows_for_version(version.template_id, version.version),
+        )
+        replace_mode = validate_object_template_version_replace(current, version)
         try:
+            if replace_mode == "status_only":
+                row.status = version.status.value
+                self._session.flush()
+                return
+
             row.status = version.status.value
             row.parent_template_id = (
                 str(version.parent.template_id) if version.parent is not None else None

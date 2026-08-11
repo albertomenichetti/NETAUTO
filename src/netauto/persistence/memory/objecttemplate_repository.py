@@ -11,6 +11,10 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionAlreadyExists,
     ObjectTemplateVersionNotFound,
 )
+from netauto.core.objecttemplate.repository import (
+    validate_object_template_version_add,
+    validate_object_template_version_replace,
+)
 
 
 class InMemoryObjectTemplateRepository(ObjectTemplateRepository):
@@ -60,6 +64,7 @@ class InMemoryObjectTemplateRepository(ObjectTemplateRepository):
         version_key = (version.template_id, version.version)
         if version_key in self._versions:
             raise ObjectTemplateVersionAlreadyExists("ObjectTemplate version already exists.")
+        validate_object_template_version_add(version)
         self._versions[version_key] = version
 
     def get_version(self, template_id: UUID, version: int) -> ObjectTemplateVersion | None:
@@ -76,6 +81,8 @@ class InMemoryObjectTemplateRepository(ObjectTemplateRepository):
 
     def replace_version(self, version: ObjectTemplateVersion) -> None:
         version_key = (version.template_id, version.version)
-        if version_key not in self._versions:
+        current = self._versions.get(version_key)
+        if current is None:
             raise ObjectTemplateVersionNotFound("ObjectTemplate version does not exist.")
+        validate_object_template_version_replace(current, version)
         self._versions[version_key] = version

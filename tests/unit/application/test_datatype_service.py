@@ -394,7 +394,28 @@ def test_delete_referenced_datatype_is_blocked_for_all_template_statuses(
         ),
     )
     object_templates.add(template)
-    object_templates.add_version(template_version)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=template_version.template_id,
+            version=template_version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=template_version.properties,
+        )
+    )
+    if template_version.status is ObjectTemplateVersionStatus.DRAFT:
+        pass
+    elif template_version.status is ObjectTemplateVersionStatus.PUBLISHED:
+        object_templates.replace_version(template_version)
+    else:
+        object_templates.replace_version(
+            ObjectTemplateVersion(
+                template_id=template_version.template_id,
+                version=template_version.version,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=template_version.properties,
+            )
+        )
+        object_templates.replace_version(template_version)
 
     with pytest.raises(DataTypeInUse):
         service.delete_datatype(datatype.id)
@@ -436,7 +457,15 @@ def test_delete_referenced_datatype_is_blocked_for_older_referenced_version() ->
         ),
     )
     object_templates.add(template)
-    object_templates.add_version(template_version)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=template_version.template_id,
+            version=template_version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=template_version.properties,
+        )
+    )
+    object_templates.replace_version(template_version)
 
     with pytest.raises(DataTypeInUse):
         service.delete_datatype(datatype.id)
@@ -480,7 +509,15 @@ def test_delete_unrelated_datatype_ignores_other_template_references() -> None:
         ),
     )
     object_templates.add(template)
-    object_templates.add_version(template_version)
+    object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=template_version.template_id,
+            version=template_version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=template_version.properties,
+        )
+    )
+    object_templates.replace_version(template_version)
 
     service.delete_datatype(datatype_a.id)
 

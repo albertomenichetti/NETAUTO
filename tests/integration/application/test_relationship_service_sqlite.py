@@ -66,6 +66,23 @@ def _definition(*, source_template_id, target_template_id) -> RelationshipDefini
     )
 
 
+def _persist_template_version(
+    uow: SqlAlchemyUnitOfWork,
+    version: ObjectTemplateVersion,
+) -> None:
+    draft = ObjectTemplateVersion(
+        template_id=version.template_id,
+        version=version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=version.parent,
+        properties=version.properties,
+        components=version.components,
+    )
+    uow.object_templates.add_version(draft)
+    if version.status is not ObjectTemplateVersionStatus.DRAFT:
+        uow.object_templates.replace_version(version)
+
+
 def test_relationship_service_sqlite_vertical_flow(tmp_path: Path) -> None:
     engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'relationship-service.sqlite3'}")
     create_schema(engine)
@@ -99,16 +116,17 @@ def test_relationship_service_sqlite_vertical_flow(tmp_path: Path) -> None:
         with uow_factory() as uow:
             for template in (network_device, router, credential, other):
                 uow.object_templates.add(template)
-            uow.object_templates.add_version(_version(network_device.id, version=1))
-            uow.object_templates.add_version(
+            _persist_template_version(uow, _version(network_device.id, version=1))
+            _persist_template_version(
+                uow,
                 _version(
                     router.id,
                     version=1,
                     parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
                 )
             )
-            uow.object_templates.add_version(_version(credential.id, version=1))
-            uow.object_templates.add_version(_version(other.id, version=1))
+            _persist_template_version(uow, _version(credential.id, version=1))
+            _persist_template_version(uow, _version(other.id, version=1))
             uow.relationship_definitions.add(definition)
             uow.relationship_definitions.add(other_definition)
             uow.objects.add(router_object)

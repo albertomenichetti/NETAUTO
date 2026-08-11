@@ -62,6 +62,23 @@ def _membership(parent_object_id: UUID, child_object_id: UUID) -> ComponentMembe
     )
 
 
+def _persist_template_version(
+    uow: SqlAlchemyUnitOfWork,
+    version: ObjectTemplateVersion,
+) -> None:
+    draft = ObjectTemplateVersion(
+        template_id=version.template_id,
+        version=version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=version.parent,
+        properties=version.properties,
+        components=version.components,
+    )
+    uow.object_templates.add_version(draft)
+    if version.status is not ObjectTemplateVersionStatus.DRAFT:
+        uow.object_templates.replace_version(version)
+
+
 def test_object_deletion_cleans_up_incident_relationships_before_fk_restrict(
     tmp_path: Path,
 ) -> None:
@@ -85,7 +102,7 @@ def test_object_deletion_cleans_up_incident_relationships_before_fk_restrict(
     try:
         with uow_factory() as uow:
             uow.object_templates.add(node)
-            uow.object_templates.add_version(_version(node.id))
+            _persist_template_version(uow, _version(node.id))
 
             parent = _object(template_id=node.id)
             child = _object(template_id=node.id)
@@ -181,7 +198,7 @@ def test_relationship_definition_delete_is_restrictive_while_runtime_edges_exist
     try:
         with uow_factory() as uow:
             uow.object_templates.add(node)
-            uow.object_templates.add_version(_version(node.id))
+            _persist_template_version(uow, _version(node.id))
             source = _object(template_id=node.id)
             target = _object(template_id=node.id)
             uow.objects.add(source)

@@ -174,7 +174,29 @@ def _store_template(
         components=components,
     )
     repo.add(template)
-    repo.add_version(template_version)
+    draft = ObjectTemplateVersion(
+        template_id=template_version.template_id,
+        version=template_version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=template_version.parent,
+        properties=template_version.properties,
+        components=template_version.components,
+    )
+    repo.add_version(draft)
+    if template_version.status is ObjectTemplateVersionStatus.PUBLISHED:
+        repo.replace_version(template_version)
+    elif template_version.status is ObjectTemplateVersionStatus.DEPRECATED:
+        repo.replace_version(
+            ObjectTemplateVersion(
+                template_id=draft.template_id,
+                version=draft.version,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=draft.parent,
+                properties=draft.properties,
+                components=draft.components,
+            )
+        )
+        repo.replace_version(template_version)
     return template, template_version
 
 
@@ -267,7 +289,15 @@ def test_detach_preserves_detached_component_subtree(
     node, _node_v1 = _store_template(
         templates,
         name="node",
-        components=(_component("children", template_id=uuid4()),),
+        status=ObjectTemplateVersionStatus.DRAFT,
+    )
+    templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=node.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            components=(_component("children", template_id=node.id),),
+        )
     )
     templates.replace_version(
         ObjectTemplateVersion(
@@ -391,7 +421,15 @@ def test_attach_incompatible_duplicate_and_cycle_errors_flow_through_mapping(
     node, _node_v1 = _store_template(
         templates,
         name="node",
-        components=(),
+        status=ObjectTemplateVersionStatus.DRAFT,
+    )
+    templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=node.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            components=(_component("children", template_id=node.id),),
+        )
     )
     templates.replace_version(
         ObjectTemplateVersion(

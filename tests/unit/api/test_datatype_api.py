@@ -430,7 +430,15 @@ async def test_delete_referenced_datatype_returns_409_datatype_in_use() -> None:
             ),
         )
         object_templates.add(template)
-        object_templates.add_version(template_version)
+        object_templates.add_version(
+            ObjectTemplateVersion(
+                template_id=template_version.template_id,
+                version=template_version.version,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=template_version.properties,
+            )
+        )
+        object_templates.replace_version(template_version)
         response = await client.delete(f"/api/v1/datatypes/{datatype_id}")
         still_exists = await client.get(f"/api/v1/datatypes/{datatype_id}")
 

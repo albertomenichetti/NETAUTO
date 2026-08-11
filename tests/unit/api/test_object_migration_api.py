@@ -118,10 +118,24 @@ class BrokenObjectUnitOfWork(FakeUnitOfWork):
             ObjectTemplateVersion(
                 template_id=template_id,
                 version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+            )
+        )
+        object_templates.replace_version(
+            ObjectTemplateVersion(
+                template_id=template_id,
+                version=1,
                 status=ObjectTemplateVersionStatus.PUBLISHED,
             )
         )
         object_templates.add_version(
+            ObjectTemplateVersion(
+                template_id=template_id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+            )
+        )
+        object_templates.replace_version(
             ObjectTemplateVersion(
                 template_id=template_id,
                 version=2,
@@ -250,7 +264,29 @@ def _store_template_versions(
     )
     repo.add(template)
     for version in versions:
-        repo.add_version(version)
+        draft = ObjectTemplateVersion(
+            template_id=version.template_id,
+            version=version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=version.parent,
+            properties=version.properties,
+            components=version.components,
+        )
+        repo.add_version(draft)
+        if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+            repo.replace_version(
+                ObjectTemplateVersion(
+                    template_id=draft.template_id,
+                    version=draft.version,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    parent=draft.parent,
+                    properties=draft.properties,
+                    components=draft.components,
+                )
+            )
+            repo.replace_version(version)
     return template
 
 
@@ -366,8 +402,11 @@ def test_analysis_response_reports_additive_delta(
     )
     _store_datatype_versions(datatypes, hostname, (hostname_v1,))
     _store_datatype_versions(datatypes, serial, (serial_v1,))
-    templates.add(power_supply)
-    templates.add_version(_version(power_supply.id, version=1))
+    _store_template_versions(
+        templates,
+        name="power_supply",
+        versions=(_version(power_supply.id, version=1),),
+    )
 
     template_id = uuid4()
     _store_template_versions(

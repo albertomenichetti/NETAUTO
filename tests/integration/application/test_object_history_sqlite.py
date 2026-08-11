@@ -76,6 +76,23 @@ def _object(
     )
 
 
+def _persist_template_version(
+    uow: SqlAlchemyUnitOfWork,
+    version: ObjectTemplateVersion,
+) -> None:
+    draft = ObjectTemplateVersion(
+        template_id=version.template_id,
+        version=version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=version.parent,
+        properties=version.properties,
+        components=version.components,
+    )
+    uow.object_templates.add_version(draft)
+    if version.status is not ObjectTemplateVersionStatus.DRAFT:
+        uow.object_templates.replace_version(version)
+
+
 def test_object_history_survives_create_update_delete_and_rollback_is_atomic(
     tmp_path: Path,
 ) -> None:
@@ -120,7 +137,8 @@ def test_object_history_survives_create_update_delete_and_rollback_is_atomic(
             )
             uow.datatypes.replace_version(hostname_v1)
             uow.object_templates.add(template)
-            uow.object_templates.add_version(
+            _persist_template_version(
+                uow,
                 _version(
                     template.id,
                     properties=(
@@ -131,7 +149,7 @@ def test_object_history_survives_create_update_delete_and_rollback_is_atomic(
                             required=True,
                         ),
                     ),
-                )
+                ),
             )
             uow.commit()
 

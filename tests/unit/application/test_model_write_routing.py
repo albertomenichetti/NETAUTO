@@ -421,7 +421,14 @@ def test_object_template_service_routes_mutations_to_model_write_and_reads_to_or
         version=1,
         status=ObjectTemplateVersionStatus.PUBLISHED,
     )
-    uow.object_templates.add_version(published)
+    uow.object_templates.add_version(
+        _template_version(
+            template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+        )
+    )
+    uow.object_templates.replace_version(published)
     service.create_next_version(template_id=template.id, source_version=1)
     assert ordinary.calls == 0
     assert model.calls == 1
@@ -445,7 +452,14 @@ def test_object_template_service_routes_mutations_to_model_write_and_reads_to_or
         version=1,
         status=ObjectTemplateVersionStatus.PUBLISHED,
     )
-    uow.object_templates.add_version(published)
+    uow.object_templates.add_version(
+        _template_version(
+            template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+        )
+    )
+    uow.object_templates.replace_version(published)
     service.deprecate_version(template_id=template.id, version=1)
     assert ordinary.calls == 0
     assert model.calls == 1
@@ -513,8 +527,14 @@ def test_relationship_definition_service_routes_mutations_to_model_write_and_rea
     service, uow, ordinary, model = make_service()
     uow.object_templates.add(source)
     uow.object_templates.add(target)
-    uow.object_templates.add_version(source_v1)
-    uow.object_templates.add_version(target_v1)
+    uow.object_templates.add_version(
+        _template_version(source.id, version=1, status=ObjectTemplateVersionStatus.DRAFT)
+    )
+    uow.object_templates.replace_version(source_v1)
+    uow.object_templates.add_version(
+        _template_version(target.id, version=1, status=ObjectTemplateVersionStatus.DRAFT)
+    )
+    uow.object_templates.replace_version(target_v1)
     created = service.create_relationship_definition(
         source_template_id=source.id,
         target_template_id=target.id,
@@ -605,9 +625,28 @@ def test_runtime_services_remain_on_ordinary_factory_only() -> None:
     uow.datatypes.replace_version(datatype_version)
     uow.object_templates.add(template)
     uow.object_templates.add(other_template)
-    uow.object_templates.add_version(template_v1)
-    uow.object_templates.add_version(template_v2)
-    uow.object_templates.add_version(other_template_v1)
+    uow.object_templates.add_version(
+        _template_version(
+            template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=template_v1.properties,
+        )
+    )
+    uow.object_templates.replace_version(template_v1)
+    uow.object_templates.add_version(
+        _template_version(
+            template.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=template_v2.properties,
+        )
+    )
+    uow.object_templates.replace_version(template_v2)
+    uow.object_templates.add_version(
+        _template_version(other_template.id, version=1, status=ObjectTemplateVersionStatus.DRAFT)
+    )
+    uow.object_templates.replace_version(other_template_v1)
     created = ObjectApplicationService(ordinary).create_object(
         template_id=template.id,
         template_version=1,

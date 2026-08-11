@@ -5,12 +5,14 @@ import pytest
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateAlreadyExists,
+    ObjectTemplateComponent,
     ObjectTemplateNotFound,
+    ObjectTemplatePersistenceError,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionAlreadyExists,
-    ObjectTemplateVersioningService,
     ObjectTemplateVersionNotFound,
+    ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )
 from netauto.persistence.memory.objecttemplate_repository import (
@@ -44,14 +46,50 @@ def _version(
     version: int,
     *,
     status: ObjectTemplateVersionStatus = ObjectTemplateVersionStatus.DRAFT,
+    parent: ObjectTemplateVersionRef | None = None,
     properties: tuple[ObjectTemplateProperty, ...] = (),
+    components: tuple[ObjectTemplateComponent, ...] = (),
 ) -> ObjectTemplateVersion:
     return ObjectTemplateVersion(
         template_id=template_id,
         version=version,
         status=status,
+        parent=parent,
         properties=properties,
+        components=components,
     )
+
+
+def _store_versions(
+    repo: InMemoryObjectTemplateRepository,
+    template: ObjectTemplate,
+    versions: tuple[ObjectTemplateVersion, ...],
+) -> None:
+    repo.add(template)
+    for version in versions:
+        draft = ObjectTemplateVersion(
+            template_id=version.template_id,
+            version=version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=version.parent,
+            properties=version.properties,
+            components=version.components,
+        )
+        repo.add_version(draft)
+        if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+            repo.replace_version(
+                ObjectTemplateVersion(
+                    template_id=draft.template_id,
+                    version=draft.version,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    parent=draft.parent,
+                    properties=draft.properties,
+                    components=draft.components,
+                )
+            )
+            repo.replace_version(version)
 
 
 def test_list_empty() -> None:
@@ -149,8 +187,7 @@ def test_add_version() -> None:
     template = _template()
     version = _version(template.id, 1, properties=(_property("hostname"),))
 
-    repo.add(template)
-    repo.add_version(version)
+    _store_versions(repo, template, (version,))
 
     assert repo.get_version(template.id, 1) == version
 
@@ -180,8 +217,7 @@ def test_get_version_exact() -> None:
     template = _template()
     version = _version(template.id, 2)
 
-    repo.add(template)
-    repo.add_version(version)
+    _store_versions(repo, template, (version,))
 
     assert repo.get_version(template.id, 2) == version
 
@@ -199,10 +235,7 @@ def test_list_versions_ascending() -> None:
     v1 = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     v2 = _version(template.id, 2)
 
-    repo.add(template)
-    repo.add_version(v5)
-    repo.add_version(v1)
-    repo.add_version(v2)
+    _store_versions(repo, template, (v5, v1, v2))
 
     versions = repo.list_versions(template.id)
 
@@ -223,11 +256,15 @@ def test_delete_removes_identity_and_all_versions_only_for_target() -> None:
     repo = InMemoryObjectTemplateRepository()
     target = _template(name="device")
     unrelated = _template(name="router")
-    repo.add(target)
-    repo.add(unrelated)
-    repo.add_version(_version(target.id, 1))
-    repo.add_version(_version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED))
-    repo.add_version(_version(unrelated.id, 1))
+    _store_versions(
+        repo,
+        target,
+        (
+            _version(target.id, 1),
+            _version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED),
+        ),
+    )
+    _store_versions(repo, unrelated, (_version(unrelated.id, 1),))
 
     repo.delete(target.id)
 
@@ -247,17 +284,18 @@ def test_delete_missing_identity_rejected() -> None:
 
 def test_replace_existing_version() -> None:
     repo = InMemoryObjectTemplateRepository()
-    service = ObjectTemplateVersioningService()
     template = _template()
     draft = _version(template.id, 1, properties=(_property("hostname"),))
-    revised = service.revise_draft(
-        draft,
+    revised = ObjectTemplateVersion(
+        template_id=draft.template_id,
+        version=draft.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
         parent=None,
         properties=(_property("serial"),),
+        components=draft.components,
     )
 
-    repo.add(template)
-    repo.add_version(draft)
+    _store_versions(repo, template, (draft,))
     repo.replace_version(revised)
 
     loaded = repo.get_version(template.id, 1)
@@ -278,18 +316,30 @@ def test_replace_missing_version_rejected() -> None:
 
 def test_replaced_snapshot_keeps_same_key_and_exposes_new_state() -> None:
     repo = InMemoryObjectTemplateRepository()
-    service = ObjectTemplateVersioningService()
     template = _template()
-    published = _version(
+    draft = _version(
         template.id,
         1,
-        status=ObjectTemplateVersionStatus.PUBLISHED,
         properties=(_property("hostname"),),
     )
-    deprecated = service.deprecate(published)
+    published = ObjectTemplateVersion(
+        template_id=draft.template_id,
+        version=draft.version,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=draft.parent,
+        properties=draft.properties,
+        components=draft.components,
+    )
+    deprecated = ObjectTemplateVersion(
+        template_id=published.template_id,
+        version=published.version,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=published.parent,
+        properties=published.properties,
+        components=published.components,
+    )
 
-    repo.add(template)
-    repo.add_version(published)
+    _store_versions(repo, template, (published,))
     repo.replace_version(deprecated)
 
     loaded = repo.get_version(template.id, 1)
@@ -299,3 +349,230 @@ def test_replaced_snapshot_keeps_same_key_and_exposes_new_state() -> None:
     assert loaded.template_id == template.id
     assert loaded.version == 1
     assert loaded.status is ObjectTemplateVersionStatus.DEPRECATED
+
+
+def test_add_version_requires_draft_status() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    published = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    deprecated = _version(template.id, 1, status=ObjectTemplateVersionStatus.DEPRECATED)
+
+    repo.add(template)
+
+    with pytest.raises(ObjectTemplatePersistenceError):
+        repo.add_version(published)
+    with pytest.raises(ObjectTemplatePersistenceError):
+        repo.add_version(deprecated)
+    assert repo.get_version(template.id, 1) is None
+
+
+def test_duplicate_version_precedes_add_status_validation() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    draft = _version(template.id, 1)
+    published = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+
+    _store_versions(repo, template, (draft,))
+
+    with pytest.raises(ObjectTemplateVersionAlreadyExists):
+        repo.add_version(published)
+
+
+def test_replace_version_allows_draft_revision_of_parent_properties_and_components() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template(name="child")
+    original = _version(template.id, 1, properties=(_property("hostname"),))
+    parent = _template(name="parent")
+    revised = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=2),
+        properties=(original.properties[0], _property("serial")),
+    )
+
+    repo.add(parent)
+    _store_versions(repo, template, (original,))
+    repo.replace_version(revised)
+
+    assert repo.get_version(template.id, 1) == revised
+
+
+def test_replace_version_allows_draft_to_published_status_only() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    draft = _version(template.id, 1, properties=(_property("hostname"),))
+    published = ObjectTemplateVersion(
+        template_id=draft.template_id,
+        version=draft.version,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=draft.parent,
+        properties=draft.properties,
+        components=draft.components,
+    )
+
+    _store_versions(repo, template, (draft,))
+    repo.replace_version(published)
+
+    assert repo.get_version(template.id, 1) == published
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        lambda draft: ObjectTemplateVersion(
+            template_id=draft.template_id,
+            version=draft.version,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=ObjectTemplateVersionRef(template_id=uuid4(), version=2),
+            properties=draft.properties,
+            components=draft.components,
+        ),
+        lambda draft: ObjectTemplateVersion(
+            template_id=draft.template_id,
+            version=draft.version,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=draft.parent,
+            properties=(draft.properties[0], _property("serial")),
+            components=draft.components,
+        ),
+        lambda draft: ObjectTemplateVersion(
+            template_id=draft.template_id,
+            version=draft.version,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=draft.parent,
+            properties=tuple(reversed(draft.properties)),
+            components=draft.components,
+        ),
+    ],
+)
+def test_replace_version_rejects_publication_snapshot_change(
+    replacement,
+) -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    first = _property("hostname")
+    second = _property("serial")
+    draft = _version(template.id, 1, properties=(first, second))
+
+    _store_versions(repo, template, (draft,))
+
+    with pytest.raises(ObjectTemplatePersistenceError):
+        repo.replace_version(replacement(draft))
+    assert repo.get_version(template.id, 1) == draft
+
+
+def test_replace_version_allows_published_to_deprecated_status_only() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    draft = _version(template.id, 1, properties=(_property("hostname"),))
+    published = ObjectTemplateVersion(
+        template_id=draft.template_id,
+        version=draft.version,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=draft.parent,
+        properties=draft.properties,
+        components=draft.components,
+    )
+    deprecated = ObjectTemplateVersion(
+        template_id=published.template_id,
+        version=published.version,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=published.parent,
+        properties=published.properties,
+        components=published.components,
+    )
+
+    _store_versions(repo, template, (published,))
+    repo.replace_version(deprecated)
+
+    assert repo.get_version(template.id, 1) == deprecated
+
+
+def test_replace_version_rejects_deprecation_snapshot_change() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    draft = _version(template.id, 1, properties=(_property("hostname"),))
+    published = ObjectTemplateVersion(
+        template_id=draft.template_id,
+        version=draft.version,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=draft.parent,
+        properties=draft.properties,
+        components=draft.components,
+    )
+    illegal = ObjectTemplateVersion(
+        template_id=published.template_id,
+        version=published.version,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=published.parent,
+        properties=(published.properties[0], _property("serial")),
+        components=published.components,
+    )
+
+    _store_versions(repo, template, (published,))
+
+    with pytest.raises(ObjectTemplatePersistenceError):
+        repo.replace_version(illegal)
+    assert repo.get_version(template.id, 1) == published
+
+
+@pytest.mark.parametrize(
+    ("stored", "replacement_status"),
+    [
+        (ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED),
+        (ObjectTemplateVersionStatus.PUBLISHED, ObjectTemplateVersionStatus.PUBLISHED),
+        (ObjectTemplateVersionStatus.PUBLISHED, ObjectTemplateVersionStatus.DRAFT),
+        (ObjectTemplateVersionStatus.DEPRECATED, ObjectTemplateVersionStatus.DEPRECATED),
+        (ObjectTemplateVersionStatus.DEPRECATED, ObjectTemplateVersionStatus.PUBLISHED),
+        (ObjectTemplateVersionStatus.DEPRECATED, ObjectTemplateVersionStatus.DRAFT),
+    ],
+)
+def test_replace_version_rejects_other_lifecycle_rewrites(
+    stored: ObjectTemplateVersionStatus,
+    replacement_status: ObjectTemplateVersionStatus,
+) -> None:
+    repo = InMemoryObjectTemplateRepository()
+    template = _template()
+    base_draft = _version(template.id, 1, properties=(_property("hostname"),))
+    current = base_draft
+    if stored is ObjectTemplateVersionStatus.PUBLISHED:
+        current = ObjectTemplateVersion(
+            template_id=base_draft.template_id,
+            version=base_draft.version,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=base_draft.parent,
+            properties=base_draft.properties,
+            components=base_draft.components,
+        )
+    elif stored is ObjectTemplateVersionStatus.DEPRECATED:
+        published = ObjectTemplateVersion(
+            template_id=base_draft.template_id,
+            version=base_draft.version,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            parent=base_draft.parent,
+            properties=base_draft.properties,
+            components=base_draft.components,
+        )
+        current = ObjectTemplateVersion(
+            template_id=published.template_id,
+            version=published.version,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+            parent=published.parent,
+            properties=published.properties,
+            components=published.components,
+        )
+
+    _store_versions(repo, template, (current,))
+
+    illegal = ObjectTemplateVersion(
+        template_id=current.template_id,
+        version=current.version,
+        status=replacement_status,
+        parent=current.parent,
+        properties=current.properties,
+        components=current.components,
+    )
+    with pytest.raises(ObjectTemplatePersistenceError):
+        repo.replace_version(illegal)
+    assert repo.get_version(template.id, 1) == current

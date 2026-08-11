@@ -14,6 +14,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
+    ObjectTemplateVersioningService,
 )
 from netauto.core.relationship import (
     Relationship,
@@ -231,7 +232,20 @@ def _store_template(
     )
     repo.add(template)
     for version in versions:
-        repo.add_version(version)
+        draft = ObjectTemplateVersion(
+            template_id=version.template_id,
+            version=version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=version.parent,
+            properties=version.properties,
+            components=version.components,
+        )
+        repo.add_version(draft)
+        if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+            repo.replace_version(ObjectTemplateVersioningService().publish(draft))
+            repo.replace_version(version)
     return template
 
 
@@ -248,7 +262,13 @@ def _store_published_template(
         abstract=False,
     )
     repo.add(template)
-    repo.add_version(
+    draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+    )
+    repo.add_version(draft)
+    repo.replace_version(
         ObjectTemplateVersion(
             template_id=template.id,
             version=1,
@@ -256,6 +276,35 @@ def _store_published_template(
         )
     )
     return template
+
+
+def _persist_template_version(
+    repo: InMemoryObjectTemplateRepository,
+    version: ObjectTemplateVersion,
+) -> None:
+    draft = ObjectTemplateVersion(
+        template_id=version.template_id,
+        version=version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=version.parent,
+        properties=version.properties,
+        components=version.components,
+    )
+    repo.add_version(draft)
+    if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+        repo.replace_version(version)
+    elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+        repo.replace_version(
+            ObjectTemplateVersion(
+                template_id=version.template_id,
+                version=version.version,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=version.parent,
+                properties=version.properties,
+                components=version.components,
+            )
+        )
+        repo.replace_version(version)
 
 
 def _version(
@@ -351,19 +400,21 @@ def test_create_list_show_and_delete_relationship_definition(
     )
     object_templates.add(source)
     object_templates.add(target)
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=source.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=target.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
 
     created = client.post(
@@ -434,19 +485,21 @@ def test_request_validation_and_identifier_errors(
     )
     object_templates.add(source)
     object_templates.add(target)
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=source.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=target.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
 
     invalid_uuid = client.get("/api/v1/relationship-definitions/not-a-uuid")
@@ -548,12 +601,13 @@ def test_not_found_not_published_and_semantic_conflict_mappings(
             status=ObjectTemplateVersionStatus.DRAFT,
         )
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=target.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
 
     unpublished = client.post(
@@ -655,27 +709,30 @@ def test_inheritance_overlap_conflict_and_delete_missing(
     object_templates.add(source)
     object_templates.add(source_child)
     object_templates.add(target)
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=source.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=source_child.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
             parent=ObjectTemplateVersionRef(template_id=source.id, version=1),
-        )
+        ),
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=target.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
 
     first = client.post(
@@ -1045,29 +1102,32 @@ def test_effective_relationship_definitions_rest_semantics(
         abstract=False,
     )
     object_templates.add(router)
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=router.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=router.id,
             version=2,
             status=ObjectTemplateVersionStatus.PUBLISHED,
             parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
-        )
+        ),
     )
     credential = _store_published_template(object_templates, name="credential")
     device = _store_published_template(object_templates, name="device")
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=device.id,
             version=2,
             status=ObjectTemplateVersionStatus.DEPRECATED,
-        )
+        ),
     )
     outgoing_definition = _definition(
         source_template_id=network_device.id,
@@ -1173,13 +1233,14 @@ def test_effective_relationship_definitions_rest_propagates_ancestry_error(
         abstract=False,
     )
     object_templates.add(router)
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=router.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
             parent=ObjectTemplateVersionRef(template_id=network_device.id, version=9),
-        )
+        ),
     )
     relationship_definitions.add(
         _definition(
@@ -1428,20 +1489,22 @@ def test_runtime_relationship_navigation_rest_reports_persisted_incompatible_edg
         abstract=False,
     )
     object_templates.add(router)
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=router.id,
             version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
-        )
+        ),
     )
-    object_templates.add_version(
+    _persist_template_version(
+        object_templates,
         ObjectTemplateVersion(
             template_id=router.id,
             version=2,
             status=ObjectTemplateVersionStatus.PUBLISHED,
             parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
-        )
+        ),
     )
     credential = _store_published_template(object_templates, name="credential")
     definition = _definition(

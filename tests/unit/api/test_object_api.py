@@ -250,7 +250,29 @@ def _store_template(
         properties=properties,
     )
     repo.add(template)
-    repo.add_version(version)
+    draft = ObjectTemplateVersion(
+        template_id=version.template_id,
+        version=version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=version.parent,
+        properties=version.properties,
+        components=version.components,
+    )
+    repo.add_version(draft)
+    if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+        repo.replace_version(version)
+    elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+        repo.replace_version(
+            ObjectTemplateVersion(
+                template_id=draft.template_id,
+                version=draft.version,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=draft.parent,
+                properties=draft.properties,
+                components=draft.components,
+            )
+        )
+        repo.replace_version(version)
     return template, version
 
 
@@ -474,21 +496,29 @@ def test_create_object_without_template_version_uses_highest_published_version(
         (2, ObjectTemplateVersionStatus.PUBLISHED),
         (3, ObjectTemplateVersionStatus.DRAFT),
     ):
-        templates.add_version(
-            ObjectTemplateVersion(
-                template_id=template.id,
-                version=version_number,
-                status=status,
-                properties=(
-                    _property(
-                        "hostname",
-                        datatype_id=datatype.id,
-                        datatype_version=datatype_version.version,
-                        required=True,
-                    ),
+        draft = ObjectTemplateVersion(
+            template_id=template.id,
+            version=version_number,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=datatype_version.version,
+                    required=True,
                 ),
-            )
+            ),
         )
+        templates.add_version(draft)
+        if status is ObjectTemplateVersionStatus.PUBLISHED:
+            templates.replace_version(
+                ObjectTemplateVersion(
+                    template_id=template.id,
+                    version=version_number,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    properties=draft.properties,
+                )
+            )
 
     response = client.post(
         "/api/v1/objects",

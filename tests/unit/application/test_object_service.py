@@ -33,6 +33,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateParentNotFound,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
+    ObjectTemplateVersioningService,
     ObjectTemplateVersionNotFound,
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
@@ -283,7 +284,29 @@ def _store_template_versions(
 ) -> None:
     repo.add(template)
     for version in versions:
-        repo.add_version(version)
+        draft = ObjectTemplateVersion(
+            template_id=version.template_id,
+            version=version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=version.parent,
+            properties=version.properties,
+            components=version.components,
+        )
+        repo.add_version(draft)
+        if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+            repo.replace_version(
+                ObjectTemplateVersion(
+                    template_id=draft.template_id,
+                    version=draft.version,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    parent=draft.parent,
+                    properties=draft.properties,
+                    components=draft.components,
+                )
+            )
+            repo.replace_version(version)
 
 
 def _create_object(

@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, delete, inspect, select, text
+from sqlalchemy import Engine, delete, event, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -206,8 +206,62 @@ def _store_template_version(
         components=components,
     )
     repo = SqlAlchemyObjectTemplateRepository(session)
-    repo.add_version(object_template_version)
+    draft = ObjectTemplateVersion(
+        template_id=object_template_version.template_id,
+        version=object_template_version.version,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=object_template_version.parent,
+        properties=object_template_version.properties,
+        components=object_template_version.components,
+    )
+    repo.add_version(draft)
+    if object_template_version.status is ObjectTemplateVersionStatus.PUBLISHED:
+        repo.replace_version(object_template_version)
+    elif object_template_version.status is ObjectTemplateVersionStatus.DEPRECATED:
+        repo.replace_version(
+            ObjectTemplateVersion(
+                template_id=draft.template_id,
+                version=draft.version,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=draft.parent,
+                properties=draft.properties,
+                components=draft.components,
+            )
+        )
+        repo.replace_version(object_template_version)
     return object_template_version
+
+
+def _store_versions(
+    repo: SqlAlchemyObjectTemplateRepository,
+    template: ObjectTemplate,
+    versions: tuple[ObjectTemplateVersion, ...],
+) -> None:
+    repo.add(template)
+    for version in versions:
+        draft = ObjectTemplateVersion(
+            template_id=version.template_id,
+            version=version.version,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=version.parent,
+            properties=version.properties,
+            components=version.components,
+        )
+        repo.add_version(draft)
+        if version.status is ObjectTemplateVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is ObjectTemplateVersionStatus.DEPRECATED:
+            repo.replace_version(
+                ObjectTemplateVersion(
+                    template_id=draft.template_id,
+                    version=draft.version,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    parent=draft.parent,
+                    properties=draft.properties,
+                    components=draft.components,
+                )
+            )
+            repo.replace_version(version)
 
 
 def test_empty_list(tmp_path: Path) -> None:
@@ -352,10 +406,7 @@ def test_status_round_trip(tmp_path: Path) -> None:
     published = _version(template.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED)
     deprecated = _version(template.id, 3, status=ObjectTemplateVersionStatus.DEPRECATED)
     try:
-        repo.add(template)
-        repo.add_version(draft)
-        repo.add_version(published)
-        repo.add_version(deprecated)
+        _store_versions(repo, template, (draft, published, deprecated))
         loaded = repo.list_versions(template.id)
         assert tuple(version.status for version in loaded) == (
             ObjectTemplateVersionStatus.DRAFT,
@@ -533,11 +584,15 @@ def test_delete_removes_identity_and_owned_versions_only(tmp_path: Path) -> None
     target = _template(name="device")
     unrelated = _template(name="router")
     try:
-        repo.add(target)
-        repo.add(unrelated)
-        repo.add_version(_version(target.id, 1))
-        repo.add_version(_version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED))
-        repo.add_version(_version(unrelated.id, 1))
+        _store_versions(
+            repo,
+            target,
+            (
+                _version(target.id, 1),
+                _version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED),
+            ),
+        )
+        _store_versions(repo, unrelated, (_version(unrelated.id, 1),))
 
         repo.delete(target.id)
 
@@ -612,16 +667,18 @@ def test_delete_blocked_by_inheritance_persistence_safety_net(tmp_path: Path) ->
     target = _template(name="device")
     child = _template(name="router")
     try:
-        repo.add(target)
-        repo.add(child)
-        repo.add_version(_version(target.id, 1))
-        repo.add_version(
-            _version(
-                child.id,
-                1,
-                status=ObjectTemplateVersionStatus.DEPRECATED,
-                parent=ObjectTemplateVersionRef(template_id=target.id, version=1),
-            )
+        _store_versions(repo, target, (_version(target.id, 1),))
+        _store_versions(
+            repo,
+            child,
+            (
+                _version(
+                    child.id,
+                    1,
+                    status=ObjectTemplateVersionStatus.DEPRECATED,
+                    parent=ObjectTemplateVersionRef(template_id=target.id, version=1),
+                ),
+            ),
         )
 
         with pytest.raises(ObjectTemplatePersistenceError, match="inheritance reference"):
@@ -640,19 +697,21 @@ def test_delete_blocked_by_component_persistence_safety_net(tmp_path: Path) -> N
     owner = _template(name="device")
     backup = _store_template_identity(session, name="backup_target")
     try:
-        repo.add(target)
-        repo.add(owner)
-        repo.add_version(_version(target.id, 1))
-        repo.add_version(
-            _version(
-                owner.id,
-                1,
-                status=ObjectTemplateVersionStatus.PUBLISHED,
-                components=(
-                    _component("ports", template_id=target.id),
-                    _component("backup", template_id=backup.id),
+        _store_versions(repo, target, (_version(target.id, 1),))
+        _store_versions(
+            repo,
+            owner,
+            (
+                _version(
+                    owner.id,
+                    1,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    components=(
+                        _component("ports", template_id=target.id),
+                        _component("backup", template_id=backup.id),
+                    ),
                 ),
-            )
+            ),
         )
 
         with pytest.raises(ObjectTemplatePersistenceError, match="component reference"):
@@ -672,10 +731,8 @@ def test_delete_blocked_by_relationship_definition_repository_precheck(
     target = _template(name="device")
     other = _template(name="credential")
     try:
-        repo.add(target)
-        repo.add(other)
-        repo.add_version(_version(target.id, 1))
-        repo.add_version(_version(other.id, 1))
+        _store_versions(repo, target, (_version(target.id, 1),))
+        _store_versions(repo, other, (_version(other.id, 1),))
         session.add(
             RelationshipDefinitionRow(
                 id=str(uuid4()),
@@ -709,11 +766,15 @@ def test_delete_discovers_late_relationship_blocker_before_mutation(tmp_path: Pa
     target = _template(name="device")
     other = _template(name="credential")
     try:
-        repo.add(target)
-        repo.add(other)
-        repo.add_version(_version(target.id, 1))
-        repo.add_version(_version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED))
-        repo.add_version(_version(other.id, 1))
+        _store_versions(
+            repo,
+            target,
+            (
+                _version(target.id, 1),
+                _version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED),
+            ),
+        )
+        _store_versions(repo, other, (_version(other.id, 1),))
         session.add(
             RelationshipDefinitionRow(
                 id=str(uuid4()),
@@ -839,10 +900,7 @@ def test_list_versions_ascending(tmp_path: Path) -> None:
     v1 = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
     v2 = _version(template.id, 2)
     try:
-        repo.add(template)
-        repo.add_version(v5)
-        repo.add_version(v1)
-        repo.add_version(v2)
+        _store_versions(repo, template, (v5, v1, v2))
         versions = repo.list_versions(template.id)
         assert tuple(version.version for version in versions) == (1, 2, 5)
     finally:
@@ -992,14 +1050,8 @@ def test_replace_lifecycle_snapshot_preserves_complete_replacement_snapshot(tmp_
         template.id,
         1,
         status=ObjectTemplateVersionStatus.PUBLISHED,
-        properties=(
-            _property(
-                "serial",
-                datatype_id=serial_datatype.id,
-                datatype_version=serial_v1.version,
-            ),
-        ),
-        components=(_component("modules", template_id=replacement_target.id, template_version=9),),
+        properties=original.properties,
+        components=original.components,
     )
     try:
         repo.add(template)
@@ -1009,8 +1061,425 @@ def test_replace_lifecycle_snapshot_preserves_complete_replacement_snapshot(tmp_
         assert loaded == replacement
         assert loaded is not None
         assert loaded.status is ObjectTemplateVersionStatus.PUBLISHED
-        assert tuple(prop.name for prop in loaded.properties) == ("serial",)
-        assert tuple(component.name for component in loaded.components) == ("modules",)
+        assert tuple(prop.name for prop in loaded.properties) == ("hostname",)
+        assert tuple(component.name for component in loaded.components) == ("interfaces",)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_version_requires_draft_status(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "add_status_requires_draft.sqlite3")
+    template = _template()
+    published = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    deprecated = _version(template.id, 1, status=ObjectTemplateVersionStatus.DEPRECATED)
+    try:
+        repo.add(template)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.add_version(published)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.add_version(deprecated)
+        assert repo.get_version(template.id, 1) is None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_duplicate_version_precedes_add_status_validation(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "add_duplicate_precedes_status.sqlite3")
+    template = _template()
+    draft = _version(template.id, 1)
+    published = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    try:
+        _store_versions(repo, template, (draft,))
+        with pytest.raises(ObjectTemplateVersionAlreadyExists):
+            repo.add_version(published)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_rejects_publication_parent_change(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "publish_parent_change.sqlite3")
+    template = _template(name="child")
+    parent = _template(name="parent")
+    draft = _version(
+        template.id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+    )
+    illegal = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=2),
+    )
+    try:
+        repo.add(parent)
+        repo.add_version(_version(parent.id, 1))
+        repo.add_version(_version(parent.id, 2))
+        repo.add(template)
+        repo.add_version(draft)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(template.id, 1) == draft
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_rejects_publication_property_change(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "publish_property_change.sqlite3")
+    template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
+    draft = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+        ),
+    )
+    illegal = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
+        ),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(draft)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(template.id, 1) == draft
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_rejects_publication_component_change(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "publish_component_change.sqlite3")
+    template = _template()
+    interface = _store_template_identity(session, name="interface")
+    module = _store_template_identity(session, name="module")
+    draft = _version(
+        template.id,
+        1,
+        components=(_component("interfaces", template_id=interface.id),),
+    )
+    illegal = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        components=(_component("modules", template_id=module.id),),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(draft)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(template.id, 1) == draft
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_rejects_publication_property_order_change(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "publish_property_order_change.sqlite3")
+    template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
+    first = _property("hostname", datatype_id=hostname_datatype.id, datatype_version=hostname_v1.version)
+    second = _property("serial", datatype_id=serial_datatype.id, datatype_version=serial_v1.version)
+    draft = _version(template.id, 1, properties=(first, second))
+    illegal = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(second, first),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(draft)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(template.id, 1) == draft
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_allows_published_to_deprecated_status_only(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "published_to_deprecated.sqlite3")
+    template = _template()
+    draft = _version(template.id, 1)
+    published = _version(template.id, 1, status=ObjectTemplateVersionStatus.PUBLISHED)
+    deprecated = _version(template.id, 1, status=ObjectTemplateVersionStatus.DEPRECATED)
+    try:
+        _store_versions(repo, template, (published,))
+        repo.replace_version(deprecated)
+        assert repo.get_version(template.id, 1) == deprecated
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_rejects_deprecation_snapshot_change(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "deprecate_property_change.sqlite3")
+    template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
+    published = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+        ),
+    )
+    illegal = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        properties=(
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
+        ),
+    )
+    try:
+        _store_versions(repo, template, (published,))
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(template.id, 1) == published
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("stored", "replacement_status"),
+    [
+        (ObjectTemplateVersionStatus.DRAFT, ObjectTemplateVersionStatus.DEPRECATED),
+        (ObjectTemplateVersionStatus.PUBLISHED, ObjectTemplateVersionStatus.PUBLISHED),
+        (ObjectTemplateVersionStatus.PUBLISHED, ObjectTemplateVersionStatus.DRAFT),
+        (ObjectTemplateVersionStatus.DEPRECATED, ObjectTemplateVersionStatus.DEPRECATED),
+        (ObjectTemplateVersionStatus.DEPRECATED, ObjectTemplateVersionStatus.PUBLISHED),
+        (ObjectTemplateVersionStatus.DEPRECATED, ObjectTemplateVersionStatus.DRAFT),
+    ],
+)
+def test_replace_version_rejects_other_lifecycle_rewrites(
+    tmp_path: Path,
+    stored: ObjectTemplateVersionStatus,
+    replacement_status: ObjectTemplateVersionStatus,
+) -> None:
+    repo, session, engine = _repo(
+        tmp_path,
+        f"lifecycle_reject_{stored.value}_{replacement_status.value}.sqlite3",
+    )
+    template = _template()
+    current = _version(template.id, 1, status=stored)
+    illegal = _version(template.id, 1, status=replacement_status)
+    try:
+        _store_versions(repo, template, (current,))
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(template.id, 1) == current
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_rejected_replace_leaves_committed_snapshot_unchanged_after_rollback(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_rollback_immutability.sqlite3")
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
+    original = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+        ),
+    )
+    illegal = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        properties=(
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
+        ),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(original)
+        session.commit()
+
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(illegal)
+        session.rollback()
+
+        fresh_session = session_factory()
+        try:
+            fresh_repo = SqlAlchemyObjectTemplateRepository(fresh_session)
+            assert fresh_repo.get_version(template.id, 1) == original
+        finally:
+            fresh_session.close()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_publish_status_transition_does_not_rewrite_parent_or_child_rows(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "publish_status_only_sql_shape.sqlite3")
+    statements: list[str] = []
+
+    def recorder(
+        conn, cursor, statement, parameters, context, executemany
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        statements.append(statement.lower())
+
+    template = _template(name="child")
+    parent = _template(name="parent")
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    component_target = _store_template_identity(session, name="interface")
+    draft = _version(
+        template.id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+            ),
+        ),
+        components=(_component("interfaces", template_id=component_target.id),),
+    )
+    published = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=draft.parent,
+        properties=draft.properties,
+        components=draft.components,
+    )
+    try:
+        repo.add(parent)
+        repo.add_version(_version(parent.id, 1))
+        repo.add(template)
+        repo.add_version(draft)
+
+        event.listen(engine, "before_cursor_execute", recorder)
+        try:
+            repo.replace_version(published)
+        finally:
+            event.remove(engine, "before_cursor_execute", recorder)
+
+        version_updates = [
+            statement
+            for statement in statements
+            if "update object_template_versions" in statement
+        ]
+        assert any("status" in statement for statement in version_updates)
+        assert all("parent_template_id" not in statement for statement in version_updates)
+        assert all("parent_version" not in statement for statement in version_updates)
+        assert not any("delete from object_template_properties" in statement for statement in statements)
+        assert not any("insert into object_template_properties" in statement for statement in statements)
+        assert not any("delete from object_template_components" in statement for statement in statements)
+        assert not any("insert into object_template_components" in statement for statement in statements)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_deprecate_status_transition_does_not_rewrite_parent_or_child_rows(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "deprecate_status_only_sql_shape.sqlite3")
+    statements: list[str] = []
+
+    def recorder(
+        conn, cursor, statement, parameters, context, executemany
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        statements.append(statement.lower())
+
+    template = _template(name="child")
+    parent = _template(name="parent")
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    component_target = _store_template_identity(session, name="interface")
+    published = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.PUBLISHED,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+            ),
+        ),
+        components=(_component("interfaces", template_id=component_target.id),),
+    )
+    deprecated = _version(
+        template.id,
+        1,
+        status=ObjectTemplateVersionStatus.DEPRECATED,
+        parent=published.parent,
+        properties=published.properties,
+        components=published.components,
+    )
+    try:
+        repo.add(parent)
+        repo.add_version(_version(parent.id, 1))
+        _store_versions(repo, template, (published,))
+
+        event.listen(engine, "before_cursor_execute", recorder)
+        try:
+            repo.replace_version(deprecated)
+        finally:
+            event.remove(engine, "before_cursor_execute", recorder)
+
+        version_updates = [
+            statement
+            for statement in statements
+            if "update object_template_versions" in statement
+        ]
+        assert any("status" in statement for statement in version_updates)
+        assert all("parent_template_id" not in statement for statement in version_updates)
+        assert all("parent_version" not in statement for statement in version_updates)
+        assert not any("delete from object_template_properties" in statement for statement in statements)
+        assert not any("insert into object_template_properties" in statement for statement in statements)
+        assert not any("delete from object_template_components" in statement for statement in statements)
+        assert not any("insert into object_template_components" in statement for statement in statements)
     finally:
         session.close()
         engine.dispose()

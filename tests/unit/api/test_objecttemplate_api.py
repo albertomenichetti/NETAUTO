@@ -1061,10 +1061,25 @@ def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_kee
         ObjectTemplateVersion(
             template_id=network_device.id,
             version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+        )
+    )
+    object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=network_device.id,
+            version=1,
             status=ObjectTemplateVersionStatus.PUBLISHED,
         )
     )
     object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=router.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            parent=ObjectTemplateVersionRef(template_id=network_device.id, version=1),
+        )
+    )
+    object_templates.replace_version(
         ObjectTemplateVersion(
             template_id=router.id,
             version=1,
@@ -1081,6 +1096,13 @@ def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_kee
         )
     )
     object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=credential.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+        )
+    )
+    object_templates.replace_version(
         ObjectTemplateVersion(
             template_id=credential.id,
             version=1,
@@ -1267,6 +1289,14 @@ def test_revise_replaces_parent_and_properties_and_resolves_datatype_version(
     )
     _object_templates.add(parent_template)
     _object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=parent_template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(),
+        )
+    )
+    _object_templates.replace_version(
         ObjectTemplateVersion(
             template_id=parent_template.id,
             version=1,
