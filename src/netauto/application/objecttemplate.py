@@ -65,8 +65,14 @@ class ObjectTemplateComponentSpec:
 class ObjectTemplateApplicationService:
     """Orchestrate object template use cases over a unit of work boundary."""
 
-    def __init__(self, uow_factory: ObjectTemplateUnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: ObjectTemplateUnitOfWorkFactory,
+        *,
+        model_write_uow_factory: ObjectTemplateUnitOfWorkFactory,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._model_write_uow_factory = model_write_uow_factory
         self._versioning = ObjectTemplateVersioningService()
 
     def _validate_parent_evolution(
@@ -193,7 +199,7 @@ class ObjectTemplateApplicationService:
             return template
 
     def delete_object_template(self, template_id: UUID) -> None:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             template = uow.object_templates.get(template_id)
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")
@@ -259,7 +265,7 @@ class ObjectTemplateApplicationService:
         properties: Iterable[ObjectTemplatePropertySpec],
         components: Iterable[ObjectTemplateComponentSpec] = (),
     ) -> tuple[ObjectTemplate, ObjectTemplateVersion]:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             resolved_properties = self._resolve_properties(
                 properties=properties,
                 datatype_getter=uow.datatypes.get,
@@ -305,7 +311,7 @@ class ObjectTemplateApplicationService:
         properties: Iterable[ObjectTemplatePropertySpec],
         components: Iterable[ObjectTemplateComponentSpec] = (),
     ) -> ObjectTemplateVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             template = uow.object_templates.get(template_id)
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")
@@ -344,7 +350,7 @@ class ObjectTemplateApplicationService:
         template_id: UUID,
         source_version: int,
     ) -> ObjectTemplateVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             template = uow.object_templates.get(template_id)
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")
@@ -366,7 +372,7 @@ class ObjectTemplateApplicationService:
             return next_version
 
     def publish_version(self, *, template_id: UUID, version: int) -> ObjectTemplateVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             template = uow.object_templates.get(template_id)
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")
@@ -406,7 +412,7 @@ class ObjectTemplateApplicationService:
             return published
 
     def deprecate_version(self, *, template_id: UUID, version: int) -> ObjectTemplateVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             template = uow.object_templates.get(template_id)
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")

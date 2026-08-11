@@ -11,7 +11,10 @@ from sqlalchemy.orm import sessionmaker
 
 from netauto.api.app import create_app
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
+from netauto.persistence.sqlalchemy.unit_of_work import (
+    SqlAlchemyUnitOfWork,
+    SqliteModelWriteUnitOfWork,
+)
 from support.http_server import serve_app
 
 
@@ -25,7 +28,12 @@ async def _client(tmp_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
         return SqlAlchemyUnitOfWork(session_factory)
 
     try:
-        async with serve_app(create_app(uow_factory)) as client:
+        async with serve_app(
+            create_app(
+                uow_factory,
+                model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+            )
+        ) as client:
             yield client
     finally:
         engine.dispose()

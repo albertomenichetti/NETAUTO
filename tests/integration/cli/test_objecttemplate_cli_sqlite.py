@@ -10,7 +10,10 @@ from typer.testing import CliRunner
 from netauto.api.app import create_app
 from netauto.cli.app import app
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
+from netauto.persistence.sqlalchemy.unit_of_work import (
+    SqlAlchemyUnitOfWork,
+    SqliteModelWriteUnitOfWork,
+)
 from support.http_server import serve_app_url
 
 runner = CliRunner()
@@ -24,7 +27,12 @@ def _server_url(tmp_path: Path):
     def uow_factory() -> SqlAlchemyUnitOfWork:
         return SqlAlchemyUnitOfWork(session_factory)
 
-    return engine, serve_app_url(create_app(uow_factory))
+    return engine, serve_app_url(
+        create_app(
+            uow_factory,
+            model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+        )
+    )
 
 
 def test_cli_objecttemplate_acceptance_flow(tmp_path: Path) -> None:

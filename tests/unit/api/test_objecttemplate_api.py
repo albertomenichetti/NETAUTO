@@ -144,7 +144,7 @@ def client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
         yield client, datatypes, object_templates, commits
 
 
@@ -1098,7 +1098,7 @@ def test_publish_endpoint_maps_relationship_definition_semantic_conflict_and_kee
         )
     )
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
         response = client.post(f"/api/v1/object-templates/{router.id}/versions/2/publish")
 
     assert response.status_code == 409
@@ -1918,7 +1918,7 @@ def test_persistence_errors_map_to_common_envelope() -> None:
     def factory() -> BrokenObjectTemplateUnitOfWork:
         return BrokenObjectTemplateUnitOfWork()
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
         object_template_response = client.get("/api/v1/object-templates")
         datatype_response = client.get("/api/v1/datatypes")
 

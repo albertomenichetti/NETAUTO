@@ -171,7 +171,7 @@ def client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
         yield client, datatypes, object_templates, objects, commits
 
 
@@ -709,7 +709,7 @@ def test_object_migration_persistence_error_maps_to_500() -> None:
     def factory() -> BrokenObjectUnitOfWork:
         return BrokenObjectUnitOfWork()
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
         response = client.post(
             "/api/v1/object-templates/00000000-0000-0000-0000-000000000001/versions/1/migrate-objects",
             json={"target_version": 2, "property_values": {}},

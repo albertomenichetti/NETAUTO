@@ -21,7 +21,10 @@ from netauto.core.relationship import (
     RelationshipNotFound,
 )
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
+from netauto.persistence.sqlalchemy.unit_of_work import (
+    SqlAlchemyUnitOfWork,
+    SqliteModelWriteUnitOfWork,
+)
 
 
 def _template(*, name: str) -> ObjectTemplate:
@@ -72,7 +75,10 @@ def test_object_deletion_cleans_up_incident_relationships_before_fk_restrict(
         return SqlAlchemyUnitOfWork(session_factory)
 
     object_service = ObjectApplicationService(uow_factory)
-    definition_service = RelationshipDefinitionApplicationService(uow_factory)
+    definition_service = RelationshipDefinitionApplicationService(
+        uow_factory,
+        model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+    )
     relationship_service = RelationshipApplicationService(uow_factory)
 
     node = _template(name="node")
@@ -165,7 +171,10 @@ def test_relationship_definition_delete_is_restrictive_while_runtime_edges_exist
     def uow_factory() -> SqlAlchemyUnitOfWork:
         return SqlAlchemyUnitOfWork(session_factory)
 
-    definition_service = RelationshipDefinitionApplicationService(uow_factory)
+    definition_service = RelationshipDefinitionApplicationService(
+        uow_factory,
+        model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+    )
     relationship_service = RelationshipApplicationService(uow_factory)
 
     node = _template(name="node")

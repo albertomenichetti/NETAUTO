@@ -69,7 +69,15 @@ def _service() -> tuple[
     def factory() -> FakeUnitOfWork:
         return FakeUnitOfWork(repo, object_templates, commit_counter)
 
-    return DataTypeApplicationService(factory), repo, object_templates, commit_counter
+    return (
+        DataTypeApplicationService(
+            factory,
+            model_write_uow_factory=factory,
+        ),
+        repo,
+        object_templates,
+        commit_counter,
+    )
 
 
 def test_create_invokes_one_commit() -> None:

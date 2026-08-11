@@ -40,8 +40,14 @@ from netauto.core.relationship import (
 class RelationshipDefinitionApplicationService:
     """Orchestrate relationship definition workflows over a unit of work boundary."""
 
-    def __init__(self, uow_factory: RelationshipDefinitionUnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: RelationshipDefinitionUnitOfWorkFactory,
+        *,
+        model_write_uow_factory: RelationshipDefinitionUnitOfWorkFactory,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._model_write_uow_factory = model_write_uow_factory
 
     def list_relationship_definitions(self) -> tuple[RelationshipDefinition, ...]:
         with self._uow_factory() as uow:
@@ -62,7 +68,7 @@ class RelationshipDefinitionApplicationService:
         forward_name: str,
         reverse_name: str,
     ) -> RelationshipDefinition:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             source_template = uow.object_templates.get(source_template_id)
             if source_template is None:
                 raise RelationshipDefinitionTemplateNotFound(
@@ -104,7 +110,7 @@ class RelationshipDefinitionApplicationService:
             return candidate
 
     def delete_relationship_definition(self, definition_id: UUID) -> None:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             if uow.relationship_definitions.get(definition_id) is None:
                 raise RelationshipDefinitionNotFound("RelationshipDefinition does not exist.")
             if uow.relationships.list_by_definition(definition_id):

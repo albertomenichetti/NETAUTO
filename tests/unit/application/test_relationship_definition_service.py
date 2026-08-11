@@ -107,7 +107,10 @@ def _service() -> tuple[
         )
 
     return (
-        RelationshipDefinitionApplicationService(factory),
+        RelationshipDefinitionApplicationService(
+            factory,
+            model_write_uow_factory=factory,
+        ),
         object_templates,
         relationship_definitions,
         relationships,

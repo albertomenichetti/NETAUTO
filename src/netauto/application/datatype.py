@@ -19,8 +19,14 @@ from netauto.core.datatype import (
 class DataTypeApplicationService:
     """Orchestrate datatype use cases over a unit of work boundary."""
 
-    def __init__(self, uow_factory: DataTypeUnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: DataTypeUnitOfWorkFactory,
+        *,
+        model_write_uow_factory: DataTypeUnitOfWorkFactory,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._model_write_uow_factory = model_write_uow_factory
         self._factory = DataTypeFactory()
         self._versioning = DataTypeVersioningService()
 
@@ -40,7 +46,7 @@ class DataTypeApplicationService:
             base_type=base_type,
             constraints=constraints,
         )
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             uow.datatypes.add(datatype)
             uow.datatypes.add_version(version)
             uow.commit()
@@ -88,7 +94,7 @@ class DataTypeApplicationService:
         version: int,
         constraints: Iterable[Constraint],
     ) -> DataTypeVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             datatype = uow.datatypes.get(datatype_id)
             if datatype is None:
                 raise DataTypeNotFound("Datatype does not exist.")
@@ -109,7 +115,7 @@ class DataTypeApplicationService:
         datatype_id: UUID,
         source_version: int,
     ) -> DataTypeVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             datatype = uow.datatypes.get(datatype_id)
             if datatype is None:
                 raise DataTypeNotFound("Datatype does not exist.")
@@ -126,7 +132,7 @@ class DataTypeApplicationService:
             return next_version
 
     def publish_version(self, *, datatype_id: UUID, version: int) -> DataTypeVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             datatype = uow.datatypes.get(datatype_id)
             if datatype is None:
                 raise DataTypeNotFound("Datatype does not exist.")
@@ -139,7 +145,7 @@ class DataTypeApplicationService:
             return published
 
     def deprecate_version(self, *, datatype_id: UUID, version: int) -> DataTypeVersion:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             datatype = uow.datatypes.get(datatype_id)
             if datatype is None:
                 raise DataTypeNotFound("Datatype does not exist.")
@@ -152,7 +158,7 @@ class DataTypeApplicationService:
             return deprecated
 
     def delete_datatype(self, datatype_id: UUID) -> None:
-        with self._uow_factory() as uow:
+        with self._model_write_uow_factory() as uow:
             datatype = uow.datatypes.get(datatype_id)
             if datatype is None:
                 raise DataTypeNotFound("Datatype does not exist.")

@@ -17,13 +17,24 @@ from netauto.application.relationship import (
 from netauto.application.unit_of_work import ObjectUnitOfWorkFactory
 
 
-def create_app(uow_factory: ObjectUnitOfWorkFactory) -> FastAPI:
+def create_app(
+    uow_factory: ObjectUnitOfWorkFactory,
+    *,
+    model_write_uow_factory: ObjectUnitOfWorkFactory,
+) -> FastAPI:
     app = FastAPI()
-    app.state.datatype_service = DataTypeApplicationService(uow_factory)
-    app.state.object_template_service = ObjectTemplateApplicationService(uow_factory)
+    app.state.datatype_service = DataTypeApplicationService(
+        uow_factory,
+        model_write_uow_factory=model_write_uow_factory,
+    )
+    app.state.object_template_service = ObjectTemplateApplicationService(
+        uow_factory,
+        model_write_uow_factory=model_write_uow_factory,
+    )
     app.state.object_service = ObjectApplicationService(uow_factory)
     app.state.relationship_definition_service = RelationshipDefinitionApplicationService(
-        uow_factory
+        uow_factory,
+        model_write_uow_factory=model_write_uow_factory,
     )
     app.state.relationship_service = RelationshipApplicationService(uow_factory)
     register_exception_handlers(app)

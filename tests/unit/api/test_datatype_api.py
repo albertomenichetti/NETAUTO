@@ -110,7 +110,7 @@ async def _client() -> AsyncIterator[
             commits,
         )
 
-    async with serve_app(create_app(factory)) as client:
+    async with serve_app(create_app(factory, model_write_uow_factory=factory)) as client:
         yield client, repo, object_templates, commits
 
 

@@ -7,6 +7,7 @@ from netauto.persistence.sqlalchemy.database import (
 )
 from netauto.persistence.sqlalchemy.unit_of_work import (
     SqlAlchemyUnitOfWork,
+    SqliteModelWriteUnitOfWork,
 )
 
 engine = create_sqlite_engine("sqlite:///netauto.sqlite3")
@@ -18,5 +19,6 @@ session_factory = sessionmaker(
 )
 
 app = create_app(
-    lambda: SqlAlchemyUnitOfWork(session_factory)
+    lambda: SqlAlchemyUnitOfWork(session_factory),
+    model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
 )

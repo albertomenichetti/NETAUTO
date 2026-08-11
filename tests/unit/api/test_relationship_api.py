@@ -204,7 +204,7 @@ def client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
         yield (
             client,
             object_templates,
@@ -748,7 +748,12 @@ def test_delete_in_use_relationship_definition_returns_conflict(
 
 
 def test_relationship_definition_persistence_error_mapping() -> None:
-    with TestClient(create_app(BrokenRelationshipUnitOfWork)) as client:
+    with TestClient(
+        create_app(
+            BrokenRelationshipUnitOfWork,
+            model_write_uow_factory=BrokenRelationshipUnitOfWork,
+        )
+    ) as client:
         response = client.get("/api/v1/relationship-definitions")
 
     assert response.status_code == 500
@@ -756,7 +761,12 @@ def test_relationship_definition_persistence_error_mapping() -> None:
 
 
 def test_relationship_definition_delete_relationship_persistence_error_maps_to_500() -> None:
-    with TestClient(create_app(BrokenLifecycleUnitOfWork)) as client:
+    with TestClient(
+        create_app(
+            BrokenLifecycleUnitOfWork,
+            model_write_uow_factory=BrokenLifecycleUnitOfWork,
+        )
+    ) as client:
         response = client.delete(
             f"/api/v1/relationship-definitions/{BrokenLifecycleUnitOfWork.definition_id}"
         )
@@ -766,7 +776,12 @@ def test_relationship_definition_delete_relationship_persistence_error_maps_to_5
 
 
 def test_openapi_contains_relationship_definition_routes() -> None:
-    with TestClient(create_app(BrokenRelationshipUnitOfWork)) as client:
+    with TestClient(
+        create_app(
+            BrokenRelationshipUnitOfWork,
+            model_write_uow_factory=BrokenRelationshipUnitOfWork,
+        )
+    ) as client:
         openapi = client.get("/openapi.json")
 
     assert openapi.status_code == 200
@@ -996,7 +1011,12 @@ def test_runtime_relationship_request_validation_and_error_mappings(
 
 
 def test_runtime_relationship_persistence_error_maps_to_500() -> None:
-    with TestClient(create_app(BrokenRuntimeUnitOfWork)) as client:
+    with TestClient(
+        create_app(
+            BrokenRuntimeUnitOfWork,
+            model_write_uow_factory=BrokenRuntimeUnitOfWork,
+        )
+    ) as client:
         response = client.get("/api/v1/relationships")
 
     assert response.status_code == 500

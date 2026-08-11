@@ -139,7 +139,10 @@ def _service() -> tuple[
         )
 
     return (
-        ObjectTemplateApplicationService(factory),
+        ObjectTemplateApplicationService(
+            factory,
+            model_write_uow_factory=factory,
+        ),
         datatypes,
         object_templates,
         commit_counter,
@@ -170,7 +173,10 @@ def _service_with_dependencies() -> tuple[
         )
 
     return (
-        ObjectTemplateApplicationService(factory),
+        ObjectTemplateApplicationService(
+            factory,
+            model_write_uow_factory=factory,
+        ),
         datatypes,
         object_templates,
         objects,

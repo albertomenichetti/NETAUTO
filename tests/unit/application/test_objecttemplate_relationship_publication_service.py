@@ -122,7 +122,10 @@ def _service() -> tuple[
         )
 
     return (
-        ObjectTemplateApplicationService(factory),
+        ObjectTemplateApplicationService(
+            factory,
+            model_write_uow_factory=factory,
+        ),
         object_templates,
         relationship_definitions,
         commits,
