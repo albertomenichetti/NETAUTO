@@ -60,4 +60,10 @@ The platform intentionally relies on stable ancestry identity for:
   - self-inheritance and inheritance cycles
   - stable parent identity after first publication
   - monotonic non-decreasing exact parent version
-- Persistence schema changes remain out of scope for this slice.
+- Persistence now physically enforces:
+  - non-null parent -> exact existing ObjectTemplateVersion
+  - parent columns -> both NULL or both non-NULL
+  - referenced exact parent version -> `RESTRICT` deletion
+- Stable parent identity, monotonic parent-version evolution, self-inheritance
+  prevention, cycle prevention, and parent publication status remain semantic
+  invariants enforced by supported workflows.

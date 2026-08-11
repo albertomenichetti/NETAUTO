@@ -405,26 +405,26 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
         )
         if row is None:
             raise ObjectTemplateVersionNotFound("ObjectTemplate version does not exist.")
-        row.status = version.status.value
-        row.parent_template_id = (
-            str(version.parent.template_id) if version.parent is not None else None
-        )
-        row.parent_version = version.parent.version if version.parent is not None else None
-        self._session.execute(
-            delete(ObjectTemplatePropertyRow).where(
-                ObjectTemplatePropertyRow.template_id == str(version.template_id),
-                ObjectTemplatePropertyRow.template_version == version.version,
-            )
-        )
-        self._session.execute(
-            delete(ObjectTemplateComponentRow).where(
-                ObjectTemplateComponentRow.template_id == str(version.template_id),
-                ObjectTemplateComponentRow.template_version == version.version,
-            )
-        )
-        self._add_property_rows(version)
-        self._add_component_rows(version)
         try:
+            row.status = version.status.value
+            row.parent_template_id = (
+                str(version.parent.template_id) if version.parent is not None else None
+            )
+            row.parent_version = version.parent.version if version.parent is not None else None
+            self._session.execute(
+                delete(ObjectTemplatePropertyRow).where(
+                    ObjectTemplatePropertyRow.template_id == str(version.template_id),
+                    ObjectTemplatePropertyRow.template_version == version.version,
+                )
+            )
+            self._session.execute(
+                delete(ObjectTemplateComponentRow).where(
+                    ObjectTemplateComponentRow.template_id == str(version.template_id),
+                    ObjectTemplateComponentRow.template_version == version.version,
+                )
+            )
+            self._add_property_rows(version)
+            self._add_component_rows(version)
             self._session.flush()
         except IntegrityError as error:
             raise ObjectTemplatePersistenceError(

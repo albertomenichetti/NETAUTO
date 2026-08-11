@@ -2,6 +2,7 @@
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -66,6 +67,25 @@ class ObjectTemplateVersionRow(Base):
     __tablename__ = "object_template_versions"
     __table_args__ = (
         PrimaryKeyConstraint("template_id", "version", name="pk_object_template_versions"),
+        ForeignKeyConstraint(
+            ["parent_template_id", "parent_version"],
+            ["object_template_versions.template_id", "object_template_versions.version"],
+            ondelete="RESTRICT",
+            name="fk_object_template_versions_parent",
+        ),
+        CheckConstraint(
+            "("
+            "(parent_template_id IS NULL AND parent_version IS NULL) "
+            "OR "
+            "(parent_template_id IS NOT NULL AND parent_version IS NOT NULL)"
+            ")",
+            name="ck_object_template_versions_parent_pair",
+        ),
+        Index(
+            "ix_object_template_versions_parent",
+            "parent_template_id",
+            "parent_version",
+        ),
     )
 
     template_id: Mapped[str] = mapped_column(

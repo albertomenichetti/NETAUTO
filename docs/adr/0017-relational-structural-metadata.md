@@ -38,6 +38,8 @@ Applied in this phase:
 
 - ObjectTemplate property declarations -> relational, implemented in S3a
 - ObjectTemplate component declarations -> relational, implemented in S3b
+- ObjectTemplate parent references -> relational exact-version columns plus
+  physical composite foreign key, implemented in S3c
 - Object properties -> remain JSON as runtime dynamic values
 - ObjectChange before/after snapshots -> remain JSON as historical snapshots
 - DataTypeVersion constraints -> remain JSON as embedded constraint values, not

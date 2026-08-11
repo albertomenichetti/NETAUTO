@@ -174,6 +174,29 @@ def _store_template_identity(
     return template
 
 
+def _store_template_version(
+    session: Session,
+    template: ObjectTemplate,
+    *,
+    version: int = 1,
+    status: ObjectTemplateVersionStatus = ObjectTemplateVersionStatus.DRAFT,
+    parent: ObjectTemplateVersionRef | None = None,
+    properties: tuple[ObjectTemplateProperty, ...] = (),
+    components: tuple[ObjectTemplateComponent, ...] = (),
+) -> ObjectTemplateVersion:
+    object_template_version = _version(
+        template.id,
+        version,
+        status=status,
+        parent=parent,
+        properties=properties,
+        components=components,
+    )
+    repo = SqlAlchemyObjectTemplateRepository(session)
+    repo.add_version(object_template_version)
+    return object_template_version
+
+
 def test_empty_list(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "empty.sqlite3")
     try:
@@ -349,12 +372,16 @@ def test_parent_none_round_trip(tmp_path: Path) -> None:
 def test_exact_pinned_parent_ref_round_trip(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "parent.sqlite3")
     template = _template()
+    parent_template = _template(name="parent")
+    parent_version = _version(parent_template.id, 7)
     version = _version(
         template.id,
         1,
-        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=7),
+        parent=ObjectTemplateVersionRef(template_id=parent_template.id, version=7),
     )
     try:
+        repo.add(parent_template)
+        repo.add_version(parent_version)
         repo.add(template)
         repo.add_version(version)
         loaded = repo.get_version(template.id, 1)
@@ -885,19 +912,44 @@ def test_replace_version_replaces_components(tmp_path: Path) -> None:
 
 def test_replace_version_with_changed_parent(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "replace_parent.sqlite3")
-    template = _template()
+    template = _template(name="child")
+    parent = _template(name="parent")
     original = _version(template.id, 1, parent=None)
     replacement = _version(
         template.id,
         1,
-        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=2),
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=2),
     )
     try:
+        repo.add(parent)
+        repo.add_version(_version(parent.id, 2))
         repo.add(template)
         repo.add_version(original)
         repo.replace_version(replacement)
         loaded = repo.get_version(template.id, 1)
         assert loaded == replacement
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_missing_exact_parent_maps_to_persistence_error(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_missing_parent.sqlite3")
+    template = _template(name="child")
+    parent = _template(name="parent")
+    original = _version(template.id, 1, parent=None)
+    replacement = _version(
+        template.id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=2),
+    )
+    try:
+        repo.add(parent)
+        repo.add_version(_version(parent.id, 1))
+        repo.add(template)
+        repo.add_version(original)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.replace_version(replacement)
     finally:
         session.close()
         engine.dispose()
@@ -1113,40 +1165,142 @@ def test_component_target_existing_identity_with_only_draft_versions_persists(
         engine.dispose()
 
 
-def test_partial_parent_reference_produces_persistence_error(tmp_path: Path) -> None:
-    repo, session, engine = _repo(tmp_path, "partial_parent.sqlite3")
+def test_add_version_missing_parent_identity_hits_exact_parent_fk(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "missing_parent_identity.sqlite3")
     template = _template()
+    version = _version(
+        template.id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=1),
+    )
     try:
         repo.add(template)
-        session.add(
-            ObjectTemplateVersionRow(
-                template_id=str(template.id),
-                version=1,
-                status=ObjectTemplateVersionStatus.DRAFT.value,
-                parent_template_id=str(uuid4()),
-                parent_version=None,
-            )
-        )
-        session.flush()
         with pytest.raises(ObjectTemplatePersistenceError):
-            repo.get_version(template.id, 1)
+            repo.add_version(version)
     finally:
         session.close()
         engine.dispose()
 
 
-def test_repository_does_not_require_parent_version_to_exist(tmp_path: Path) -> None:
-    repo, session, engine = _repo(tmp_path, "no_parent_validation.sqlite3")
-    template = _template()
-    version = _version(
-        template.id,
+def test_add_version_missing_exact_parent_version_hits_exact_parent_fk(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "missing_parent_version.sqlite3")
+    child = _template(name="child")
+    parent = _template(name="parent")
+    try:
+        repo.add(parent)
+        repo.add_version(_version(parent.id, 1))
+        repo.add_version(_version(parent.id, 3))
+        repo.add(child)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.add_version(
+                _version(
+                    child.id,
+                    1,
+                    parent=ObjectTemplateVersionRef(template_id=parent.id, version=2),
+                )
+            )
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_version_with_valid_exact_parent_round_trips(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "valid_exact_parent.sqlite3")
+    child = _template(name="child")
+    parent = _template(name="parent")
+    parent_version = _version(parent.id, 2)
+    child_version = _version(
+        child.id,
         1,
-        parent=ObjectTemplateVersionRef(template_id=uuid4(), version=9),
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=2),
     )
     try:
-        repo.add(template)
-        repo.add_version(version)
-        assert repo.get_version(template.id, 1) == version
+        repo.add(parent)
+        repo.add_version(parent_version)
+        repo.add(child)
+        repo.add_version(child_version)
+        assert repo.get_version(child.id, 1) == child_version
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_version_allows_exact_existing_draft_parent(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "draft_parent_persists.sqlite3")
+    child = _template(name="child")
+    parent = _template(name="parent")
+    parent_version = _version(parent.id, 1, status=ObjectTemplateVersionStatus.DRAFT)
+    child_version = _version(
+        child.id,
+        1,
+        parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+    )
+    try:
+        repo.add(parent)
+        repo.add_version(parent_version)
+        repo.add(child)
+        repo.add_version(child_version)
+        assert repo.get_version(child.id, 1) == child_version
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_partial_parent_template_id_without_version_is_db_rejected(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "partial_parent_template_only.sqlite3")
+    template = _template()
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(template.id),
+                namespace=template.namespace,
+                name=template.name,
+                description=template.description,
+                abstract=template.abstract,
+            )
+        )
+        session.flush()
+        with pytest.raises(IntegrityError):
+            session.add(
+                ObjectTemplateVersionRow(
+                    template_id=str(template.id),
+                    version=1,
+                    status=ObjectTemplateVersionStatus.DRAFT.value,
+                    parent_template_id=str(uuid4()),
+                    parent_version=None,
+                )
+            )
+            session.flush()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_partial_parent_version_without_template_id_is_db_rejected(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "partial_parent_version_only.sqlite3")
+    template = _template()
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(template.id),
+                namespace=template.namespace,
+                name=template.name,
+                description=template.description,
+                abstract=template.abstract,
+            )
+        )
+        session.flush()
+        with pytest.raises(IntegrityError):
+            session.add(
+                ObjectTemplateVersionRow(
+                    template_id=str(template.id),
+                    version=1,
+                    status=ObjectTemplateVersionStatus.DRAFT.value,
+                    parent_template_id=None,
+                    parent_version=1,
+                )
+            )
+            session.flush()
     finally:
         session.close()
         engine.dispose()
@@ -1172,6 +1326,72 @@ def test_replace_version_requires_component_target_identity_to_exist(tmp_path: P
         repo.add_version(original)
         with pytest.raises(ObjectTemplatePersistenceError):
             repo.replace_version(replacement)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_raw_delete_of_referenced_exact_parent_version_hits_fk_restrict(
+    tmp_path: Path,
+) -> None:
+    repo, session, engine = _repo(tmp_path, "parent_fk_restrict.sqlite3")
+    parent = _template(name="parent")
+    child = _template(name="child")
+    try:
+        repo.add(parent)
+        repo.add(child)
+        repo.add_version(_version(parent.id, 1))
+        repo.add_version(_version(parent.id, 2))
+        repo.add_version(
+            _version(
+                child.id,
+                1,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+            )
+        )
+        session.commit()
+
+        with pytest.raises(IntegrityError):
+            session.execute(
+                delete(ObjectTemplateVersionRow).where(
+                    ObjectTemplateVersionRow.template_id == str(parent.id),
+                    ObjectTemplateVersionRow.version == 1,
+                )
+            )
+            session.commit()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_raw_delete_of_unreferenced_sibling_parent_version_is_allowed(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "parent_sibling_delete.sqlite3")
+    parent = _template(name="parent")
+    child = _template(name="child")
+    try:
+        repo.add(parent)
+        repo.add(child)
+        repo.add_version(_version(parent.id, 1))
+        repo.add_version(_version(parent.id, 2))
+        repo.add_version(
+            _version(
+                child.id,
+                1,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+            )
+        )
+        session.commit()
+
+        session.execute(
+            delete(ObjectTemplateVersionRow).where(
+                ObjectTemplateVersionRow.template_id == str(parent.id),
+                ObjectTemplateVersionRow.version == 2,
+            )
+        )
+        session.commit()
+
+        assert repo.get_version(parent.id, 2) is None
+        assert repo.get_version(parent.id, 1) is not None
     finally:
         session.close()
         engine.dispose()
@@ -1237,6 +1457,52 @@ def test_schema_normalizes_object_template_properties(tmp_path: Path) -> None:
         assert indexes["ix_object_template_properties_datatype_version"] == (
             "datatype_id",
             "datatype_version",
+        )
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_schema_normalizes_exact_parent_reference_on_object_template_versions(
+    tmp_path: Path,
+) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "parent_schema.sqlite3")
+    try:
+        inspector = inspect(engine)
+
+        pk = inspector.get_pk_constraint("object_template_versions")
+        assert pk["name"] == "pk_object_template_versions"
+        assert pk["constrained_columns"] == ["template_id", "version"]
+
+        foreign_keys = {
+            fk["name"]: (
+                tuple(fk["constrained_columns"]),
+                fk["referred_table"],
+                tuple(fk["referred_columns"]),
+                (fk.get("options") or {}).get("ondelete"),
+            )
+            for fk in inspector.get_foreign_keys("object_template_versions")
+        }
+        assert foreign_keys["fk_object_template_versions_parent"] == (
+            ("parent_template_id", "parent_version"),
+            "object_template_versions",
+            ("template_id", "version"),
+            "RESTRICT",
+        )
+
+        checks = {
+            check["name"]: check["sqltext"]
+            for check in inspector.get_check_constraints("object_template_versions")
+        }
+        assert "ck_object_template_versions_parent_pair" in checks
+
+        indexes = {
+            index["name"]: tuple(index["column_names"])
+            for index in inspector.get_indexes("object_template_versions")
+        }
+        assert indexes["ix_object_template_versions_parent"] == (
+            "parent_template_id",
+            "parent_version",
         )
     finally:
         session.close()
