@@ -37,8 +37,7 @@ General rule:
 Applied in this phase:
 
 - ObjectTemplate property declarations -> relational, implemented in S3a
-- ObjectTemplate component declarations -> still temporarily JSON, scheduled
-  for S3b
+- ObjectTemplate component declarations -> relational, implemented in S3b
 - Object properties -> remain JSON as runtime dynamic values
 - ObjectChange before/after snapshots -> remain JSON as historical snapshots
 - DataTypeVersion constraints -> remain JSON as embedded constraint values, not
@@ -51,18 +50,22 @@ This phase uses a fresh-database contract:
 - no dual reads of legacy representations
 - no dual writes to old and new representations
 
-After S3a there is exactly one authoritative SQL persistence representation for
-ObjectTemplate properties: the relational child table.
+After S3b there is exactly one authoritative SQL persistence representation for
+ObjectTemplate structural declarations:
+
+- properties -> relational child table
+- components -> relational child table
 
 ## Consequences
 
 - SQLite can physically reject an ObjectTemplate property that references a
   nonexistent exact DataTypeVersion.
+- SQLite can physically reject an ObjectTemplate component declaration that
+  references a nonexistent target ObjectTemplate identity.
 - Whole-owner deletion of an exact ObjectTemplateVersion can cascade cleanly to
-  owned property rows.
+  owned property rows and component rows.
 - Repository and test fixtures must create real referenced DataTypeVersion
-  rows rather than relying on arbitrary UUID text in JSON.
-- ObjectTemplate component declarations remain temporarily weaker at the
-  physical layer until S3b normalizes them.
+  rows and real referenced ObjectTemplate identity rows rather than relying on
+  arbitrary UUID text in JSON.
 - Existing dogfood databases are recreated rather than migrated during this
   development stage.

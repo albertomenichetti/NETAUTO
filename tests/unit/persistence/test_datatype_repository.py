@@ -720,11 +720,11 @@ def test_raw_delete_of_referenced_exact_datatype_version_hits_fk_restrict(
                 "INSERT INTO object_template_versions "
                 "("
                 "template_id, version, status, parent_template_id, "
-                "parent_version, components_json"
+                "parent_version"
                 ") "
                 "VALUES ("
                 ":template_id, :version, :status, :parent_template_id, "
-                ":parent_version, :components_json"
+                ":parent_version"
                 ")"
             ),
             {
@@ -733,7 +733,6 @@ def test_raw_delete_of_referenced_exact_datatype_version_hits_fk_restrict(
                 "status": "draft",
                 "parent_template_id": None,
                 "parent_version": None,
-                "components_json": "[]",
             },
         )
         session.execute(
@@ -805,11 +804,11 @@ def test_repository_delete_maps_referenced_property_fk_failure_to_persistence_er
                 "INSERT INTO object_template_versions "
                 "("
                 "template_id, version, status, parent_template_id, "
-                "parent_version, components_json"
+                "parent_version"
                 ") "
                 "VALUES ("
                 ":template_id, :version, :status, :parent_template_id, "
-                ":parent_version, :components_json"
+                ":parent_version"
                 ")"
             ),
             {
@@ -818,7 +817,6 @@ def test_repository_delete_maps_referenced_property_fk_failure_to_persistence_er
                 "status": "draft",
                 "parent_template_id": None,
                 "parent_version": None,
-                "components_json": "[]",
             },
         )
         session.execute(

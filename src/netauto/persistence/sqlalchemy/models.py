@@ -77,7 +77,6 @@ class ObjectTemplateVersionRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     parent_template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_version: Mapped[int | None] = mapped_column(nullable=True)
-    components_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class ObjectTemplatePropertyRow(Base):
@@ -123,6 +122,48 @@ class ObjectTemplatePropertyRow(Base):
     datatype_id: Mapped[str] = mapped_column(Text, nullable=False)
     datatype_version: Mapped[int] = mapped_column(nullable=False)
     required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class ObjectTemplateComponentRow(Base):
+    """Persisted stable-identity object template component declaration row."""
+
+    __tablename__ = "object_template_components"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "template_id",
+            "template_version",
+            "name",
+            name="pk_object_template_components",
+        ),
+        UniqueConstraint(
+            "template_id",
+            "template_version",
+            "position",
+            name="uq_object_template_components_owner_position",
+        ),
+        ForeignKeyConstraint(
+            ["template_id", "template_version"],
+            ["object_template_versions.template_id", "object_template_versions.version"],
+            ondelete="CASCADE",
+            name="fk_object_template_components_owner",
+        ),
+        ForeignKeyConstraint(
+            ["target_template_id"],
+            ["object_templates.id"],
+            ondelete="RESTRICT",
+            name="fk_object_template_components_target_template",
+        ),
+        Index(
+            "ix_object_template_components_target_template",
+            "target_template_id",
+        ),
+    )
+
+    template_id: Mapped[str] = mapped_column(Text, nullable=False)
+    template_version: Mapped[int] = mapped_column(nullable=False)
+    position: Mapped[int] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    target_template_id: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class RelationshipDefinitionRow(Base):
