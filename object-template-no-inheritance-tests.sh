@@ -348,6 +348,15 @@ echo -e "pubblicata versione:1"
 printf "\n${GREEN}(versioni objecttemplate router presenti, json fmt)\n${NC}"
 "${CMD[@]}" --output json object-template version list ${otid3}
 
+
+
+printf "\n${GREEN}(tenativo di eliminazione objecttemplate network_interface; deve fallire)\n${NC}"
+netid=$("${CMD[@]}" --output "json" datatype show-name network network_interface | jq -r '.id')
+echo -e "id:${netid}"
+"${CMD[@]}" --output "json" object-template delete ${netid}
+
+
+
 printf "\n${GREEN}(creazione di una nuova versione dell'objecttemplate router)\n${NC}"
 echo -e "id:${otid3}"
 "${CMD[@]}" --output json object-template version create ${otid3} --source-version 1 1>/dev/null 2>&1

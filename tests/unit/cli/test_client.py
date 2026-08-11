@@ -143,6 +143,7 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                 ],
             }
         )
+        client.delete_object_template("abc")
         client.list_object_template_versions("abc")
         client.get_object_template_version("abc", 2)
         client.revise_object_template_version(
@@ -194,6 +195,7 @@ def test_object_template_client_builds_correct_urls_and_bodies() -> None:
                 ],
             },
         ),
+        ("DELETE", "http://127.0.0.1:8000/api/v1/object-templates/abc", None),
         ("GET", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions", None),
         ("GET", "http://127.0.0.1:8000/api/v1/object-templates/abc/versions/2", None),
         (
@@ -248,6 +250,19 @@ def test_object_template_client_returns_arrays_and_objects() -> None:
     ) as client:
         assert client.list_object_templates() == [{"id": "x"}]
         assert client.get_object_template("abc") == {"id": "x"}
+
+
+def test_object_template_client_returns_empty_delete() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return _response(200, {"id": "x"})
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.delete_object_template("abc") is None
 
 
 def test_object_client_builds_correct_urls_and_bodies() -> None:

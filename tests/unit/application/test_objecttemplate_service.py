@@ -19,6 +19,7 @@ from netauto.core.datatype import (
     DataTypeVersioningService,
     DataTypeVersionStatus,
 )
+from netauto.core.object import Object
 from netauto.core.objecttemplate import (
     InheritedObjectTemplateComponentConflict,
     InheritedObjectTemplatePropertyConflict,
@@ -30,6 +31,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateDataTypeVersionDowngrade,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
+    ObjectTemplateInUse,
     ObjectTemplateNotFound,
     ObjectTemplateParentNotFound,
     ObjectTemplateParentNotPublished,
@@ -40,7 +42,9 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionRef,
     ObjectTemplateVersionStatus,
 )
+from netauto.core.relationship import RelationshipDefinition
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import (
     InMemoryObjectTemplateRepository,
 )
@@ -54,6 +58,7 @@ class TrackingObjectTemplateRepository(InMemoryObjectTemplateRepository):
         super().__init__()
         self.get_version_calls: list[tuple[UUID, int]] = []
         self.list_versions_calls: list[UUID] = []
+        self.delete_calls: list[UUID] = []
 
     def get_version(self, template_id: UUID, version: int) -> ObjectTemplateVersion | None:
         self.get_version_calls.append((template_id, version))
@@ -63,17 +68,23 @@ class TrackingObjectTemplateRepository(InMemoryObjectTemplateRepository):
         self.list_versions_calls.append(template_id)
         return super().list_versions(template_id)
 
+    def delete(self, template_id: UUID) -> None:
+        self.delete_calls.append(template_id)
+        super().delete(template_id)
+
 
 class FakeUnitOfWork(ObjectTemplateUnitOfWork):
     def __init__(
         self,
         datatypes: InMemoryDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
+        objects: InMemoryObjectRepository,
         relationship_definitions: InMemoryRelationshipDefinitionRepository,
         commit_counter: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
+        self._objects = objects
         self._relationship_definitions = relationship_definitions
         self._commit_counter = commit_counter
 
@@ -84,6 +95,10 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
     @property
     def object_templates(self) -> TrackingObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def objects(self) -> InMemoryObjectRepository:
+        return self._objects
 
     @property
     def relationship_definitions(self) -> InMemoryRelationshipDefinitionRepository:
@@ -107,6 +122,7 @@ def _service() -> tuple[
 ]:
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
     relationship_definitions = InMemoryRelationshipDefinitionRepository()
     commit_counter = [0]
 
@@ -114,6 +130,7 @@ def _service() -> tuple[
         return FakeUnitOfWork(
             datatypes,
             object_templates,
+            objects,
             relationship_definitions,
             commit_counter,
         )
@@ -122,6 +139,39 @@ def _service() -> tuple[
         ObjectTemplateApplicationService(factory),
         datatypes,
         object_templates,
+        commit_counter,
+    )
+
+
+def _service_with_dependencies() -> tuple[
+    ObjectTemplateApplicationService,
+    InMemoryDataTypeRepository,
+    TrackingObjectTemplateRepository,
+    InMemoryObjectRepository,
+    InMemoryRelationshipDefinitionRepository,
+    list[int],
+]:
+    datatypes = InMemoryDataTypeRepository()
+    object_templates = TrackingObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
+    commit_counter = [0]
+
+    def factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            objects,
+            relationship_definitions,
+            commit_counter,
+        )
+
+    return (
+        ObjectTemplateApplicationService(factory),
+        datatypes,
+        object_templates,
+        objects,
+        relationship_definitions,
         commit_counter,
     )
 
@@ -1792,6 +1842,349 @@ def test_invalid_deprecate_transition_does_not_commit() -> None:
         service.deprecate_version(template_id=template.id, version=1)
 
     assert commits[0] == 0
+
+
+def test_delete_object_template_removes_identity_and_all_versions_and_commits_once() -> None:
+    service, _datatypes, object_templates, _objects, _definitions, commits = (
+        _service_with_dependencies()
+    )
+    target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    unrelated = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        target,
+        (
+            ObjectTemplateVersion(
+                template_id=target.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(),
+            ),
+            ObjectTemplateVersion(
+                template_id=target.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+            ),
+            ObjectTemplateVersion(
+                template_id=target.id,
+                version=3,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+                properties=(),
+            ),
+        ),
+    )
+    _store_object_template_versions(
+        object_templates,
+        unrelated,
+        (
+            ObjectTemplateVersion(
+                template_id=unrelated.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+            ),
+        ),
+    )
+
+    service.delete_object_template(target.id)
+
+    assert commits[0] == 1
+    assert object_templates.delete_calls == [target.id]
+    assert object_templates.get(target.id) is None
+    assert object_templates.list_versions(target.id) == ()
+    assert object_templates.get(unrelated.id) == unrelated
+    assert object_templates.list_versions(unrelated.id) != ()
+
+
+def test_delete_missing_object_template_raises_not_found_without_commit() -> None:
+    service, _datatypes, object_templates, _objects, _definitions, commits = (
+        _service_with_dependencies()
+    )
+
+    with pytest.raises(ObjectTemplateNotFound):
+        service.delete_object_template(uuid4())
+
+    assert commits[0] == 0
+    assert object_templates.delete_calls == []
+
+
+def test_delete_object_template_blocked_by_runtime_object_without_commit() -> None:
+    service, _datatypes, object_templates, objects, _definitions, commits = (
+        _service_with_dependencies()
+    )
+    target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        target,
+        (
+            ObjectTemplateVersion(
+                template_id=target.id,
+                version=3,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+            ),
+        ),
+    )
+    objects.add(
+        Object(
+            id=uuid4(),
+            template_id=target.id,
+            template_version=3,
+            properties={},
+        )
+    )
+
+    with pytest.raises(ObjectTemplateInUse, match="current object"):
+        service.delete_object_template(target.id)
+
+    assert commits[0] == 0
+    assert object_templates.get(target.id) == target
+    assert object_templates.delete_calls == []
+
+
+@pytest.mark.parametrize("status", list(ObjectTemplateVersionStatus))
+def test_delete_object_template_blocked_by_inheritance_reference_in_any_status(
+    status: ObjectTemplateVersionStatus,
+) -> None:
+    service, _datatypes, object_templates, _objects, _definitions, commits = (
+        _service_with_dependencies()
+    )
+    parent = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    child = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent,
+        (
+            ObjectTemplateVersion(
+                template_id=parent.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+            ),
+        ),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child,
+        (
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=7,
+                status=status,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+                properties=(),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateInUse, match="inheritance"):
+        service.delete_object_template(parent.id)
+
+    assert commits[0] == 0
+    assert object_templates.delete_calls == []
+
+
+@pytest.mark.parametrize("status", list(ObjectTemplateVersionStatus))
+def test_delete_object_template_blocked_by_component_reference_in_any_status(
+    status: ObjectTemplateVersionStatus,
+) -> None:
+    service, _datatypes, object_templates, _objects, _definitions, commits = (
+        _service_with_dependencies()
+    )
+    target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="interface",
+        description=None,
+        abstract=False,
+    )
+    owner = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        target,
+        (
+            ObjectTemplateVersion(
+                template_id=target.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(),
+            ),
+        ),
+    )
+    _store_object_template_versions(
+        object_templates,
+        owner,
+        (
+            ObjectTemplateVersion(
+                template_id=owner.id,
+                version=2,
+                status=status,
+                properties=(),
+                components=(
+                    ObjectTemplateComponent(name="ports", template_id=target.id),
+                    ObjectTemplateComponent(name="backup", template_id=uuid4()),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateInUse, match="component declaration"):
+        service.delete_object_template(target.id)
+
+    assert commits[0] == 0
+    assert object_templates.delete_calls == []
+
+
+def test_delete_object_template_blocked_by_relationship_definition_endpoint() -> None:
+    service, _datatypes, object_templates, _objects, definitions, commits = (
+        _service_with_dependencies()
+    )
+    source = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="credential",
+        description=None,
+        abstract=False,
+    )
+    other = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="service",
+        description=None,
+        abstract=False,
+    )
+    for template in (source, target, other):
+        _store_object_template_versions(
+            object_templates,
+            template,
+            (
+                ObjectTemplateVersion(
+                    template_id=template.id,
+                    version=1,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    properties=(),
+                ),
+            ),
+        )
+    definitions.add(
+        RelationshipDefinition(
+            id=uuid4(),
+            source_template_id=source.id,
+            target_template_id=other.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+    )
+    definitions.add(
+        RelationshipDefinition(
+            id=uuid4(),
+            source_template_id=other.id,
+            target_template_id=target.id,
+            forward_name="binds",
+            reverse_name="bound_by",
+        )
+    )
+
+    with pytest.raises(ObjectTemplateInUse, match="relationship definition"):
+        service.delete_object_template(source.id)
+    with pytest.raises(ObjectTemplateInUse, match="relationship definition"):
+        service.delete_object_template(target.id)
+
+    assert commits[0] == 0
+    assert object_templates.delete_calls == []
+
+
+def test_delete_object_template_discovers_late_blocker_before_mutation() -> None:
+    service, _datatypes, object_templates, _objects, definitions, commits = (
+        _service_with_dependencies()
+    )
+    target = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    other = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="credential",
+        description=None,
+        abstract=False,
+    )
+    for template in (target, other):
+        _store_object_template_versions(
+            object_templates,
+            template,
+            (
+                ObjectTemplateVersion(
+                    template_id=template.id,
+                    version=1,
+                    status=ObjectTemplateVersionStatus.PUBLISHED,
+                    properties=(),
+                ),
+            ),
+        )
+    definitions.add(
+        RelationshipDefinition(
+            id=uuid4(),
+            source_template_id=target.id,
+            target_template_id=other.id,
+            forward_name="uses",
+            reverse_name="is_used_by",
+        )
+    )
+
+    with pytest.raises(ObjectTemplateInUse):
+        service.delete_object_template(target.id)
+
+    assert commits[0] == 0
+    assert object_templates.delete_calls == []
+    assert object_templates.get(target.id) == target
 
 
 def test_objecttemplate_application_module_has_no_sqlalchemy_or_concrete_persistence_imports(

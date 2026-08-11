@@ -20,6 +20,7 @@ from netauto.core.relationship import (
     RelationshipDefinitionSemanticConflict,
 )
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
+from netauto.persistence.memory.object_repository import InMemoryObjectRepository
 from netauto.persistence.memory.objecttemplate_repository import (
     InMemoryObjectTemplateRepository,
 )
@@ -63,11 +64,13 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
         self,
         datatypes: InMemoryDataTypeRepository,
         object_templates: TrackingObjectTemplateRepository,
+        objects: InMemoryObjectRepository,
         relationship_definitions: TrackingRelationshipDefinitionRepository,
         commits: list[int],
     ) -> None:
         self._datatypes = datatypes
         self._object_templates = object_templates
+        self._objects = objects
         self._relationship_definitions = relationship_definitions
         self._commits = commits
 
@@ -78,6 +81,10 @@ class FakeUnitOfWork(ObjectTemplateUnitOfWork):
     @property
     def object_templates(self) -> TrackingObjectTemplateRepository:
         return self._object_templates
+
+    @property
+    def objects(self) -> InMemoryObjectRepository:
+        return self._objects
 
     @property
     def relationship_definitions(self) -> TrackingRelationshipDefinitionRepository:
@@ -101,6 +108,7 @@ def _service() -> tuple[
 ]:
     datatypes = InMemoryDataTypeRepository()
     object_templates = TrackingObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
     relationship_definitions = TrackingRelationshipDefinitionRepository()
     commits = [0]
 
@@ -108,6 +116,7 @@ def _service() -> tuple[
         return FakeUnitOfWork(
             datatypes,
             object_templates,
+            objects,
             relationship_definitions,
             commits,
         )

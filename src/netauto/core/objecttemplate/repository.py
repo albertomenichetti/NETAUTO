@@ -25,6 +25,10 @@ class ObjectTemplateRepository(Protocol):
         """Return an object template by logical name or None."""
         ...
 
+    def delete(self, template_id: UUID) -> None:
+        """Delete an object template identity and all of its versions."""
+        ...
+
     def add_version(self, version: ObjectTemplateVersion) -> None:
         """Persist a new object template version snapshot."""
         ...

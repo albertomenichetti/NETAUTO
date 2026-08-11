@@ -89,6 +89,10 @@ class ObjectTemplateNotFound(Exception):
     """Raised when a required object template does not exist."""
 
 
+class ObjectTemplateInUse(Exception):
+    """Raised when an object template identity is still referenced."""
+
+
 class ObjectTemplateVersionAlreadyExists(Exception):
     """Raised when an object template version identity already exists."""
 

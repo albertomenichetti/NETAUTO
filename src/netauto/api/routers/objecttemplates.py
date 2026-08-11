@@ -252,6 +252,18 @@ def get_object_template(
     return _to_object_template_response(service.get_object_template(template_id))
 
 
+@router.delete(
+    "/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=ERROR_RESPONSES,
+)
+def delete_object_template(
+    template_id: UUID,
+    service: Annotated[ObjectTemplateApplicationService, Depends(get_object_template_service)],
+) -> None:
+    service.delete_object_template(template_id)
+
+
 @router.get(
     "/{template_id}/versions",
     response_model=list[ObjectTemplateVersionResponse],

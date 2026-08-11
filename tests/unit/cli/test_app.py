@@ -80,6 +80,9 @@ class FakeClient:
     def create_object_template(self, payload: dict[str, object]) -> Any:
         return self._call("create_object_template", payload)
 
+    def delete_object_template(self, template_id: str) -> Any:
+        return self._call("delete_object_template", template_id)
+
     def list_object_template_versions(self, template_id: str) -> Any:
         return self._call("list_object_template_versions", template_id)
 
@@ -717,6 +720,53 @@ def test_object_template_read_commands(monkeypatch: pytest.MonkeyPatch) -> None:
         ).exit_code
         == 0
     )
+
+
+def test_object_template_delete_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    template_id = str(uuid4())
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"delete_object_template": None}, calls)
+
+    human = runner.invoke(app, ["object-template", "delete", template_id])
+    json_result = runner.invoke(
+        app,
+        ["--output", "json", "object-template", "delete", template_id],
+    )
+
+    assert human.exit_code == 0
+    assert human.stdout.strip() == f"Deleted object template {template_id}"
+    assert json_result.exit_code == 0
+    assert json.loads(json_result.stdout) is None
+    assert calls == [
+        ("delete_object_template", (template_id,)),
+        ("delete_object_template", (template_id,)),
+    ]
+
+
+def test_object_template_delete_propagates_api_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(
+        monkeypatch,
+        {"delete_object_template": None},
+        calls,
+        error=ApiError(
+            status_code=409,
+            code="object_template_in_use",
+            message="Object template is still in use",
+            details=[],
+        ),
+    )
+
+    result = runner.invoke(app, ["object-template", "delete", str(uuid4())])
+
+    assert result.exit_code == 1
+    assert "object_template_in_use" in result.stderr
+
+
+def test_object_template_delete_rejects_invalid_uuid_locally() -> None:
+    result = runner.invoke(app, ["object-template", "delete", "not-a-uuid"])
+
+    assert result.exit_code == 2
 
 
 def test_object_template_create_inline_variants(monkeypatch: pytest.MonkeyPatch) -> None:

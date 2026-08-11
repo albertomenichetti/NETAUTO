@@ -67,6 +67,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
     ObjectTemplateInheritanceCycle,
+    ObjectTemplateInUse,
     ObjectTemplateNotFound,
     ObjectTemplateParentNotFound,
     ObjectTemplateParentNotPublished,
@@ -395,6 +396,12 @@ _EXCEPTION_MAP: tuple[tuple[type[Exception], int, str, str], ...] = (
         HTTPStatus.CONFLICT,
         "object_template_already_exists",
         "Object template already exists",
+    ),
+    (
+        ObjectTemplateInUse,
+        HTTPStatus.CONFLICT,
+        "object_template_in_use",
+        "Object template is still in use",
     ),
     (
         ObjectTemplateVersionAlreadyExists,

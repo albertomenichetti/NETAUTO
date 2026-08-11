@@ -1805,6 +1805,7 @@ def test_openapi_includes_object_template_and_datatype_endpoints_and_schemas(
     assert response.status_code == 200
     payload = response.json()
     assert "/api/v1/object-templates" in payload["paths"]
+    assert "delete" in payload["paths"]["/api/v1/object-templates/{template_id}"]
     assert "/api/v1/object-templates/{template_id}/versions/{version}" in payload["paths"]
     assert "/api/v1/datatypes" in payload["paths"]
     assert "CreateObjectTemplateRequest" in payload["components"]["schemas"]
@@ -1813,3 +1814,96 @@ def test_openapi_includes_object_template_and_datatype_endpoints_and_schemas(
     component_response = payload["components"]["schemas"]["ObjectTemplateComponentResponse"]
     assert set(component_request["properties"]) == {"name", "template_id"}
     assert set(component_response["properties"]) == {"name", "template_id"}
+
+
+def test_delete_object_template_returns_204_and_commits_once(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, _datatypes, _object_templates, commits = client_context
+    created = _create_object_template(
+        client,
+        datatype_id=None,
+        properties=[],
+        name="standalone",
+    )
+    template_id = created["object_template"]["id"]
+    before = commits[0]
+
+    response = client.delete(f"/api/v1/object-templates/{template_id}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert commits[0] == before + 1
+    assert client.get(f"/api/v1/object-templates/{template_id}").status_code == 404
+
+
+def test_delete_object_template_missing_returns_404(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, _datatypes, _object_templates, commits = client_context
+    before = commits[0]
+
+    response = client.delete(f"/api/v1/object-templates/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "object_template_not_found"
+    assert commits[0] == before
+
+
+def test_delete_object_template_in_use_returns_409(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, _datatypes, _object_templates, commits = client_context
+    parent = _create_object_template(
+        client,
+        datatype_id=None,
+        properties=[],
+        name="device",
+    )
+    _create_object_template(
+        client,
+        datatype_id=None,
+        properties=[],
+        name="router",
+        parent={"template_id": parent["object_template"]["id"], "version": 1},
+    )
+    before = commits[0]
+
+    response = client.delete(
+        f"/api/v1/object-templates/{parent['object_template']['id']}"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_template_in_use"
+    assert commits[0] == before
+
+
+def test_delete_object_template_malformed_uuid_returns_422(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, _datatypes, _object_templates, _commits = client_context
+
+    response = client.delete("/api/v1/object-templates/not-a-uuid")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "request_validation_failed"

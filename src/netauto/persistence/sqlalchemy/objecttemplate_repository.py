@@ -3,7 +3,7 @@
 import json
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -220,6 +220,23 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
         if row is None:
             return None
         return _row_to_object_template(row)
+
+    def delete(self, template_id: UUID) -> None:
+        owner = self._session.get(ObjectTemplateRow, str(template_id))
+        if owner is None:
+            raise ObjectTemplateNotFound("ObjectTemplate does not exist.")
+        self._session.execute(
+            delete(ObjectTemplateVersionRow).where(
+                ObjectTemplateVersionRow.template_id == str(template_id)
+            )
+        )
+        self._session.delete(owner)
+        try:
+            self._session.flush()
+        except IntegrityError as error:
+            raise ObjectTemplatePersistenceError(
+                "ObjectTemplate deletion failed."
+            ) from error
 
     def add_version(self, version: ObjectTemplateVersion) -> None:
         owner = self._session.get(ObjectTemplateRow, str(version.template_id))

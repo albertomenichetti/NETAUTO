@@ -108,6 +108,9 @@ class NetautoApiClient:
     def create_object_template(self, payload: JSONObject) -> JSONObject:
         return self._request_object("POST", "/object-templates", json_body=payload)
 
+    def delete_object_template(self, template_id: str) -> None:
+        self._request_empty("DELETE", f"/object-templates/{template_id}")
+
     def list_object_template_versions(self, template_id: str) -> JSONArray:
         return self._request_array("GET", f"/object-templates/{template_id}/versions")
 

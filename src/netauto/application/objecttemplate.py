@@ -16,6 +16,7 @@ from netauto.core.objecttemplate import (
     ObjectTemplateComponentVersionNotPublished,
     ObjectTemplateDataTypeVersionNotFound,
     ObjectTemplateDataTypeVersionNotPublished,
+    ObjectTemplateInUse,
     ObjectTemplateNotFound,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
@@ -170,6 +171,45 @@ class ObjectTemplateApplicationService:
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")
             return template
+
+    def delete_object_template(self, template_id: UUID) -> None:
+        with self._uow_factory() as uow:
+            template = uow.object_templates.get(template_id)
+            if template is None:
+                raise ObjectTemplateNotFound("Object template does not exist.")
+
+            for object_value in uow.objects.list():
+                if object_value.template_id == template_id:
+                    raise ObjectTemplateInUse(
+                        "Object template is still referenced by a current object."
+                    )
+
+            for candidate_template in uow.object_templates.list():
+                for version in uow.object_templates.list_versions(candidate_template.id):
+                    if candidate_template.id != template_id:
+                        parent = version.parent
+                        if parent is not None and parent.template_id == template_id:
+                            raise ObjectTemplateInUse(
+                                "Object template is still referenced by inheritance."
+                            )
+                        for component in version.components:
+                            if component.template_id == template_id:
+                                raise ObjectTemplateInUse(
+                                    "Object template is still referenced by a component "
+                                    "declaration."
+                                )
+
+            for definition in uow.relationship_definitions.list():
+                if (
+                    definition.source_template_id == template_id
+                    or definition.target_template_id == template_id
+                ):
+                    raise ObjectTemplateInUse(
+                        "Object template is still referenced by a relationship definition."
+                    )
+
+            uow.object_templates.delete(template_id)
+            uow.commit()
 
     def list_versions(self, template_id: UUID) -> tuple[ObjectTemplateVersion, ...]:
         with self._uow_factory() as uow:

@@ -11,6 +11,7 @@ from netauto.cli.input import ensure_modes_are_exclusive, load_json_object, pars
 from netauto.cli.output import (
     render_object_template,
     render_object_template_create_result,
+    render_object_template_delete_result,
     render_object_template_list,
     render_object_template_version,
     render_object_template_version_list,
@@ -145,6 +146,18 @@ def show_object_template_name(ctx: typer.Context, namespace: str, name: str) -> 
         ctx,
         lambda client: client.get_object_template_by_name(namespace, name),
         render_object_template,
+    )
+
+
+@object_template_app.command("delete")
+def delete_object_template(ctx: typer.Context, template_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.delete_object_template(uuid_text(template_id)),
+        lambda _payload, mode: render_object_template_delete_result(
+            uuid_text(template_id),
+            mode,
+        ),
     )
 
 

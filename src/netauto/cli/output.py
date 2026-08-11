@@ -175,6 +175,12 @@ def render_object_template_create_result(payload: JSONObject, mode: OutputMode) 
     )
 
 
+def render_object_template_delete_result(template_id: str, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(None)
+    return f"Deleted object template {template_id}"
+
+
 def render_object_template_version_list(payload: JSONArray, mode: OutputMode) -> str:
     if mode is OutputMode.JSON:
         return render_json(payload)

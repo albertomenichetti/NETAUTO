@@ -44,6 +44,16 @@ class InMemoryObjectTemplateRepository(ObjectTemplateRepository):
             return None
         return self._templates[template_id]
 
+    def delete(self, template_id: UUID) -> None:
+        template = self._templates.get(template_id)
+        if template is None:
+            raise ObjectTemplateNotFound("ObjectTemplate does not exist.")
+        del self._templates[template_id]
+        del self._template_names[(template.namespace, template.name)]
+        version_keys = [key for key in self._versions if key[0] == template_id]
+        for version_key in version_keys:
+            del self._versions[version_key]
+
     def add_version(self, version: ObjectTemplateVersion) -> None:
         if version.template_id not in self._templates:
             raise ObjectTemplateNotFound("Owning object template does not exist.")

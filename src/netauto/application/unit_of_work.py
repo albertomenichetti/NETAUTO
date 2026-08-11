@@ -48,6 +48,10 @@ class ObjectTemplateUnitOfWork(Protocol):
         ...
 
     @property
+    def objects(self) -> ObjectRepository:
+        ...
+
+    @property
     def relationship_definitions(self) -> RelationshipDefinitionRepository:
         ...
 

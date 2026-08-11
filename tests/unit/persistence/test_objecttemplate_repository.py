@@ -219,6 +219,32 @@ def test_list_versions_for_unknown_or_no_versions_returns_empty_tuple() -> None:
     assert repo.list_versions(uuid4()) == ()
 
 
+def test_delete_removes_identity_and_all_versions_only_for_target() -> None:
+    repo = InMemoryObjectTemplateRepository()
+    target = _template(name="device")
+    unrelated = _template(name="router")
+    repo.add(target)
+    repo.add(unrelated)
+    repo.add_version(_version(target.id, 1))
+    repo.add_version(_version(target.id, 2, status=ObjectTemplateVersionStatus.PUBLISHED))
+    repo.add_version(_version(unrelated.id, 1))
+
+    repo.delete(target.id)
+
+    assert repo.get(target.id) is None
+    assert repo.get_by_name(target.namespace, target.name) is None
+    assert repo.list_versions(target.id) == ()
+    assert repo.get(unrelated.id) == unrelated
+    assert repo.list_versions(unrelated.id) == (_version(unrelated.id, 1),)
+
+
+def test_delete_missing_identity_rejected() -> None:
+    repo = InMemoryObjectTemplateRepository()
+
+    with pytest.raises(ObjectTemplateNotFound):
+        repo.delete(uuid4())
+
+
 def test_replace_existing_version() -> None:
     repo = InMemoryObjectTemplateRepository()
     service = ObjectTemplateVersioningService()
