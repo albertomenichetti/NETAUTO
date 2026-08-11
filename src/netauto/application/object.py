@@ -63,7 +63,7 @@ class ObjectApplicationService:
         self,
         *,
         template_id: UUID,
-        template_version: int,
+        template_version: int | None,
         properties: Mapping[str, object],
     ) -> Object:
         with self._uow_factory() as uow:
@@ -71,15 +71,11 @@ class ObjectApplicationService:
             if template is None:
                 raise ObjectTemplateNotFound("Object template does not exist.")
 
-            version = self._get_template_version(
+            version = self._resolve_create_template_version(
                 uow,
                 template_id=template_id,
                 template_version=template_version,
             )
-            if version.status is not ObjectTemplateVersionStatus.PUBLISHED:
-                raise ObjectTemplateVersionNotPublished(
-                    "Object template version must be published."
-                )
             if template.abstract:
                 raise AbstractObjectTemplateInstantiation(
                     "Abstract object template cannot be instantiated."
@@ -97,7 +93,7 @@ class ObjectApplicationService:
             created = Object(
                 id=uuid4(),
                 template_id=template_id,
-                template_version=template_version,
+                template_version=version.version,
                 properties=properties,
             )
             created_change = self._build_change(
@@ -424,6 +420,36 @@ class ObjectApplicationService:
         if version is None:
             raise ObjectTemplateVersionNotFound("Object template version does not exist.")
         return version
+
+    def _resolve_create_template_version(
+        self,
+        uow: ObjectUnitOfWork,
+        *,
+        template_id: UUID,
+        template_version: int | None,
+    ) -> ObjectTemplateVersion:
+        if template_version is not None:
+            version = self._get_template_version(
+                uow,
+                template_id=template_id,
+                template_version=template_version,
+            )
+            if version.status is not ObjectTemplateVersionStatus.PUBLISHED:
+                raise ObjectTemplateVersionNotPublished(
+                    "Object template version must be published."
+                )
+            return version
+
+        published_versions = [
+            version
+            for version in uow.object_templates.list_versions(template_id)
+            if version.status is ObjectTemplateVersionStatus.PUBLISHED
+        ]
+        if not published_versions:
+            raise ObjectTemplateVersionNotPublished(
+                "Object template version must be published."
+            )
+        return max(published_versions, key=lambda version: version.version)
 
     def _resolve_effective_properties(
         self,

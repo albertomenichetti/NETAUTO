@@ -42,13 +42,15 @@ def _build_create_payload(
     ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
     if file is not None:
         return load_json_object(file)
-    if template_id is None or template_version is None:
-        raise InputError("Inline create mode requires --template-id and --template-version.")
-    return {
+    if template_id is None:
+        raise InputError("Inline create mode requires --template-id.")
+    payload: JSONObject = {
         "template_id": uuid_text(template_id),
-        "template_version": template_version,
         "properties": _merge_property_json(property_json),
     }
+    if template_version is not None:
+        payload["template_version"] = template_version
+    return payload
 
 
 def _build_update_payload(

@@ -358,6 +358,230 @@ def test_create_missing_template_identity_or_version_raises_focused_exceptions()
     assert commits[0] == 0
 
 
+def test_create_omitted_version_uses_highest_published_template_version() -> None:
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
+    datatype, draft = _datatype()
+    published = DataTypeVersioningService().publish(draft)
+    _store_datatype_versions(datatypes, datatype, (published,))
+
+    template = _template()
+    versions = (
+        _version(
+            template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        ),
+        _version(
+            template.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        ),
+        _version(
+            template.id,
+            version=3,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        ),
+    )
+    _store_template_versions(object_templates, template, versions)
+
+    created = service.create_object(
+        template_id=template.id,
+        template_version=None,
+        properties={"hostname": "router-01"},
+    )
+
+    assert created.template_version == 2
+    assert objects.get(created.id) == created
+    assert commits[0] == 1
+
+
+def test_create_omitted_version_ignores_deprecated_and_draft_versions() -> None:
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
+    datatype, draft = _datatype()
+    published = DataTypeVersioningService().publish(draft)
+    _store_datatype_versions(datatypes, datatype, (published,))
+
+    template = _template()
+    versions = (
+        _version(
+            template.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        ),
+        _version(
+            template.id,
+            version=2,
+            status=ObjectTemplateVersionStatus.DEPRECATED,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        ),
+        _version(
+            template.id,
+            version=3,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            properties=(
+                _property(
+                    "hostname",
+                    datatype_id=datatype.id,
+                    datatype_version=published.version,
+                    required=True,
+                ),
+            ),
+        ),
+    )
+    _store_template_versions(object_templates, template, versions)
+
+    created = service.create_object(
+        template_id=template.id,
+        template_version=None,
+        properties={"hostname": "router-01"},
+    )
+
+    assert created.template_version == 1
+    assert objects.get(created.id) == created
+    assert commits[0] == 1
+
+
+def test_create_omitted_version_fails_when_no_published_version_exists() -> None:
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
+    datatype, draft = _datatype()
+    published = DataTypeVersioningService().publish(draft)
+    _store_datatype_versions(datatypes, datatype, (published,))
+
+    template = _template()
+    _store_template_versions(
+        object_templates,
+        template,
+        (
+            _version(
+                template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=published.version,
+                        required=True,
+                    ),
+                ),
+            ),
+            _version(
+                template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=published.version,
+                        required=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateVersionNotPublished):
+        service.create_object(
+            template_id=template.id,
+            template_version=None,
+            properties={"hostname": "router-01"},
+        )
+
+    assert objects.list() == ()
+    assert commits[0] == 0
+
+
+def test_create_explicit_older_published_version_is_used_exactly() -> None:
+    service, datatypes, object_templates, objects, _relationships, commits = _service()
+    datatype, draft = _datatype()
+    published = DataTypeVersioningService().publish(draft)
+    _store_datatype_versions(datatypes, datatype, (published,))
+
+    template = _template()
+    _store_template_versions(
+        object_templates,
+        template,
+        (
+            _version(
+                template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=published.version,
+                        required=True,
+                    ),
+                ),
+            ),
+            _version(
+                template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=published.version,
+                        required=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    created = service.create_object(
+        template_id=template.id,
+        template_version=1,
+        properties={"hostname": "router-01"},
+    )
+
+    assert created.template_version == 1
+    assert objects.get(created.id) == created
+    assert commits[0] == 1
+
+
 @pytest.mark.parametrize(
     "status",
     (

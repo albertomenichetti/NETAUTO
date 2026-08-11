@@ -25,6 +25,7 @@ from netauto.core.object import (
     ObjectChange,
     ObjectChangeKind,
     ObjectNotFound,
+    ObjectTemplateVersionNotPublished,
     ObjectValidationFailed,
 )
 from netauto.core.objecttemplate import (
@@ -443,6 +444,141 @@ def test_create_appends_created_history_and_commits_once() -> None:
     assert history[0].after.template_id == created.template_id
     assert history[0].after.template_version == created.template_version
     assert history[0].after.properties == created.properties
+
+
+def test_create_without_template_version_uses_highest_published_in_object_and_history() -> None:
+    occurred_at = datetime(2026, 8, 11, 12, 5, tzinfo=UTC)
+    (
+        service,
+        datatypes,
+        object_templates,
+        objects,
+        object_changes,
+        _relationships,
+        commits,
+    ) = _service(clock=lambda: occurred_at)
+    hostname = _datatype(name="hostname")
+    _store_datatypes(datatypes, (hostname,))
+    template = _template()
+    _store_template_versions(
+        object_templates,
+        template,
+        (
+            _template_version(
+                template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname[0].id,
+                        datatype_version=hostname[1].version,
+                        required=True,
+                    ),
+                ),
+            ),
+            _template_version(
+                template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname[0].id,
+                        datatype_version=hostname[1].version,
+                        required=True,
+                    ),
+                ),
+            ),
+            _template_version(
+                template.id,
+                version=3,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname[0].id,
+                        datatype_version=hostname[1].version,
+                        required=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    created = service.create_object(
+        template_id=template.id,
+        template_version=None,
+        properties={"hostname": "router-01"},
+    )
+
+    history = object_changes.list_by_object(created.id)
+    assert commits[0] == 1
+    assert created.template_version == 2
+    assert objects.get(created.id) == created
+    assert len(history) == 1
+    assert history[0].kind is ObjectChangeKind.CREATED
+    assert history[0].after is not None
+    assert history[0].after.template_version == 2
+
+
+def test_create_without_template_version_without_published_fails_without_history() -> None:
+    (
+        service,
+        datatypes,
+        object_templates,
+        objects,
+        object_changes,
+        _relationships,
+        commits,
+    ) = _service()
+    hostname = _datatype(name="hostname")
+    _store_datatypes(datatypes, (hostname,))
+    template = _template()
+    _store_template_versions(
+        object_templates,
+        template,
+        (
+            _template_version(
+                template.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.DEPRECATED,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname[0].id,
+                        datatype_version=hostname[1].version,
+                        required=True,
+                    ),
+                ),
+            ),
+            _template_version(
+                template.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=hostname[0].id,
+                        datatype_version=hostname[1].version,
+                        required=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ObjectTemplateVersionNotPublished):
+        service.create_object(
+            template_id=template.id,
+            template_version=None,
+            properties={"hostname": "router-01"},
+        )
+
+    tracked_changes = cast(TrackingObjectChangeRepository, object_changes)
+    assert objects.list() == ()
+    assert tracked_changes.add_calls == []
+    assert commits[0] == 0
 
 
 def test_create_validation_failure_produces_no_history_and_no_commit() -> None:

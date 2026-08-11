@@ -272,17 +272,16 @@ def _create_object(
     client: TestClient,
     *,
     template_id: UUID,
-    template_version: int,
+    template_version: int | None,
     properties: dict[str, object] | None = None,
 ) -> dict[str, Any]:
-    response = client.post(
-        "/api/v1/objects",
-        json={
-            "template_id": str(template_id),
-            "template_version": template_version,
-            "properties": properties or {},
-        },
-    )
+    payload: dict[str, object] = {
+        "template_id": str(template_id),
+        "properties": properties or {},
+    }
+    if template_version is not None:
+        payload["template_version"] = template_version
+    response = client.post("/api/v1/objects", json=payload)
     assert response.status_code == 201
     return response.json()
 
@@ -447,6 +446,59 @@ def test_create_object_and_list_and_get_round_trip(
     assert "components" not in created
     assert listed.json() == [created]
     assert loaded.json() == created
+    assert commits[0] == 1
+
+
+def test_create_object_without_template_version_uses_highest_published_version(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        InMemoryObjectRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, templates, _objects, commits = client_context
+    datatype, datatype_version = _store_datatype(datatypes)
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router",
+        description="router template",
+        abstract=False,
+    )
+    templates.add(template)
+    for version_number, status in (
+        (1, ObjectTemplateVersionStatus.PUBLISHED),
+        (2, ObjectTemplateVersionStatus.PUBLISHED),
+        (3, ObjectTemplateVersionStatus.DRAFT),
+    ):
+        templates.add_version(
+            ObjectTemplateVersion(
+                template_id=template.id,
+                version=version_number,
+                status=status,
+                properties=(
+                    _property(
+                        "hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                        required=True,
+                    ),
+                ),
+            )
+        )
+
+    response = client.post(
+        "/api/v1/objects",
+        json={
+            "template_id": str(template.id),
+            "properties": {"hostname": "router-01"},
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["template_version"] == 2
     assert commits[0] == 1
 
 
@@ -1248,4 +1300,11 @@ def test_openapi_documents_object_routes_and_schemas(
     assert "ObjectChangeSnapshotResponse" in payload["components"]["schemas"]
     assert payload["components"]["schemas"]["CreateObjectRequest"]["properties"][
         "template_version"
-    ] == {"minimum": 1, "title": "Template Version", "type": "integer"}
+    ] == {
+        "anyOf": [{"minimum": 1.0, "type": "integer"}, {"type": "null"}],
+        "title": "Template Version",
+    }
+    assert "template_version" not in payload["components"]["schemas"]["CreateObjectRequest"].get(
+        "required",
+        [],
+    )

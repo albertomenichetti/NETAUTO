@@ -17,7 +17,7 @@ class ApiModel(BaseModel):
 
 class CreateObjectRequest(ApiModel):
     template_id: UUID
-    template_version: PositiveStrictInt
+    template_version: PositiveStrictInt | None = None
     properties: dict[str, object] = Field(default_factory=dict)
 
 

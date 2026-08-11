@@ -1289,7 +1289,39 @@ def test_object_create_inline_preserves_exact_json_values(monkeypatch: pytest.Mo
     ]
 
 
-def test_object_create_without_properties_sends_empty_object(
+def test_object_create_without_template_version_omits_it_from_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    object_value = _object_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"create_object": object_value}, calls)
+    template_id = str(uuid4())
+
+    result = runner.invoke(
+        app,
+        [
+            "object",
+            "create",
+            "--template-id",
+            template_id,
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "create_object",
+            (
+                {
+                    "template_id": template_id,
+                    "properties": {},
+                },
+            ),
+        )
+    ]
+
+
+def test_object_create_with_explicit_template_version_remains_supported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     object_value = _object_payload()
@@ -1357,7 +1389,7 @@ def test_object_create_file_and_local_input_errors(monkeypatch: pytest.MonkeyPat
             ],
         )
 
-    missing_template = runner.invoke(app, ["object", "create", "--template-id", str(uuid4())])
+    missing_template = runner.invoke(app, ["object", "create"])
     malformed_property = runner.invoke(
         app,
         [
@@ -1392,6 +1424,26 @@ def test_object_create_file_and_local_input_errors(monkeypatch: pytest.MonkeyPat
     assert malformed_property.exit_code == 2
     assert non_object_property.exit_code == 2
     assert calls[:2] == [("create_object", (payload,)), ("create_object", (payload,))]
+
+
+def test_object_create_file_without_template_version_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    object_value = _object_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"create_object": object_value}, calls)
+    payload = {
+        "template_id": str(uuid4()),
+        "properties": {"hostname": "router-01"},
+    }
+
+    with TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "object-no-version.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        result = runner.invoke(app, ["object", "create", "--file", str(path)])
+
+    assert result.exit_code == 0
+    assert calls == [("create_object", (payload,))]
 
 
 def test_object_update_inline_and_file(monkeypatch: pytest.MonkeyPatch) -> None:
