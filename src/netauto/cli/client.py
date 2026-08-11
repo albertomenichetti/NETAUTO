@@ -180,6 +180,9 @@ class NetautoApiClient:
     def get_object(self, object_id: str) -> JSONObject:
         return self._request_object("GET", f"/objects/{object_id}")
 
+    def list_object_history(self, object_id: str) -> JSONArray:
+        return self._request_array("GET", f"/objects/{object_id}/history")
+
     def create_object(self, payload: JSONObject) -> JSONObject:
         return self._request_object("POST", "/objects", json_body=payload)
 

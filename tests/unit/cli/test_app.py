@@ -130,6 +130,9 @@ class FakeClient:
     def get_object(self, object_id: str) -> Any:
         return self._call("get_object", object_id)
 
+    def list_object_history(self, object_id: str) -> Any:
+        return self._call("list_object_history", object_id)
+
     def create_object(self, payload: dict[str, object]) -> Any:
         return self._call("create_object", payload)
 
@@ -284,6 +287,69 @@ def _component_membership_payload() -> dict[str, object]:
         "slot_name": "interfaces",
         "component_object_id": str(uuid4()),
     }
+
+
+def _object_history_payload() -> list[dict[str, object]]:
+    object_id = str(uuid4())
+    template_id = str(uuid4())
+    return [
+        {
+            "id": str(uuid4()),
+            "object_id": object_id,
+            "occurred_at": "2026-08-11T08:30:00Z",
+            "kind": "created",
+            "before": None,
+            "after": {
+                "template_id": template_id,
+                "template_version": 1,
+                "properties": {"host_name": "router-01", "nested": {"rack": "A1"}},
+            },
+        },
+        {
+            "id": str(uuid4()),
+            "object_id": object_id,
+            "occurred_at": "2026-08-11T08:40:00Z",
+            "kind": "updated",
+            "before": {
+                "template_id": template_id,
+                "template_version": 1,
+                "properties": {"host_name": "router-01"},
+            },
+            "after": {
+                "template_id": template_id,
+                "template_version": 1,
+                "properties": {"host_name": "router-02", "enabled": True},
+            },
+        },
+        {
+            "id": str(uuid4()),
+            "object_id": object_id,
+            "occurred_at": "2026-08-11T08:50:00Z",
+            "kind": "migrated",
+            "before": {
+                "template_id": template_id,
+                "template_version": 1,
+                "properties": {"host_name": "router-02"},
+            },
+            "after": {
+                "template_id": template_id,
+                "template_version": 2,
+                "properties": {"host_name": "router-02"},
+            },
+        },
+        {
+            "id": str(uuid4()),
+            "object_id": object_id,
+            "occurred_at": "2026-08-11T09:00:00Z",
+            "kind": "deleted",
+            "before": {
+                "template_id": template_id,
+                "template_version": 2,
+                "properties": {"host_name": "router-02", "ports": [1, 2]},
+            },
+            "after": None,
+        },
+    ]
 
 
 def _object_migration_analysis_payload() -> dict[str, object]:
@@ -1652,6 +1718,86 @@ def test_object_component_commands(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
         ("detach_object_component", (component_id,)),
     ]
+
+
+def test_object_history_command_calls_client_and_returns_json_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = _object_history_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"list_object_history": history}, calls)
+    object_id = str(history[0]["object_id"])
+
+    result = runner.invoke(app, ["--output", "json", "object", "history", object_id])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == history
+    assert calls == [("list_object_history", (object_id,))]
+
+
+def test_object_history_human_output_renders_all_change_kinds_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = _object_history_payload()
+    _patch_client(monkeypatch, {"list_object_history": history}, [])
+    object_id = str(history[0]["object_id"])
+
+    result = runner.invoke(app, ["object", "history", object_id])
+
+    assert result.exit_code == 0
+    assert "Occurred At: 2026-08-11T08:30:00Z" in result.stdout
+    assert "Kind: created" in result.stdout
+    assert "Before:\n  (none)" in result.stdout
+    assert "Kind: updated" in result.stdout
+    assert "Kind: migrated" in result.stdout
+    assert "Template Version: 2" in result.stdout
+    assert "Kind: deleted" in result.stdout
+    assert "After:\n  (none)" in result.stdout
+    assert result.stdout.index("Kind: created") < result.stdout.index("Kind: updated")
+    assert result.stdout.index("Kind: updated") < result.stdout.index("Kind: migrated")
+    assert result.stdout.index("Kind: migrated") < result.stdout.index("Kind: deleted")
+
+
+def test_object_history_human_output_renders_empty_history() -> None:
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    object_id = str(uuid4())
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        _patch_client(monkeypatch, {"list_object_history": []}, calls)
+        result = runner.invoke(app, ["object", "history", object_id])
+    finally:
+        monkeypatch.undo()
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "No history entries."
+    assert calls == [("list_object_history", (object_id,))]
+
+
+def test_object_history_command_rejects_invalid_uuid_locally() -> None:
+    result = runner.invoke(app, ["object", "history", "not-a-uuid"])
+
+    assert result.exit_code == 2
+
+
+def test_object_history_human_output_rejects_malformed_response_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = [
+        {
+            "id": "change-1",
+            "object_id": "object-1",
+            "occurred_at": "2026-08-11T08:30:00Z",
+            "kind": "created",
+            "before": None,
+            "after": [],
+        }
+    ]
+    _patch_client(monkeypatch, {"list_object_history": payload}, [])
+
+    result = runner.invoke(app, ["object", "history", str(uuid4())])
+
+    assert result.exit_code == 4
+    assert "cli_protocol_error" in result.stderr
 
 
 def test_object_component_attach_file_and_local_input_errors(

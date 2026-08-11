@@ -345,6 +345,39 @@ def test_object_client_builds_correct_urls_and_bodies() -> None:
     ]
 
 
+def test_object_history_client_uses_correct_get_path() -> None:
+    seen: list[tuple[str, str, object]] = []
+    history_payload = [
+        {
+            "id": "change-1",
+            "object_id": "object-1",
+            "occurred_at": "2026-08-11T08:30:00Z",
+            "kind": "created",
+            "before": None,
+            "after": {
+                "template_id": "template-1",
+                "template_version": 1,
+                "properties": {"hostname": "router-01"},
+            },
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        seen.append((request.method, str(request.url), json.loads(body) if body else None))
+        return _response(200, history_payload)
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000/",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.list_object_history("object-1") == history_payload
+
+    assert seen == [
+        ("GET", "http://127.0.0.1:8000/api/v1/objects/object-1/history", None),
+    ]
+
+
 def test_object_client_returns_objects_arrays_and_empty_delete() -> None:
     object_payload = {
         "id": "object-1",
@@ -379,6 +412,31 @@ def test_object_client_returns_objects_arrays_and_empty_delete() -> None:
         assert client.list_object_components("parent-1") == [membership_payload]
         assert client.detach_object_component("child-1") == membership_payload
         assert client.delete_object("object-1") is None
+
+
+def test_object_history_client_propagates_api_errors() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return _response(
+            404,
+            {
+                "error": {
+                    "code": "object_not_found",
+                    "message": "Object does not exist.",
+                    "details": [],
+                }
+            },
+        )
+
+    with NetautoApiClient(
+        "http://127.0.0.1:8000",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        with pytest.raises(ApiError) as error:
+            client.list_object_history("missing")
+
+    assert error.value.status_code == 404
+    assert error.value.code == "object_not_found"
 
 
 def test_relationship_definition_client_builds_correct_urls_and_bodies() -> None:

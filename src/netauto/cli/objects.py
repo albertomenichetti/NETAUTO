@@ -13,6 +13,7 @@ from netauto.cli.output import (
     render_component_membership_list,
     render_object,
     render_object_delete_result,
+    render_object_history,
     render_object_list,
     render_object_migration_analysis,
     render_object_migration_result,
@@ -110,6 +111,15 @@ def list_objects(ctx: typer.Context) -> None:
 @object_app.command("show")
 def show_object(ctx: typer.Context, object_id: UUID) -> None:
     run_action(ctx, lambda client: client.get_object(uuid_text(object_id)), render_object)
+
+
+@object_app.command("history")
+def object_history(ctx: typer.Context, object_id: UUID) -> None:
+    run_action(
+        ctx,
+        lambda client: client.list_object_history(uuid_text(object_id)),
+        render_object_history,
+    )
 
 
 @object_app.command("create")

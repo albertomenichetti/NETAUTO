@@ -283,6 +283,29 @@ def render_object(payload: JSONObject, mode: OutputMode, *, prefix: str | None =
     return "\n".join(lines)
 
 
+def render_object_history(payload: JSONArray, mode: OutputMode) -> str:
+    if mode is OutputMode.JSON:
+        return render_json(payload)
+    if not payload:
+        return "No history entries."
+
+    entries: list[str] = []
+    for item in payload:
+        change = _require_object(item)
+        lines = [
+            f"Occurred At: {_require_string(change, 'occurred_at')}",
+            f"Kind: {_require_string(change, 'kind')}",
+            f"Change ID: {_require_string(change, 'id')}",
+            f"Object ID: {_require_string(change, 'object_id')}",
+            "Before:",
+        ]
+        lines.extend(_render_object_change_snapshot(change.get("before")))
+        lines.append("After:")
+        lines.extend(_render_object_change_snapshot(change.get("after")))
+        entries.append("\n".join(lines))
+    return "\n\n".join(entries)
+
+
 def render_component_membership_list(payload: JSONArray, mode: OutputMode) -> str:
     if mode is OutputMode.JSON:
         return render_json(payload)
@@ -552,6 +575,30 @@ def render_object_migration_result(payload: JSONObject, mode: OutputMode) -> str
             f"Migrated Count: {_require_int(payload, 'migrated_count')}",
         ]
     )
+
+
+def _render_object_change_snapshot(snapshot: object) -> list[str]:
+    if snapshot is None:
+        return ["  (none)"]
+
+    snapshot_object = _require_object(snapshot)
+    properties = _require_object(snapshot_object.get("properties"))
+    lines = [
+        f"  Template ID: {_require_string(snapshot_object, 'template_id')}",
+        f"  Template Version: {_require_int(snapshot_object, 'template_version')}",
+        "  Properties:",
+    ]
+    if not properties:
+        lines.append("    (none)")
+        return lines
+    for name, value in properties.items():
+        if not isinstance(name, str):
+            raise ProtocolError("Server returned an incompatible response.")
+        rendered = json.dumps(value, ensure_ascii=False)
+        for index, line in enumerate(rendered.splitlines() or ["null"]):
+            prefix = f"    - {name}: " if index == 0 else "      "
+            lines.append(f"{prefix}{line}")
+    return lines
 
 
 def _error_payload(error: CliError) -> JSONObject:

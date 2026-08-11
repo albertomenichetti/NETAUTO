@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,7 +18,14 @@ from netauto.core.datatype import (
     DataTypeVersion,
     DataTypeVersioningService,
 )
-from netauto.core.object import ComponentMembership, Object, ObjectPersistenceError
+from netauto.core.object import (
+    ComponentMembership,
+    Object,
+    ObjectChange,
+    ObjectChangeKind,
+    ObjectChangeSnapshot,
+    ObjectPersistenceError,
+)
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateProperty,
@@ -277,6 +285,61 @@ def _create_object(
     )
     assert response.status_code == 201
     return response.json()
+
+
+def _change(
+    *,
+    object_id: UUID,
+    occurred_at: datetime,
+    kind: ObjectChangeKind,
+    before: ObjectChangeSnapshot | None,
+    after: ObjectChangeSnapshot | None,
+    change_id: UUID | None = None,
+) -> ObjectChange:
+    return ObjectChange(
+        id=change_id or uuid4(),
+        object_id=object_id,
+        occurred_at=occurred_at,
+        kind=kind,
+        before=before,
+        after=after,
+    )
+
+
+@pytest.fixture
+def history_client_context() -> (
+    Generator[
+        tuple[
+            TestClient,
+            InMemoryObjectRepository,
+            InMemoryObjectChangeRepository,
+            list[int],
+        ],
+        None,
+        None,
+    ]
+):
+    datatypes = InMemoryDataTypeRepository()
+    object_templates = InMemoryObjectTemplateRepository()
+    objects = InMemoryObjectRepository()
+    object_changes = InMemoryObjectChangeRepository()
+    relationships = InMemoryRelationshipRepository()
+    relationship_definitions = InMemoryRelationshipDefinitionRepository()
+    commits = [0]
+
+    def factory() -> FakeUnitOfWork:
+        return FakeUnitOfWork(
+            datatypes,
+            object_templates,
+            objects,
+            object_changes,
+            relationships,
+            relationship_definitions,
+            commits,
+        )
+
+    with TestClient(create_app(factory)) as client:
+        yield client, objects, object_changes, commits
 
 
 def test_create_request_validation_is_strict(
@@ -923,6 +986,221 @@ def test_delete_missing_object_maps_to_404(
     assert response.json()["error"]["code"] == "object_not_found"
 
 
+def test_history_endpoint_serializes_created_updated_migrated_and_deleted_entries(
+    history_client_context: tuple[
+        TestClient,
+        InMemoryObjectRepository,
+        InMemoryObjectChangeRepository,
+        list[int],
+    ],
+) -> None:
+    client, objects, object_changes, commits = history_client_context
+    object_value = Object(
+        id=uuid4(),
+        template_id=uuid4(),
+        template_version=2,
+        properties={"host_name": "router-02"},
+    )
+    objects.add(object_value)
+    template_id = uuid4()
+    created_after = ObjectChangeSnapshot(
+        template_id=template_id,
+        template_version=1,
+        properties={"host_name": "router-01"},
+    )
+    updated_before = created_after
+    updated_after = ObjectChangeSnapshot(
+        template_id=template_id,
+        template_version=1,
+        properties={"host_name": "router-02"},
+    )
+    migrated_before = updated_after
+    migrated_after = ObjectChangeSnapshot(
+        template_id=template_id,
+        template_version=2,
+        properties={"host_name": "router-02"},
+    )
+    deleted_before = migrated_after
+    object_changes.add(
+        _change(
+            object_id=object_value.id,
+            occurred_at=datetime(2026, 8, 11, 8, 30, tzinfo=UTC),
+            kind=ObjectChangeKind.CREATED,
+            before=None,
+            after=created_after,
+        )
+    )
+    object_changes.add(
+        _change(
+            object_id=object_value.id,
+            occurred_at=datetime(2026, 8, 11, 8, 40, tzinfo=UTC),
+            kind=ObjectChangeKind.UPDATED,
+            before=updated_before,
+            after=updated_after,
+        )
+    )
+    object_changes.add(
+        _change(
+            object_id=object_value.id,
+            occurred_at=datetime(2026, 8, 11, 8, 50, tzinfo=UTC),
+            kind=ObjectChangeKind.MIGRATED,
+            before=migrated_before,
+            after=migrated_after,
+        )
+    )
+    object_changes.add(
+        _change(
+            object_id=object_value.id,
+            occurred_at=datetime(2026, 8, 11, 9, 0, tzinfo=UTC),
+            kind=ObjectChangeKind.DELETED,
+            before=deleted_before,
+            after=None,
+        )
+    )
+    commits[0] = 0
+
+    response = client.get(f"/api/v1/objects/{object_value.id}/history")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["kind"] for item in payload] == ["created", "updated", "migrated", "deleted"]
+    assert payload[0]["before"] is None
+    assert payload[0]["after"]["template_version"] == 1
+    assert payload[1]["before"]["properties"] == {"host_name": "router-01"}
+    assert payload[1]["after"]["properties"] == {"host_name": "router-02"}
+    assert payload[2]["before"]["template_version"] == 1
+    assert payload[2]["after"]["template_version"] == 2
+    assert payload[3]["after"] is None
+    assert commits[0] == 0
+
+
+def test_history_endpoint_preserves_application_ordering(
+    history_client_context: tuple[
+        TestClient,
+        InMemoryObjectRepository,
+        InMemoryObjectChangeRepository,
+        list[int],
+    ],
+) -> None:
+    client, objects, object_changes, _commits = history_client_context
+    object_value = Object(id=uuid4(), template_id=uuid4(), template_version=1, properties={})
+    objects.add(object_value)
+    snapshot = ObjectChangeSnapshot(
+        template_id=object_value.template_id,
+        template_version=1,
+        properties={},
+    )
+    later = _change(
+        object_id=object_value.id,
+        occurred_at=datetime(2026, 8, 11, 9, 0, tzinfo=UTC),
+        kind=ObjectChangeKind.UPDATED,
+        before=snapshot,
+        after=snapshot,
+    )
+    earlier = _change(
+        object_id=object_value.id,
+        occurred_at=datetime(2026, 8, 11, 8, 30, tzinfo=UTC),
+        kind=ObjectChangeKind.UPDATED,
+        before=snapshot,
+        after=snapshot,
+    )
+    object_changes.add(later)
+    object_changes.add(earlier)
+
+    response = client.get(f"/api/v1/objects/{object_value.id}/history")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload] == [str(earlier.id), str(later.id)]
+
+
+def test_history_endpoint_returns_empty_array_for_existing_pre_audit_object(
+    history_client_context: tuple[
+        TestClient,
+        InMemoryObjectRepository,
+        InMemoryObjectChangeRepository,
+        list[int],
+    ],
+) -> None:
+    client, objects, _object_changes, commits = history_client_context
+    object_value = Object(id=uuid4(), template_id=uuid4(), template_version=1, properties={})
+    objects.add(object_value)
+    commits[0] = 0
+
+    response = client.get(f"/api/v1/objects/{object_value.id}/history")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert commits[0] == 0
+
+
+def test_history_endpoint_returns_deleted_object_history_without_current_object(
+    history_client_context: tuple[
+        TestClient,
+        InMemoryObjectRepository,
+        InMemoryObjectChangeRepository,
+        list[int],
+    ],
+) -> None:
+    client, objects, object_changes, commits = history_client_context
+    object_id = uuid4()
+    template_id = uuid4()
+    object_changes.add(
+        _change(
+            object_id=object_id,
+            occurred_at=datetime(2026, 8, 11, 9, 0, tzinfo=UTC),
+            kind=ObjectChangeKind.DELETED,
+            before=ObjectChangeSnapshot(
+                template_id=template_id,
+                template_version=1,
+                properties={"host_name": "router-02"},
+            ),
+            after=None,
+        )
+    )
+    commits[0] = 0
+
+    response = client.get(f"/api/v1/objects/{object_id}/history")
+
+    assert response.status_code == 200
+    assert response.json()[0]["kind"] == "deleted"
+    assert objects.get(object_id) is None
+    assert commits[0] == 0
+
+
+def test_history_endpoint_unknown_object_maps_to_404(
+    history_client_context: tuple[
+        TestClient,
+        InMemoryObjectRepository,
+        InMemoryObjectChangeRepository,
+        list[int],
+    ],
+) -> None:
+    client, _objects, _object_changes, commits = history_client_context
+
+    response = client.get(f"/api/v1/objects/{uuid4()}/history")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "object_not_found"
+    assert commits[0] == 0
+
+
+def test_history_endpoint_malformed_uuid_maps_to_422(
+    history_client_context: tuple[
+        TestClient,
+        InMemoryObjectRepository,
+        InMemoryObjectChangeRepository,
+        list[int],
+    ],
+) -> None:
+    client, _objects, _object_changes, _commits = history_client_context
+
+    response = client.get("/api/v1/objects/not-a-uuid/history")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "request_validation_failed"
+
+
 def test_object_persistence_error_maps_to_500() -> None:
     def factory() -> BrokenObjectUnitOfWork:
         return BrokenObjectUnitOfWork()
@@ -962,9 +1240,12 @@ def test_openapi_documents_object_routes_and_schemas(
     payload = response.json()
     assert "/api/v1/objects" in payload["paths"]
     assert "/api/v1/objects/{object_id}" in payload["paths"]
+    assert "/api/v1/objects/{object_id}/history" in payload["paths"]
     assert "CreateObjectRequest" in payload["components"]["schemas"]
     assert "UpdateObjectRequest" in payload["components"]["schemas"]
     assert "ObjectResponse" in payload["components"]["schemas"]
+    assert "ObjectChangeResponse" in payload["components"]["schemas"]
+    assert "ObjectChangeSnapshotResponse" in payload["components"]["schemas"]
     assert payload["components"]["schemas"]["CreateObjectRequest"]["properties"][
         "template_version"
     ] == {"minimum": 1, "title": "Template Version", "type": "integer"}

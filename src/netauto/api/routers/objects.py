@@ -11,11 +11,13 @@ from netauto.api.schemas.objects import (
     AttachObjectComponentRequest,
     ComponentMembershipResponse,
     CreateObjectRequest,
+    ObjectChangeResponse,
+    ObjectChangeSnapshotResponse,
     ObjectResponse,
     UpdateObjectRequest,
 )
 from netauto.application.object import ObjectApplicationService
-from netauto.core.object import ComponentMembership, Object
+from netauto.core.object import ComponentMembership, Object, ObjectChange, ObjectChangeSnapshot
 
 router = APIRouter(prefix="/objects", tags=["objects"])
 
@@ -34,6 +36,29 @@ def _to_membership_response(membership: ComponentMembership) -> ComponentMembers
         parent_object_id=membership.parent_object_id,
         slot_name=membership.slot_name,
         component_object_id=membership.child_object_id,
+    )
+
+
+def _to_object_change_snapshot_response(
+    snapshot: ObjectChangeSnapshot | None,
+) -> ObjectChangeSnapshotResponse | None:
+    if snapshot is None:
+        return None
+    return ObjectChangeSnapshotResponse(
+        template_id=snapshot.template_id,
+        template_version=snapshot.template_version,
+        properties=dict(snapshot.properties),
+    )
+
+
+def _to_object_change_response(change: ObjectChange) -> ObjectChangeResponse:
+    return ObjectChangeResponse(
+        id=change.id,
+        object_id=change.object_id,
+        occurred_at=change.occurred_at,
+        kind=change.kind,
+        before=_to_object_change_snapshot_response(change.before),
+        after=_to_object_change_snapshot_response(change.after),
     )
 
 
@@ -68,6 +93,21 @@ def get_object(
     service: Annotated[ObjectApplicationService, Depends(get_object_service)],
 ) -> ObjectResponse:
     return _to_object_response(service.get_object(object_id))
+
+
+@router.get(
+    "/{object_id}/history",
+    response_model=list[ObjectChangeResponse],
+    responses=ERROR_RESPONSES,
+)
+def list_object_history(
+    object_id: UUID,
+    service: Annotated[ObjectApplicationService, Depends(get_object_service)],
+) -> list[ObjectChangeResponse]:
+    return [
+        _to_object_change_response(change)
+        for change in service.list_object_history(object_id)
+    ]
 
 
 @router.patch("/{object_id}", response_model=ObjectResponse, responses=ERROR_RESPONSES)
