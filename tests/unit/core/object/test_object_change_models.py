@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -119,6 +119,43 @@ def test_naive_timestamp_is_rejected() -> None:
             before=None,
             after=_snapshot(),
         )
+
+
+def test_utc_timestamp_remains_utc() -> None:
+    occurred_at = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
+
+    change = ObjectChange(
+        id=uuid4(),
+        object_id=uuid4(),
+        occurred_at=occurred_at,
+        kind=ObjectChangeKind.CREATED,
+        before=None,
+        after=_snapshot(),
+    )
+
+    assert change.occurred_at == occurred_at
+    assert change.occurred_at.tzinfo is UTC
+
+
+def test_non_utc_aware_timestamp_is_normalized_to_same_utc_instant() -> None:
+    change = ObjectChange(
+        id=uuid4(),
+        object_id=uuid4(),
+        occurred_at=datetime(
+            2026,
+            8,
+            11,
+            10,
+            30,
+            tzinfo=timezone(timedelta(hours=2)),
+        ),
+        kind=ObjectChangeKind.CREATED,
+        before=None,
+        after=_snapshot(),
+    )
+
+    assert change.occurred_at == datetime(2026, 8, 11, 8, 30, tzinfo=UTC)
+    assert change.occurred_at.utcoffset() == timedelta(0)
 
 
 def test_snapshot_properties_are_immutable_defensive_copy() -> None:

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -77,6 +77,63 @@ def test_list_by_object_is_deterministic_by_occurred_at_then_uuid() -> None:
         repo.add(change)
 
     assert repo.list_by_object(object_id) == (first, second, third)
+
+
+def test_mixed_offset_inputs_are_ordered_chronologically_after_utc_canonicalization() -> None:
+    repo = InMemoryObjectChangeRepository()
+    object_id = uuid4()
+    earlier = _change(
+        object_id=object_id,
+        occurred_at=datetime(
+            2026,
+            8,
+            11,
+            10,
+            30,
+            tzinfo=timezone(timedelta(hours=2)),
+        ),
+    )
+    later = _change(
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 9, 0, tzinfo=UTC),
+    )
+
+    repo.add(later)
+    repo.add(earlier)
+
+    listed = repo.list_by_object(object_id)
+    assert listed == (earlier, later)
+    assert listed[0].occurred_at == datetime(2026, 8, 11, 8, 30, tzinfo=UTC)
+    assert listed[1].occurred_at == datetime(2026, 8, 11, 9, 0, tzinfo=UTC)
+
+
+def test_equal_instants_with_different_offsets_use_uuid_tiebreaker() -> None:
+    repo = InMemoryObjectChangeRepository()
+    object_id = uuid4()
+    low = _change(
+        change_id=UUID("00000000-0000-0000-0000-000000000001"),
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 10, 30, tzinfo=timezone(timedelta(hours=2))),
+    )
+    high = _change(
+        change_id=UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 8, 30, tzinfo=UTC),
+    )
+
+    repo.add(high)
+    repo.add(low)
+
+    listed = repo.list_by_object(object_id)
+    assert listed == (low, high)
+    assert listed[0].occurred_at == listed[1].occurred_at == datetime(
+        2026,
+        8,
+        11,
+        8,
+        30,
+        tzinfo=UTC,
+    )
 
 
 def test_duplicate_change_uuid_is_rejected() -> None:

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -133,6 +133,79 @@ def test_add_and_list_round_trip_with_nullable_before_after(tmp_path: Path) -> N
         engine.dispose()
 
 
+def test_mixed_offset_inputs_are_ordered_chronologically_in_sql(tmp_path: Path) -> None:
+    repo, _object_repo, session, engine = _repos(tmp_path, "object_change_mixed_offsets.sqlite3")
+    object_id = uuid4()
+    earlier = _change(
+        object_id=object_id,
+        occurred_at=datetime(
+            2026,
+            8,
+            11,
+            10,
+            30,
+            tzinfo=timezone(timedelta(hours=2)),
+        ),
+        before=_snapshot(),
+        after=_snapshot(),
+    )
+    later = _change(
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 9, 0, tzinfo=UTC),
+        before=_snapshot(),
+        after=_snapshot(),
+    )
+    try:
+        repo.add(later)
+        repo.add(earlier)
+
+        listed = repo.list_by_object(object_id)
+        assert listed == (earlier, later)
+        assert listed[0].occurred_at == datetime(2026, 8, 11, 8, 30, tzinfo=UTC)
+        assert listed[1].occurred_at == datetime(2026, 8, 11, 9, 0, tzinfo=UTC)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_equal_instants_with_different_offsets_use_uuid_tiebreaker_in_sql(
+    tmp_path: Path,
+) -> None:
+    repo, _object_repo, session, engine = _repos(tmp_path, "object_change_equal_instants.sqlite3")
+    object_id = uuid4()
+    low = _change(
+        change_id=UUID("00000000-0000-0000-0000-000000000001"),
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 10, 30, tzinfo=timezone(timedelta(hours=2))),
+        before=_snapshot(),
+        after=_snapshot(),
+    )
+    high = _change(
+        change_id=UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 8, 30, tzinfo=UTC),
+        before=_snapshot(),
+        after=_snapshot(),
+    )
+    try:
+        repo.add(high)
+        repo.add(low)
+
+        listed = repo.list_by_object(object_id)
+        assert listed == (low, high)
+        assert listed[0].occurred_at == listed[1].occurred_at == datetime(
+            2026,
+            8,
+            11,
+            8,
+            30,
+            tzinfo=UTC,
+        )
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_arbitrary_valid_property_json_round_trips(tmp_path: Path) -> None:
     repo, _object_repo, session, engine = _repos(tmp_path, "object_change_properties.sqlite3")
     object_id = uuid4()
@@ -229,6 +302,35 @@ def test_deleting_object_row_does_not_delete_history_rows(tmp_path: Path) -> Non
 
         assert object_repo.get(object_value.id) is None
         assert repo.list_by_object(object_value.id) == (change,)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_sql_round_trip_returns_canonical_utc_timestamp(tmp_path: Path) -> None:
+    repo, _object_repo, session, engine = _repos(tmp_path, "object_change_round_trip_utc.sqlite3")
+    object_id = uuid4()
+    change = _change(
+        object_id=object_id,
+        occurred_at=datetime(2026, 8, 11, 10, 30, tzinfo=timezone(timedelta(hours=2))),
+        before=_snapshot(),
+        after=_snapshot(),
+    )
+    try:
+        repo.add(change)
+
+        loaded = repo.list_by_object(object_id)
+        assert loaded == (
+            _change(
+                change_id=change.id,
+                object_id=object_id,
+                occurred_at=datetime(2026, 8, 11, 8, 30, tzinfo=UTC),
+                before=change.before,
+                after=change.after,
+                kind=change.kind,
+            ),
+        )
+        assert loaded[0].occurred_at.tzinfo is UTC
     finally:
         session.close()
         engine.dispose()

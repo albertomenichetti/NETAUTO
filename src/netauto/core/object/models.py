@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
 from uuid import UUID
@@ -136,6 +136,7 @@ class ObjectChange:
             or self.occurred_at.tzinfo.utcoffset(self.occurred_at) is None
         ):
             raise InvalidObjectChange("Object change occurred_at must be timezone-aware.")
+        object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
 
         if self.kind is ObjectChangeKind.CREATED:
             if self.before is not None or self.after is None:
