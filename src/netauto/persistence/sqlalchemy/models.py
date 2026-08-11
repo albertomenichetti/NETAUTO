@@ -77,8 +77,52 @@ class ObjectTemplateVersionRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     parent_template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_version: Mapped[int | None] = mapped_column(nullable=True)
-    properties_json: Mapped[str] = mapped_column(Text, nullable=False)
     components_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ObjectTemplatePropertyRow(Base):
+    """Persisted exact object template property declaration row."""
+
+    __tablename__ = "object_template_properties"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "template_id",
+            "template_version",
+            "name",
+            name="pk_object_template_properties",
+        ),
+        UniqueConstraint(
+            "template_id",
+            "template_version",
+            "position",
+            name="uq_object_template_properties_owner_position",
+        ),
+        ForeignKeyConstraint(
+            ["template_id", "template_version"],
+            ["object_template_versions.template_id", "object_template_versions.version"],
+            ondelete="CASCADE",
+            name="fk_object_template_properties_owner",
+        ),
+        ForeignKeyConstraint(
+            ["datatype_id", "datatype_version"],
+            ["datatype_versions.datatype_id", "datatype_versions.version"],
+            ondelete="RESTRICT",
+            name="fk_object_template_properties_datatype_version",
+        ),
+        Index(
+            "ix_object_template_properties_datatype_version",
+            "datatype_id",
+            "datatype_version",
+        ),
+    )
+
+    template_id: Mapped[str] = mapped_column(Text, nullable=False)
+    template_version: Mapped[int] = mapped_column(nullable=False)
+    position: Mapped[int] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    datatype_id: Mapped[str] = mapped_column(Text, nullable=False)
+    datatype_version: Mapped[int] = mapped_column(nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class RelationshipDefinitionRow(Base):

@@ -145,11 +145,11 @@ class SqlAlchemyDataTypeRepository(DataTypeRepository):
         row = self._session.get(DataTypeRow, str(datatype_id))
         if row is None:
             raise DataTypeNotFound("Datatype does not exist.")
-        self._session.execute(
-            delete(DataTypeVersionRow).where(DataTypeVersionRow.datatype_id == str(datatype_id))
-        )
-        self._session.delete(row)
         try:
+            self._session.execute(
+                delete(DataTypeVersionRow).where(DataTypeVersionRow.datatype_id == str(datatype_id))
+            )
+            self._session.delete(row)
             self._session.flush()
         except IntegrityError as error:
             raise DataTypePersistenceError("Datatype deletion failed.") from error

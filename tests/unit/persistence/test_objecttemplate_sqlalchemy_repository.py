@@ -3,10 +3,16 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from netauto.core.datatype import (
+    DataType,
+    DataTypeVersion,
+    DataTypeVersionStatus,
+    PrimitiveTypeRegistry,
+)
 from netauto.core.objecttemplate import (
     ObjectTemplate,
     ObjectTemplateAlreadyExists,
@@ -21,8 +27,10 @@ from netauto.core.objecttemplate import (
     ObjectTemplateVersionStatus,
 )
 from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
+from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.models import (
     ObjectRow,
+    ObjectTemplatePropertyRow,
     ObjectTemplateRow,
     ObjectTemplateVersionRow,
     RelationshipDefinitionRow,
@@ -105,6 +113,36 @@ def _repo(
     session_factory = sessionmaker(engine, expire_on_commit=False)
     session = session_factory()
     return SqlAlchemyObjectTemplateRepository(session), session, engine
+
+
+def _store_datatype_version(
+    session: Session,
+    *,
+    datatype_id: UUID | None = None,
+    version: int = 1,
+    namespace: str | None = None,
+    name: str | None = None,
+    status: DataTypeVersionStatus = DataTypeVersionStatus.PUBLISHED,
+) -> tuple[DataType, DataTypeVersion]:
+    datatype_uuid = datatype_id or uuid4()
+    logical_suffix = datatype_uuid.hex[:8]
+    datatype = DataType(
+        id=datatype_uuid,
+        namespace=namespace or f"network_{logical_suffix}",
+        name=name or f"value_{logical_suffix}",
+        description=None,
+    )
+    datatype_version = DataTypeVersion(
+        datatype_id=datatype.id,
+        version=version,
+        status=status,
+        base_type=PrimitiveTypeRegistry().get("core.string"),
+        constraints=(),
+    )
+    repo = SqlAlchemyDataTypeRepository(session)
+    repo.add(datatype)
+    repo.add_version(datatype_version)
+    return datatype, datatype_version
 
 
 def test_empty_list(tmp_path: Path) -> None:
@@ -214,12 +252,23 @@ def test_duplicate_logical_name_rejected(tmp_path: Path) -> None:
 def test_add_get_version_round_trip(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "version_round_trip.sqlite3")
     template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
     version = _version(
         template.id,
         1,
         properties=(
-            _property("hostname", required=True),
-            _property("serial"),
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+                required=True,
+            ),
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
         ),
     )
     try:
@@ -290,21 +339,31 @@ def test_exact_pinned_parent_ref_round_trip(tmp_path: Path) -> None:
 def test_multiple_ordered_properties_round_trip_and_order_preserved(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "properties.sqlite3")
     template = _template()
-    first_datatype_id = uuid4()
-    second_datatype_id = uuid4()
+    first_datatype, _ = _store_datatype_version(
+        session,
+        datatype_id=uuid4(),
+        version=2,
+        name="dt1",
+    )
+    second_datatype, _ = _store_datatype_version(
+        session,
+        datatype_id=uuid4(),
+        version=3,
+        name="dt2",
+    )
     version = _version(
         template.id,
         1,
         properties=(
             _property(
                 "hostname",
-                datatype_id=first_datatype_id,
+                datatype_id=first_datatype.id,
                 datatype_version=2,
                 required=True,
             ),
             _property(
                 "serial",
-                datatype_id=second_datatype_id,
+                datatype_id=second_datatype.id,
                 datatype_version=3,
                 required=False,
             ),
@@ -318,9 +377,9 @@ def test_multiple_ordered_properties_round_trip_and_order_preserved(tmp_path: Pa
         assert tuple(prop.name for prop in loaded.properties) == ("hostname", "serial")
         assert loaded.properties[0].required is True
         assert loaded.properties[1].required is False
-        assert loaded.properties[0].datatype_id == first_datatype_id
+        assert loaded.properties[0].datatype_id == first_datatype.id
         assert loaded.properties[0].datatype_version == 2
-        assert loaded.properties[1].datatype_id == second_datatype_id
+        assert loaded.properties[1].datatype_id == second_datatype.id
         assert loaded.properties[1].datatype_version == 3
     finally:
         session.close()
@@ -640,10 +699,18 @@ def test_raw_session_delete_still_hits_relationship_definition_fk_restrict(
 def test_properties_and_components_coexist_in_same_version(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "properties_components.sqlite3")
     template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
     version = _version(
         template.id,
         1,
-        properties=(_property("hostname", required=True),),
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+                required=True,
+            ),
+        ),
         components=(_component("interfaces", template_id=uuid4(), template_version=3),),
     )
     try:
@@ -702,8 +769,30 @@ def test_list_versions_ascending(tmp_path: Path) -> None:
 def test_replace_version_with_revised_properties(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "replace_props.sqlite3")
     template = _template()
-    original = _version(template.id, 1, properties=(_property("hostname"),))
-    replacement = _version(template.id, 1, properties=(_property("serial"),))
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
+    original = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+        ),
+    )
+    replacement = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
+        ),
+    )
     try:
         repo.add(template)
         repo.add_version(original)
@@ -762,18 +851,32 @@ def test_replace_version_with_changed_parent(tmp_path: Path) -> None:
 def test_replace_lifecycle_snapshot_preserves_complete_replacement_snapshot(tmp_path: Path) -> None:
     repo, session, engine = _repo(tmp_path, "replace_status.sqlite3")
     template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
     original = _version(
         template.id,
         1,
         status=ObjectTemplateVersionStatus.DRAFT,
-        properties=(_property("hostname"),),
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+        ),
         components=(_component("interfaces", template_id=uuid4(), template_version=2),),
     )
     replacement = _version(
         template.id,
         1,
         status=ObjectTemplateVersionStatus.PUBLISHED,
-        properties=(_property("serial"),),
+        properties=(
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
+        ),
         components=(_component("modules", template_id=uuid4(), template_version=9),),
     )
     try:
@@ -836,7 +939,6 @@ def test_malformed_status_produces_persistence_error(tmp_path: Path) -> None:
                 status="invalid",
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json="[]",
             )
         )
@@ -848,9 +950,10 @@ def test_malformed_status_produces_persistence_error(tmp_path: Path) -> None:
         engine.dispose()
 
 
-def test_malformed_properties_json_produces_persistence_error(tmp_path: Path) -> None:
-    repo, session, engine = _repo(tmp_path, "bad_json.sqlite3")
+def test_malformed_stored_property_row_produces_persistence_error(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "bad_property_row.sqlite3")
     template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
     try:
         repo.add(template)
         session.add(
@@ -860,8 +963,19 @@ def test_malformed_properties_json_produces_persistence_error(tmp_path: Path) ->
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="{bad json",
                 components_json="[]",
+            )
+        )
+        session.flush()
+        session.add(
+            ObjectTemplatePropertyRow(
+                template_id=str(template.id),
+                template_version=1,
+                position=0,
+                name="Host-Name",
+                datatype_id=str(datatype.id),
+                datatype_version=datatype_version.version,
+                required=True,
             )
         )
         session.flush()
@@ -884,33 +998,7 @@ def test_malformed_components_json_produces_persistence_error(tmp_path: Path) ->
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json="{bad json",
-            )
-        )
-        session.flush()
-        with pytest.raises(ObjectTemplatePersistenceError):
-            repo.get_version(template.id, 1)
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_malformed_property_shape_produces_persistence_error(tmp_path: Path) -> None:
-    repo, session, engine = _repo(tmp_path, "bad_property_shape.sqlite3")
-    template = _template()
-    payload = [{"name": "hostname", "datatype_id": str(uuid4())}]
-    try:
-        repo.add(template)
-        session.add(
-            ObjectTemplateVersionRow(
-                template_id=str(template.id),
-                version=1,
-                status=ObjectTemplateVersionStatus.DRAFT.value,
-                parent_template_id=None,
-                parent_version=None,
-                properties_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
-                components_json="[]",
             )
         )
         session.flush()
@@ -933,7 +1021,6 @@ def test_components_json_top_level_non_array_produces_persistence_error(tmp_path
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json='{"name":"interfaces"}',
             )
         )
@@ -957,7 +1044,6 @@ def test_component_entry_non_object_produces_persistence_error(tmp_path: Path) -
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json='["interfaces"]',
             )
         )
@@ -997,7 +1083,6 @@ def test_component_shape_errors_produce_persistence_error(
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
             )
         )
@@ -1022,7 +1107,6 @@ def test_component_malformed_uuid_produces_persistence_error(tmp_path: Path) -> 
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
             )
         )
@@ -1050,7 +1134,6 @@ def test_legacy_component_entry_with_template_version_is_accepted_and_ignored(
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=None,
                 parent_version=None,
-                properties_json="[]",
                 components_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
             )
         )
@@ -1080,7 +1163,6 @@ def test_partial_parent_reference_produces_persistence_error(tmp_path: Path) -> 
                 status=ObjectTemplateVersionStatus.DRAFT.value,
                 parent_template_id=str(uuid4()),
                 parent_version=None,
-                properties_json="[]",
                 components_json="[]",
             )
         )
@@ -1104,28 +1186,6 @@ def test_repository_does_not_require_parent_version_to_exist(tmp_path: Path) -> 
         repo.add(template)
         repo.add_version(version)
         assert repo.get_version(template.id, 1) == version
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_repository_does_not_require_datatype_version_to_exist_or_be_published(
-    tmp_path: Path,
-) -> None:
-    repo, session, engine = _repo(tmp_path, "no_datatype_validation.sqlite3")
-    template = _template()
-    version = _version(
-        template.id,
-        1,
-        properties=(
-            _property("hostname", datatype_id=uuid4(), datatype_version=3, required=True),
-        ),
-    )
-    try:
-        repo.add(template)
-        repo.add_version(version)
-        loaded = repo.get_version(template.id, 1)
-        assert loaded == version
     finally:
         session.close()
         engine.dispose()
@@ -1169,6 +1229,497 @@ def test_replace_version_does_not_validate_component_target_semantics(tmp_path: 
         repo.replace_version(replacement)
         loaded = repo.get_version(template.id, 1)
         assert loaded == replacement
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_schema_normalizes_object_template_properties(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "schema.sqlite3")
+    try:
+        inspector = inspect(engine)
+        columns = {column["name"] for column in inspector.get_columns("object_template_properties")}
+        assert columns == {
+            "template_id",
+            "template_version",
+            "position",
+            "name",
+            "datatype_id",
+            "datatype_version",
+            "required",
+        }
+        assert "properties_json" not in ObjectTemplateVersionRow.__table__.c
+
+        pk = inspector.get_pk_constraint("object_template_properties")
+        assert pk["name"] == "pk_object_template_properties"
+        assert pk["constrained_columns"] == ["template_id", "template_version", "name"]
+
+        unique_constraints = {
+            constraint["name"]: tuple(constraint["column_names"])
+            for constraint in inspector.get_unique_constraints("object_template_properties")
+        }
+        assert unique_constraints["uq_object_template_properties_owner_position"] == (
+            "template_id",
+            "template_version",
+            "position",
+        )
+
+        foreign_keys = {
+            fk["name"]: (
+                tuple(fk["constrained_columns"]),
+                fk["referred_table"],
+                tuple(fk["referred_columns"]),
+                (fk.get("options") or {}).get("ondelete"),
+            )
+            for fk in inspector.get_foreign_keys("object_template_properties")
+        }
+        assert foreign_keys["fk_object_template_properties_owner"] == (
+            ("template_id", "template_version"),
+            "object_template_versions",
+            ("template_id", "version"),
+            "CASCADE",
+        )
+        assert foreign_keys["fk_object_template_properties_datatype_version"] == (
+            ("datatype_id", "datatype_version"),
+            "datatype_versions",
+            ("datatype_id", "version"),
+            "RESTRICT",
+        )
+
+        indexes = {
+            index["name"]: tuple(index["column_names"])
+            for index in inspector.get_indexes("object_template_properties")
+        }
+        assert indexes["ix_object_template_properties_datatype_version"] == (
+            "datatype_id",
+            "datatype_version",
+        )
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_version_missing_datatype_identity_hits_exact_fk(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "missing_datatype_identity.sqlite3")
+    template = _template()
+    version = _version(
+        template.id,
+        1,
+        properties=(
+            _property("hostname", datatype_id=uuid4(), datatype_version=1, required=True),
+        ),
+    )
+    try:
+        repo.add(template)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.add_version(version)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_version_missing_exact_datatype_version_hits_exact_fk(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "missing_datatype_version.sqlite3")
+    template = _template()
+    datatype, _ = _store_datatype_version(session, datatype_id=uuid4(), version=1, name="hostname")
+    version = _version(
+        template.id,
+        1,
+        properties=(
+            _property("hostname", datatype_id=datatype.id, datatype_version=2, required=True),
+        ),
+    )
+    try:
+        repo.add(template)
+        with pytest.raises(ObjectTemplatePersistenceError):
+            repo.add_version(version)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_add_version_with_valid_exact_datatype_reference_succeeds(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "valid_exact_datatype_fk.sqlite3")
+    template = _template()
+    datatype, datatype_version = _store_datatype_version(
+        session,
+        datatype_id=uuid4(),
+        version=2,
+        name="hostname",
+    )
+    version = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+                required=True,
+            ),
+        ),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(version)
+        assert repo.get_version(template.id, 1) == version
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_raw_orphan_property_owner_fk_is_rejected(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "orphan_property_owner.sqlite3")
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    try:
+        with pytest.raises(IntegrityError):
+            session.add(
+                ObjectTemplatePropertyRow(
+                    template_id=str(uuid4()),
+                    template_version=99,
+                    position=0,
+                    name="hostname",
+                    datatype_id=str(datatype.id),
+                    datatype_version=datatype_version.version,
+                    required=True,
+                )
+            )
+            session.flush()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_duplicate_property_name_in_same_version_is_rejected_by_db(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "dup_property_name.sqlite3")
+    template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(template.id),
+                namespace=template.namespace,
+                name=template.name,
+                description=template.description,
+                abstract=template.abstract,
+            )
+        )
+        session.add(
+            ObjectTemplateVersionRow(
+                template_id=str(template.id),
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT.value,
+                parent_template_id=None,
+                parent_version=None,
+                components_json="[]",
+            )
+        )
+        session.flush()
+        session.add(
+            ObjectTemplatePropertyRow(
+                template_id=str(template.id),
+                template_version=1,
+                position=0,
+                name="hostname",
+                datatype_id=str(datatype.id),
+                datatype_version=datatype_version.version,
+                required=True,
+            )
+        )
+        session.add(
+            ObjectTemplatePropertyRow(
+                template_id=str(template.id),
+                template_version=1,
+                position=1,
+                name="hostname",
+                datatype_id=str(datatype.id),
+                datatype_version=datatype_version.version,
+                required=False,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_duplicate_property_position_in_same_version_is_rejected_by_db(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "dup_property_position.sqlite3")
+    template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(template.id),
+                namespace=template.namespace,
+                name=template.name,
+                description=template.description,
+                abstract=template.abstract,
+            )
+        )
+        session.add(
+            ObjectTemplateVersionRow(
+                template_id=str(template.id),
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT.value,
+                parent_template_id=None,
+                parent_version=None,
+                components_json="[]",
+            )
+        )
+        session.flush()
+        session.add(
+            ObjectTemplatePropertyRow(
+                template_id=str(template.id),
+                template_version=1,
+                position=0,
+                name="hostname",
+                datatype_id=str(datatype.id),
+                datatype_version=datatype_version.version,
+                required=True,
+            )
+        )
+        session.add(
+            ObjectTemplatePropertyRow(
+                template_id=str(template.id),
+                template_version=1,
+                position=0,
+                name="serial",
+                datatype_id=str(datatype.id),
+                datatype_version=datatype_version.version,
+                required=False,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.flush()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_same_property_name_and_position_in_different_versions_are_allowed(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "same_name_position_diff_versions.sqlite3")
+    template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(template.id),
+                namespace=template.namespace,
+                name=template.name,
+                description=template.description,
+                abstract=template.abstract,
+            )
+        )
+        session.add_all(
+            [
+                ObjectTemplateVersionRow(
+                    template_id=str(template.id),
+                    version=1,
+                    status=ObjectTemplateVersionStatus.DRAFT.value,
+                    parent_template_id=None,
+                    parent_version=None,
+                    components_json="[]",
+                ),
+                ObjectTemplateVersionRow(
+                    template_id=str(template.id),
+                    version=2,
+                    status=ObjectTemplateVersionStatus.DRAFT.value,
+                    parent_template_id=None,
+                    parent_version=None,
+                    components_json="[]",
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                ObjectTemplatePropertyRow(
+                    template_id=str(template.id),
+                    template_version=1,
+                    position=0,
+                    name="hostname",
+                    datatype_id=str(datatype.id),
+                    datatype_version=datatype_version.version,
+                    required=True,
+                ),
+                ObjectTemplatePropertyRow(
+                    template_id=str(template.id),
+                    template_version=2,
+                    position=0,
+                    name="hostname",
+                    datatype_id=str(datatype.id),
+                    datatype_version=datatype_version.version,
+                    required=False,
+                ),
+            ]
+        )
+        session.flush()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_version_exactly_replaces_owned_property_rows_and_positions(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "replace_property_rows.sqlite3")
+    template = _template()
+    hostname_datatype, hostname_v1 = _store_datatype_version(session, name="hostname")
+    serial_datatype, serial_v1 = _store_datatype_version(session, name="serial")
+    model_datatype, model_v1 = _store_datatype_version(session, name="model")
+    original = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+            _property(
+                "serial",
+                datatype_id=serial_datatype.id,
+                datatype_version=serial_v1.version,
+            ),
+        ),
+    )
+    replacement = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=hostname_datatype.id,
+                datatype_version=hostname_v1.version,
+            ),
+            _property(
+                "model",
+                datatype_id=model_datatype.id,
+                datatype_version=model_v1.version,
+            ),
+        ),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(original)
+        repo.replace_version(replacement)
+
+        rows = session.scalars(
+            select(ObjectTemplatePropertyRow)
+            .where(
+                ObjectTemplatePropertyRow.template_id == str(template.id),
+                ObjectTemplatePropertyRow.template_version == 1,
+            )
+            .order_by(ObjectTemplatePropertyRow.position.asc())
+        ).all()
+        assert [(row.name, row.position) for row in rows] == [("hostname", 0), ("model", 1)]
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_owner_cascade_removes_property_rows_when_exact_version_deleted(tmp_path: Path) -> None:
+    _repo_instance, session, engine = _repo(tmp_path, "owner_cascade_version.sqlite3")
+    template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    try:
+        session.add(
+            ObjectTemplateRow(
+                id=str(template.id),
+                namespace=template.namespace,
+                name=template.name,
+                description=template.description,
+                abstract=template.abstract,
+            )
+        )
+        session.add(
+            ObjectTemplateVersionRow(
+                template_id=str(template.id),
+                version=1,
+                status=ObjectTemplateVersionStatus.DRAFT.value,
+                parent_template_id=None,
+                parent_version=None,
+                components_json="[]",
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                ObjectTemplatePropertyRow(
+                    template_id=str(template.id),
+                    template_version=1,
+                    position=0,
+                    name="hostname",
+                    datatype_id=str(datatype.id),
+                    datatype_version=datatype_version.version,
+                    required=True,
+                ),
+                ObjectTemplatePropertyRow(
+                    template_id=str(template.id),
+                    template_version=1,
+                    position=1,
+                    name="serial",
+                    datatype_id=str(datatype.id),
+                    datatype_version=datatype_version.version,
+                    required=False,
+                ),
+            ]
+        )
+        session.commit()
+
+        session.execute(
+            delete(ObjectTemplateVersionRow).where(
+                ObjectTemplateVersionRow.template_id == str(template.id),
+                ObjectTemplateVersionRow.version == 1,
+            )
+        )
+        session.flush()
+
+        remaining = session.execute(
+            text(
+                "SELECT COUNT(*) FROM object_template_properties "
+                "WHERE template_id = :template_id AND template_version = :template_version"
+            ),
+            {"template_id": str(template.id), "template_version": 1},
+        ).scalar_one()
+        assert remaining == 0
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_whole_template_delete_leaves_no_orphan_property_rows(tmp_path: Path) -> None:
+    repo, session, engine = _repo(tmp_path, "owner_cascade_identity.sqlite3")
+    template = _template()
+    datatype, datatype_version = _store_datatype_version(session, name="hostname")
+    version = _version(
+        template.id,
+        1,
+        properties=(
+            _property(
+                "hostname",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+            ),
+            _property(
+                "serial",
+                datatype_id=datatype.id,
+                datatype_version=datatype_version.version,
+            ),
+        ),
+    )
+    try:
+        repo.add(template)
+        repo.add_version(version)
+        repo.delete(template.id)
+        remaining = session.execute(
+            text(
+                "SELECT COUNT(*) FROM object_template_properties "
+                "WHERE template_id = :template_id"
+            ),
+            {"template_id": str(template.id)},
+        ).scalar_one()
+        assert remaining == 0
     finally:
         session.close()
         engine.dispose()

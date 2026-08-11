@@ -1,9 +1,10 @@
 """SQLAlchemy object template repository implementation."""
 
 import json
+from collections import defaultdict
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,61 +24,11 @@ from netauto.core.objecttemplate import (
 )
 from netauto.persistence.sqlalchemy.models import (
     ObjectRow,
+    ObjectTemplatePropertyRow,
     ObjectTemplateRow,
     ObjectTemplateVersionRow,
     RelationshipDefinitionRow,
 )
-
-
-def _serialize_properties(properties: tuple[ObjectTemplateProperty, ...]) -> str:
-    payload = [
-        {
-            "datatype_id": str(prop.datatype_id),
-            "datatype_version": prop.datatype_version,
-            "name": prop.name,
-            "required": prop.required,
-        }
-        for prop in properties
-    ]
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-
-def _deserialize_properties(properties_json: str) -> tuple[ObjectTemplateProperty, ...]:
-    try:
-        payload = json.loads(properties_json)
-    except json.JSONDecodeError as error:
-        raise ObjectTemplatePersistenceError(
-            "Stored object template property JSON is invalid."
-        ) from error
-    if not isinstance(payload, list):
-        raise ObjectTemplatePersistenceError(
-            "Stored object template properties must be a JSON array."
-        )
-
-    properties: list[ObjectTemplateProperty] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            raise ObjectTemplatePersistenceError(
-                "Stored object template property entry must be a JSON object."
-            )
-        if set(item.keys()) != {"name", "datatype_id", "datatype_version", "required"}:
-            raise ObjectTemplatePersistenceError(
-                "Stored object template property entry has an invalid shape."
-            )
-        try:
-            properties.append(
-                ObjectTemplateProperty(
-                    name=item["name"],
-                    datatype_id=UUID(item["datatype_id"]),
-                    datatype_version=item["datatype_version"],
-                    required=item["required"],
-                )
-            )
-        except Exception as error:
-            raise ObjectTemplatePersistenceError(
-                "Stored object template property entry is invalid."
-            ) from error
-    return tuple(properties)
 
 
 def _serialize_components(components: tuple[ObjectTemplateComponent, ...]) -> str:
@@ -143,7 +94,24 @@ def _row_to_object_template(row: ObjectTemplateRow) -> ObjectTemplate:
         raise ObjectTemplatePersistenceError("Stored object template row is invalid.") from error
 
 
-def _row_to_object_template_version(row: ObjectTemplateVersionRow) -> ObjectTemplateVersion:
+def _row_to_object_template_property(row: ObjectTemplatePropertyRow) -> ObjectTemplateProperty:
+    try:
+        return ObjectTemplateProperty(
+            name=row.name,
+            datatype_id=UUID(row.datatype_id),
+            datatype_version=row.datatype_version,
+            required=row.required,
+        )
+    except Exception as error:
+        raise ObjectTemplatePersistenceError(
+            "Stored object template property row is invalid."
+        ) from error
+
+
+def _row_to_object_template_version(
+    row: ObjectTemplateVersionRow,
+    property_rows: tuple[ObjectTemplatePropertyRow, ...],
+) -> ObjectTemplateVersion:
     try:
         if row.parent_template_id is None and row.parent_version is None:
             parent = None
@@ -162,7 +130,7 @@ def _row_to_object_template_version(row: ObjectTemplateVersionRow) -> ObjectTemp
             version=row.version,
             status=ObjectTemplateVersionStatus(row.status),
             parent=parent,
-            properties=_deserialize_properties(row.properties_json),
+            properties=tuple(_row_to_object_template_property(prop) for prop in property_rows),
             components=_deserialize_components(row.components_json),
         )
     except ObjectTemplatePersistenceError:
@@ -293,10 +261,72 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
                 "ObjectTemplate deletion failed."
             ) from error
 
+    def _property_rows_for_version(
+        self,
+        template_id: UUID,
+        version: int,
+    ) -> tuple[ObjectTemplatePropertyRow, ...]:
+        rows = self._session.scalars(
+            select(ObjectTemplatePropertyRow)
+            .where(
+                ObjectTemplatePropertyRow.template_id == str(template_id),
+                ObjectTemplatePropertyRow.template_version == version,
+            )
+            .order_by(ObjectTemplatePropertyRow.position.asc())
+        ).all()
+        return tuple(rows)
+
+    def _property_rows_for_versions(
+        self,
+        rows: tuple[ObjectTemplateVersionRow, ...],
+    ) -> dict[tuple[str, int], tuple[ObjectTemplatePropertyRow, ...]]:
+        if not rows:
+            return {}
+
+        owner_keys = [(row.template_id, row.version) for row in rows]
+        property_rows = self._session.scalars(
+            select(ObjectTemplatePropertyRow)
+            .where(
+                tuple_(
+                    ObjectTemplatePropertyRow.template_id,
+                    ObjectTemplatePropertyRow.template_version,
+                ).in_(owner_keys)
+            )
+            .order_by(
+                ObjectTemplatePropertyRow.template_id.asc(),
+                ObjectTemplatePropertyRow.template_version.asc(),
+                ObjectTemplatePropertyRow.position.asc(),
+            )
+        ).all()
+        grouped: defaultdict[tuple[str, int], list[ObjectTemplatePropertyRow]] = defaultdict(list)
+        for row in property_rows:
+            grouped[(row.template_id, row.template_version)].append(row)
+        return {key: tuple(value) for key, value in grouped.items()}
+
+    def _add_property_rows(self, version: ObjectTemplateVersion) -> None:
+        for position, prop in enumerate(version.properties):
+            self._session.add(
+                ObjectTemplatePropertyRow(
+                    template_id=str(version.template_id),
+                    template_version=version.version,
+                    position=position,
+                    name=prop.name,
+                    datatype_id=str(prop.datatype_id),
+                    datatype_version=prop.datatype_version,
+                    required=prop.required,
+                )
+            )
+
     def add_version(self, version: ObjectTemplateVersion) -> None:
         owner = self._session.get(ObjectTemplateRow, str(version.template_id))
         if owner is None:
             raise ObjectTemplateNotFound("Owning object template does not exist.")
+        existing = self._session.get(
+            ObjectTemplateVersionRow,
+            {"template_id": str(version.template_id), "version": version.version},
+        )
+        if existing is not None:
+            raise ObjectTemplateVersionAlreadyExists("ObjectTemplate version already exists.")
         self._session.add(
             ObjectTemplateVersionRow(
                 template_id=str(version.template_id),
@@ -306,15 +336,16 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
                     str(version.parent.template_id) if version.parent is not None else None
                 ),
                 parent_version=version.parent.version if version.parent is not None else None,
-                properties_json=_serialize_properties(version.properties),
                 components_json=_serialize_components(version.components),
             )
         )
         try:
             self._session.flush()
+            self._add_property_rows(version)
+            self._session.flush()
         except IntegrityError as error:
-            raise ObjectTemplateVersionAlreadyExists(
-                "ObjectTemplate version already exists."
+            raise ObjectTemplatePersistenceError(
+                "ObjectTemplate version persistence failed."
             ) from error
 
     def get_version(self, template_id: UUID, version: int) -> ObjectTemplateVersion | None:
@@ -324,15 +355,27 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
         )
         if row is None:
             return None
-        return _row_to_object_template_version(row)
+        return _row_to_object_template_version(
+            row,
+            self._property_rows_for_version(template_id, version),
+        )
 
     def list_versions(self, template_id: UUID) -> tuple[ObjectTemplateVersion, ...]:
-        rows = self._session.scalars(
-            select(ObjectTemplateVersionRow)
-            .where(ObjectTemplateVersionRow.template_id == str(template_id))
-            .order_by(ObjectTemplateVersionRow.version.asc())
-        ).all()
-        return tuple(_row_to_object_template_version(row) for row in rows)
+        rows = tuple(
+            self._session.scalars(
+                select(ObjectTemplateVersionRow)
+                .where(ObjectTemplateVersionRow.template_id == str(template_id))
+                .order_by(ObjectTemplateVersionRow.version.asc())
+            ).all()
+        )
+        property_rows = self._property_rows_for_versions(rows)
+        return tuple(
+            _row_to_object_template_version(
+                row,
+                property_rows.get((row.template_id, row.version), ()),
+            )
+            for row in rows
+        )
 
     def replace_version(self, version: ObjectTemplateVersion) -> None:
         row = self._session.get(
@@ -346,8 +389,14 @@ class SqlAlchemyObjectTemplateRepository(ObjectTemplateRepository):
             str(version.parent.template_id) if version.parent is not None else None
         )
         row.parent_version = version.parent.version if version.parent is not None else None
-        row.properties_json = _serialize_properties(version.properties)
         row.components_json = _serialize_components(version.components)
+        self._session.execute(
+            delete(ObjectTemplatePropertyRow).where(
+                ObjectTemplatePropertyRow.template_id == str(version.template_id),
+                ObjectTemplatePropertyRow.template_version == version.version,
+            )
+        )
+        self._add_property_rows(version)
         try:
             self._session.flush()
         except IntegrityError as error:

@@ -689,6 +689,169 @@ def test_sqlite_foreign_key_enforcement_is_active(tmp_path: Path) -> None:
         engine.dispose()
 
 
+def test_raw_delete_of_referenced_exact_datatype_version_hits_fk_restrict(
+    tmp_path: Path,
+) -> None:
+    datatype, version = _hostname_pair()
+    template_id = UUID(int=101)
+    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'datatype_version_fk_restrict.sqlite3'}")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        repo = SqlAlchemyDataTypeRepository(session)
+        repo.add(datatype)
+        repo.add_version(version)
+        session.execute(
+            text(
+                "INSERT INTO object_templates (id, namespace, name, description, abstract) "
+                "VALUES (:id, :namespace, :name, :description, :abstract)"
+            ),
+            {
+                "id": str(template_id),
+                "namespace": "network",
+                "name": "device",
+                "description": None,
+                "abstract": False,
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO object_template_versions "
+                "("
+                "template_id, version, status, parent_template_id, "
+                "parent_version, components_json"
+                ") "
+                "VALUES ("
+                ":template_id, :version, :status, :parent_template_id, "
+                ":parent_version, :components_json"
+                ")"
+            ),
+            {
+                "template_id": str(template_id),
+                "version": 1,
+                "status": "draft",
+                "parent_template_id": None,
+                "parent_version": None,
+                "components_json": "[]",
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO object_template_properties "
+                "("
+                "template_id, template_version, position, name, datatype_id, "
+                "datatype_version, required"
+                ") "
+                "VALUES ("
+                ":template_id, :template_version, :position, :name, "
+                ":datatype_id, :datatype_version, :required"
+                ")"
+            ),
+            {
+                "template_id": str(template_id),
+                "template_version": 1,
+                "position": 0,
+                "name": "hostname",
+                "datatype_id": str(datatype.id),
+                "datatype_version": version.version,
+                "required": True,
+            },
+        )
+        session.commit()
+
+        with pytest.raises(IntegrityError):
+            session.execute(
+                text(
+                    "DELETE FROM datatype_versions "
+                    "WHERE datatype_id = :datatype_id AND version = :version"
+                ),
+                {"datatype_id": str(datatype.id), "version": version.version},
+            )
+            session.commit()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_repository_delete_maps_referenced_property_fk_failure_to_persistence_error(
+    tmp_path: Path,
+) -> None:
+    datatype, version = _hostname_pair()
+    template_id = UUID(int=102)
+    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'datatype_delete_fk_mapping.sqlite3'}")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        repo = SqlAlchemyDataTypeRepository(session)
+        repo.add(datatype)
+        repo.add_version(version)
+        session.execute(
+            text(
+                "INSERT INTO object_templates (id, namespace, name, description, abstract) "
+                "VALUES (:id, :namespace, :name, :description, :abstract)"
+            ),
+            {
+                "id": str(template_id),
+                "namespace": "network",
+                "name": "device",
+                "description": None,
+                "abstract": False,
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO object_template_versions "
+                "("
+                "template_id, version, status, parent_template_id, "
+                "parent_version, components_json"
+                ") "
+                "VALUES ("
+                ":template_id, :version, :status, :parent_template_id, "
+                ":parent_version, :components_json"
+                ")"
+            ),
+            {
+                "template_id": str(template_id),
+                "version": 1,
+                "status": "draft",
+                "parent_template_id": None,
+                "parent_version": None,
+                "components_json": "[]",
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO object_template_properties "
+                "("
+                "template_id, template_version, position, name, datatype_id, "
+                "datatype_version, required"
+                ") "
+                "VALUES ("
+                ":template_id, :template_version, :position, :name, "
+                ":datatype_id, :datatype_version, :required"
+                ")"
+            ),
+            {
+                "template_id": str(template_id),
+                "template_version": 1,
+                "position": 0,
+                "name": "hostname",
+                "datatype_id": str(datatype.id),
+                "datatype_version": version.version,
+                "required": True,
+            },
+        )
+        session.commit()
+
+        with pytest.raises(DataTypePersistenceError, match="Datatype deletion failed."):
+            repo.delete(datatype.id)
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_sqlite_constraint_json_is_deterministic_text(tmp_path: Path) -> None:
     datatype, version = _status_pair()
     engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'json.sqlite3'}")
