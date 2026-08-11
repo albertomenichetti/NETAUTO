@@ -23,6 +23,10 @@ from netauto.core.datatype import (
     PrimitiveTypeNotFound,
     PrimitiveTypeRegistry,
 )
+from netauto.core.datatype.repository import (
+    validate_datatype_version_add,
+    validate_datatype_version_replace,
+)
 from netauto.persistence.sqlalchemy.models import DataTypeRow, DataTypeVersionRow
 
 
@@ -158,6 +162,14 @@ class SqlAlchemyDataTypeRepository(DataTypeRepository):
         parent = self._session.get(DataTypeRow, str(version.datatype_id))
         if parent is None:
             raise DataTypeNotFound("Parent datatype does not exist.")
+        existing = self._session.get(
+            DataTypeVersionRow,
+            {"datatype_id": str(version.datatype_id), "version": version.version},
+        )
+        if existing is not None:
+            raise DataTypeVersionAlreadyExists("Datatype version already exists.")
+        existing_versions = self.list_versions(version.datatype_id)
+        validate_datatype_version_add(version, existing_versions=existing_versions)
         self._session.add(
             DataTypeVersionRow(
                 datatype_id=str(version.datatype_id),
@@ -196,9 +208,12 @@ class SqlAlchemyDataTypeRepository(DataTypeRepository):
         )
         if row is None:
             raise DataTypeVersionNotFound("Datatype version does not exist.")
+        current = _row_to_version(row, self._primitive_registry)
+        validate_datatype_version_replace(current, version)
+        serialized_constraints = _serialize_constraints(version.constraints)
         row.status = version.status.value
         row.base_type = version.base_type.name
-        row.constraints_json = _serialize_constraints(version.constraints)
+        row.constraints_json = serialized_constraints
         try:
             self._session.flush()
         except IntegrityError as error:

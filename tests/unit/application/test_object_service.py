@@ -214,7 +214,19 @@ def _store_datatype_versions(
 ) -> None:
     repo.add(datatype)
     for version in versions:
-        repo.add_version(version)
+        draft = DataTypeVersion(
+            datatype_id=version.datatype_id,
+            version=version.version,
+            status=DataTypeVersionStatus.DRAFT,
+            base_type=version.base_type,
+            constraints=version.constraints,
+        )
+        repo.add_version(draft)
+        if version.status is DataTypeVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is DataTypeVersionStatus.DEPRECATED:
+            repo.replace_version(DataTypeVersioningService().publish(draft))
+            repo.replace_version(version)
 
 
 def _property(
@@ -1204,14 +1216,14 @@ def test_update_uses_exact_pinned_template_version_and_allows_deprecated_pins() 
     service, datatypes, object_templates, objects, _relationships, commits = _service()
     datatype, v1_draft = _datatype(name="hostname")
     v1_published = DataTypeVersioningService().publish(v1_draft)
-    v2_integer = DataTypeVersion(
+    v2_string = DataTypeVersion(
         datatype_id=datatype.id,
         version=2,
         status=DataTypeVersionStatus.PUBLISHED,
-        base_type=PrimitiveTypeRegistry().get("core.integer"),
-        constraints=(),
+        base_type=PrimitiveTypeRegistry().get("core.string"),
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=10),),
     )
-    _store_datatype_versions(datatypes, datatype, (v1_published, v2_integer))
+    _store_datatype_versions(datatypes, datatype, (v1_published, v2_string))
 
     template = _template()
     v1_deprecated = _version(
@@ -1235,7 +1247,7 @@ def test_update_uses_exact_pinned_template_version_and_allows_deprecated_pins() 
             _property(
                 "hostname",
                 datatype_id=datatype.id,
-                datatype_version=v2_integer.version,
+                datatype_version=v2_string.version,
                 required=True,
             ),
         ),

@@ -6,7 +6,12 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from netauto.application.object import ObjectApplicationService
-from netauto.core.datatype import DataTypeFactory, DataTypeVersioningService
+from netauto.core.datatype import (
+    DataTypeFactory,
+    DataTypeVersion,
+    DataTypeVersioningService,
+    DataTypeVersionStatus,
+)
 from netauto.core.object import Object, ObjectChange, ObjectChangeKind, ObjectNotFound
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -104,7 +109,16 @@ def test_object_history_survives_create_update_delete_and_rollback_is_atomic(
     try:
         with uow_factory() as uow:
             uow.datatypes.add(hostname)
-            uow.datatypes.add_version(hostname_v1)
+            uow.datatypes.add_version(
+                DataTypeVersion(
+                    datatype_id=hostname.id,
+                    version=hostname_v1.version,
+                    status=DataTypeVersionStatus.DRAFT,
+                    base_type=hostname_v1.base_type,
+                    constraints=hostname_v1.constraints,
+                )
+            )
+            uow.datatypes.replace_version(hostname_v1)
             uow.object_templates.add(template)
             uow.object_templates.add_version(
                 _version(

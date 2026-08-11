@@ -197,9 +197,32 @@ def test_create_next_uses_exact_source_and_all_existing_versions() -> None:
     )
 
     repo.add(datatype)
-    repo.add_version(v1_published)
-    repo.add_version(v2_published)
-    repo.add_version(v5_deprecated)
+    repo.add_version(v1_draft)
+    repo.replace_version(v1_published)
+    v2_draft = DataTypeVersioningService().create_next_version(
+        v1_published,
+        existing_versions=(v1_published,),
+    )
+    repo.add_version(v2_draft)
+    repo.replace_version(v2_published)
+    v5_draft = type(v1_draft)(
+        datatype_id=v5_deprecated.datatype_id,
+        version=5,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=v5_deprecated.base_type,
+        constraints=v5_deprecated.constraints,
+    )
+    repo.add_version(v5_draft)
+    repo.replace_version(
+        type(v5_draft)(
+            datatype_id=v5_draft.datatype_id,
+            version=v5_draft.version,
+            status=DataTypeVersionStatus.PUBLISHED,
+            base_type=v5_draft.base_type,
+            constraints=v5_draft.constraints,
+        )
+    )
+    repo.replace_version(v5_deprecated)
 
     next_version = service.create_next_version(datatype_id=datatype.id, source_version=1)
 
@@ -226,8 +249,12 @@ def test_create_next_accepts_deprecated_source_and_commits_once() -> None:
     v2_deprecated = versioning.deprecate(v2_published)
 
     repo.add(datatype)
-    repo.add_version(v1_deprecated)
-    repo.add_version(v2_deprecated)
+    repo.add_version(v1_draft)
+    repo.replace_version(v1_published)
+    repo.replace_version(v1_deprecated)
+    repo.add_version(v2_draft)
+    repo.replace_version(v2_published)
+    repo.replace_version(v2_deprecated)
 
     next_version = service.create_next_version(datatype_id=datatype.id, source_version=2)
 
@@ -311,7 +338,25 @@ def test_delete_unreferenced_datatype_removes_identity_and_all_versions() -> Non
     repo.add(datatype)
     repo.add_version(draft)
     repo.add_version(next_draft)
-    repo.add_version(deprecated)
+    repo.add_version(
+        type(draft)(
+            datatype_id=deprecated.datatype_id,
+            version=3,
+            status=DataTypeVersionStatus.DRAFT,
+            base_type=deprecated.base_type,
+            constraints=deprecated.constraints,
+        )
+    )
+    repo.replace_version(
+        type(draft)(
+            datatype_id=deprecated.datatype_id,
+            version=3,
+            status=DataTypeVersionStatus.PUBLISHED,
+            base_type=deprecated.base_type,
+            constraints=deprecated.constraints,
+        )
+    )
+    repo.replace_version(deprecated)
 
     service.delete_datatype(datatype.id)
 

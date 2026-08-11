@@ -14,6 +14,7 @@ from netauto.core.datatype import (
     DataTypeFactory,
     DataTypeVersion,
     DataTypeVersioningService,
+    DataTypeVersionStatus,
 )
 from netauto.core.object import (
     ComponentMembership,
@@ -181,7 +182,19 @@ def _store_datatype_versions(
 ) -> None:
     repo.add(datatype)
     for version in versions:
-        repo.add_version(version)
+        draft = DataTypeVersion(
+            datatype_id=version.datatype_id,
+            version=version.version,
+            status=DataTypeVersionStatus.DRAFT,
+            base_type=version.base_type,
+            constraints=version.constraints,
+        )
+        repo.add_version(draft)
+        if version.status is DataTypeVersionStatus.PUBLISHED:
+            repo.replace_version(version)
+        elif version.status is DataTypeVersionStatus.DEPRECATED:
+            repo.replace_version(DataTypeVersioningService().publish(draft))
+            repo.replace_version(version)
 
 
 def _property(

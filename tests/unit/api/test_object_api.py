@@ -200,8 +200,9 @@ def _store_datatype(
         constraints=constraints,
     )
     repo.add(datatype)
+    repo.add_version(draft)
     published = DataTypeVersioningService().publish(draft)
-    repo.add_version(published)
+    repo.replace_version(published)
     return datatype, published
 
 

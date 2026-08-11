@@ -257,7 +257,14 @@ def test_datatype_service_routes_mutations_to_model_write_and_reads_to_ordinary(
         status=DataTypeVersionStatus.PUBLISHED,
     )
     uow.datatypes.add(datatype)
-    uow.datatypes.add_version(source)
+    uow.datatypes.add_version(
+        _datatype_version(
+            datatype.id,
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+        )
+    )
+    uow.datatypes.replace_version(source)
     service.create_next_version(datatype_id=datatype.id, source_version=1)
     assert ordinary.calls == 0
     assert model.calls == 1
@@ -283,7 +290,14 @@ def test_datatype_service_routes_mutations_to_model_write_and_reads_to_ordinary(
         status=DataTypeVersionStatus.PUBLISHED,
     )
     uow.datatypes.add(datatype)
-    uow.datatypes.add_version(published)
+    uow.datatypes.add_version(
+        _datatype_version(
+            datatype.id,
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+        )
+    )
+    uow.datatypes.replace_version(published)
     service.deprecate_version(datatype_id=datatype.id, version=1)
     assert ordinary.calls == 0
     assert model.calls == 1
@@ -345,7 +359,14 @@ def test_object_template_service_routes_mutations_to_model_write_and_reads_to_or
 
     service, uow, ordinary, model = make_service()
     uow.datatypes.add(datatype)
-    uow.datatypes.add_version(published_datatype)
+    uow.datatypes.add_version(
+        _datatype_version(
+            datatype.id,
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+        )
+    )
+    uow.datatypes.replace_version(published_datatype)
     template, _version = service.create_object_template(
         namespace="network",
         name="device",
@@ -364,7 +385,14 @@ def test_object_template_service_routes_mutations_to_model_write_and_reads_to_or
 
     service, uow, ordinary, model = make_service()
     uow.datatypes.add(datatype)
-    uow.datatypes.add_version(published_datatype)
+    uow.datatypes.add_version(
+        _datatype_version(
+            datatype.id,
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+        )
+    )
+    uow.datatypes.replace_version(published_datatype)
     uow.object_templates.add(template)
     draft = _template_version(
         template.id,
@@ -567,7 +595,14 @@ def test_runtime_services_remain_on_ordinary_factory_only() -> None:
         status=ObjectTemplateVersionStatus.PUBLISHED,
     )
     uow.datatypes.add(datatype)
-    uow.datatypes.add_version(datatype_version)
+    uow.datatypes.add_version(
+        _datatype_version(
+            datatype.id,
+            version=1,
+            status=DataTypeVersionStatus.DRAFT,
+        )
+    )
+    uow.datatypes.replace_version(datatype_version)
     uow.object_templates.add(template)
     uow.object_templates.add(other_template)
     uow.object_templates.add_version(template_v1)

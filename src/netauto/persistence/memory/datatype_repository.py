@@ -11,6 +11,10 @@ from netauto.core.datatype import (
     DataTypeVersionAlreadyExists,
     DataTypeVersionNotFound,
 )
+from netauto.core.datatype.repository import (
+    validate_datatype_version_add,
+    validate_datatype_version_replace,
+)
 
 
 class InMemoryDataTypeRepository(DataTypeRepository):
@@ -64,6 +68,8 @@ class InMemoryDataTypeRepository(DataTypeRepository):
         version_key = (version.datatype_id, version.version)
         if version_key in self._versions:
             raise DataTypeVersionAlreadyExists("Datatype version already exists.")
+        existing_versions = self.list_versions(version.datatype_id)
+        validate_datatype_version_add(version, existing_versions=existing_versions)
         self._versions[version_key] = version
 
     def get_version(self, datatype_id: UUID, version: int) -> DataTypeVersion | None:
@@ -80,6 +86,8 @@ class InMemoryDataTypeRepository(DataTypeRepository):
 
     def replace_version(self, version: DataTypeVersion) -> None:
         version_key = (version.datatype_id, version.version)
-        if version_key not in self._versions:
+        current = self._versions.get(version_key)
+        if current is None:
             raise DataTypeVersionNotFound("Datatype version does not exist.")
+        validate_datatype_version_replace(current, version)
         self._versions[version_key] = version

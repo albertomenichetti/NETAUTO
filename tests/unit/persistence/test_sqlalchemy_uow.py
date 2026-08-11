@@ -874,7 +874,7 @@ def test_two_explicit_commits_persist_both_transactions(tmp_path: Path) -> None:
         engine.dispose()
 
 
-def test_duplicate_version_error_preserves_cause(tmp_path: Path) -> None:
+def test_duplicate_version_error_surfaces_repository_duplicate_guard(tmp_path: Path) -> None:
     datatype, version = DataTypeFactory().create(
         namespace="network",
         name="hostname",
@@ -890,6 +890,6 @@ def test_duplicate_version_error_preserves_cause(tmp_path: Path) -> None:
                 uow.datatypes.add_version(version)
                 uow.commit()
 
-        assert error_info.value.__cause__ is not None
+        assert error_info.value.__cause__ is None
     finally:
         engine.dispose()

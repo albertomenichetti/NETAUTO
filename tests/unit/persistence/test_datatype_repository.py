@@ -324,8 +324,9 @@ def test_list_versions_ordered_ascending(backend: str, tmp_path: Path) -> None:
 
     with _repository_harness(backend, tmp_path) as repo:
         repo.add(datatype)
+        repo.add_version(v1_draft)
+        repo.replace_version(v1_published)
         repo.add_version(v5_draft)
-        repo.add_version(v1_published)
         repo.add_version(v2_draft)
 
         versions = repo.list_versions(datatype.id)
@@ -375,6 +376,281 @@ def test_replace_version_existing(backend: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_add_version_requires_draft_status(backend: str, tmp_path: Path) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+    deprecated = DataTypeVersioningService().deprecate(published)
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        with pytest.raises(DataTypePersistenceError):
+            repo.add_version(published)
+        with pytest.raises(DataTypePersistenceError):
+            repo.add_version(deprecated)
+        assert repo.get_version(datatype.id, 1) is None
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_add_version_preserves_duplicate_error_before_new_lifecycle_validation(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        with pytest.raises(DataTypeVersionAlreadyExists):
+            repo.add_version(published)
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_add_version_rejects_cross_version_base_type_change(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, v1_draft = _hostname_pair()
+    _, v2_integer = _vlan_pair()
+    v2_draft = DataTypeVersion(
+        datatype_id=datatype.id,
+        version=2,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=v2_integer.base_type,
+        constraints=v2_integer.constraints,
+    )
+    valid_v2 = DataTypeVersion(
+        datatype_id=datatype.id,
+        version=2,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=v1_draft.base_type,
+        constraints=v1_draft.constraints,
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(v1_draft)
+        with pytest.raises(DataTypePersistenceError):
+            repo.add_version(v2_draft)
+        assert repo.get_version(datatype.id, 2) is None
+        repo.add_version(valid_v2)
+        assert repo.get_version(datatype.id, 2) == valid_v2
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_rejects_draft_base_type_change_without_mutating_storage(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    integer_base = PrimitiveTypeRegistry().get("core.integer")
+    illegal = DataTypeVersion(
+        datatype_id=draft.datatype_id,
+        version=draft.version,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=integer_base,
+        constraints=(),
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(datatype.id, 1) == draft
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_allows_draft_constraint_revision(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    revised = DataTypeVersioningService().revise_draft(
+        draft,
+        constraints=(
+            Constraint(name=ConstraintName.MIN_LENGTH, value=2),
+            Constraint(name=ConstraintName.MAX_LENGTH, value=64),
+        ),
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        repo.replace_version(revised)
+        assert repo.get_version(datatype.id, 1) == revised
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_allows_draft_to_published_status_only_transition(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        repo.replace_version(published)
+        assert repo.get_version(datatype.id, 1) == published
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_rejects_publish_with_constraint_change(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    illegal = DataTypeVersion(
+        datatype_id=draft.datatype_id,
+        version=draft.version,
+        status=DataTypeVersionStatus.PUBLISHED,
+        base_type=draft.base_type,
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=2),),
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(datatype.id, 1) == draft
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_rejects_publish_with_base_type_change(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    illegal = DataTypeVersion(
+        datatype_id=draft.datatype_id,
+        version=draft.version,
+        status=DataTypeVersionStatus.PUBLISHED,
+        base_type=PrimitiveTypeRegistry().get("core.integer"),
+        constraints=(),
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(datatype.id, 1) == draft
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_allows_published_to_deprecated_status_only_transition(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+    deprecated = DataTypeVersioningService().deprecate(published)
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        repo.replace_version(published)
+        repo.replace_version(deprecated)
+        assert repo.get_version(datatype.id, 1) == deprecated
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_rejects_deprecate_with_constraint_change(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+    illegal = DataTypeVersion(
+        datatype_id=published.datatype_id,
+        version=published.version,
+        status=DataTypeVersionStatus.DEPRECATED,
+        base_type=published.base_type,
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=2),),
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        repo.replace_version(published)
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(datatype.id, 1) == published
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_rejects_deprecate_with_base_type_change(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+    illegal = DataTypeVersion(
+        datatype_id=published.datatype_id,
+        version=published.version,
+        status=DataTypeVersionStatus.DEPRECATED,
+        base_type=PrimitiveTypeRegistry().get("core.integer"),
+        constraints=(),
+    )
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        repo.add_version(draft)
+        repo.replace_version(published)
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(datatype.id, 1) == published
+
+
+@pytest.mark.parametrize(
+    ("stored_status", "replacement_status"),
+    [
+        (DataTypeVersionStatus.DRAFT, DataTypeVersionStatus.DEPRECATED),
+        (DataTypeVersionStatus.PUBLISHED, DataTypeVersionStatus.PUBLISHED),
+        (DataTypeVersionStatus.PUBLISHED, DataTypeVersionStatus.DRAFT),
+        (DataTypeVersionStatus.DEPRECATED, DataTypeVersionStatus.DEPRECATED),
+        (DataTypeVersionStatus.DEPRECATED, DataTypeVersionStatus.PUBLISHED),
+        (DataTypeVersionStatus.DEPRECATED, DataTypeVersionStatus.DRAFT),
+    ],
+)
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_replace_version_rejects_other_lifecycle_rewrites(
+    backend: str,
+    tmp_path: Path,
+    stored_status: DataTypeVersionStatus,
+    replacement_status: DataTypeVersionStatus,
+) -> None:
+    datatype, draft = _hostname_pair()
+
+    with _repository_harness(backend, tmp_path) as repo:
+        repo.add(datatype)
+        current = draft
+        repo.add_version(current)
+        if stored_status is DataTypeVersionStatus.PUBLISHED:
+            current = DataTypeVersioningService().publish(current)
+            repo.replace_version(current)
+        elif stored_status is DataTypeVersionStatus.DEPRECATED:
+            current = DataTypeVersioningService().publish(current)
+            repo.replace_version(current)
+            current = DataTypeVersioningService().deprecate(current)
+            repo.replace_version(current)
+
+        illegal = DataTypeVersion(
+            datatype_id=current.datatype_id,
+            version=current.version,
+            status=replacement_status,
+            base_type=current.base_type,
+            constraints=current.constraints,
+        )
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        assert repo.get_version(datatype.id, 1) == current
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_replace_version_missing_rejected(backend: str, tmp_path: Path) -> None:
     datatype, version = _hostname_pair()
 
@@ -387,26 +663,33 @@ def test_replace_version_missing_rejected(backend: str, tmp_path: Path) -> None:
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_status_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, draft = _hostname_pair()
-    published = DataTypeVersion(
+    versioning = DataTypeVersioningService()
+    v2_draft = DataTypeVersion(
         datatype_id=datatype.id,
         version=2,
-        status=DataTypeVersionStatus.PUBLISHED,
+        status=DataTypeVersionStatus.DRAFT,
         base_type=draft.base_type,
         constraints=draft.constraints,
     )
-    deprecated = DataTypeVersion(
+    v2_published = versioning.publish(v2_draft)
+    v3_draft = DataTypeVersion(
         datatype_id=datatype.id,
         version=3,
-        status=DataTypeVersionStatus.DEPRECATED,
+        status=DataTypeVersionStatus.DRAFT,
         base_type=draft.base_type,
         constraints=draft.constraints,
     )
+    v3_published = versioning.publish(v3_draft)
+    v3_deprecated = versioning.deprecate(v3_published)
 
     with _repository_harness(backend, tmp_path) as repo:
         repo.add(datatype)
         repo.add_version(draft)
-        repo.add_version(published)
-        repo.add_version(deprecated)
+        repo.add_version(v2_draft)
+        repo.replace_version(v2_published)
+        repo.add_version(v3_draft)
+        repo.replace_version(v3_published)
+        repo.replace_version(v3_deprecated)
         loaded = repo.list_versions(datatype.id)
 
     assert tuple(version.status for version in loaded) == (
@@ -660,6 +943,82 @@ def test_multiple_published_versions_coexist_in_repository(tmp_path: Path) -> No
         DataTypeVersionStatus.PUBLISHED,
         DataTypeVersionStatus.PUBLISHED,
     )
+
+
+def test_sqlite_illegal_publish_attempt_leaves_committed_snapshot_unchanged_after_rollback(
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    illegal = DataTypeVersion(
+        datatype_id=draft.datatype_id,
+        version=draft.version,
+        status=DataTypeVersionStatus.PUBLISHED,
+        base_type=draft.base_type,
+        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=2),),
+    )
+    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'illegal_publish_rollback.sqlite3'}")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+
+    session = session_factory()
+    try:
+        repo = SqlAlchemyDataTypeRepository(session)
+        repo.add(datatype)
+        repo.add_version(draft)
+        session.commit()
+
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        session.rollback()
+    finally:
+        session.close()
+
+    fresh_session = session_factory()
+    try:
+        fresh_repo = SqlAlchemyDataTypeRepository(fresh_session)
+        assert fresh_repo.get_version(datatype.id, 1) == draft
+    finally:
+        fresh_session.close()
+        engine.dispose()
+
+
+def test_sqlite_illegal_published_rewrite_leaves_committed_snapshot_unchanged_after_rollback(
+    tmp_path: Path,
+) -> None:
+    datatype, draft = _hostname_pair()
+    published = DataTypeVersioningService().publish(draft)
+    illegal = DataTypeVersion(
+        datatype_id=published.datatype_id,
+        version=published.version,
+        status=DataTypeVersionStatus.PUBLISHED,
+        base_type=published.base_type,
+        constraints=published.constraints,
+    )
+    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'illegal_published_rewrite.sqlite3'}")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+
+    session = session_factory()
+    try:
+        repo = SqlAlchemyDataTypeRepository(session)
+        repo.add(datatype)
+        repo.add_version(draft)
+        repo.replace_version(published)
+        session.commit()
+
+        with pytest.raises(DataTypePersistenceError):
+            repo.replace_version(illegal)
+        session.rollback()
+    finally:
+        session.close()
+
+    fresh_session = session_factory()
+    try:
+        fresh_repo = SqlAlchemyDataTypeRepository(fresh_session)
+        assert fresh_repo.get_version(datatype.id, 1) == published
+    finally:
+        fresh_session.close()
+        engine.dispose()
 
 
 def test_sqlite_foreign_key_enforcement_is_active(tmp_path: Path) -> None:
@@ -932,6 +1291,71 @@ def test_sqlite_corrupt_version_rows_raise_persistence_error(
         repo = SqlAlchemyDataTypeRepository(session)
         with pytest.raises(DataTypePersistenceError):
             repo.get_version(datatype.id, 1)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_sqlite_add_version_rejects_corrupt_mixed_base_type_lineage(tmp_path: Path) -> None:
+    datatype, v1 = _hostname_pair()
+    _, integer_version = _vlan_pair()
+    v3 = DataTypeVersion(
+        datatype_id=datatype.id,
+        version=3,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=v1.base_type,
+        constraints=v1.constraints,
+    )
+    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'corrupt_lineage.sqlite3'}")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        session.execute(
+            text(
+                "INSERT INTO datatypes (id, namespace, name, description) "
+                "VALUES (:id, :namespace, :name, :description)"
+            ),
+            {
+                "id": str(datatype.id),
+                "namespace": datatype.namespace,
+                "name": datatype.name,
+                "description": datatype.description,
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO datatype_versions "
+                "(datatype_id, version, status, base_type, constraints_json) "
+                "VALUES (:datatype_id, :version, :status, :base_type, :constraints_json)"
+            ),
+            {
+                "datatype_id": str(datatype.id),
+                "version": 1,
+                "status": "draft",
+                "base_type": v1.base_type.name,
+                "constraints_json": "[]",
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO datatype_versions "
+                "(datatype_id, version, status, base_type, constraints_json) "
+                "VALUES (:datatype_id, :version, :status, :base_type, :constraints_json)"
+            ),
+            {
+                "datatype_id": str(datatype.id),
+                "version": 2,
+                "status": "draft",
+                "base_type": integer_version.base_type.name,
+                "constraints_json": "[]",
+            },
+        )
+        session.commit()
+
+        repo = SqlAlchemyDataTypeRepository(session)
+        with pytest.raises(DataTypePersistenceError):
+            repo.add_version(v3)
     finally:
         session.close()
         engine.dispose()

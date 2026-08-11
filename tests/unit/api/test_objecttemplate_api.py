@@ -165,8 +165,9 @@ def _store_datatype(
 
     versioning = DataTypeVersioningService()
     stored_versions: list[DataTypeVersion] = []
+    repo.add_version(current)
     published = versioning.publish(current)
-    repo.add_version(published)
+    repo.replace_version(published)
     stored_versions.append(published)
 
     current = published
@@ -175,8 +176,9 @@ def _store_datatype(
             current,
             existing_versions=tuple(stored_versions),
         )
-        current = versioning.publish(current)
         repo.add_version(current)
+        current = versioning.publish(current)
+        repo.replace_version(current)
         stored_versions.append(current)
 
     return datatype, tuple(stored_versions)

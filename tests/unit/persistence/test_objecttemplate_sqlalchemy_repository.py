@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from netauto.core.datatype import (
     DataType,
     DataTypeVersion,
+    DataTypeVersioningService,
     DataTypeVersionStatus,
     PrimitiveTypeRegistry,
 )
@@ -141,7 +142,19 @@ def _store_datatype_version(
     )
     repo = SqlAlchemyDataTypeRepository(session)
     repo.add(datatype)
-    repo.add_version(datatype_version)
+    draft = DataTypeVersion(
+        datatype_id=datatype_version.datatype_id,
+        version=datatype_version.version,
+        status=DataTypeVersionStatus.DRAFT,
+        base_type=datatype_version.base_type,
+        constraints=datatype_version.constraints,
+    )
+    repo.add_version(draft)
+    if datatype_version.status is DataTypeVersionStatus.PUBLISHED:
+        repo.replace_version(datatype_version)
+    elif datatype_version.status is DataTypeVersionStatus.DEPRECATED:
+        repo.replace_version(DataTypeVersioningService().publish(draft))
+        repo.replace_version(datatype_version)
     return datatype, datatype_version
 
 
