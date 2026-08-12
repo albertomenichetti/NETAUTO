@@ -17,7 +17,8 @@ CLI
            -> Repository contracts
               -> Persistence
                    -> in-memory reference backend
-                   -> SQLAlchemy / SQLite backend
+                   -> SQLAlchemy / SQLite implementation (current transitional code)
+                   -> SQLAlchemy / PostgreSQL implementation (accepted target, not yet implemented)
 ```
 
 Key rules:
@@ -49,8 +50,15 @@ On SQLite, that logical guard is currently realized by
 `SqliteModelWriteUnitOfWork`, which acquires `BEGIN IMMEDIATE` before the first
 decision read. That SQLite writer reservation is a backend-specific
 implementation detail of the current backend, not the cross-backend
-architecture. A future PostgreSQL backend must realize the same logical guard
-without redefining the architecture around one global database writer lock.
+architecture.
+
+Accepted direction:
+
+- PostgreSQL is now the authoritative target backend for the project
+- SQLite remains only as transitional implementation code until M2.5.12
+- PostgreSQL must realize the same logical model-plane guard without
+  redefining the architecture around one global database writer lock
+- the exact PostgreSQL primitive remains intentionally undecided at this stage
 
 ## Runtime Data Plane
 
@@ -88,6 +96,15 @@ There is deliberately no global logical database writer lock.
 Ordinary Object content mutation does not acquire either logical guard.
 `update_object` and `migrate_objects` rely on optimistic conditional
 replacement against the exact previously-read Object snapshot.
+
+Current unresolved concern identified for M2.5:
+
+- some data-plane workflows create or modify bindings that depend on mutable
+  model-plane admission state
+- current SQLite behavior must not be treated as proof that those
+  cross-plane races are architecturally solved
+- the exact cross-plane binding protocol is intentionally deferred to later
+  M2.5 inventory/characterization/ADR slices
 
 ## Built-In Primitive Types
 
@@ -479,13 +496,22 @@ SQLite foreign keys are enabled in the engine factory.
 
 Current SQL backend status:
 
-- SQLite is the only implemented SQL backend
+- SQLite is the only SQL backend physically implemented in the codebase
 - PostgreSQL is not implemented yet
 - Alembic and in-place migration infrastructure are not implemented
 - current development recreates the database after structural schema changes
 
 Current startup behavior is explicit in the production composition module:
 `src/netauto/main.py` creates the SQLite engine and calls `create_schema(engine)`.
+
+Accepted persistence direction:
+
+- PostgreSQL is the authoritative and only intended supported SQL backend
+- SQLite is deprecated transitional code and scheduled for removal in M2.5.12
+- NETAUTO does not commit to long-term SQLite/PostgreSQL feature parity
+- Alembic moves before dogfooding and will become the authoritative schema
+  evolution mechanism in M2.5.4
+- M3 dogfooding is blocked until the PostgreSQL transactional foundation closes
 
 ## In-Memory Persistence
 
@@ -541,9 +567,9 @@ The CLI remains a REST client and currently has top-level groups:
 
 Current limitations that are intentionally not hidden:
 
-- SQLite is the only supported SQL backend
-- PostgreSQL is not implemented
-- Alembic is not implemented
+- SQLite remains the only SQL backend implemented in the current code
+- PostgreSQL is not implemented yet
+- Alembic is not implemented yet
 - a comprehensive integrity verifier is not implemented
 - raw SQL can bypass some semantic invariants
 - multi-node ownership cycles are not declaratively impossible in SQL
@@ -551,5 +577,19 @@ Current limitations that are intentionally not hidden:
   uncharacterized as a portable future PostgreSQL behavior
 - `delete_object` vs concurrent Object migration remains explicitly
   uncharacterized as a portable future PostgreSQL behavior
+- additional cross-plane binding races between data-plane admissions and
+  concurrent model-plane lifecycle/delete activity have now been identified as
+  distinct M2.5 work
 - SQLite's single writer can mask some cross-domain behavior and is not the
-  portable contract
+  authoritative long-term persistence architecture
+
+## Transition Note
+
+M2.5 changes the accepted direction of the project without changing the
+current implementation yet:
+
+- code today still runs on SQLite
+- architecture now treats PostgreSQL as the authoritative destination
+- SQLite compatibility is no longer a long-term design constraint
+- later M2.5 slices will characterize and formalize cross-plane transactional
+  admission rules using real PostgreSQL transactions

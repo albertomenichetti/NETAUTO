@@ -25,6 +25,11 @@ During this development phase the SQLite database is intentionally recreated
 from scratch after schema changes. In-place migration and backfill are not yet
 part of the project.
 
+Historical note: the fresh-database and no-Alembic assumptions below reflect
+the original phase decision. They are now superseded as a long-term direction
+by ADR 0021, which moves Alembic and PostgreSQL ahead of dogfooding. Current
+code still uses the fresh-SQLite workflow today.
+
 ## Decision
 
 General rule:
@@ -61,6 +66,13 @@ This phase uses a fresh-database contract:
 - no Alembic in this phase
 - no dual reads of legacy representations
 - no dual writes to old and new representations
+
+Supersession note:
+
+- this remains a correct description of the current implementation phase
+- it is no longer the accepted long-term workflow
+- Alembic becomes the authoritative schema-evolution mechanism in M2.5.4
+- PostgreSQL becomes the authoritative SQL backend per ADR 0021
 
 ## Consequences
 

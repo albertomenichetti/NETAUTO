@@ -19,6 +19,11 @@ SQLite is currently the only supported backend and is physically restrictive,
 but those backend limits must not redefine the long-term semantic contract for
 future PostgreSQL support.
 
+Historical note: the "future PostgreSQL" phrasing here reflects the original
+timing of this ADR. ADR 0021 supersedes that roadmap timing by making
+PostgreSQL the immediate authoritative target backend rather than a distant
+follow-on port.
+
 ## Decision
 
 Concurrency protection is semantic, not database-global.
@@ -54,8 +59,9 @@ logical coordination domain, not a mandate to lock the whole database.
 SQLite currently realizes this using `BEGIN IMMEDIATE` because of SQLite's
 backend constraints.
 
-A future PostgreSQL backend must provide an equivalent transaction-scoped
-logical model-plane guard using a PostgreSQL-appropriate primitive such as:
+The PostgreSQL target architecture must provide an equivalent
+transaction-scoped logical model-plane guard using a PostgreSQL-appropriate
+primitive such as:
 
 - advisory transaction locking
 - transactional row locking on a dedicated guard row
@@ -66,6 +72,9 @@ The semantic requirement is:
 - do not replay the application command automatically
 - do not globally block unrelated ordinary data-plane writes merely because the
   database supports concurrent writers
+
+ADR 0021 does not replace this logical contract. It changes project timing:
+the PostgreSQL realization of this domain is now immediate M2.5 work.
 
 ### OWNERSHIP_GRAPH_GUARD
 
@@ -83,7 +92,8 @@ against a stable ownership topology.
 
 `OWNERSHIP_GRAPH_GUARD` is distinct from `MODEL_PLANE_GUARD`.
 
-Therefore a future PostgreSQL backend must be able to represent, conceptually:
+Therefore the PostgreSQL target architecture must be able to represent,
+conceptually:
 
 - Tx A holds `MODEL_PLANE_GUARD`
 - Tx B holds `OWNERSHIP_GRAPH_GUARD`
@@ -134,9 +144,9 @@ concurrency conflict.
 
 The application command is not retried automatically.
 
-### Future PostgreSQL contract
+### PostgreSQL target contract
 
-The future PostgreSQL architecture must preserve these semantics:
+The PostgreSQL target architecture must preserve these semantics:
 
 - `MODEL_PLANE_GUARD`
   independent logical transaction guard
@@ -154,11 +164,21 @@ Consequently:
   concurrent
 - an ownership attach and an unrelated Object property update remain logically
   concurrent
-- a future PostgreSQL backend must be able to acquire `MODEL_PLANE_GUARD` and
+- the PostgreSQL implementation must be able to acquire `MODEL_PLANE_GUARD` and
   `OWNERSHIP_GRAPH_GUARD` independently, for example with separate advisory
   lock keys or separate transactional guard rows
-- a future PostgreSQL implementation must not solve runtime concurrency by
+- the PostgreSQL implementation must not solve runtime concurrency by
   introducing one global database writer lock
+
+Newly identified scope boundary:
+
+- this ADR still governs the separation between model-plane serialization,
+  ownership-topology serialization, Object optimistic concurrency, and
+  ordinary relational runtime operations
+- it does not by itself define the protocol for data-plane workflows whose
+  admission depends on mutable model-plane state
+- that cross-plane binding problem is now explicitly scheduled for later M2.5
+  inventory, characterization, and ADR work
 
 ### Cross-domain caveat
 

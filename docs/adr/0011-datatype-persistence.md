@@ -17,6 +17,10 @@ models, and core repository contracts contain no SQLAlchemy dependency.
 SQLite is the initial implemented SQL backend; PostgreSQL remains a later
 target.
 
+Historical note: the backend roadmap and support direction in this ADR are now
+superseded by ADR 0021. Current code still implements only SQLite, but
+PostgreSQL is no longer treated as a late optional backend.
+
 Current persistence decisions:
 
 - DataType UUID is stored canonically as text in SQLite
@@ -45,6 +49,13 @@ Current implementation status:
 - Alembic is not implemented
 - REST and CLI behavior are implemented elsewhere in the stack
 - raw SQL can still bypass semantic lifecycle rules
+
+Current architectural direction after ADR 0021:
+
+- PostgreSQL is the authoritative target backend
+- SQLite remains transitional implementation code only
+- Alembic moves forward before dogfooding rather than remaining a late
+  follow-on concern
 
 ## Consequences
 

@@ -58,6 +58,11 @@ serialization, not SQLite's `BEGIN IMMEDIATE` itself. A future PostgreSQL
 backend may satisfy the same contract using another database-backed mechanism,
 such as a transaction-scoped advisory lock.
 
+Historical note: this ADR still records the original serialization decision
+correctly. The roadmap assumption that PostgreSQL was a distant later backend
+is now superseded by ADR 0021. PostgreSQL becomes immediate project work, but
+this ADR does not decide the final PostgreSQL primitive.
+
 ## Consequences
 
 Supported model-plane mutations cannot concurrently execute their
@@ -86,3 +91,10 @@ solved across all backends. Subsequent runtime concurrency characterization and
 remediation are now governed by ADR 0020, which introduces
 `OWNERSHIP_GRAPH_GUARD` as a distinct logical coordination domain from
 `MODEL_PLANE_GUARD`.
+
+Additional note after ADR 0021:
+
+- PostgreSQL realization of `MODEL_PLANE_GUARD` is now an immediate M2.5
+  implementation goal rather than a distant backend-port concern
+- newly identified cross-plane binding races remain intentionally unresolved
+  here and are scheduled through later M2.5 analysis/ADR slices
