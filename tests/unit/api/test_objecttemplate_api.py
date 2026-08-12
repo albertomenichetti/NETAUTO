@@ -576,7 +576,7 @@ def test_create_next_source_version_validation(
     assert response.json()["error"]["code"] == "request_validation_failed"
 
 
-def test_revise_parent_field_is_required_but_nullable(
+def test_revise_parent_field_may_be_omitted_or_explicitly_null(
     client_context: tuple[
         TestClient,
         InMemoryDataTypeRepository,
@@ -588,7 +588,7 @@ def test_revise_parent_field_is_required_but_nullable(
     datatype, _versions = _store_datatype(datatypes)
     created = _create_object_template(client, datatype_id=datatype.id)
 
-    missing_parent = client.put(
+    omitted_parent = client.put(
         f"/api/v1/object-templates/{created['object_template']['id']}/versions/1",
         json={"properties": []},
     )
@@ -597,13 +597,10 @@ def test_revise_parent_field_is_required_but_nullable(
         json={"parent": None, "properties": []},
     )
 
-    assert missing_parent.status_code == 422
-    assert missing_parent.json()["error"]["code"] == "request_validation_failed"
-    assert any(
-        detail["path"] == "/body/parent"
-        for detail in missing_parent.json()["error"]["details"]
-    )
+    assert omitted_parent.status_code == 200
+    assert omitted_parent.json()["parent"] is None
     assert nullable_parent.status_code == 200
+    assert nullable_parent.json()["parent"] is None
 
 
 def test_revise_endpoint_rejects_datatype_version_downgrade_and_preserves_snapshot(
@@ -1337,6 +1334,66 @@ def test_revise_replaces_parent_and_properties_and_resolves_datatype_version(
     assert payload["properties"][0]["datatype_version"] == versions[-1].version
 
 
+def test_revise_omitted_parent_preserves_existing_draft_parent(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent = _create_published_parent_template(client, datatype_id=datatype.id, name="base_omit")
+    created = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        parent={"template_id": parent["object_template"]["id"], "version": 1},
+    )
+
+    revised = client.put(
+        f"/api/v1/object-templates/{created['object_template']['id']}/versions/1",
+        json={
+            "properties": [{"name": "serial", "datatype_id": str(datatype.id), "required": False}],
+        },
+    )
+
+    assert revised.status_code == 200
+    assert revised.json()["parent"] == {
+        "template_id": parent["object_template"]["id"],
+        "version": 1,
+    }
+
+
+def test_revise_explicit_null_removes_parent_before_first_publication(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent = _create_published_parent_template(client, datatype_id=datatype.id, name="base_clear")
+    created = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        parent={"template_id": parent["object_template"]["id"], "version": 1},
+    )
+
+    revised = client.put(
+        f"/api/v1/object-templates/{created['object_template']['id']}/versions/1",
+        json={
+            "parent": None,
+            "properties": [{"name": "serial", "datatype_id": str(datatype.id), "required": False}],
+        },
+    )
+
+    assert revised.status_code == 200
+    assert revised.json()["parent"] is None
+
+
 def test_revise_components_add_replace_and_clear_local_snapshot(
     client_context: tuple[
         TestClient,
@@ -1708,6 +1765,133 @@ def test_revise_parent_identity_change_maps_to_conflict(
         json={
             "parent": {"template_id": parent_q["object_template"]["id"], "version": 1},
             "properties": child["version"]["properties"],
+            "components": [],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_template_parent_identity_changed"
+
+
+def test_revise_omitted_parent_preserves_parent_after_publication(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent = _create_published_parent_template(
+        client,
+        datatype_id=datatype.id,
+        name="device_preserve_after_publish",
+    )
+    child = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        name="router_preserve_after_publish",
+        parent={"template_id": parent["object_template"]["id"], "version": 1},
+        properties=[
+            {
+                "name": "serial",
+                "datatype_id": str(datatype.id),
+                "required": False,
+            }
+        ],
+    )
+    child_id = child["object_template"]["id"]
+    _publish_object_template_version(client, child_id)
+    assert client.post(
+        f"/api/v1/object-templates/{child_id}/versions",
+        json={"source_version": 1},
+    ).status_code == 201
+
+    response = client.put(
+        f"/api/v1/object-templates/{child_id}/versions/2",
+        json={"properties": child["version"]["properties"], "components": []},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["parent"] == {
+        "template_id": parent["object_template"]["id"],
+        "version": 1,
+    }
+
+
+def test_revise_explicit_null_rejects_removing_published_lineage_parent(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    parent = _create_published_parent_template(
+        client,
+        datatype_id=datatype.id,
+        name="device_reject_clear_after_publish",
+    )
+    child = _create_object_template(
+        client,
+        datatype_id=datatype.id,
+        name="router_reject_clear_after_publish",
+        parent={"template_id": parent["object_template"]["id"], "version": 1},
+        properties=[
+            {
+                "name": "serial",
+                "datatype_id": str(datatype.id),
+                "required": False,
+            }
+        ],
+    )
+    child_id = child["object_template"]["id"]
+    _publish_object_template_version(client, child_id)
+    assert client.post(
+        f"/api/v1/object-templates/{child_id}/versions",
+        json={"source_version": 1},
+    ).status_code == 201
+
+    response = client.put(
+        f"/api/v1/object-templates/{child_id}/versions/2",
+        json={
+            "parent": None,
+            "properties": child["version"]["properties"],
+            "components": [],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "object_template_parent_identity_changed"
+
+
+def test_revise_published_root_lineage_rejects_adding_parent(
+    client_context: tuple[
+        TestClient,
+        InMemoryDataTypeRepository,
+        InMemoryObjectTemplateRepository,
+        list[int],
+    ],
+) -> None:
+    client, datatypes, _object_templates, _commits = client_context
+    datatype, _versions = _store_datatype(datatypes)
+    root = _create_object_template(client, datatype_id=datatype.id, name="root_lineage")
+    root_id = root["object_template"]["id"]
+    _publish_object_template_version(client, root_id)
+    assert client.post(
+        f"/api/v1/object-templates/{root_id}/versions",
+        json={"source_version": 1},
+    ).status_code == 201
+    parent = _create_published_parent_template(client, datatype_id=datatype.id, name="new_parent")
+
+    response = client.put(
+        f"/api/v1/object-templates/{root_id}/versions/2",
+        json={
+            "parent": {"template_id": parent["object_template"]["id"], "version": 1},
+            "properties": root["version"]["properties"],
             "components": [],
         },
     )

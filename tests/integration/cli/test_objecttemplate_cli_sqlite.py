@@ -847,6 +847,164 @@ def test_cli_objecttemplate_revise_rejects_datatype_version_downgrade(tmp_path: 
         engine.dispose()
 
 
+def test_cli_objecttemplate_revise_omitted_parent_preserves_existing_parent(tmp_path: Path) -> None:
+    engine, server = _server_url(tmp_path)
+    try:
+        with server as base_url:
+            datatype_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "datatype",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "hostname_preserve_parent",
+                    "--description",
+                    "Hostname",
+                    "--base-type",
+                    "core.string",
+                ],
+            )
+            assert datatype_created.exit_code == 0
+            datatype_id = json.loads(datatype_created.stdout)["datatype"]["id"]
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "datatype",
+                        "version",
+                        "publish",
+                        datatype_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            parent_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "base_preserve_parent",
+                    "--description",
+                    "Base template",
+                    "--abstract",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "hostname",
+                            "datatype_id": datatype_id,
+                            "required": True,
+                        }
+                    ),
+                ],
+            )
+            assert parent_created.exit_code == 0
+            parent_id = json.loads(parent_created.stdout)["object_template"]["id"]
+            assert (
+                runner.invoke(
+                    app,
+                    [
+                        "--api-url",
+                        base_url,
+                        "object-template",
+                        "version",
+                        "publish",
+                        parent_id,
+                        "1",
+                    ],
+                ).exit_code
+                == 0
+            )
+
+            child_created = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "create",
+                    "--namespace",
+                    "network",
+                    "--name",
+                    "device_preserve_parent",
+                    "--description",
+                    "Device template",
+                    "--parent-template-id",
+                    parent_id,
+                    "--parent-version",
+                    "1",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "serial",
+                            "datatype_id": datatype_id,
+                            "required": False,
+                        }
+                    ),
+                ],
+            )
+            assert child_created.exit_code == 0
+            child_payload = json.loads(child_created.stdout)
+            template_id = child_payload["object_template"]["id"]
+
+            revised = runner.invoke(
+                app,
+                [
+                    "--api-url",
+                    base_url,
+                    "--output",
+                    "json",
+                    "object-template",
+                    "version",
+                    "revise",
+                    template_id,
+                    "1",
+                    "--property-json",
+                    json.dumps(
+                        {
+                            "name": "asset_tag",
+                            "datatype_id": datatype_id,
+                            "required": False,
+                        }
+                    ),
+                ],
+            )
+            assert revised.exit_code == 0
+            revised_payload = json.loads(revised.stdout)
+            assert revised_payload["parent"] == {
+                "template_id": parent_id,
+                "version": 1,
+            }
+            assert revised_payload["properties"] == [
+                {
+                    "name": "asset_tag",
+                    "datatype_id": datatype_id,
+                    "datatype_version": 1,
+                    "required": False,
+                }
+            ]
+    finally:
+        engine.dispose()
+
+
 def test_cli_objecttemplate_create_next_accepts_deprecated_source(tmp_path: Path) -> None:
     engine, server = _server_url(tmp_path)
     try:

@@ -26,18 +26,15 @@ def _build_parent(
     *,
     parent_template_id: UUID | None,
     parent_version: int | None,
-    required: bool,
     allow_none_mode: bool = False,
     no_parent: bool = False,
-) -> object:
+) -> object | None:
     if allow_none_mode and no_parent:
         if parent_template_id is not None or parent_version is not None:
             raise InputError("Use either --no-parent or a complete parent reference.")
         return None
 
     if parent_template_id is None and parent_version is None:
-        if required:
-            raise InputError("Explicit parent mode is required.")
         return None
 
     if parent_template_id is None or parent_version is None:
@@ -83,7 +80,6 @@ def _build_create_payload(
         "parent": _build_parent(
             parent_template_id=parent_template_id,
             parent_version=parent_version,
-            required=False,
         ),
         "properties": [parse_json_object(value, kind="Property JSON") for value in property_json],
         "components": [parse_json_object(value, kind="Component JSON") for value in component_json],
@@ -109,17 +105,19 @@ def _build_revise_payload(
     ensure_modes_are_exclusive(file=file, inline_values_present=inline_present)
     if file is not None:
         return load_json_object(file)
-    return {
-        "parent": _build_parent(
-            parent_template_id=parent_template_id,
-            parent_version=parent_version,
-            required=True,
-            allow_none_mode=True,
-            no_parent=no_parent,
-        ),
+    payload: JSONObject = {
         "properties": [parse_json_object(value, kind="Property JSON") for value in property_json],
         "components": [parse_json_object(value, kind="Component JSON") for value in component_json],
     }
+    parent = _build_parent(
+        parent_template_id=parent_template_id,
+        parent_version=parent_version,
+        allow_none_mode=True,
+        no_parent=no_parent,
+    )
+    if no_parent or parent is not None:
+        payload["parent"] = parent
+    return payload
 
 
 @object_template_app.command("list")

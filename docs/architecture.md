@@ -217,6 +217,7 @@ DataTypes are based directly on built-in primitives.
 Important implemented semantics:
 
 - single inheritance
+- new `v1` defaults to root (`parent=None`) when no parent is supplied
 - same-template inheritance is forbidden
 - inheritance cycles are forbidden
 - published versions are immutable
@@ -224,6 +225,11 @@ Important implemented semantics:
 - stable parent identity after the lineage has entered `PUBLISHED` or
   `DEPRECATED`
 - exact parent version may advance but cannot move backwards
+- draft revise uses full snapshot replacement for properties/components, but
+  `parent` has special intent semantics:
+  omitted `parent` preserves the current draft parent;
+  explicit `parent: null` requests root;
+  explicit `parent: {...}` requests that exact parent version
 - inherited properties and inherited components cannot be shadowed or
   redeclared locally by name
 - abstract templates cannot be instantiated as runtime Objects
@@ -246,6 +252,8 @@ Publication requires:
   published/deprecated ancestry space
 
 Create-next may use a `PUBLISHED` or `DEPRECATED` source version.
+Publish does not assign, clear, or rewrite a parent; it publishes the current
+draft snapshot exactly.
 
 ObjectTemplate deletion is rejected while referenced by:
 

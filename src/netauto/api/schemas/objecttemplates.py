@@ -59,7 +59,7 @@ class CreateObjectTemplateRequest(ApiModel):
 
 
 class ReviseObjectTemplateVersionRequest(ApiModel):
-    parent: ObjectTemplateVersionRefRequest | None
+    parent: ObjectTemplateVersionRefRequest | None = None
     properties: list[ObjectTemplatePropertyRequest]
     components: list[ObjectTemplateComponentRequest] = Field(default_factory=list)
 

@@ -32,6 +32,14 @@ from netauto.core.relationship import (
 
 
 @dataclass(frozen=True, slots=True)
+class ObjectTemplateParentUnchanged:
+    """Sentinel meaning revise should preserve the current draft parent."""
+
+
+PARENT_UNCHANGED = ObjectTemplateParentUnchanged()
+
+
+@dataclass(frozen=True, slots=True)
 class ObjectTemplatePropertySpec:
     """Application input for a property before datatype version resolution."""
 
@@ -307,7 +315,7 @@ class ObjectTemplateApplicationService:
         *,
         template_id: UUID,
         version: int,
-        parent: ObjectTemplateVersionRef | None,
+        parent: ObjectTemplateVersionRef | None | ObjectTemplateParentUnchanged,
         properties: Iterable[ObjectTemplatePropertySpec],
         components: Iterable[ObjectTemplateComponentSpec] = (),
     ) -> ObjectTemplateVersion:
@@ -318,6 +326,11 @@ class ObjectTemplateApplicationService:
             current = uow.object_templates.get_version(template_id, version)
             if current is None:
                 raise ObjectTemplateVersionNotFound("Object template version does not exist.")
+            effective_parent: ObjectTemplateVersionRef | None
+            if isinstance(parent, ObjectTemplateParentUnchanged):
+                effective_parent = current.parent
+            else:
+                effective_parent = parent
             resolved_properties = self._resolve_properties(
                 properties=properties,
                 datatype_getter=uow.datatypes.get,
@@ -331,7 +344,7 @@ class ObjectTemplateApplicationService:
             )
             revised = self._versioning.revise_draft(
                 current,
-                parent=parent,
+                parent=effective_parent,
                 properties=resolved_properties,
                 components=resolved_components,
             )

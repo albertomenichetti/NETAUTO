@@ -1075,6 +1075,20 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
     datatype_id = str(uuid4())
     first_component_id = str(uuid4())
     second_component_id = str(uuid4())
+    omitted_parent = runner.invoke(
+        app,
+        [
+            "object-template",
+            "version",
+            "revise",
+            template_id,
+            "1",
+            "--property-json",
+            json.dumps({"name": "serial", "datatype_id": datatype_id, "required": False}),
+            "--component-json",
+            json.dumps({"name": "interfaces", "template_id": first_component_id}),
+        ],
+    )
 
     no_parent = runner.invoke(
         app,
@@ -1122,9 +1136,25 @@ def test_object_template_version_revise_variants(monkeypatch: pytest.MonkeyPatch
         ],
     )
 
+    assert omitted_parent.exit_code == 0
     assert no_parent.exit_code == 0
     assert with_parent.exit_code == 0
     assert calls == [
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                {
+                    "properties": [
+                        {"name": "serial", "datatype_id": datatype_id, "required": False}
+                    ],
+                    "components": [
+                        {"name": "interfaces", "template_id": first_component_id}
+                    ],
+                },
+            ),
+        ),
         (
             "revise_object_template_version",
             (
@@ -1202,6 +1232,41 @@ def test_object_template_version_revise_without_components_sends_empty_component
     ]
 
 
+def test_object_template_version_revise_without_parent_flags_omits_parent_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = _object_template_version_payload()
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+    _patch_client(monkeypatch, {"revise_object_template_version": version}, calls)
+    template_id = str(version["template_id"])
+
+    result = runner.invoke(
+        app,
+        [
+            "object-template",
+            "version",
+            "revise",
+            template_id,
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                {
+                    "properties": [],
+                    "components": [],
+                },
+            ),
+        )
+    ]
+
+
 def test_object_template_version_revise_file_and_parent_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1209,27 +1274,66 @@ def test_object_template_version_revise_file_and_parent_validation(
     calls: list[tuple[str, tuple[Any, ...]]] = []
     _patch_client(monkeypatch, {"revise_object_template_version": version}, calls)
     template_id = str(version["template_id"])
-    payload = {
+    explicit_null_payload = {
         "parent": None,
         "properties": [],
         "components": [{"name": "interfaces", "template_id": str(uuid4())}],
     }
+    omitted_parent_payload = {
+        "properties": [],
+        "components": [{"name": "modules", "template_id": str(uuid4())}],
+    }
 
     with TemporaryDirectory() as temp_dir:
-        path = Path(temp_dir) / "revise.json"
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        file_result = runner.invoke(
+        explicit_null_path = Path(temp_dir) / "revise-null.json"
+        explicit_null_path.write_text(json.dumps(explicit_null_payload), encoding="utf-8")
+        omitted_parent_path = Path(temp_dir) / "revise-omitted.json"
+        omitted_parent_path.write_text(json.dumps(omitted_parent_payload), encoding="utf-8")
+        explicit_null_result = runner.invoke(
             app,
-            ["object-template", "version", "revise", template_id, "1", "--file", str(path)],
+            [
+                "object-template",
+                "version",
+                "revise",
+                template_id,
+                "1",
+                "--file",
+                str(explicit_null_path),
+            ],
+        )
+        omitted_parent_result = runner.invoke(
+            app,
+            [
+                "object-template",
+                "version",
+                "revise",
+                template_id,
+                "1",
+                "--file",
+                str(omitted_parent_path),
+            ],
         )
 
-    missing_parent_mode = runner.invoke(
-        app,
-        ["object-template", "version", "revise", template_id, "1"],
-    )
-
-    assert file_result.exit_code == 0
-    assert missing_parent_mode.exit_code == 2
+    assert explicit_null_result.exit_code == 0
+    assert omitted_parent_result.exit_code == 0
+    assert calls == [
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                explicit_null_payload,
+            ),
+        ),
+        (
+            "revise_object_template_version",
+            (
+                template_id,
+                1,
+                omitted_parent_payload,
+            ),
+        ),
+    ]
 
 
 def test_object_template_version_lifecycle_commands(monkeypatch: pytest.MonkeyPatch) -> None:

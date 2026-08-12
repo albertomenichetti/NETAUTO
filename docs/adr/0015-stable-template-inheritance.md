@@ -23,6 +23,11 @@ The platform intentionally relies on stable ancestry identity for:
    once published.
 3. Before an ObjectTemplate identity has any PUBLISHED or DEPRECATED version,
    its initial DRAFT may freely change parent.
+   - a newly created `v1` defaults to `parent=None` when no parent is supplied
+   - revising a draft with `parent` omitted preserves the current draft parent
+   - revising a draft with `parent=null` explicitly requests root
+   - revising a draft with `parent={template_id, version}` explicitly requests
+     that exact parent
 4. Once the identity has any PUBLISHED or DEPRECATED version, the parent
    template identity is frozen:
    - if the published lineage parent is `P`, every later version must also use
@@ -38,6 +43,8 @@ The platform intentionally relies on stable ancestry identity for:
    parent version.
 9. Publication still requires the exact referenced parent version to be
    PUBLISHED.
+   Publication does not assign, clear, or otherwise change parent; it
+   publishes the existing draft snapshot.
 10. Self-inheritance and inheritance cycles must not be persistible through
     supported application workflows.
 11. Changing to a different parent identity represents a different semantic

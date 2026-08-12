@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from netauto.application.objecttemplate import (
+    PARENT_UNCHANGED,
     ObjectTemplateApplicationService,
     ObjectTemplateComponentSpec,
     ObjectTemplatePropertySpec,
@@ -1223,6 +1224,96 @@ def test_revise_draft_replaces_snapshot_and_preserves_identity_abstract() -> Non
     assert object_templates.get_version(template.id, 1) == revised
     assert object_templates.get(template.id) == template
     assert template.abstract is True
+
+
+def test_revise_version_omitted_parent_preserves_current_parent() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, published = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (published,))
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_template,
+        (_published_object_template_version(parent_template.id),),
+    )
+    current_parent = ObjectTemplateVersionRef(template_id=parent_template.id, version=1)
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device",
+        description=None,
+        abstract=False,
+    )
+    draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=current_parent,
+        properties=(),
+    )
+    object_templates.add(template)
+    object_templates.add_version(draft)
+
+    revised = service.revise_version(
+        template_id=template.id,
+        version=1,
+        parent=PARENT_UNCHANGED,
+        properties=(_spec("hostname", datatype_id=datatype.id),),
+    )
+
+    assert commits[0] == 1
+    assert revised.parent == current_parent
+    assert revised.properties[0].datatype_version == published.version
+
+
+def test_revise_version_explicit_none_is_distinct_from_unchanged() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, published = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (published,))
+    parent_template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="base_device_clear",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent_template,
+        (_published_object_template_version(parent_template.id),),
+    )
+    template = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device_clear",
+        description=None,
+        abstract=False,
+    )
+    draft = ObjectTemplateVersion(
+        template_id=template.id,
+        version=1,
+        status=ObjectTemplateVersionStatus.DRAFT,
+        parent=ObjectTemplateVersionRef(template_id=parent_template.id, version=1),
+        properties=(),
+    )
+    object_templates.add(template)
+    object_templates.add_version(draft)
+
+    cleared = service.revise_version(
+        template_id=template.id,
+        version=1,
+        parent=None,
+        properties=(_spec("hostname", datatype_id=datatype.id),),
+    )
+
+    assert commits[0] == 1
+    assert cleared.parent is None
 
 
 def test_revise_replaces_components_with_newly_resolved_snapshot_and_can_clear() -> None:
@@ -2570,6 +2661,73 @@ def test_revise_version_rejects_parent_version_downgrade_after_publication() -> 
         )
 
     assert commits[0] == 0
+
+
+def test_revise_version_omitted_parent_preserves_published_lineage_parent() -> None:
+    service, datatypes, object_templates, commits = _service()
+    datatype, datatype_version = _published_datatype()
+    _store_datatype_versions(datatypes, datatype, (datatype_version,))
+    parent = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="device_omitted_parent",
+        description=None,
+        abstract=False,
+    )
+    child = ObjectTemplate(
+        id=uuid4(),
+        namespace="network",
+        name="router_omitted_parent",
+        description=None,
+        abstract=False,
+    )
+    _store_object_template_versions(
+        object_templates,
+        parent,
+        (_published_object_template_version(parent.id),),
+    )
+    _store_object_template_versions(
+        object_templates,
+        child,
+        (
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=1,
+                status=ObjectTemplateVersionStatus.PUBLISHED,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+            ObjectTemplateVersion(
+                template_id=child.id,
+                version=2,
+                status=ObjectTemplateVersionStatus.DRAFT,
+                parent=ObjectTemplateVersionRef(template_id=parent.id, version=1),
+                properties=(
+                    ObjectTemplateProperty(
+                        name="hostname",
+                        datatype_id=datatype.id,
+                        datatype_version=datatype_version.version,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    revised = service.revise_version(
+        template_id=child.id,
+        version=2,
+        parent=PARENT_UNCHANGED,
+        properties=(_spec("hostname", datatype_id=datatype.id),),
+    )
+
+    assert commits[0] == 1
+    assert revised.parent == ObjectTemplateVersionRef(template_id=parent.id, version=1)
 
 
 def test_create_next_version_rejects_old_source_parent_version_downgrade() -> None:

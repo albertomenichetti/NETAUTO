@@ -29,8 +29,10 @@ from netauto.api.schemas.objecttemplates import (
 )
 from netauto.application.object import ObjectApplicationService
 from netauto.application.objecttemplate import (
+    PARENT_UNCHANGED,
     ObjectTemplateApplicationService,
     ObjectTemplateComponentSpec,
+    ObjectTemplateParentUnchanged,
     ObjectTemplatePropertySpec,
 )
 from netauto.core.object import (
@@ -60,6 +62,14 @@ def _to_parent_ref(
     if parent is None:
         return None
     return ObjectTemplateVersionRef(template_id=parent.template_id, version=parent.version)
+
+
+def _to_revise_parent(
+    request: ReviseObjectTemplateVersionRequest,
+) -> ObjectTemplateVersionRef | None | ObjectTemplateParentUnchanged:
+    if "parent" not in request.model_fields_set:
+        return PARENT_UNCHANGED
+    return _to_parent_ref(request.parent)
 
 
 def _to_property_spec(
@@ -342,7 +352,7 @@ def revise_version(
     revised = service.revise_version(
         template_id=template_id,
         version=version,
-        parent=_to_parent_ref(request.parent),
+        parent=_to_revise_parent(request),
         properties=tuple(_to_property_spec(prop) for prop in request.properties),
         components=tuple(_to_component_spec(component) for component in request.components),
     )
