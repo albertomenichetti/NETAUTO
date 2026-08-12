@@ -9,6 +9,7 @@ dependencies = [
     "httpx",
     "jsonschema",
     "pydantic>=2,<3",
+    "psycopg[binary]>=3,<4",
     "sqlalchemy>=2,<3",
     "typer",
 ]
