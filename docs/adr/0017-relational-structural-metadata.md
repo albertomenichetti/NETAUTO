@@ -34,47 +34,50 @@ General rule:
 - runtime dynamic value -> JSON may be appropriate
 - historical snapshot -> JSON may be appropriate
 
-Applied in this phase:
+Current application of that rule:
 
-- ObjectTemplate property declarations -> relational, implemented in S3a
-- ObjectTemplate component declarations -> relational, implemented in S3b
+- ObjectTemplate property declarations -> relational child table with exact
+  owner and exact DataTypeVersion FK
+- ObjectTemplate component declarations -> relational child table with exact
+  owner and stable target ObjectTemplate FK
 - ObjectTemplate parent references -> relational exact-version columns plus
-  physical composite foreign key, implemented in S3c
-- Object exact template pins -> relational exact-version columns plus physical
-  composite foreign key, implemented in S3d
-- Runtime ComponentMembership edges -> relational current structural edge,
-  existing model retained and hardened in S3e
+  composite FK
+- Object exact template pins -> relational exact-version columns plus
+  composite FK
+- Runtime ComponentMembership edges -> relational current structural edge
+- RelationshipDefinition endpoints -> relational stable-template FKs
+- runtime Relationship definition and endpoint references -> relational FKs
+  plus ordered uniqueness
 - Object properties -> remain JSON as runtime dynamic values
 - ObjectChange before/after snapshots -> remain JSON as historical snapshots
+- ObjectChange `object_id` -> stored without a destructive FK so history
+  survives Object deletion
 - DataTypeVersion constraints -> remain JSON as embedded constraint values, not
   structural foreign references
 
 This phase uses a fresh-database contract:
 
 - no in-place migration or backfill of existing databases
-- no Alembic in this slice
+- no Alembic in this phase
 - no dual reads of legacy representations
 - no dual writes to old and new representations
-
-After S3b there is exactly one authoritative SQL persistence representation for
-ObjectTemplate structural declarations:
-
-- properties -> relational child table
-- components -> relational child table
 
 ## Consequences
 
 - SQLite can physically reject an ObjectTemplate property that references a
-  nonexistent exact DataTypeVersion.
+  nonexistent exact DataTypeVersion
 - SQLite can physically reject an ObjectTemplate component declaration that
-  references a nonexistent target ObjectTemplate identity.
+  references a nonexistent target ObjectTemplate identity
 - SQLite can physically reject an Object that references a nonexistent exact
-  ObjectTemplateVersion.
-- Whole-owner deletion of an exact ObjectTemplateVersion can cascade cleanly to
-  owned property rows and component rows.
-- Repository and test fixtures must create real referenced DataTypeVersion
-  rows and real referenced ObjectTemplate identity rows rather than relying on
-  arbitrary UUID text in JSON, and real referenced exact ObjectTemplateVersion
-  rows for persisted Objects.
-- Existing dogfood databases are recreated rather than migrated during this
-  development stage.
+  ObjectTemplateVersion
+- SQLite can physically reject a RelationshipDefinition that references a
+  nonexistent ObjectTemplate endpoint identity
+- SQLite can physically reject a runtime Relationship that references a
+  nonexistent definition or nonexistent Object endpoint
+- SQLite can physically reject duplicate ordered runtime Relationship triples
+- runtime Object history survives Object deletion because ObjectChange is not
+  tied to a destructive runtime Object FK
+- repository and test fixtures must create real referenced rows rather than
+  arbitrary UUID text where structural references exist
+- dogfood databases are recreated rather than migrated during this development
+  stage

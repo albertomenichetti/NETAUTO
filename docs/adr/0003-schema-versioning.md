@@ -13,9 +13,19 @@ lifecycle.
 
 Use the lifecycle `draft -> published -> deprecated`, keep published versions
 immutable, and require references from published schemas to point to exact
-versions.
+versions where the current model is designed around exact-version pinning.
 
-Repository-level persistence hardening now enforces the lifecycle contract for
+Current implemented reference split:
+
+- exact version references:
+  - `ObjectTemplateVersion.parent`
+  - `ObjectTemplateProperty -> DataTypeVersion`
+  - `Object -> ObjectTemplateVersion`
+- stable identity references:
+  - `ObjectTemplateComponent -> ObjectTemplate`
+  - `RelationshipDefinition` endpoint templates
+
+Repository-level persistence hardening also enforces the lifecycle contract for
 exact version snapshots:
 
 - new persisted versions enter as `draft`
@@ -33,7 +43,6 @@ or make arbitrary raw SQL lifecycle rewrites impossible.
 
 ## Consequences
 
-Published schemas are stable and reproducible, and downstream references do
-not drift to newer definitions implicitly. Supported application workflows
-remain the primary semantic authority, while repositories provide a second
-preventive boundary against illegal persisted snapshot rewrites.
+Published schemas are stable and reproducible. Exact-version references do not
+drift implicitly, while the few deliberately stable-identity references remain
+explicit architectural choices rather than accidental omissions.

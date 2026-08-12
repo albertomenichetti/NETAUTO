@@ -21,9 +21,12 @@ a new version. New versions are created from a PUBLISHED or DEPRECATED source.
 Version numbers are monotonic and use `max(existing)+1`. The source version
 determines the cloned schema, while the existing set determines the next
 number. Publishing a new version does not automatically deprecate old
-versions, and multiple PUBLISHED versions may coexist. "Latest published"
-selection belongs to future repository/application logic. Compiler and
-validator remain lifecycle-independent.
+versions, and multiple PUBLISHED versions may coexist.
+
+The versioning service itself operates on exact versions and does not
+reinterpret caller intent as "latest". Some higher-level workflows explicitly
+resolve the highest `PUBLISHED` version when a version is omitted, but the
+result still persists as an exact version pin.
 
 Persistence hardening implemented in S4a adds a repository-level defensive
 boundary beneath the application/domain workflow:
@@ -38,7 +41,7 @@ boundary beneath the application/domain workflow:
 These are repository API guarantees, not declarative SQL lifecycle triggers.
 Arbitrary raw SQL may still corrupt lifecycle or base_type state; detecting
 that remains future integrity-verifier work. Custom DataType inheritance
-remains deferred.
+remains unimplemented.
 
 ## Consequences
 

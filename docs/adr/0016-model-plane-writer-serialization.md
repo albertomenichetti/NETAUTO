@@ -81,12 +81,8 @@ Model-plane reads remain ordinary concurrent reads. Data-plane operations
 continue using the ordinary unit of work and do not explicitly acquire the
 logical model-plane lock through the application architecture.
 
-On SQLite, a held model-write transaction also occupies SQLite's single writer
-slot, so another write transaction cannot complete through a separate
-connection while the model transaction is active. This is acceptable and
-desirable for the current backend because it also closes model-vs-data
-check/mutate races before the later strong-FK milestones.
-
 This ADR does not claim that every future data-plane concurrency problem is
-solved across all backends. Composition graph mutations and other data-plane
-paths may require later dedicated concurrency analysis.
+solved across all backends. Subsequent runtime concurrency characterization and
+remediation are now governed by ADR 0020, which introduces
+`OWNERSHIP_GRAPH_GUARD` as a distinct logical coordination domain from
+`MODEL_PLANE_GUARD`.

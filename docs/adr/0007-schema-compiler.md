@@ -15,15 +15,16 @@ JSON Schema without coupling the domain model to JSON Schema keyword names.
 produces schema fragments rather than complete root schema documents, so
 fragments intentionally omit `$schema`, `$id`, and NETAUTO metadata. Root
 schema wrapping belongs to later export and template functionality. Domain
-constraint names are translated by SchemaCompiler, and enum tuples become JSON
-arrays. SchemaCompiler is deterministic, does not mutate domain state, and
-validates its generated schema with `Draft202012Validator.check_schema()`.
+constraint names are translated by SchemaCompiler, enum tuples become JSON
+arrays, primitive-type formats propagate from the built-in primitive
+definition, and generated schemas are checked with
+`Draft202012Validator.check_schema()`.
+
 SchemaCompiler validates schemas rather than user data instances. Runtime
-instance validation belongs to ValidationEngine in M1.1.5. Lifecycle rules do
-not belong to SchemaCompiler.
+instance validation belongs to ValidationEngine, which is implemented
+separately. Lifecycle rules do not belong to SchemaCompiler.
 
 ## Consequences
 
-Compilation stays small and reusable for embedded schema fragments, JSON
-Schema concerns remain separated from the domain model, and validation of data
-instances can evolve independently later.
+Compilation stays deterministic, reusable for embedded schema fragments, and
+cleanly separated from runtime value validation.
