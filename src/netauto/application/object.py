@@ -54,10 +54,10 @@ class ObjectApplicationService:
         uow_factory: ObjectUnitOfWorkFactory,
         clock: Callable[[], datetime] | None = None,
         *,
-        ownership_graph_uow_factory: ObjectUnitOfWorkFactory | None = None,
+        ownership_graph_uow_factory: ObjectUnitOfWorkFactory,
     ) -> None:
         self._uow_factory = uow_factory
-        self._ownership_graph_uow_factory = ownership_graph_uow_factory or uow_factory
+        self._ownership_graph_uow_factory = ownership_graph_uow_factory
         self._validation = ObjectValidationEngine()
         self._inheritance = ObjectTemplateInheritanceResolver()
         self._clock = clock or (lambda: datetime.now(timezone.utc))

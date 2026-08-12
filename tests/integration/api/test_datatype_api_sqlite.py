@@ -32,6 +32,7 @@ async def _client(tmp_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
             create_app(
                 uow_factory,
                 model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+                ownership_graph_uow_factory=uow_factory,
             )
         ) as client:
             yield client

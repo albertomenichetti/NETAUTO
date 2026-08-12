@@ -641,6 +641,7 @@ def test_characterizes_same_child_competing_owners_race(tmp_path: Path) -> None:
         outcome=outcome_a,
         completed=gate.first_completed,
     )
+    assert gate.first_ready.wait(timeout=5.0)
     thread_b = _run_in_thread(
         lambda: service_b.attach_component(
             parent_object_id=parent_b.id,
@@ -689,6 +690,7 @@ def test_characterizes_reciprocal_attach_cycle_race(tmp_path: Path) -> None:
         outcome=outcome_a,
         completed=gate.first_completed,
     )
+    assert gate.first_ready.wait(timeout=5.0)
     thread_b = _run_in_thread(
         lambda: service_b.attach_component(
             parent_object_id=parent_b.id,
@@ -870,7 +872,11 @@ def test_migration_cas_conflict_rolls_back_whole_batch(tmp_path: Path) -> None:
             self.object_templates = SqlAlchemyObjectTemplateRepository(self._session)
 
     service = ObjectApplicationService(
-        lambda: ConflictUow(session_factory, role="migrate", hooks=ScenarioHooks())
+        lambda: ConflictUow(session_factory, role="migrate", hooks=ScenarioHooks()),
+        ownership_graph_uow_factory=lambda: SqliteOwnershipGraphWriteUnitOfWork(
+            session_factory,
+            retry_delay_seconds=0.0,
+        ),
     )
 
     with pytest.raises(ObjectConcurrentModification):
@@ -958,6 +964,7 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
         outcome=delete_outcome,
         completed=gate.first_completed,
     )
+    assert gate.first_ready.wait(timeout=5.0)
     attach_thread = _run_in_thread(
         lambda: attach_service.attach_component(
             parent_object_id=root.id,
@@ -1011,6 +1018,7 @@ def test_delete_after_prior_attach_discovers_expanded_subtree(tmp_path: Path) ->
         outcome=attach_outcome,
         completed=gate.first_completed,
     )
+    assert gate.first_ready.wait(timeout=5.0)
     delete_thread = _run_in_thread(
         lambda: delete_service.delete_object(root.id),
         outcome=delete_outcome,
@@ -1054,6 +1062,7 @@ def test_detach_then_attach_serialize_through_ownership_guard(tmp_path: Path) ->
         outcome=detach_outcome,
         completed=gate.first_completed,
     )
+    assert gate.first_ready.wait(timeout=5.0)
     attach_thread = _run_in_thread(
         lambda: attach_service.attach_component(
             parent_object_id=parent_b.id,

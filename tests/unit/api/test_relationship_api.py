@@ -204,7 +204,13 @@ def client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         yield (
             client,
             object_templates,
@@ -817,6 +823,7 @@ def test_relationship_definition_persistence_error_mapping() -> None:
         create_app(
             BrokenRelationshipUnitOfWork,
             model_write_uow_factory=BrokenRelationshipUnitOfWork,
+            ownership_graph_uow_factory=BrokenRelationshipUnitOfWork,
         )
     ) as client:
         response = client.get("/api/v1/relationship-definitions")
@@ -830,6 +837,7 @@ def test_relationship_definition_delete_relationship_persistence_error_maps_to_5
         create_app(
             BrokenLifecycleUnitOfWork,
             model_write_uow_factory=BrokenLifecycleUnitOfWork,
+            ownership_graph_uow_factory=BrokenLifecycleUnitOfWork,
         )
     ) as client:
         response = client.delete(
@@ -845,6 +853,7 @@ def test_openapi_contains_relationship_definition_routes() -> None:
         create_app(
             BrokenRelationshipUnitOfWork,
             model_write_uow_factory=BrokenRelationshipUnitOfWork,
+            ownership_graph_uow_factory=BrokenRelationshipUnitOfWork,
         )
     ) as client:
         openapi = client.get("/openapi.json")
@@ -1080,6 +1089,7 @@ def test_runtime_relationship_persistence_error_maps_to_500() -> None:
         create_app(
             BrokenRuntimeUnitOfWork,
             model_write_uow_factory=BrokenRuntimeUnitOfWork,
+            ownership_graph_uow_factory=BrokenRuntimeUnitOfWork,
         )
     ) as client:
         response = client.get("/api/v1/relationships")

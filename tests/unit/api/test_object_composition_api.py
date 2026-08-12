@@ -166,7 +166,13 @@ def client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         yield client, datatypes, object_templates, objects, commits
 
 
@@ -590,7 +596,13 @@ def test_component_membership_persistence_error_maps_to_500() -> None:
     def factory() -> BrokenObjectUnitOfWork:
         return BrokenObjectUnitOfWork()
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         response = client.get(
             "/api/v1/objects/00000000-0000-0000-0000-000000000001/components"
         )

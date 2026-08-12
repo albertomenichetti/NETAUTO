@@ -255,7 +255,13 @@ def client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         yield client, datatypes, object_templates, objects, commits
 
 
@@ -435,7 +441,13 @@ def history_client_context() -> (
             commits,
         )
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         yield client, objects, object_changes, commits
 
 
@@ -1095,7 +1107,13 @@ def test_patch_concurrent_modification_maps_to_409() -> None:
     def factory() -> ConcurrentConflictUnitOfWork:
         return ConcurrentConflictUnitOfWork()
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         response = client.patch(
             f"/api/v1/objects/{ConcurrentConflictUnitOfWork.object_id}",
             json={"properties": {"hostname": "router-02"}},
@@ -1377,7 +1395,13 @@ def test_object_persistence_error_maps_to_500() -> None:
     def factory() -> BrokenObjectUnitOfWork:
         return BrokenObjectUnitOfWork()
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         response = client.get("/api/v1/objects")
 
     assert response.status_code == 500
@@ -1388,7 +1412,13 @@ def test_object_delete_relationship_persistence_error_maps_to_500() -> None:
     def factory() -> BrokenLifecycleUnitOfWork:
         return BrokenLifecycleUnitOfWork()
 
-    with TestClient(create_app(factory, model_write_uow_factory=factory)) as client:
+    with TestClient(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         response = client.delete(f"/api/v1/objects/{BrokenLifecycleUnitOfWork.object_id}")
 
     assert response.status_code == 500

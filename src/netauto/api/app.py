@@ -21,7 +21,7 @@ def create_app(
     uow_factory: ObjectUnitOfWorkFactory,
     *,
     model_write_uow_factory: ObjectUnitOfWorkFactory,
-    ownership_graph_uow_factory: ObjectUnitOfWorkFactory | None = None,
+    ownership_graph_uow_factory: ObjectUnitOfWorkFactory,
 ) -> FastAPI:
     app = FastAPI()
     app.state.datatype_service = DataTypeApplicationService(
@@ -34,7 +34,7 @@ def create_app(
     )
     app.state.object_service = ObjectApplicationService(
         uow_factory,
-        ownership_graph_uow_factory=ownership_graph_uow_factory or uow_factory,
+        ownership_graph_uow_factory=ownership_graph_uow_factory,
     )
     app.state.relationship_definition_service = RelationshipDefinitionApplicationService(
         uow_factory,

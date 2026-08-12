@@ -31,6 +31,7 @@ def _server_url(tmp_path: Path):
         create_app(
             uow_factory,
             model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+            ownership_graph_uow_factory=uow_factory,
         )
     )
 

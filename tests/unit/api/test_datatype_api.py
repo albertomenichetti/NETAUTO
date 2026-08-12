@@ -115,7 +115,13 @@ async def _client() -> AsyncIterator[
             commits,
         )
 
-    async with serve_app(create_app(factory, model_write_uow_factory=factory)) as client:
+    async with serve_app(
+        create_app(
+            factory,
+            model_write_uow_factory=factory,
+            ownership_graph_uow_factory=factory,
+        )
+    ) as client:
         yield client, repo, object_templates, commits
 
 
@@ -398,7 +404,11 @@ async def test_model_write_unavailable_maps_to_503_with_retry_after() -> None:
         )
 
     async with serve_app(
-        create_app(ordinary_factory, model_write_uow_factory=busy_model_factory)
+        create_app(
+            ordinary_factory,
+            model_write_uow_factory=busy_model_factory,
+            ownership_graph_uow_factory=ordinary_factory,
+        )
     ) as client:
         response = await client.post(
             "/api/v1/datatypes",

@@ -109,6 +109,13 @@ If acquisition is exhausted, the backend raises
 `OwnershipGraphWriteUnavailable`, which REST maps to HTTP `503 Service
 Unavailable`.
 
+Application composition is fail-closed:
+
+- `ObjectApplicationService` requires an explicit
+  `OWNERSHIP_GRAPH_GUARD` UoW factory
+- `create_app(...)` requires an explicit ownership-graph UoW factory
+- there is no fallback from structural mutations to the ordinary runtime UoW
+
 Although `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` are distinct logical
 domains, SQLite currently maps both onto the same single-writer reservation.
 That physical contention is a SQLite backend limitation, not the intended
