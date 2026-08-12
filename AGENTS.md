@@ -42,8 +42,9 @@ The CLI MUST NOT import application/domain services directly.
 - JSON Schema Draft 2020-12
 - python-jsonschema
 - SQLAlchemy 2
-- SQLite initially
-- PostgreSQL later
+- PostgreSQL as the authoritative/default SQL backend
+- Alembic as the authoritative PostgreSQL schema-evolution mechanism
+- SQLite as transitional legacy compatibility pending M2.5.12 removal
 - Typer
 - HTTPX
 - pytest

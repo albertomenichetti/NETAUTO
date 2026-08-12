@@ -2,49 +2,26 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import httpx2
 import pytest
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker
+from fastapi import FastAPI
 
-from netauto.api.app import create_app
-from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.unit_of_work import (
-    SqlAlchemyUnitOfWork,
-    SqliteModelWriteUnitOfWork,
-)
 from support.http_server import serve_app
+
+pytestmark = [pytest.mark.postgresql, pytest.mark.anyio]
 
 
 @asynccontextmanager
-async def _client(tmp_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
-    engine: Engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-
-    def uow_factory() -> SqlAlchemyUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_factory)
-
-    try:
-        async with serve_app(
-            create_app(
-                uow_factory,
-                model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
-                ownership_graph_uow_factory=uow_factory,
-            )
-        ) as client:
-            yield client
-    finally:
-        engine.dispose()
+async def _client(app: FastAPI) -> AsyncIterator[httpx2.AsyncClient]:
+    async with serve_app(app) as client:
+        yield client
 
 
-pytestmark = pytest.mark.anyio
-
-
-async def test_full_lifecycle_workflow_over_http_and_sqlite(tmp_path: Path) -> None:
-    async with _client(tmp_path) as client:
+async def test_full_lifecycle_workflow_over_http_and_postgresql(
+    postgresql_application_app: FastAPI,
+) -> None:
+    async with _client(postgresql_application_app) as client:
         created = await client.post(
             "/api/v1/datatypes",
             json={
@@ -117,10 +94,12 @@ async def test_full_lifecycle_workflow_over_http_and_sqlite(tmp_path: Path) -> N
         ]
 
 
-async def test_large_integer_constraint_round_trip_over_http(tmp_path: Path) -> None:
+async def test_large_integer_constraint_round_trip_over_http(
+    postgresql_application_app: FastAPI,
+) -> None:
     large_integer = 10**1000
 
-    async with _client(tmp_path) as client:
+    async with _client(postgresql_application_app) as client:
         created = await client.post(
             "/api/v1/datatypes",
             json={
@@ -140,8 +119,10 @@ async def test_large_integer_constraint_round_trip_over_http(tmp_path: Path) -> 
         assert isinstance(loaded.json()["constraints"][0]["value"], int)
 
 
-async def test_create_next_accepts_deprecated_source_over_http_and_sqlite(tmp_path: Path) -> None:
-    async with _client(tmp_path) as client:
+async def test_create_next_accepts_deprecated_source_over_http_and_postgresql(
+    postgresql_application_app: FastAPI,
+) -> None:
+    async with _client(postgresql_application_app) as client:
         created = await client.post(
             "/api/v1/datatypes",
             json={
@@ -192,8 +173,10 @@ async def test_create_next_accepts_deprecated_source_over_http_and_sqlite(tmp_pa
         ]
 
 
-async def test_failed_http_mutation_does_not_leave_partial_state(tmp_path: Path) -> None:
-    async with _client(tmp_path) as client:
+async def test_failed_http_mutation_does_not_leave_partial_state(
+    postgresql_application_app: FastAPI,
+) -> None:
+    async with _client(postgresql_application_app) as client:
         first = await client.post(
             "/api/v1/datatypes",
             json={

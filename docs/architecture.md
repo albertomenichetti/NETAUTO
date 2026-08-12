@@ -82,9 +82,10 @@ Current implemented PostgreSQL persistence state:
   PostgreSQL, while `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` remain
   independent domains that can be held simultaneously
 - production/runtime composition now consumes `DATABASE_URL`
-- SQLite remains the default runtime backend when `DATABASE_URL` is absent
+- PostgreSQL is now the default runtime backend when `DATABASE_URL` is absent
 - explicit `postgresql+psycopg` `DATABASE_URL` composes the FastAPI
-  application with shared PostgreSQL SQLAlchemy repositories and UoWs
+  application with shared PostgreSQL SQLAlchemy repositories and UoWs, while
+  explicit `sqlite:///...` remains temporary compatibility only
 - PostgreSQL runtime composition assumes an Alembic-migrated schema and does
   not call `create_schema(...)` or `create_all(...)`
 - ordinary PostgreSQL data-plane writes do not participate in either guard
@@ -627,10 +628,10 @@ The CLI remains a REST client and currently has top-level groups:
 
 Current limitations that are intentionally not hidden:
 
-- SQLite remains the default transitional application/runtime SQL backend
-- PostgreSQL application/FastAPI runtime composition is implemented when
-  explicitly selected via `DATABASE_URL`, but PostgreSQL is not yet the
-  default/authoritative runtime or test backend
+- PostgreSQL is the authoritative/default application/runtime SQL backend
+- PostgreSQL is the authoritative integration and concurrency validation
+  backend
+- SQLite remains explicit legacy compatibility only until M2.5.12 removal
 - Alembic baseline exists, PostgreSQL repository parity is complete, and both
   PostgreSQL concurrency guards are implemented
 - a comprehensive integrity verifier is not implemented
@@ -643,16 +644,22 @@ Current limitations that are intentionally not hidden:
 - additional cross-plane binding races between data-plane admissions and
   concurrent model-plane lifecycle/delete activity have now been identified as
   distinct M2.5 work
-- SQLite's single writer can mask some cross-domain behavior and is not the
-  authoritative long-term persistence architecture
+- SQLite's physical single-writer behavior is no longer treated as
+  authoritative architecture guidance
 
 ## Transition Note
 
-M2.5 changes the accepted direction of the project without changing the
-current implementation yet:
+M2.5 has now moved the project onto PostgreSQL as the authoritative runtime
+and validation backend:
 
-- code today still runs on SQLite
-- architecture now treats PostgreSQL as the authoritative destination
-- SQLite compatibility is no longer a long-term design constraint
-- later M2.5 slices will characterize and formalize cross-plane transactional
-  admission rules using real PostgreSQL transactions
+- `src/netauto/main.py` reads `get_database_url()` and composes the
+  application through `create_runtime_application(...)`
+- PostgreSQL is the default runtime backend and expects an Alembic-managed
+  schema that has already been migrated before startup
+- PostgreSQL repository, API, application, CLI, and concurrency integration
+  coverage run in the ordinary test baseline
+- explicit `sqlite:///...` configuration still works as transitional
+  compatibility only until M2.5.12
+- later M2.5 slices still need to characterize and formalize unresolved
+  cross-plane transactional admission rules using real PostgreSQL
+  transactions

@@ -9,19 +9,24 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from sqlalchemy import Engine, event, text
 from sqlalchemy.engine import URL, Connection, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 import netauto.persistence.sqlalchemy.models  # noqa: F401
+from netauto.composition import create_sqlalchemy_app
 from netauto.persistence.sqlalchemy.base import Base
 from netauto.persistence.sqlalchemy.database import create_database_engine
+from support.http_server import serve_app_url
 
 
 def _get_test_database_url() -> str:
     database_url = os.environ.get("TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip("TEST_DATABASE_URL is required for PostgreSQL integration tests")
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL is required for PostgreSQL integration tests"
+        )
     return database_url
 
 
@@ -126,6 +131,7 @@ def postgresql_model_session(
     postgresql_engine: Engine,
     postgresql_repository_schema: str,
 ) -> Generator[Session, None, None]:
+    _truncate_repository_tables(postgresql_engine, postgresql_repository_schema)
     connection = postgresql_engine.connect()
     transaction = connection.begin()
     _set_search_path(connection, postgresql_engine, postgresql_repository_schema)
@@ -140,6 +146,7 @@ def postgresql_model_session(
         session.close()
         transaction.rollback()
         connection.close()
+        _truncate_repository_tables(postgresql_engine, postgresql_repository_schema)
 
 
 @pytest.fixture(scope="session")
@@ -174,6 +181,38 @@ def postgresql_repository_session_factory(
         event.remove(RepositorySchemaSession, "after_begin", _set_local_search_path)
 
 
+@pytest.fixture
+def postgresql_clean_repository_session_factory(
+    postgresql_engine: Engine,
+    postgresql_repository_schema: str,
+    postgresql_repository_session_factory: Callable[[], Session],
+) -> Generator[Callable[[], Session], None, None]:
+    _truncate_repository_tables(postgresql_engine, postgresql_repository_schema)
+    try:
+        yield postgresql_repository_session_factory
+    finally:
+        _truncate_repository_tables(postgresql_engine, postgresql_repository_schema)
+
+
+@pytest.fixture
+def postgresql_application_app(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+    postgresql_test_database_url: str,
+) -> FastAPI:
+    return create_sqlalchemy_app(
+        postgresql_clean_repository_session_factory,
+        database_url=postgresql_test_database_url,
+    ).app
+
+
+@pytest.fixture
+def postgresql_application_base_url(
+    postgresql_application_app: FastAPI,
+) -> Generator[str, None, None]:
+    with serve_app_url(postgresql_application_app) as base_url:
+        yield base_url
+
+
 def _quoted_identifier(engine: Engine, identifier: str) -> str:
     preparer = engine.dialect.identifier_preparer
     return preparer.quote_identifier(identifier)
@@ -182,6 +221,22 @@ def _quoted_identifier(engine: Engine, identifier: str) -> str:
 def _set_search_path(connection: Connection, engine: Engine, schema: str) -> None:
     quoted_schema = _quoted_identifier(engine, schema)
     connection.execute(text(f"SET search_path TO {quoted_schema}"))
+
+
+def _truncate_repository_tables(engine: Engine, schema: str) -> None:
+    table_names = [
+        table_name
+        for table_name in _inspector_table_names(engine, schema=schema)
+        if table_name != "alembic_version"
+    ]
+    if not table_names:
+        return
+    quoted_tables = ", ".join(
+        f"{_quoted_identifier(engine, schema)}.{_quoted_identifier(engine, table_name)}"
+        for table_name in table_names
+    )
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(text(f"TRUNCATE TABLE {quoted_tables} RESTART IDENTITY CASCADE"))
 
 
 def _inspector_table_names(engine: Engine, *, schema: str) -> list[str]:

@@ -1,65 +1,46 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx2
 import pytest
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
 
-from netauto.api.app import create_app
-from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.unit_of_work import (
-    SqlAlchemyUnitOfWork,
-    SqliteModelWriteUnitOfWork,
-)
+from netauto.composition import create_sqlalchemy_app
 from support.http_server import serve_app
 
+_SESSION_FACTORY: Callable[[], Session] | None = None
+_DATABASE_URL: str | None = None
 
-@asynccontextmanager
-async def _client(tmp_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
-    engine: Engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'objecttemplate-api.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
 
-    def uow_factory() -> SqlAlchemyUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_factory)
+@pytest.fixture(autouse=True)
+def _configure_postgresql_runtime(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+    postgresql_test_database_url: str,
+) -> None:
+    global _SESSION_FACTORY, _DATABASE_URL
+    _SESSION_FACTORY = postgresql_clean_repository_session_factory
+    _DATABASE_URL = postgresql_test_database_url
 
-    try:
-        async with serve_app(
-            create_app(
-                uow_factory,
-                model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
-                ownership_graph_uow_factory=uow_factory,
-            )
-        ) as client:
-            yield client
-    finally:
-        engine.dispose()
+
+def _postgresql_app():
+    assert _SESSION_FACTORY is not None
+    assert _DATABASE_URL is not None
+    return create_sqlalchemy_app(_SESSION_FACTORY, database_url=_DATABASE_URL).app
 
 
 @asynccontextmanager
-async def _client_for_database(database_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
-    engine: Engine = create_sqlite_engine(f"sqlite:///{database_path}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
+async def _client(_tmp_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
+    async with serve_app(_postgresql_app()) as client:
+        yield client
 
-    def uow_factory() -> SqlAlchemyUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_factory)
 
-    try:
-        async with serve_app(
-            create_app(
-                uow_factory,
-                model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
-                ownership_graph_uow_factory=uow_factory,
-            )
-        ) as client:
-            yield client
-    finally:
-        engine.dispose()
+@asynccontextmanager
+async def _client_for_database(_database_path: Path) -> AsyncIterator[httpx2.AsyncClient]:
+    async with serve_app(_postgresql_app()) as client:
+        yield client
 
 
 async def _create_datatype(
@@ -156,13 +137,11 @@ def _object_field(payload: dict[str, object], *path: str) -> dict[str, object]:
     return current
 
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.postgresql, pytest.mark.anyio]
 
 
-async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path: Path) -> None:
-    database_path = tmp_path / "objecttemplate-components.sqlite3"
-
-    async with _client_for_database(database_path) as client:
+async def test_objecttemplate_components_workflow_over_http_and_postgresql() -> None:
+    async with _client_for_database(Path("objecttemplate-components")) as client:
         network_interface = await _create_object_template(
             client,
             {
@@ -358,7 +337,7 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
             "components": [],
         }
 
-    async with _client_for_database(database_path) as client:
+    async with _client_for_database(Path("objecttemplate-components")) as client:
         loaded_after_restart = await client.get(
             f"/api/v1/object-templates/{network_device_id}/versions/1"
         )
@@ -379,8 +358,8 @@ async def test_objecttemplate_components_workflow_over_http_and_sqlite(tmp_path:
     }
 
 
-async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path) -> None:
-    async with _client(tmp_path) as client:
+async def test_full_objecttemplate_workflow_over_http_and_postgresql() -> None:
+    async with _client(Path("objecttemplate")) as client:
         hostname_datatype = await _create_datatype(
             client,
             namespace="network",
@@ -650,10 +629,8 @@ async def test_full_objecttemplate_workflow_over_http_and_sqlite(tmp_path: Path)
         ]
 
 
-async def test_publish_revalidates_deprecated_datatype_over_real_persistence(
-    tmp_path: Path,
-) -> None:
-    async with _client(tmp_path) as client:
+async def test_publish_revalidates_deprecated_datatype_over_real_persistence() -> None:
+    async with _client(Path("objecttemplate-publish-revalidate")) as client:
         datatype = await _create_datatype(client, namespace="network", name="hostname")
         datatype_id = _string_field(datatype, "datatype", "id")
         datatype_published = await client.post(
@@ -694,8 +671,8 @@ async def test_publish_revalidates_deprecated_datatype_over_real_persistence(
         assert loaded.json()["status"] == "draft"
 
 
-async def test_publish_rejects_unpublished_parent_over_real_persistence(tmp_path: Path) -> None:
-    async with _client(tmp_path) as client:
+async def test_publish_rejects_unpublished_parent_over_real_persistence() -> None:
+    async with _client(Path("objecttemplate-parent")) as client:
         datatype = await _create_datatype(client, namespace="network", name="hostname")
         datatype_id = _string_field(datatype, "datatype", "id")
         datatype_published = await client.post(
@@ -744,10 +721,8 @@ async def test_publish_rejects_unpublished_parent_over_real_persistence(tmp_path
         assert loaded.json()["status"] == "draft"
 
 
-async def test_objecttemplate_state_survives_app_reconstruction(tmp_path: Path) -> None:
-    database_path = tmp_path / "objecttemplate-restart.sqlite3"
-
-    async with _client_for_database(database_path) as client:
+async def test_objecttemplate_state_survives_app_reconstruction() -> None:
+    async with _client_for_database(Path("objecttemplate-restart")) as client:
         datatype = await _create_datatype(client, namespace="network", name="hostname")
         datatype_id = _string_field(datatype, "datatype", "id")
         datatype_published = await client.post(
@@ -776,7 +751,7 @@ async def test_objecttemplate_state_survives_app_reconstruction(tmp_path: Path) 
         publish = await client.post(f"/api/v1/object-templates/{template_id}/versions/1/publish")
         assert publish.status_code == 200
 
-    async with _client_for_database(database_path) as client:
+    async with _client_for_database(Path("objecttemplate-restart")) as client:
         loaded = await client.get(f"/api/v1/object-templates/{template_id}")
         version = await client.get(f"/api/v1/object-templates/{template_id}/versions/1")
 

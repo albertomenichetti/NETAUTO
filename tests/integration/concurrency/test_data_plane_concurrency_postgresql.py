@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import event
-from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from netauto.application.object import ObjectApplicationService
 from netauto.application.relationship import RelationshipApplicationService
@@ -45,7 +41,6 @@ from netauto.core.relationship import (
     RelationshipDefinition,
     RelationshipObjectNotFound,
 )
-from netauto.persistence.sqlalchemy.database import create_schema
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.object_change_repository import (
     SqlAlchemyObjectChangeRepository,
@@ -59,31 +54,11 @@ from netauto.persistence.sqlalchemy.relationship_repository import (
     SqlAlchemyRelationshipRepository,
 )
 from netauto.persistence.sqlalchemy.unit_of_work import (
+    PostgresqlOwnershipGraphWriteUnitOfWork,
     SqlAlchemyUnitOfWork,
-    SqliteOwnershipGraphWriteUnitOfWork,
 )
 
-pytestmark = pytest.mark.sqlite_legacy
-
-
-def _engine(tmp_path: Path, filename: str, *, timeout: float = 0.0) -> Engine:
-    engine = create_engine(
-        f"sqlite:///{tmp_path / filename}",
-        connect_args={
-            "check_same_thread": False,
-            "timeout": timeout,
-        },
-    )
-
-    @event.listens_for(engine, "connect")
-    def _enable_foreign_keys(dbapi_connection: sqlite3.Connection, _record: object) -> None:
-        cursor = dbapi_connection.cursor()
-        try:
-            cursor.execute("PRAGMA foreign_keys=ON")
-        finally:
-            cursor.close()
-
-    return engine
+pytestmark = pytest.mark.postgresql
 
 
 def _template(*, name: str, template_id: UUID | None = None) -> ObjectTemplate:
@@ -281,20 +256,20 @@ class HookedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork):
         super().commit()
 
 
-class HookedSqliteOwnershipGraphWriteUnitOfWork(SqliteOwnershipGraphWriteUnitOfWork):
+class HookedPostgresqlOwnershipGraphWriteUnitOfWork(PostgresqlOwnershipGraphWriteUnitOfWork):
     def __init__(
         self,
         session_factory: Callable[[], Session],
         *,
         role: str,
         hooks: ScenarioHooks,
-        max_reservation_attempts: int = 2,
+        max_guard_attempts: int = 2,
         retry_delay_seconds: float = 0.0,
         sleeper: Callable[[float], None] | None = None,
     ) -> None:
         super().__init__(
             session_factory,
-            max_reservation_attempts=max_reservation_attempts,
+            max_guard_attempts=max_guard_attempts,
             retry_delay_seconds=retry_delay_seconds,
             sleeper=(lambda _delay: None) if sleeper is None else sleeper,
         )
@@ -348,7 +323,7 @@ def _run_in_thread(
     def runner() -> None:
         try:
             outcome.value = target()
-        except BaseException as error:  # pragma: no cover - characterization captures real failures
+        except BaseException as error:  # pragma: no cover
             outcome.error = error
         finally:
             if completed is not None:
@@ -400,14 +375,14 @@ def _make_object_service(
     if role is None or hooks is None:
         return ObjectApplicationService(
             lambda: SqlAlchemyUnitOfWork(session_factory),
-            ownership_graph_uow_factory=lambda: SqliteOwnershipGraphWriteUnitOfWork(
+            ownership_graph_uow_factory=lambda: PostgresqlOwnershipGraphWriteUnitOfWork(
                 session_factory,
                 retry_delay_seconds=0.0,
             ),
         )
     return ObjectApplicationService(
         lambda: HookedSqlAlchemyUnitOfWork(session_factory, role=role, hooks=hooks),
-        ownership_graph_uow_factory=lambda: HookedSqliteOwnershipGraphWriteUnitOfWork(
+        ownership_graph_uow_factory=lambda: HookedPostgresqlOwnershipGraphWriteUnitOfWork(
             session_factory,
             role=role,
             hooks=hooks,
@@ -425,11 +400,7 @@ def _make_relationship_service(
     if role is None or hooks is None:
         return RelationshipApplicationService(lambda: SqlAlchemyUnitOfWork(session_factory))
     return RelationshipApplicationService(
-        lambda: HookedSqlAlchemyUnitOfWork(
-            session_factory,
-            role=role,
-            hooks=hooks,
-        )
+        lambda: HookedSqlAlchemyUnitOfWork(session_factory, role=role, hooks=hooks)
     )
 
 
@@ -617,16 +588,21 @@ def _create_relationship_fixture(
     return template, definition, source, target
 
 
-def test_characterizes_same_child_competing_owners_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_1_same_child.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    _, parent_a, parent_b, child = _create_component_fixture(session_factory)
+def test_characterizes_same_child_competing_owners_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _, parent_a, parent_b, child = _create_component_fixture(
+        postgresql_clean_repository_session_factory
+    )
     gate = SerializedOwnershipCommitGate(first_role="attach_a")
     hooks = ScenarioHooks(before_commit=gate.before_commit)
-    service_a = _make_object_service(session_factory, role="attach_a", hooks=hooks)
+    service_a = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="attach_a",
+        hooks=hooks,
+    )
     service_b = _make_object_service(
-        session_factory,
+        postgresql_clean_repository_session_factory,
         role="attach_b",
         hooks=hooks,
         ownership_sleeper=gate.sleeper,
@@ -655,27 +631,29 @@ def test_characterizes_same_child_competing_owners_race(tmp_path: Path) -> None:
     thread_a.join()
     thread_b.join()
 
-    owner_rows = _read_memberships(session_factory, child_id=child.id)
+    owner_rows = _read_memberships(postgresql_clean_repository_session_factory, child_id=child.id)
     assert len(owner_rows) == 1
     assert outcome_a.succeeded is True
     assert isinstance(outcome_b.error, ComponentMembershipAlreadyExists)
     assert outcome_a.value == owner_rows[0]
     assert owner_rows[0].child_object_id == child.id
 
-    engine.dispose()
 
-
-def test_characterizes_reciprocal_attach_cycle_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_2_reciprocal_attach.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    template, parent_a, parent_b, _ = _create_component_fixture(session_factory)
-    del template
+def test_characterizes_reciprocal_attach_cycle_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _template_value, parent_a, parent_b, _ = _create_component_fixture(
+        postgresql_clean_repository_session_factory
+    )
     gate = SerializedOwnershipCommitGate(first_role="attach_a")
     hooks = ScenarioHooks(before_commit=gate.before_commit)
-    service_a = _make_object_service(session_factory, role="attach_a", hooks=hooks)
+    service_a = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="attach_a",
+        hooks=hooks,
+    )
     service_b = _make_object_service(
-        session_factory,
+        postgresql_clean_repository_session_factory,
         role="attach_b",
         hooks=hooks,
         ownership_sleeper=gate.sleeper,
@@ -705,53 +683,51 @@ def test_characterizes_reciprocal_attach_cycle_race(tmp_path: Path) -> None:
     thread_b.join()
 
     owners = (
-        _read_memberships(session_factory, child_id=parent_a.id),
-        _read_memberships(session_factory, child_id=parent_b.id),
+        _read_memberships(postgresql_clean_repository_session_factory, child_id=parent_a.id),
+        _read_memberships(postgresql_clean_repository_session_factory, child_id=parent_b.id),
     )
     assert outcome_a.succeeded is True
     assert isinstance(outcome_b.error, ComponentOwnershipCycle)
     assert owners[0] == ()
     assert owners[1] == (_membership(parent_a.id, parent_b.id),)
 
-    engine.dispose()
 
-
-def test_characterizes_current_concurrent_object_update_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_3_update_update.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    _, object_value = _create_property_fixture(session_factory)
+def test_characterizes_current_concurrent_object_update_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _, object_value = _create_property_fixture(postgresql_clean_repository_session_factory)
     gate = OrderedWriteGate(first_role="update_a")
     hooks = ScenarioHooks(
         before_object_replace_if_current=lambda role, expected, replacement: gate.wait(role)
     )
-    service_a = _make_object_service(session_factory, role="update_a", hooks=hooks)
-    service_b = _make_object_service(session_factory, role="update_b", hooks=hooks)
+    service_a = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="update_a",
+        hooks=hooks,
+    )
+    service_b = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="update_b",
+        hooks=hooks,
+    )
     outcome_a = OperationOutcome()
     outcome_b = OperationOutcome()
 
     thread_a = _run_in_thread(
-        lambda: service_a.update_object(
-            object_id=object_value.id,
-            properties={"a": "new-a"},
-        ),
+        lambda: service_a.update_object(object_id=object_value.id, properties={"a": "new-a"}),
         outcome=outcome_a,
         completed=gate.first_completed,
     )
     thread_b = _run_in_thread(
-        lambda: service_b.update_object(
-            object_id=object_value.id,
-            properties={"b": "new-b"},
-        ),
+        lambda: service_b.update_object(object_id=object_value.id, properties={"b": "new-b"}),
         outcome=outcome_b,
     )
     thread_a.join()
     thread_b.join()
 
-    persisted = _read_object(session_factory, object_value.id)
-    history = _read_history(session_factory, object_value.id)
+    persisted = _read_object(postgresql_clean_repository_session_factory, object_value.id)
+    history = _read_history(postgresql_clean_repository_session_factory, object_value.id)
     assert persisted is not None
-    # C1a regression: one stale writer must lose via optimistic concurrency.
     assert outcome_a.succeeded is True
     assert isinstance(outcome_b.error, ObjectConcurrentModification)
     assert persisted.properties == {"a": "new-a", "b": "old-b"}
@@ -761,20 +737,25 @@ def test_characterizes_current_concurrent_object_update_race(tmp_path: Path) -> 
     assert history[0].before.properties == {"a": "old-a", "b": "old-b"}
     assert history[0].after.properties == {"a": "new-a", "b": "old-b"}
 
-    engine.dispose()
 
-
-def test_characterizes_current_update_vs_migration_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_4_update_migrate.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    template, object_value = _create_migration_fixture(session_factory)
+def test_characterizes_current_update_vs_migration_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    template, object_value = _create_migration_fixture(postgresql_clean_repository_session_factory)
     gate = OrderedWriteGate(first_role="migrate")
     hooks = ScenarioHooks(
         before_object_replace_if_current=lambda role, expected, replacement: gate.wait(role)
     )
-    update_service = _make_object_service(session_factory, role="update", hooks=hooks)
-    migrate_service = _make_object_service(session_factory, role="migrate", hooks=hooks)
+    update_service = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="update",
+        hooks=hooks,
+    )
+    migrate_service = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="migrate",
+        hooks=hooks,
+    )
     outcome_update = OperationOutcome()
     outcome_migrate = OperationOutcome()
 
@@ -798,10 +779,9 @@ def test_characterizes_current_update_vs_migration_race(tmp_path: Path) -> None:
     thread_migrate.join()
     thread_update.join()
 
-    persisted = _read_object(session_factory, object_value.id)
-    history = _read_history(session_factory, object_value.id)
+    persisted = _read_object(postgresql_clean_repository_session_factory, object_value.id)
+    history = _read_history(postgresql_clean_repository_session_factory, object_value.id)
     assert persisted is not None
-    # C1a regression: stale update must conflict after successful migration.
     assert outcome_migrate.succeeded is True
     assert isinstance(outcome_update.error, ObjectConcurrentModification)
     assert persisted.template_version == 2
@@ -811,15 +791,12 @@ def test_characterizes_current_update_vs_migration_race(tmp_path: Path) -> None:
     assert history[0].after.template_version == 2
     assert history[0].after.properties == {"a": "old-a", "b": "old-b"}
 
-    engine.dispose()
 
-
-def test_migration_cas_conflict_rolls_back_whole_batch(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c1a_migration_batch_rollback.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    template, first_seed = _create_migration_fixture(session_factory)
-    with SqlAlchemyUnitOfWork(session_factory) as uow:
+def test_migration_cas_conflict_rolls_back_whole_batch(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    template, first_seed = _create_migration_fixture(postgresql_clean_repository_session_factory)
+    with SqlAlchemyUnitOfWork(postgresql_clean_repository_session_factory) as uow:
         second_seed = _object(
             template_id=template.id,
             template_version=1,
@@ -828,7 +805,7 @@ def test_migration_cas_conflict_rolls_back_whole_batch(tmp_path: Path) -> None:
         uow.objects.add(second_seed)
         uow.commit()
 
-    with SqlAlchemyUnitOfWork(session_factory) as uow:
+    with SqlAlchemyUnitOfWork(postgresql_clean_repository_session_factory) as uow:
         candidates = uow.objects.list_by_template_version(template.id, 1)
         first = next(candidate for candidate in candidates if candidate.id == first_seed.id)
         second = next(candidate for candidate in candidates if candidate.id == second_seed.id)
@@ -874,9 +851,13 @@ def test_migration_cas_conflict_rolls_back_whole_batch(tmp_path: Path) -> None:
             self.object_templates = SqlAlchemyObjectTemplateRepository(self._session)
 
     service = ObjectApplicationService(
-        lambda: ConflictUow(session_factory, role="migrate", hooks=ScenarioHooks()),
-        ownership_graph_uow_factory=lambda: SqliteOwnershipGraphWriteUnitOfWork(
-            session_factory,
+        lambda: ConflictUow(
+            postgresql_clean_repository_session_factory,
+            role="migrate",
+            hooks=ScenarioHooks(),
+        ),
+        ownership_graph_uow_factory=lambda: PostgresqlOwnershipGraphWriteUnitOfWork(
+            postgresql_clean_repository_session_factory,
             retry_delay_seconds=0.0,
         ),
     )
@@ -890,27 +871,34 @@ def test_migration_cas_conflict_rolls_back_whole_batch(tmp_path: Path) -> None:
         )
 
     assert conflict_triggered is True
-    persisted_first = _read_object(session_factory, first.id)
-    persisted_second = _read_object(session_factory, second.id)
+    persisted_first = _read_object(postgresql_clean_repository_session_factory, first.id)
+    persisted_second = _read_object(postgresql_clean_repository_session_factory, second.id)
     assert persisted_first is not None
     assert persisted_second is not None
     assert persisted_first.template_version == 1
     assert persisted_second.template_version == 1
-    assert _read_history(session_factory, first.id) == ()
-    assert _read_history(session_factory, second.id) == ()
-
-    engine.dispose()
+    assert _read_history(postgresql_clean_repository_session_factory, first.id) == ()
+    assert _read_history(postgresql_clean_repository_session_factory, second.id) == ()
 
 
-def test_characterizes_duplicate_relationship_create_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_5_duplicate_relationship.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    _, definition, source, target = _create_relationship_fixture(session_factory)
+def test_characterizes_duplicate_relationship_create_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _, definition, source, target = _create_relationship_fixture(
+        postgresql_clean_repository_session_factory
+    )
     gate = OrderedWriteGate(first_role="create_a")
     hooks = ScenarioHooks(before_relationship_add=lambda role, relationship: gate.wait(role))
-    service_a = _make_relationship_service(session_factory, role="create_a", hooks=hooks)
-    service_b = _make_relationship_service(session_factory, role="create_b", hooks=hooks)
+    service_a = _make_relationship_service(
+        postgresql_clean_repository_session_factory,
+        role="create_a",
+        hooks=hooks,
+    )
+    service_b = _make_relationship_service(
+        postgresql_clean_repository_session_factory,
+        role="create_b",
+        hooks=hooks,
+    )
     outcome_a = OperationOutcome()
     outcome_b = OperationOutcome()
 
@@ -934,26 +922,28 @@ def test_characterizes_duplicate_relationship_create_race(tmp_path: Path) -> Non
     thread_a.join()
     thread_b.join()
 
-    relationships = _read_relationships(session_factory)
+    relationships = _read_relationships(postgresql_clean_repository_session_factory)
     assert len(relationships) == 1
     assert outcome_a.succeeded is True
     assert isinstance(outcome_b.error, RelationshipAlreadyExists)
     assert outcome_a.value == relationships[0]
 
-    engine.dispose()
 
-
-def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_6_delete_attach.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    template, root, _, child = _create_component_fixture(session_factory)
-    del template
+def test_characterizes_delete_vs_attach_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _template_value, root, _, child = _create_component_fixture(
+        postgresql_clean_repository_session_factory
+    )
     gate = SerializedOwnershipCommitGate(first_role="delete")
     hooks = ScenarioHooks(before_commit=gate.before_commit)
-    delete_service = _make_object_service(session_factory, role="delete", hooks=hooks)
+    delete_service = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="delete",
+        hooks=hooks,
+    )
     attach_service = _make_object_service(
-        session_factory,
+        postgresql_clean_repository_session_factory,
         role="attach",
         hooks=hooks,
         ownership_sleeper=gate.sleeper,
@@ -978,11 +968,11 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
     delete_thread.join()
     attach_thread.join()
 
-    persisted_root = _read_object(session_factory, root.id)
-    persisted_child = _read_object(session_factory, child.id)
-    owner = _read_memberships(session_factory, child_id=child.id)
-    root_history = _read_history(session_factory, root.id)
-    child_history = _read_history(session_factory, child.id)
+    persisted_root = _read_object(postgresql_clean_repository_session_factory, root.id)
+    persisted_child = _read_object(postgresql_clean_repository_session_factory, child.id)
+    owner = _read_memberships(postgresql_clean_repository_session_factory, child_id=child.id)
+    root_history = _read_history(postgresql_clean_repository_session_factory, root.id)
+    child_history = _read_history(postgresql_clean_repository_session_factory, child.id)
     assert delete_outcome.succeeded is True
     assert isinstance(attach_outcome.error, ObjectNotFound)
     assert persisted_root is None
@@ -991,19 +981,22 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
     assert [change.kind for change in root_history] == [ObjectChangeKind.DELETED]
     assert child_history == ()
 
-    engine.dispose()
 
-
-def test_delete_after_prior_attach_discovers_expanded_subtree(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c1b_delete_after_attach.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    _template_value, root, _, child = _create_component_fixture(session_factory)
+def test_delete_after_prior_attach_discovers_expanded_subtree(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _template_value, root, _, child = _create_component_fixture(
+        postgresql_clean_repository_session_factory
+    )
     gate = SerializedOwnershipCommitGate(first_role="attach")
     hooks = ScenarioHooks(before_commit=gate.before_commit)
-    attach_service = _make_object_service(session_factory, role="attach", hooks=hooks)
+    attach_service = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="attach",
+        hooks=hooks,
+    )
     delete_service = _make_object_service(
-        session_factory,
+        postgresql_clean_repository_session_factory,
         role="delete",
         hooks=hooks,
         ownership_sleeper=gate.sleeper,
@@ -1030,28 +1023,31 @@ def test_delete_after_prior_attach_discovers_expanded_subtree(tmp_path: Path) ->
 
     assert attach_outcome.succeeded is True
     assert delete_outcome.succeeded is True
-    assert _read_object(session_factory, root.id) is None
-    assert _read_object(session_factory, child.id) is None
-    assert _read_history(session_factory, root.id)
-    assert _read_history(session_factory, child.id)
-
-    engine.dispose()
+    assert _read_object(postgresql_clean_repository_session_factory, root.id) is None
+    assert _read_object(postgresql_clean_repository_session_factory, child.id) is None
+    assert _read_history(postgresql_clean_repository_session_factory, root.id)
+    assert _read_history(postgresql_clean_repository_session_factory, child.id)
 
 
-def test_detach_then_attach_serialize_through_ownership_guard(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c1b_detach_attach.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    _template_value, parent_a, parent_b, child = _create_component_fixture(session_factory)
-    with SqlAlchemyUnitOfWork(session_factory) as uow:
+def test_detach_then_attach_serialize_through_ownership_guard(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _template_value, parent_a, parent_b, child = _create_component_fixture(
+        postgresql_clean_repository_session_factory
+    )
+    with SqlAlchemyUnitOfWork(postgresql_clean_repository_session_factory) as uow:
         uow.objects.add_membership(_membership(parent_a.id, child.id))
         uow.commit()
 
     gate = SerializedOwnershipCommitGate(first_role="detach")
     hooks = ScenarioHooks(before_commit=gate.before_commit)
-    detach_service = _make_object_service(session_factory, role="detach", hooks=hooks)
+    detach_service = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="detach",
+        hooks=hooks,
+    )
     attach_service = _make_object_service(
-        session_factory,
+        postgresql_clean_repository_session_factory,
         role="attach",
         hooks=hooks,
         ownership_sleeper=gate.sleeper,
@@ -1078,22 +1074,25 @@ def test_detach_then_attach_serialize_through_ownership_guard(tmp_path: Path) ->
 
     assert detach_outcome.succeeded is True
     assert attach_outcome.succeeded is True
-    assert _read_memberships(session_factory, child_id=child.id) == (
+    assert _read_memberships(postgresql_clean_repository_session_factory, child_id=child.id) == (
         _membership(parent_b.id, child.id),
     )
 
-    engine.dispose()
 
-
-def test_characterizes_relationship_create_vs_endpoint_delete_race(tmp_path: Path) -> None:
-    engine = _engine(tmp_path, "c0_7_relationship_delete.sqlite3")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    _, definition, source, target = _create_relationship_fixture(session_factory)
+def test_characterizes_relationship_create_vs_endpoint_delete_race(
+    postgresql_clean_repository_session_factory: Callable[[], Session],
+) -> None:
+    _, definition, source, target = _create_relationship_fixture(
+        postgresql_clean_repository_session_factory
+    )
     gate = SerializedOwnershipCommitGate(first_role="delete")
     hooks = ScenarioHooks(before_commit=gate.before_commit)
-    create_service = _make_relationship_service(session_factory)
-    delete_service = _make_object_service(session_factory, role="delete", hooks=hooks)
+    create_service = _make_relationship_service(postgresql_clean_repository_session_factory)
+    delete_service = _make_object_service(
+        postgresql_clean_repository_session_factory,
+        role="delete",
+        hooks=hooks,
+    )
     create_outcome = OperationOutcome()
     delete_outcome = OperationOutcome()
 
@@ -1115,8 +1114,8 @@ def test_characterizes_relationship_create_vs_endpoint_delete_race(tmp_path: Pat
     delete_thread.join()
     create_thread.join()
 
-    persisted_source = _read_object(session_factory, source.id)
-    relationships = _read_relationships(session_factory)
+    persisted_source = _read_object(postgresql_clean_repository_session_factory, source.id)
+    relationships = _read_relationships(postgresql_clean_repository_session_factory)
     assert not (persisted_source is None and len(relationships) == 1)
     assert (
         delete_outcome.succeeded
@@ -1129,5 +1128,3 @@ def test_characterizes_relationship_create_vs_endpoint_delete_race(tmp_path: Pat
             and isinstance(delete_outcome.error, (IntegrityError, OperationalError))
         )
     )
-
-    engine.dispose()

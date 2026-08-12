@@ -81,7 +81,8 @@ Current implementation fact:
 
 - PostgreSQL connectivity, engine support, and real integration-test
   infrastructure are implemented
-- PostgreSQL is not yet the default/authoritative application runtime backend
+- PostgreSQL is the default runtime backend
+- PostgreSQL is authoritative for integration and concurrency validation
 - Alembic baseline is implemented and certifies empty-schema PostgreSQL upgrade
   to the current ORM schema
 - DataType repository parity on PostgreSQL is complete
@@ -99,7 +100,9 @@ Current implementation fact:
   transaction-scoped advisory lock
 - application composition can now run on PostgreSQL via `DATABASE_URL`
 - PostgreSQL guard UoWs are wired into the real FastAPI composition
-- default runtime composition remains transitional SQLite until M2.5.11
+- API, application, and CLI acceptance baselines now run on PostgreSQL
+- PostgreSQL tests are not opt-in
+- SQLite remains transitional explicit compatibility only until M2.5.12
 
 Accepted direction:
 
@@ -198,6 +201,7 @@ Accepted direction:
 - main integration validation uses PostgreSQL
 - development/runtime default becomes PostgreSQL
 - SQLite no longer defines authoritative concurrency behavior
+- complete
 
 ### M2.5.12 — SQLite removal
 

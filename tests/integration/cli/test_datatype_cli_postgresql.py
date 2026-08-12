@@ -1,38 +1,45 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy.orm import sessionmaker
+import pytest
 from typer.testing import CliRunner
 
-from netauto.api.app import create_app
 from netauto.cli.app import app
-from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.unit_of_work import (
-    SqlAlchemyUnitOfWork,
-    SqliteModelWriteUnitOfWork,
-)
-from support.http_server import serve_app_url
+
+pytestmark = pytest.mark.postgresql
 
 runner = CliRunner()
 
+_BASE_URL: str | None = None
 
-def _server_url(tmp_path: Path):
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'cli.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
 
-    def uow_factory() -> SqlAlchemyUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_factory)
+class _NoopEngine:
+    def dispose(self) -> None:
+        return None
 
-    return engine, serve_app_url(
-        create_app(
-            uow_factory,
-            model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
-            ownership_graph_uow_factory=uow_factory,
-        )
-    )
+
+@pytest.fixture(autouse=True)
+def _configure_postgresql_base_url(postgresql_application_base_url: str) -> Iterator[None]:
+    global _BASE_URL
+    _BASE_URL = postgresql_application_base_url
+    try:
+        yield
+    finally:
+        _BASE_URL = None
+
+
+def _server_url(_tmp_path: Path):
+    assert _BASE_URL is not None
+    return _NoopEngine(), _single_use_server(_BASE_URL)
+
+
+@contextmanager
+def _single_use_server(base_url: str):
+    yield base_url
 
 
 def test_cli_acceptance_flow_and_large_integer_round_trip(tmp_path: Path) -> None:

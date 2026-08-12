@@ -39,6 +39,7 @@ pythonpath = ["src", "tests"]
 testpaths = ["tests"]
 markers = [
     "postgresql: requires a real PostgreSQL instance via TEST_DATABASE_URL",
+    "sqlite_legacy: transitional SQLite integration or characterization coverage",
 ]
 
 [tool.ruff]
