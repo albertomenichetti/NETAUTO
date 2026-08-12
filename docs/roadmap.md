@@ -81,7 +81,7 @@ Current implementation fact:
 
 - PostgreSQL connectivity, engine support, and real integration-test
   infrastructure are implemented
-- PostgreSQL is not yet the application/runtime backend
+- PostgreSQL is not yet the default/authoritative application runtime backend
 - Alembic baseline is implemented and certifies empty-schema PostgreSQL upgrade
   to the current ORM schema
 - DataType repository parity on PostgreSQL is complete

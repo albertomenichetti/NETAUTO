@@ -532,7 +532,7 @@ SQLite foreign keys are enabled in the engine factory.
 
 Current SQL backend status:
 
-- SQLite remains the current application/runtime SQL backend
+- SQLite remains the default transitional application/runtime SQL backend
 - PostgreSQL connectivity, `psycopg` driver support, `DATABASE_URL`
   configuration, and generic SQLAlchemy engine construction are implemented
 - real PostgreSQL integration-test connectivity and isolated schema harnesses
@@ -627,11 +627,12 @@ The CLI remains a REST client and currently has top-level groups:
 
 Current limitations that are intentionally not hidden:
 
-- SQLite remains the current application/runtime SQL backend
-- PostgreSQL is implemented only as persistence infrastructure in this phase;
-  application/FastAPI/CLI runtime composition has not switched yet
-- Alembic baseline exists, but Relationship repository parity and PostgreSQL
-  concurrency guards are still pending
+- SQLite remains the default transitional application/runtime SQL backend
+- PostgreSQL application/FastAPI runtime composition is implemented when
+  explicitly selected via `DATABASE_URL`, but PostgreSQL is not yet the
+  default/authoritative runtime or test backend
+- Alembic baseline exists, PostgreSQL repository parity is complete, and both
+  PostgreSQL concurrency guards are implemented
 - a comprehensive integrity verifier is not implemented
 - raw SQL can bypass some semantic invariants
 - multi-node ownership cycles are not declaratively impossible in SQL
