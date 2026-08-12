@@ -8,3 +8,4 @@ dist/
 build/
 .local/
 *.sqlite3
+myscripts/
