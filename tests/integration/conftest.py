@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
+from contextlib import contextmanager
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import Engine, text
 from sqlalchemy.engine import URL, Connection, make_url
+from sqlalchemy.orm import Session
 
 import netauto.persistence.sqlalchemy.models  # noqa: F401
 from netauto.persistence.sqlalchemy.base import Base
@@ -38,6 +43,10 @@ def _migration_schema_name() -> str:
     return f"netauto_migration_test_{uuid4().hex}"
 
 
+def _repository_schema_name() -> str:
+    return f"netauto_repository_test_{uuid4().hex}"
+
+
 @pytest.fixture(scope="session")
 def postgresql_test_database_url() -> str:
     _validated_postgresql_test_url()
@@ -63,6 +72,22 @@ def postgresql_schema(postgresql_engine: Engine) -> Generator[str, None, None]:
 def postgresql_migration_schema(postgresql_engine: Engine) -> Generator[str, None, None]:
     schema_name = _migration_schema_name()
     yield from _managed_schema(postgresql_engine, schema_name)
+
+
+@pytest.fixture(scope="session")
+def postgresql_repository_schema(postgresql_engine: Engine) -> Generator[str, None, None]:
+    schema_name = _repository_schema_name()
+    before_public_tables = set(_inspector_table_names(postgresql_engine, schema="public"))
+    with _managed_schema_context(postgresql_engine, schema_name):
+        with postgresql_engine.connect().execution_options(
+            isolation_level="AUTOCOMMIT"
+        ) as connection:
+            _set_search_path(connection, postgresql_engine, schema_name)
+            command.upgrade(_alembic_config(connection, schema_name), "head")
+
+        after_public_tables = set(_inspector_table_names(postgresql_engine, schema="public"))
+        assert after_public_tables == before_public_tables
+        yield schema_name
 
 
 @pytest.fixture
@@ -96,6 +121,27 @@ def postgresql_orm_schema(
     yield postgresql_schema
 
 
+@pytest.fixture
+def postgresql_model_session(
+    postgresql_engine: Engine,
+    postgresql_repository_schema: str,
+) -> Generator[Session, None, None]:
+    connection = postgresql_engine.connect()
+    transaction = connection.begin()
+    _set_search_path(connection, postgresql_engine, postgresql_repository_schema)
+    session = Session(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    try:
+        yield session
+    finally:
+        session.close()
+        transaction.rollback()
+        connection.close()
+
+
 def _quoted_identifier(engine: Engine, identifier: str) -> str:
     preparer = engine.dialect.identifier_preparer
     return preparer.quote_identifier(identifier)
@@ -126,3 +172,15 @@ def _managed_schema(engine: Engine, schema_name: str) -> Generator[str, None, No
                 {"schema_name": schema_name},
             ).scalar_one()
         assert exists_after_drop is False
+
+
+@contextmanager
+def _managed_schema_context(engine: Engine, schema_name: str) -> Generator[str, None, None]:
+    yield from _managed_schema(engine, schema_name)
+
+
+def _alembic_config(connection: Connection, version_table_schema: str) -> Config:
+    config = Config(str(Path("alembic.ini")))
+    config.attributes["connection"] = connection
+    config.attributes["version_table_schema"] = version_table_schema
+    return config
