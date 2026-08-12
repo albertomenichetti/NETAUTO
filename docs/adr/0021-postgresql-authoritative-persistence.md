@@ -88,7 +88,6 @@ verified against PostgreSQL rather than deferred.
 
 This ADR does not yet decide:
 
-- the exact PostgreSQL implementation of `MODEL_PLANE_GUARD`
 - the exact PostgreSQL implementation of `OWNERSHIP_GRAPH_GUARD`
 - the exact cross-plane model-binding protocol
 - whether individual invariants use row locks, advisory locks,
@@ -98,3 +97,15 @@ This ADR does not yet decide:
 - final transaction isolation level for all workflows
 
 Those decisions belong to later narrowly scoped M2.5 milestones.
+
+## Subsequent Resolution Note
+
+After acceptance of this ADR, M2.5.8 resolved the PostgreSQL realization of
+`MODEL_PLANE_GUARD` to an exclusive transaction-level advisory lock using
+`pg_try_advisory_xact_lock(...)`.
+
+Still unresolved after M2.5.8:
+
+- the exact PostgreSQL implementation of `OWNERSHIP_GRAPH_GUARD`
+- cross-plane binding protocols
+- later invariant-specific lock ordering and retry policy

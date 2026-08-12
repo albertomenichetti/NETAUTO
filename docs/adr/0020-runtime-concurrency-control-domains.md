@@ -15,9 +15,9 @@ different invariants:
 - ordinary runtime data operations
 
 The architecture must not collapse these into one global database-writer lock.
-SQLite is currently the only supported backend and is physically restrictive,
-but those backend limits must not redefine the long-term semantic contract for
-future PostgreSQL support.
+SQLite is currently the application/runtime backend and is physically
+restrictive, but those backend limits must not redefine the long-term semantic
+contract for PostgreSQL.
 
 Historical note: the "future PostgreSQL" phrasing here reflects the original
 timing of this ADR. ADR 0021 supersedes that roadmap timing by making
@@ -59,12 +59,8 @@ logical coordination domain, not a mandate to lock the whole database.
 SQLite currently realizes this using `BEGIN IMMEDIATE` because of SQLite's
 backend constraints.
 
-The PostgreSQL target architecture must provide an equivalent
-transaction-scoped logical model-plane guard using a PostgreSQL-appropriate
-primitive such as:
-
-- advisory transaction locking
-- transactional row locking on a dedicated guard row
+PostgreSQL now realizes this using transaction-scoped advisory locking with a
+stable dedicated advisory key for `MODEL_PLANE_GUARD`.
 
 The semantic requirement is:
 
@@ -75,6 +71,18 @@ The semantic requirement is:
 
 ADR 0021 does not replace this logical contract. It changes project timing:
 the PostgreSQL realization of this domain is now immediate M2.5 work.
+
+Current PostgreSQL realization details:
+
+- `PostgresqlModelWriteUnitOfWork`
+- `pg_try_advisory_xact_lock(...)`
+- dedicated model-plane advisory key domain
+- acquisition before the first decision read
+- bounded acquisition retries only
+- exhaustion maps to `ModelWriteUnavailable`
+- no automatic application-command replay
+- automatic release at transaction end
+- ordinary data-plane writers do not participate in this guard
 
 ### OWNERSHIP_GRAPH_GUARD
 
@@ -169,6 +177,13 @@ Consequently:
   lock keys or separate transactional guard rows
 - the PostgreSQL implementation must not solve runtime concurrency by
   introducing one global database writer lock
+
+Current implementation status:
+
+- PostgreSQL `MODEL_PLANE_GUARD` is implemented
+- PostgreSQL `OWNERSHIP_GRAPH_GUARD` remains pending for M2.5.9
+- no cross-plane binding protocol is implied by the `MODEL_PLANE_GUARD`
+  realization alone
 
 Newly identified scope boundary:
 

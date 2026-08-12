@@ -93,6 +93,8 @@ Current implementation fact:
 - PostgreSQL repository parity across current DataType/ObjectTemplate/Object/
   ObjectChange/ComponentMembership/RelationshipDefinition/Relationship
   persistence is complete
+- PostgreSQL `MODEL_PLANE_GUARD` is implemented with a transaction-scoped
+  advisory lock
 - PostgreSQL is not yet the application/runtime backend
 
 Accepted direction:
@@ -171,6 +173,7 @@ Accepted direction:
 - before first decision read
 - prove model-writer vs model-writer serialization
 - do not add cross-plane binding guard yet
+- complete
 
 ### M2.5.9 — PostgreSQL OWNERSHIP_GRAPH_GUARD
 

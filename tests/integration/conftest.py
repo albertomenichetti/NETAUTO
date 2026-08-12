@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, event, text
 from sqlalchemy.engine import URL, Connection, make_url
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 import netauto.persistence.sqlalchemy.models  # noqa: F401
 from netauto.persistence.sqlalchemy.base import Base
@@ -140,6 +140,38 @@ def postgresql_model_session(
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture(scope="session")
+def postgresql_repository_session_factory(
+    postgresql_engine: Engine,
+    postgresql_repository_schema: str,
+) -> Generator[Callable[[], Session], None, None]:
+    quoted_schema = _quoted_identifier(postgresql_engine, postgresql_repository_schema)
+
+    class RepositorySchemaSession(Session):
+        pass
+
+    factory = sessionmaker(
+        bind=postgresql_engine,
+        expire_on_commit=False,
+        class_=RepositorySchemaSession,
+    )
+
+    @event.listens_for(RepositorySchemaSession, "after_begin")
+    def _set_local_search_path(
+        session: Session,
+        transaction: object,
+        connection: Connection,
+    ) -> None:
+        if transaction is not session.get_transaction():
+            return
+        connection.execute(text(f"SET LOCAL search_path TO {quoted_schema}"))
+
+    try:
+        yield factory
+    finally:
+        event.remove(RepositorySchemaSession, "after_begin", _set_local_search_path)
 
 
 def _quoted_identifier(engine: Engine, identifier: str) -> str:

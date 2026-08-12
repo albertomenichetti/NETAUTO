@@ -60,8 +60,7 @@ such as a transaction-scoped advisory lock.
 
 Historical note: this ADR still records the original serialization decision
 correctly. The roadmap assumption that PostgreSQL was a distant later backend
-is now superseded by ADR 0021. PostgreSQL becomes immediate project work, but
-this ADR does not decide the final PostgreSQL primitive.
+is now superseded by ADR 0021. PostgreSQL becomes immediate project work.
 
 ## Consequences
 
@@ -98,3 +97,22 @@ Additional note after ADR 0021:
   implementation goal rather than a distant backend-port concern
 - newly identified cross-plane binding races remain intentionally unresolved
   here and are scheduled through later M2.5 analysis/ADR slices
+
+## PostgreSQL Realization (M2.5.8)
+
+The current PostgreSQL realization of `MODEL_PLANE_GUARD` is:
+
+- exclusive transaction-level advisory locking
+- `pg_try_advisory_xact_lock(namespace_key, guard_key)`
+- stable application-defined key pair:
+  - namespace: `0x4E455441`
+  - model guard: `1`
+- acquisition at unit-of-work entry before repositories are initialized and
+  before the first decision read
+- bounded acquisition retries only
+- exhaustion maps to `ModelWriteUnavailable`
+- no automatic application-command replay
+- automatic release at transaction end by PostgreSQL
+
+SQLite remains implemented with `BEGIN IMMEDIATE` until the later SQLite
+removal milestone.

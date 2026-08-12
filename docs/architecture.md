@@ -56,9 +56,10 @@ Accepted direction:
 
 - PostgreSQL is now the authoritative target backend for the project
 - SQLite remains only as transitional implementation code until M2.5.12
-- PostgreSQL must realize the same logical model-plane guard without
-  redefining the architecture around one global database writer lock
-- the exact PostgreSQL primitive remains intentionally undecided at this stage
+- PostgreSQL realizes `MODEL_PLANE_GUARD` with a transaction-scoped advisory
+  lock without redefining the architecture around one global database writer
+  lock
+- PostgreSQL `OWNERSHIP_GRAPH_GUARD` remains pending
 
 Current implemented PostgreSQL persistence state:
 
@@ -69,8 +70,12 @@ Current implemented PostgreSQL persistence state:
 - shared SQLAlchemy repository parity is established on PostgreSQL for
   `DataType`, `ObjectTemplate`, `Object`, `ObjectChange`,
   `ComponentMembership`, `RelationshipDefinition`, and `Relationship`
+- `PostgresqlModelWriteUnitOfWork` implements `MODEL_PLANE_GUARD` with
+  `pg_try_advisory_xact_lock(...)` and bounded acquisition that maps
+  exhaustion to `ModelWriteUnavailable`
+- ordinary PostgreSQL data-plane writes do not participate in this guard
 - application/runtime composition still remains on SQLite
-- PostgreSQL `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` remain pending
+- PostgreSQL `OWNERSHIP_GRAPH_GUARD` remains pending
 - no supported migration path exists from historical SQLite development
   databases into PostgreSQL
 
