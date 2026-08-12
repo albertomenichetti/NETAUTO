@@ -80,8 +80,8 @@ persistence direction of the project before any dogfooding work resumes.
 Current implementation fact:
 
 - SQLite is still the only SQL backend physically implemented in the codebase
-- PostgreSQL is not implemented yet
-- Alembic is not implemented yet
+- PostgreSQL is not yet the application/runtime backend
+- Alembic baseline is now implemented
 
 Accepted direction:
 

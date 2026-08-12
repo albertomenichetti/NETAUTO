@@ -498,11 +498,14 @@ Current SQL backend status:
 
 - SQLite is the only SQL backend physically implemented in the codebase
 - PostgreSQL is not implemented yet
-- Alembic and in-place migration infrastructure are not implemented
+- Alembic baseline migration infrastructure is now implemented for PostgreSQL
+- repository/runtime parity on PostgreSQL is not implemented yet
 - current development recreates the database after structural schema changes
 - `psycopg` dependency support, `DATABASE_URL` configuration, and generic
   SQLAlchemy engine construction now exist as transitional infrastructure
 - application startup still remains deliberately on SQLite in this phase
+- no supported migration path from existing SQLite development databases to
+  PostgreSQL exists
 
 Current startup behavior is explicit in the production composition module:
 `src/netauto/main.py` creates the SQLite engine and calls `create_schema(engine)`.

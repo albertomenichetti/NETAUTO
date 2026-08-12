@@ -34,6 +34,10 @@ def _schema_name() -> str:
     return f"netauto_test_{uuid4().hex}"
 
 
+def _migration_schema_name() -> str:
+    return f"netauto_migration_test_{uuid4().hex}"
+
+
 @pytest.fixture(scope="session")
 def postgresql_test_database_url() -> str:
     _validated_postgresql_test_url()
@@ -52,21 +56,13 @@ def postgresql_engine(postgresql_test_database_url: str) -> Generator[Engine, No
 @pytest.fixture(scope="session")
 def postgresql_schema(postgresql_engine: Engine) -> Generator[str, None, None]:
     schema_name = _schema_name()
-    quoted_schema = _quoted_identifier(postgresql_engine, schema_name)
-    with postgresql_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
-        connection.execute(text(f"CREATE SCHEMA {quoted_schema}"))
-    try:
-        yield schema_name
-    finally:
-        with postgresql_engine.connect().execution_options(
-            isolation_level="AUTOCOMMIT"
-        ) as connection:
-            connection.execute(text(f"DROP SCHEMA {quoted_schema} CASCADE"))
-            exists_after_drop = connection.execute(
-                text("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = :schema_name)"),
-                {"schema_name": schema_name},
-            ).scalar_one()
-        assert exists_after_drop is False
+    yield from _managed_schema(postgresql_engine, schema_name)
+
+
+@pytest.fixture(scope="session")
+def postgresql_migration_schema(postgresql_engine: Engine) -> Generator[str, None, None]:
+    schema_name = _migration_schema_name()
+    yield from _managed_schema(postgresql_engine, schema_name)
 
 
 @pytest.fixture
@@ -114,3 +110,19 @@ def _inspector_table_names(engine: Engine, *, schema: str) -> list[str]:
     from sqlalchemy import inspect
 
     return inspect(engine).get_table_names(schema=schema)
+
+
+def _managed_schema(engine: Engine, schema_name: str) -> Generator[str, None, None]:
+    quoted_schema = _quoted_identifier(engine, schema_name)
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(text(f"CREATE SCHEMA {quoted_schema}"))
+    try:
+        yield schema_name
+    finally:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f"DROP SCHEMA {quoted_schema} CASCADE"))
+            exists_after_drop = connection.execute(
+                text("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = :schema_name)"),
+                {"schema_name": schema_name},
+            ).scalar_one()
+        assert exists_after_drop is False
