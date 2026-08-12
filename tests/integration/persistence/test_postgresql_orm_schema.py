@@ -373,14 +373,25 @@ def test_postgresql_enforces_object_component_checks(
 ) -> None:
     del postgresql_orm_schema
     template_id = _insert_minimal_template_lineage(postgresql_engine, postgresql_schema)
-    object_id = _uuid()
+    parent_object_id = _uuid()
+    child_object_id = _uuid()
     _execute(
         postgresql_engine,
         postgresql_schema,
         "INSERT INTO objects (id, template_id, template_version, properties_json) "
         "VALUES (:id, :template_id, 1, '{}')",
         {
-            "id": object_id,
+            "id": parent_object_id,
+            "template_id": template_id,
+        },
+    )
+    _execute(
+        postgresql_engine,
+        postgresql_schema,
+        "INSERT INTO objects (id, template_id, template_version, properties_json) "
+        "VALUES (:id, :template_id, 1, '{}')",
+        {
+            "id": child_object_id,
             "template_id": template_id,
         },
     )
@@ -391,8 +402,8 @@ def test_postgresql_enforces_object_component_checks(
             "INSERT INTO object_components (parent_object_id, slot_name, child_object_id) "
             "VALUES (:parent_object_id, 'children', :child_object_id)",
             {
-                "parent_object_id": object_id,
-                "child_object_id": object_id,
+                "parent_object_id": parent_object_id,
+                "child_object_id": parent_object_id,
             },
         )
     with pytest.raises(IntegrityError):
@@ -402,8 +413,8 @@ def test_postgresql_enforces_object_component_checks(
             "INSERT INTO object_components (parent_object_id, slot_name, child_object_id) "
             "VALUES (:parent_object_id, '', :child_object_id)",
             {
-                "parent_object_id": object_id,
-                "child_object_id": _uuid(),
+                "parent_object_id": parent_object_id,
+                "child_object_id": child_object_id,
             },
         )
 
