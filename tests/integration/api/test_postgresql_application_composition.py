@@ -72,13 +72,8 @@ def _seed_object(
 @asynccontextmanager
 async def _client(
     session_factory: Callable[[], Session],
-    *,
-    database_url: str,
 ) -> AsyncIterator[httpx2.AsyncClient]:
-    composition = create_sqlalchemy_app(
-        session_factory,
-        database_url=database_url,
-    )
+    composition = create_sqlalchemy_app(session_factory)
     async with serve_app(composition.app) as client:
         yield client
 
@@ -86,7 +81,6 @@ async def _client(
 async def test_postgresql_application_composition_wires_model_and_ownership_guards(
     postgresql_engine: Engine,
     postgresql_repository_session_factory: Callable[[], Session],
-    postgresql_test_database_url: str,
 ) -> None:
     statements: list[tuple[str, object]] = []
 
@@ -97,7 +91,6 @@ async def test_postgresql_application_composition_wires_model_and_ownership_guar
     try:
         async with _client(
             postgresql_repository_session_factory,
-            database_url=postgresql_test_database_url,
         ) as client:
             create_response = await client.post(
                 "/api/v1/datatypes",

@@ -40,6 +40,7 @@ from netauto.core.relationship import (
     RelationshipAlreadyExists,
     RelationshipDefinition,
     RelationshipObjectNotFound,
+    RelationshipPersistenceError,
 )
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.object_change_repository import (
@@ -1121,7 +1122,12 @@ def test_characterizes_relationship_create_vs_endpoint_delete_race(
         delete_outcome.succeeded
         and isinstance(
             create_outcome.error,
-            (RelationshipObjectNotFound, OperationalError, IntegrityError),
+            (
+                RelationshipObjectNotFound,
+                RelationshipPersistenceError,
+                OperationalError,
+                IntegrityError,
+            ),
         )
         or (
             create_outcome.succeeded

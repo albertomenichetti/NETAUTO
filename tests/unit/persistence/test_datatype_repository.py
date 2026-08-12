@@ -1,14 +1,10 @@
 import importlib
-import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import sessionmaker
 
 from netauto.core.datatype import (
     Constraint,
@@ -25,12 +21,8 @@ from netauto.core.datatype import (
     DataTypeVersionNotFound,
     DataTypeVersionStatus,
     PrimitiveTypeRegistry,
-    SchemaCompiler,
-    ValidationEngine,
 )
 from netauto.persistence.memory.datatype_repository import InMemoryDataTypeRepository
-from netauto.persistence.sqlalchemy.database import create_schema, create_sqlite_engine
-from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 
 
 @contextmanager
@@ -38,22 +30,10 @@ def _repository_harness(
     backend: str,
     tmp_path: Path,
 ) -> Iterator[DataTypeRepository]:
-    if backend == "memory":
-        yield InMemoryDataTypeRepository()
-        return
-
-    if backend != "sqlite":
+    del tmp_path
+    if backend != "memory":
         raise AssertionError(f"Unknown backend '{backend}'.")
-
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'repository.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        yield SqlAlchemyDataTypeRepository(session)
-    finally:
-        session.close()
-        engine.dispose()
+    yield InMemoryDataTypeRepository()
 
 
 def _datatype(
@@ -126,7 +106,7 @@ def _temporal_pair(
     )
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_repository_datatype_round_trip(backend: str, tmp_path: Path) -> None:
     datatype = _datatype()
 
@@ -138,7 +118,7 @@ def test_repository_datatype_round_trip(backend: str, tmp_path: Path) -> None:
     assert loaded == datatype
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_uuid_remains_uuid_after_reload(backend: str, tmp_path: Path) -> None:
     datatype = _datatype()
 
@@ -155,7 +135,7 @@ def test_uuid_remains_uuid_after_reload(backend: str, tmp_path: Path) -> None:
     ("description", "name"),
     [(None, "hostname"), ("Network hostname", "hostname_alt")],
 )
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_description_round_trip(
     backend: str,
     tmp_path: Path,
@@ -172,7 +152,7 @@ def test_description_round_trip(
     assert loaded.description == description
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_get_by_name(backend: str, tmp_path: Path) -> None:
     datatype = _datatype()
 
@@ -183,7 +163,7 @@ def test_get_by_name(backend: str, tmp_path: Path) -> None:
     assert loaded == datatype
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_delete_removes_datatype_identity_and_all_versions(backend: str, tmp_path: Path) -> None:
     first, v1 = _hostname_pair()
     second, v2 = _vlan_pair()
@@ -207,14 +187,14 @@ def test_delete_removes_datatype_identity_and_all_versions(backend: str, tmp_pat
         assert repo.list_versions(second.id) == (v2,)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_delete_missing_rejected(backend: str, tmp_path: Path) -> None:
     with _repository_harness(backend, tmp_path) as repo:
         with pytest.raises(DataTypeNotFound):
             repo.delete(UUID(int=1))
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_list_returns_deterministic_ordering(backend: str, tmp_path: Path) -> None:
     zeta = _datatype(namespace="zeta", name="beta", description=None)
     vlan = _datatype(namespace="network", name="vlan_id", description=None)
@@ -233,7 +213,7 @@ def test_list_returns_deterministic_ordering(backend: str, tmp_path: Path) -> No
     ]
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_duplicate_uuid_rejected(backend: str, tmp_path: Path) -> None:
     datatype = _datatype()
     duplicate = DataType(
@@ -249,7 +229,7 @@ def test_duplicate_uuid_rejected(backend: str, tmp_path: Path) -> None:
             repo.add(duplicate)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_duplicate_logical_name_rejected(backend: str, tmp_path: Path) -> None:
     first = _datatype()
     second = _datatype()
@@ -260,7 +240,7 @@ def test_duplicate_logical_name_rejected(backend: str, tmp_path: Path) -> None:
             repo.add(second)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_version_add_and_get(backend: str, tmp_path: Path) -> None:
     datatype, version = _hostname_pair()
 
@@ -281,7 +261,7 @@ def test_version_add_and_get(backend: str, tmp_path: Path) -> None:
         ("core.ip_prefix", "network", "ip_prefix", "ip-prefix"),
     ],
 )
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_formatted_string_datatype_version_round_trip_preserves_primitive_metadata(
     backend: str,
     tmp_path: Path,
@@ -308,7 +288,7 @@ def test_formatted_string_datatype_version_round_trip_preserves_primitive_metada
     assert loaded.base_type.json_schema_format == expected_format
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_list_versions_ordered_ascending(backend: str, tmp_path: Path) -> None:
     datatype, v1_draft = _vlan_pair()
     service = DataTypeVersioningService()
@@ -334,7 +314,7 @@ def test_list_versions_ordered_ascending(backend: str, tmp_path: Path) -> None:
     assert tuple(version.version for version in versions) == (1, 2, 5)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_duplicate_version_rejected(backend: str, tmp_path: Path) -> None:
     datatype, version = _hostname_pair()
 
@@ -345,7 +325,7 @@ def test_duplicate_version_rejected(backend: str, tmp_path: Path) -> None:
             repo.add_version(version)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_missing_parent_rejected(backend: str, tmp_path: Path) -> None:
     _, version = _hostname_pair()
 
@@ -354,7 +334,7 @@ def test_missing_parent_rejected(backend: str, tmp_path: Path) -> None:
             repo.add_version(version)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_existing(backend: str, tmp_path: Path) -> None:
     datatype, draft = _hostname_pair()
     service = DataTypeVersioningService()
@@ -375,7 +355,7 @@ def test_replace_version_existing(backend: str, tmp_path: Path) -> None:
     assert loaded == revised
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_add_version_requires_draft_status(backend: str, tmp_path: Path) -> None:
     datatype, draft = _hostname_pair()
     published = DataTypeVersioningService().publish(draft)
@@ -390,7 +370,7 @@ def test_add_version_requires_draft_status(backend: str, tmp_path: Path) -> None
         assert repo.get_version(datatype.id, 1) is None
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_add_version_preserves_duplicate_error_before_new_lifecycle_validation(
     backend: str,
     tmp_path: Path,
@@ -405,7 +385,7 @@ def test_add_version_preserves_duplicate_error_before_new_lifecycle_validation(
             repo.add_version(published)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_add_version_rejects_cross_version_base_type_change(
     backend: str,
     tmp_path: Path,
@@ -437,7 +417,7 @@ def test_add_version_rejects_cross_version_base_type_change(
         assert repo.get_version(datatype.id, 2) == valid_v2
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_rejects_draft_base_type_change_without_mutating_storage(
     backend: str,
     tmp_path: Path,
@@ -460,7 +440,7 @@ def test_replace_version_rejects_draft_base_type_change_without_mutating_storage
         assert repo.get_version(datatype.id, 1) == draft
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_allows_draft_constraint_revision(
     backend: str,
     tmp_path: Path,
@@ -481,7 +461,7 @@ def test_replace_version_allows_draft_constraint_revision(
         assert repo.get_version(datatype.id, 1) == revised
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_allows_draft_to_published_status_only_transition(
     backend: str,
     tmp_path: Path,
@@ -496,7 +476,7 @@ def test_replace_version_allows_draft_to_published_status_only_transition(
         assert repo.get_version(datatype.id, 1) == published
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_rejects_publish_with_constraint_change(
     backend: str,
     tmp_path: Path,
@@ -518,7 +498,7 @@ def test_replace_version_rejects_publish_with_constraint_change(
         assert repo.get_version(datatype.id, 1) == draft
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_rejects_publish_with_base_type_change(
     backend: str,
     tmp_path: Path,
@@ -540,7 +520,7 @@ def test_replace_version_rejects_publish_with_base_type_change(
         assert repo.get_version(datatype.id, 1) == draft
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_allows_published_to_deprecated_status_only_transition(
     backend: str,
     tmp_path: Path,
@@ -557,7 +537,7 @@ def test_replace_version_allows_published_to_deprecated_status_only_transition(
         assert repo.get_version(datatype.id, 1) == deprecated
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_rejects_deprecate_with_constraint_change(
     backend: str,
     tmp_path: Path,
@@ -581,7 +561,7 @@ def test_replace_version_rejects_deprecate_with_constraint_change(
         assert repo.get_version(datatype.id, 1) == published
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_rejects_deprecate_with_base_type_change(
     backend: str,
     tmp_path: Path,
@@ -616,7 +596,7 @@ def test_replace_version_rejects_deprecate_with_base_type_change(
         (DataTypeVersionStatus.DEPRECATED, DataTypeVersionStatus.DRAFT),
     ],
 )
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_rejects_other_lifecycle_rewrites(
     backend: str,
     tmp_path: Path,
@@ -650,7 +630,7 @@ def test_replace_version_rejects_other_lifecycle_rewrites(
         assert repo.get_version(datatype.id, 1) == current
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_replace_version_missing_rejected(backend: str, tmp_path: Path) -> None:
     datatype, version = _hostname_pair()
 
@@ -660,7 +640,7 @@ def test_replace_version_missing_rejected(backend: str, tmp_path: Path) -> None:
             repo.replace_version(version)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_status_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, draft = _hostname_pair()
     versioning = DataTypeVersioningService()
@@ -712,7 +692,7 @@ def test_status_round_trip(backend: str, tmp_path: Path) -> None:
         ("core.ip_prefix", ()),
     ],
 )
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_all_primitive_names_round_trip(
     backend: str,
     tmp_path: Path,
@@ -736,7 +716,7 @@ def test_all_primitive_names_round_trip(
     assert loaded.base_type is PrimitiveTypeRegistry().get(primitive_name)
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_string_constraints_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, version = _hostname_pair()
 
@@ -749,7 +729,7 @@ def test_string_constraints_round_trip(backend: str, tmp_path: Path) -> None:
     assert loaded.constraints == version.constraints
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_integer_bounds_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, version = _vlan_pair()
 
@@ -761,7 +741,7 @@ def test_integer_bounds_round_trip(backend: str, tmp_path: Path) -> None:
     assert loaded == version
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_number_float_bounds_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, version = DataTypeFactory().create(
         namespace="network",
@@ -782,7 +762,7 @@ def test_number_float_bounds_round_trip(backend: str, tmp_path: Path) -> None:
     assert loaded == version
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_boolean_enum_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, version = DataTypeFactory().create(
         namespace="network",
@@ -800,7 +780,7 @@ def test_boolean_enum_round_trip(backend: str, tmp_path: Path) -> None:
     assert loaded == version
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_string_enum_round_trip(backend: str, tmp_path: Path) -> None:
     datatype, version = _status_pair()
 
@@ -812,7 +792,7 @@ def test_string_enum_round_trip(backend: str, tmp_path: Path) -> None:
     assert loaded == version
 
 
-@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("backend", ["memory"])
 def test_constraint_order_preserved(backend: str, tmp_path: Path) -> None:
     datatype, version = DataTypeFactory().create(
         namespace="network",
@@ -839,549 +819,6 @@ def test_constraint_order_preserved(backend: str, tmp_path: Path) -> None:
     )
 
 
-def test_sqlite_large_integer_round_trip(tmp_path: Path) -> None:
-    large_integer = 10**1000
-    datatype, version = DataTypeFactory().create(
-        namespace="network",
-        name="huge_minimum",
-        description=None,
-        base_type="core.number",
-        constraints=(Constraint(name=ConstraintName.MINIMUM, value=large_integer),),
-    )
-
-    with _repository_harness("sqlite", tmp_path) as repo:
-        repo.add(datatype)
-        repo.add_version(version)
-        loaded = repo.get_version(datatype.id, 1)
-
-    assert loaded is not None
-    assert loaded.constraints[0].value == large_integer
-    assert type(loaded.constraints[0].value) is int
-    assert SchemaCompiler().compile_datatype(loaded) == {
-        "type": "number",
-        "minimum": large_integer,
-    }
-
-
-def test_compiler_works_after_sqlite_reload(tmp_path: Path) -> None:
-    datatype, version = _vlan_pair()
-
-    with _repository_harness("sqlite", tmp_path) as repo:
-        repo.add(datatype)
-        repo.add_version(version)
-        loaded = repo.get_version(datatype.id, 1)
-
-    assert loaded is not None
-    assert SchemaCompiler().compile_datatype(loaded) == {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 4094,
-    }
-
-
-def test_validation_works_after_sqlite_reload(tmp_path: Path) -> None:
-    datatype, version = _vlan_pair()
-
-    with _repository_harness("sqlite", tmp_path) as repo:
-        repo.add(datatype)
-        repo.add_version(version)
-        loaded = repo.get_version(datatype.id, 1)
-
-    assert loaded is not None
-    engine = ValidationEngine()
-    assert engine.validate_datatype(loaded, 1).is_valid is True
-    assert engine.validate_datatype(loaded, 4094).is_valid is True
-    assert engine.validate_datatype(loaded, 0).errors == (
-        engine.validate_datatype(loaded, 0).errors[0],
-    )
-    assert engine.validate_datatype(loaded, 4095).errors == (
-        engine.validate_datatype(loaded, 4095).errors[0],
-    )
-    assert engine.validate_datatype(loaded, 1.0).errors[0].code == "type"
-    assert engine.validate_datatype(loaded, True).errors[0].code == "type"
-
-
-def test_versioning_service_works_across_persisted_snapshots(tmp_path: Path) -> None:
-    datatype, v1_draft = _vlan_pair()
-    service = DataTypeVersioningService()
-
-    with _repository_harness("sqlite", tmp_path) as repo:
-        repo.add(datatype)
-        repo.add_version(v1_draft)
-        loaded_draft = repo.get_version(datatype.id, 1)
-        assert loaded_draft is not None
-        v1_published = service.publish(loaded_draft)
-        repo.replace_version(v1_published)
-        v2_draft = service.create_next_version(v1_published, existing_versions=(v1_published,))
-        repo.add_version(v2_draft)
-        v2_published = service.publish(v2_draft)
-        repo.replace_version(v2_published)
-        versions = repo.list_versions(datatype.id)
-
-    assert tuple((version.version, version.status) for version in versions) == (
-        (1, DataTypeVersionStatus.PUBLISHED),
-        (2, DataTypeVersionStatus.PUBLISHED),
-    )
-
-
-def test_multiple_published_versions_coexist_in_repository(tmp_path: Path) -> None:
-    datatype, v1_draft = _hostname_pair()
-    service = DataTypeVersioningService()
-    v1_published = service.publish(v1_draft)
-    v2_draft = service.create_next_version(v1_published, existing_versions=(v1_published,))
-    v2_published = service.publish(v2_draft)
-
-    with _repository_harness("sqlite", tmp_path) as repo:
-        repo.add(datatype)
-        repo.add_version(v1_draft)
-        repo.replace_version(v1_published)
-        repo.add_version(v2_draft)
-        repo.replace_version(v2_published)
-        versions = repo.list_versions(datatype.id)
-
-    assert tuple(version.status for version in versions) == (
-        DataTypeVersionStatus.PUBLISHED,
-        DataTypeVersionStatus.PUBLISHED,
-    )
-
-
-def test_sqlite_illegal_publish_attempt_leaves_committed_snapshot_unchanged_after_rollback(
-    tmp_path: Path,
-) -> None:
-    datatype, draft = _hostname_pair()
-    illegal = DataTypeVersion(
-        datatype_id=draft.datatype_id,
-        version=draft.version,
-        status=DataTypeVersionStatus.PUBLISHED,
-        base_type=draft.base_type,
-        constraints=(Constraint(name=ConstraintName.MIN_LENGTH, value=2),),
-    )
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'illegal_publish_rollback.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-
-    session = session_factory()
-    try:
-        repo = SqlAlchemyDataTypeRepository(session)
-        repo.add(datatype)
-        repo.add_version(draft)
-        session.commit()
-
-        with pytest.raises(DataTypePersistenceError):
-            repo.replace_version(illegal)
-        session.rollback()
-    finally:
-        session.close()
-
-    fresh_session = session_factory()
-    try:
-        fresh_repo = SqlAlchemyDataTypeRepository(fresh_session)
-        assert fresh_repo.get_version(datatype.id, 1) == draft
-    finally:
-        fresh_session.close()
-        engine.dispose()
-
-
-def test_sqlite_illegal_published_rewrite_leaves_committed_snapshot_unchanged_after_rollback(
-    tmp_path: Path,
-) -> None:
-    datatype, draft = _hostname_pair()
-    published = DataTypeVersioningService().publish(draft)
-    illegal = DataTypeVersion(
-        datatype_id=published.datatype_id,
-        version=published.version,
-        status=DataTypeVersionStatus.PUBLISHED,
-        base_type=published.base_type,
-        constraints=published.constraints,
-    )
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'illegal_published_rewrite.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-
-    session = session_factory()
-    try:
-        repo = SqlAlchemyDataTypeRepository(session)
-        repo.add(datatype)
-        repo.add_version(draft)
-        repo.replace_version(published)
-        session.commit()
-
-        with pytest.raises(DataTypePersistenceError):
-            repo.replace_version(illegal)
-        session.rollback()
-    finally:
-        session.close()
-
-    fresh_session = session_factory()
-    try:
-        fresh_repo = SqlAlchemyDataTypeRepository(fresh_session)
-        assert fresh_repo.get_version(datatype.id, 1) == published
-    finally:
-        fresh_session.close()
-        engine.dispose()
-
-
-def test_sqlite_foreign_key_enforcement_is_active(tmp_path: Path) -> None:
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'fk.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        with pytest.raises(IntegrityError):
-            session.execute(
-                text(
-                    "INSERT INTO datatype_versions "
-                    "(datatype_id, version, status, base_type, constraints_json) "
-                    "VALUES (:datatype_id, :version, :status, :base_type, :constraints_json)"
-                ),
-                {
-                    "datatype_id": str(UUID(int=1)),
-                    "version": 1,
-                    "status": "draft",
-                    "base_type": "core.string",
-                    "constraints_json": "[]",
-                },
-            )
-            session.commit()
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_raw_delete_of_referenced_exact_datatype_version_hits_fk_restrict(
-    tmp_path: Path,
-) -> None:
-    datatype, version = _hostname_pair()
-    template_id = UUID(int=101)
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'datatype_version_fk_restrict.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        repo = SqlAlchemyDataTypeRepository(session)
-        repo.add(datatype)
-        repo.add_version(version)
-        session.execute(
-            text(
-                "INSERT INTO object_templates (id, namespace, name, description, abstract) "
-                "VALUES (:id, :namespace, :name, :description, :abstract)"
-            ),
-            {
-                "id": str(template_id),
-                "namespace": "network",
-                "name": "device",
-                "description": None,
-                "abstract": False,
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO object_template_versions "
-                "("
-                "template_id, version, status, parent_template_id, "
-                "parent_version"
-                ") "
-                "VALUES ("
-                ":template_id, :version, :status, :parent_template_id, "
-                ":parent_version"
-                ")"
-            ),
-            {
-                "template_id": str(template_id),
-                "version": 1,
-                "status": "draft",
-                "parent_template_id": None,
-                "parent_version": None,
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO object_template_properties "
-                "("
-                "template_id, template_version, position, name, datatype_id, "
-                "datatype_version, required"
-                ") "
-                "VALUES ("
-                ":template_id, :template_version, :position, :name, "
-                ":datatype_id, :datatype_version, :required"
-                ")"
-            ),
-            {
-                "template_id": str(template_id),
-                "template_version": 1,
-                "position": 0,
-                "name": "hostname",
-                "datatype_id": str(datatype.id),
-                "datatype_version": version.version,
-                "required": True,
-            },
-        )
-        session.commit()
-
-        with pytest.raises(IntegrityError):
-            session.execute(
-                text(
-                    "DELETE FROM datatype_versions "
-                    "WHERE datatype_id = :datatype_id AND version = :version"
-                ),
-                {"datatype_id": str(datatype.id), "version": version.version},
-            )
-            session.commit()
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_repository_delete_maps_referenced_property_fk_failure_to_persistence_error(
-    tmp_path: Path,
-) -> None:
-    datatype, version = _hostname_pair()
-    template_id = UUID(int=102)
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'datatype_delete_fk_mapping.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        repo = SqlAlchemyDataTypeRepository(session)
-        repo.add(datatype)
-        repo.add_version(version)
-        session.execute(
-            text(
-                "INSERT INTO object_templates (id, namespace, name, description, abstract) "
-                "VALUES (:id, :namespace, :name, :description, :abstract)"
-            ),
-            {
-                "id": str(template_id),
-                "namespace": "network",
-                "name": "device",
-                "description": None,
-                "abstract": False,
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO object_template_versions "
-                "("
-                "template_id, version, status, parent_template_id, "
-                "parent_version"
-                ") "
-                "VALUES ("
-                ":template_id, :version, :status, :parent_template_id, "
-                ":parent_version"
-                ")"
-            ),
-            {
-                "template_id": str(template_id),
-                "version": 1,
-                "status": "draft",
-                "parent_template_id": None,
-                "parent_version": None,
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO object_template_properties "
-                "("
-                "template_id, template_version, position, name, datatype_id, "
-                "datatype_version, required"
-                ") "
-                "VALUES ("
-                ":template_id, :template_version, :position, :name, "
-                ":datatype_id, :datatype_version, :required"
-                ")"
-            ),
-            {
-                "template_id": str(template_id),
-                "template_version": 1,
-                "position": 0,
-                "name": "hostname",
-                "datatype_id": str(datatype.id),
-                "datatype_version": version.version,
-                "required": True,
-            },
-        )
-        session.commit()
-
-        with pytest.raises(DataTypePersistenceError, match="Datatype deletion failed."):
-            repo.delete(datatype.id)
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_sqlite_constraint_json_is_deterministic_text(tmp_path: Path) -> None:
-    datatype, version = _status_pair()
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'json.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        repo = SqlAlchemyDataTypeRepository(session)
-        repo.add(datatype)
-        repo.add_version(version)
-        stored = session.execute(
-            text(
-                "SELECT constraints_json FROM datatype_versions "
-                "WHERE datatype_id = :datatype_id AND version = :version"
-            ),
-            {"datatype_id": str(datatype.id), "version": 1},
-        ).scalar_one()
-    finally:
-        session.close()
-        engine.dispose()
-
-    assert stored == json.dumps(
-        [{"name": "enum", "value": ["active", "planned", "retired"]}],
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-
-@pytest.mark.parametrize(
-    ("constraints_json", "status", "base_type"),
-    [
-        ("{", "draft", "core.string"),
-        ('{"name":"minimum","value":1}', "draft", "core.string"),
-        ('[{"name":"minimum"}]', "draft", "core.string"),
-        ('[{"name":"unknown","value":1}]', "draft", "core.string"),
-        ("[]", "unknown", "core.string"),
-        ("[]", "draft", "core.unknown"),
-    ],
-)
-def test_sqlite_corrupt_version_rows_raise_persistence_error(
-    tmp_path: Path,
-    constraints_json: str,
-    status: str,
-    base_type: str,
-) -> None:
-    datatype = _datatype()
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'corrupt.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        session.execute(
-            text(
-                "INSERT INTO datatypes (id, namespace, name, description) "
-                "VALUES (:id, :namespace, :name, :description)"
-            ),
-            {
-                "id": str(datatype.id),
-                "namespace": datatype.namespace,
-                "name": datatype.name,
-                "description": datatype.description,
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO datatype_versions "
-                "(datatype_id, version, status, base_type, constraints_json) "
-                "VALUES (:datatype_id, :version, :status, :base_type, :constraints_json)"
-            ),
-            {
-                "datatype_id": str(datatype.id),
-                "version": 1,
-                "status": status,
-                "base_type": base_type,
-                "constraints_json": constraints_json,
-            },
-        )
-        session.commit()
-        repo = SqlAlchemyDataTypeRepository(session)
-        with pytest.raises(DataTypePersistenceError):
-            repo.get_version(datatype.id, 1)
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_sqlite_add_version_rejects_corrupt_mixed_base_type_lineage(tmp_path: Path) -> None:
-    datatype, v1 = _hostname_pair()
-    _, integer_version = _vlan_pair()
-    v3 = DataTypeVersion(
-        datatype_id=datatype.id,
-        version=3,
-        status=DataTypeVersionStatus.DRAFT,
-        base_type=v1.base_type,
-        constraints=v1.constraints,
-    )
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'corrupt_lineage.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        session.execute(
-            text(
-                "INSERT INTO datatypes (id, namespace, name, description) "
-                "VALUES (:id, :namespace, :name, :description)"
-            ),
-            {
-                "id": str(datatype.id),
-                "namespace": datatype.namespace,
-                "name": datatype.name,
-                "description": datatype.description,
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO datatype_versions "
-                "(datatype_id, version, status, base_type, constraints_json) "
-                "VALUES (:datatype_id, :version, :status, :base_type, :constraints_json)"
-            ),
-            {
-                "datatype_id": str(datatype.id),
-                "version": 1,
-                "status": "draft",
-                "base_type": v1.base_type.name,
-                "constraints_json": "[]",
-            },
-        )
-        session.execute(
-            text(
-                "INSERT INTO datatype_versions "
-                "(datatype_id, version, status, base_type, constraints_json) "
-                "VALUES (:datatype_id, :version, :status, :base_type, :constraints_json)"
-            ),
-            {
-                "datatype_id": str(datatype.id),
-                "version": 2,
-                "status": "draft",
-                "base_type": integer_version.base_type.name,
-                "constraints_json": "[]",
-            },
-        )
-        session.commit()
-
-        repo = SqlAlchemyDataTypeRepository(session)
-        with pytest.raises(DataTypePersistenceError):
-            repo.add_version(v3)
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_sqlite_invalid_uuid_row_raises_persistence_error(tmp_path: Path) -> None:
-    engine = create_sqlite_engine(f"sqlite:///{tmp_path / 'bad_uuid.sqlite3'}")
-    create_schema(engine)
-    session_factory = sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    try:
-        session.execute(
-            text(
-                "INSERT INTO datatypes (id, namespace, name, description) "
-                "VALUES ('not-a-uuid', 'network', 'hostname', NULL)"
-            )
-        )
-        session.commit()
-        repo = SqlAlchemyDataTypeRepository(session)
-        with pytest.raises(DataTypePersistenceError):
-            repo.get_by_name("network", "hostname")
-    finally:
-        session.close()
-        engine.dispose()
-
-
 def test_core_datatype_modules_remain_sqlalchemy_free() -> None:
     datatype_dir = Path("/home/alberto/NETAUTO/src/netauto/core/datatype")
 
@@ -1392,7 +829,7 @@ def test_core_datatype_modules_remain_sqlalchemy_free() -> None:
 
 
 def test_persistence_import_has_no_database_side_effects(tmp_path: Path) -> None:
-    database_file = tmp_path / "side_effect.sqlite3"
+    database_file = tmp_path / "side_effect.db"
 
     assert database_file.exists() is False
     importlib.import_module("netauto.persistence")

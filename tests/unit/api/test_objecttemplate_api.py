@@ -534,7 +534,7 @@ def test_create_component_schema_strictness(
         ),
     ],
 )
-def test_create_schema_strictness(
+def test_create_request_schema_strictness(
     client_context: tuple[
         TestClient,
         InMemoryDataTypeRepository,

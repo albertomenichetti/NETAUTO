@@ -7,15 +7,95 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection, Engine
-from tests.integration.persistence.test_postgresql_orm_schema import (
-    EXPECTED_CHECKS,
-    EXPECTED_INDEXES,
-    EXPECTED_PRIMARY_KEYS,
-    EXPECTED_TABLES,
-    EXPECTED_UNIQUE_CONSTRAINTS,
-)
 
 pytestmark = pytest.mark.postgresql
+
+EXPECTED_TABLES = {
+    "datatypes",
+    "datatype_versions",
+    "object_templates",
+    "object_template_versions",
+    "object_template_properties",
+    "object_template_components",
+    "relationship_definitions",
+    "relationships",
+    "objects",
+    "object_changes",
+    "object_components",
+}
+
+EXPECTED_PRIMARY_KEYS = {
+    "datatypes": {"id"},
+    "datatype_versions": {"datatype_id", "version"},
+    "object_templates": {"id"},
+    "object_template_versions": {"template_id", "version"},
+    "object_template_properties": {"template_id", "template_version", "name"},
+    "object_template_components": {"template_id", "template_version", "name"},
+    "relationship_definitions": {"id"},
+    "relationships": {"id"},
+    "objects": {"id"},
+    "object_changes": {"id"},
+    "object_components": {"child_object_id"},
+}
+
+EXPECTED_UNIQUE_CONSTRAINTS = {
+    "datatypes": {"uq_datatypes_name": ("namespace", "name")},
+    "object_templates": {"uq_object_templates_name": ("namespace", "name")},
+    "object_template_properties": {
+        "uq_object_template_properties_owner_position": (
+            "template_id",
+            "template_version",
+            "position",
+        )
+    },
+    "object_template_components": {
+        "uq_object_template_components_owner_position": (
+            "template_id",
+            "template_version",
+            "position",
+        )
+    },
+    "relationships": {
+        "uq_relationships_definition_source_target": (
+            "relationship_definition_id",
+            "source_object_id",
+            "target_object_id",
+        )
+    },
+}
+
+EXPECTED_CHECKS = {
+    "object_template_versions": {"ck_object_template_versions_parent_pair"},
+    "object_components": {
+        "ck_object_components_distinct_objects",
+        "ck_object_components_slot_name_not_empty",
+    },
+}
+
+EXPECTED_INDEXES = {
+    "object_template_versions": {
+        "ix_object_template_versions_parent": ("parent_template_id", "parent_version"),
+    },
+    "object_template_properties": {
+        "ix_object_template_properties_datatype_version": ("datatype_id", "datatype_version"),
+    },
+    "object_template_components": {
+        "ix_object_template_components_target_template": ("target_template_id",),
+    },
+    "objects": {
+        "ix_objects_template_version": ("template_id", "template_version"),
+    },
+    "object_changes": {
+        "ix_object_changes_object_id_occurred_at": ("object_id", "occurred_at"),
+    },
+    "object_components": {
+        "ix_object_components_parent_slot_child": (
+            "parent_object_id",
+            "slot_name",
+            "child_object_id",
+        ),
+    },
+}
 
 
 def test_alembic_upgrade_head_creates_current_schema_in_isolated_postgresql_namespace(

@@ -81,6 +81,7 @@ Current implementation fact:
 
 - PostgreSQL connectivity, engine support, and real integration-test
   infrastructure are implemented
+- PostgreSQL is the sole supported SQL backend
 - PostgreSQL is the default runtime backend
 - PostgreSQL is authoritative for integration and concurrency validation
 - Alembic baseline is implemented and certifies empty-schema PostgreSQL upgrade
@@ -102,12 +103,12 @@ Current implementation fact:
 - PostgreSQL guard UoWs are wired into the real FastAPI composition
 - API, application, and CLI acceptance baselines now run on PostgreSQL
 - PostgreSQL tests are not opt-in
-- SQLite remains transitional explicit compatibility only until M2.5.12
+- SQLite compatibility has been removed
+- no dual-backend SQL contract remains
 
 Accepted direction:
 
 - PostgreSQL becomes the authoritative and only intended supported SQL backend
-- SQLite is deprecated transitional code and scheduled for removal
 - Alembic moves before dogfooding and becomes the authoritative schema
   evolution mechanism
 - M3 dogfooding resumes only after the transactional foundation is real
@@ -210,6 +211,7 @@ Accepted direction:
 - remove `SQLITE_BUSY` retry behavior
 - remove SQLite-specific tests/docs/configuration
 - no supported dual-backend contract remains
+- complete
 
 ### M2.5.13 — Cross-plane binding inventory
 

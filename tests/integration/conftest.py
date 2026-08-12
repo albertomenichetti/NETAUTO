@@ -199,10 +199,7 @@ def postgresql_application_app(
     postgresql_clean_repository_session_factory: Callable[[], Session],
     postgresql_test_database_url: str,
 ) -> FastAPI:
-    return create_sqlalchemy_app(
-        postgresql_clean_repository_session_factory,
-        database_url=postgresql_test_database_url,
-    ).app
+    return create_sqlalchemy_app(postgresql_clean_repository_session_factory).app
 
 
 @pytest.fixture

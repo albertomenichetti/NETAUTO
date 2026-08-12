@@ -7,19 +7,19 @@ support dynamic infrastructure modeling through the API.
 
 ## Development Database
 
-PostgreSQL is the default runtime backend.
+PostgreSQL with `psycopg` is the only supported SQL backend.
 
 - `DATABASE_URL` overrides the runtime database URL
 - when `DATABASE_URL` is absent, the runtime default is
   `postgresql+psycopg://localhost/netauto`
 - PostgreSQL runtime/schema setup is Alembic-managed; migrate the configured
   database before starting the application
+- `DATABASE_URL` must use the `postgresql+psycopg` dialect
 - authoritative integration and full-suite validation require
   `TEST_DATABASE_URL`
 - PostgreSQL integration tests run in ordinary `uv run pytest`; the old
   `--run-postgresql` opt-in is gone
-- SQLite remains explicit transitional compatibility only until M2.5.12 and
-  can still be selected via `DATABASE_URL=sqlite:///...`
+- there is no SQLite compatibility backend
 
 Example URLs:
 

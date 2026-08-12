@@ -28,7 +28,7 @@ def _configure_postgresql_runtime(
 def _postgresql_app():
     assert _SESSION_FACTORY is not None
     assert _DATABASE_URL is not None
-    return create_sqlalchemy_app(_SESSION_FACTORY, database_url=_DATABASE_URL).app
+    return create_sqlalchemy_app(_SESSION_FACTORY).app
 
 
 @asynccontextmanager

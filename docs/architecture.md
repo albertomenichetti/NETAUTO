@@ -17,7 +17,6 @@ CLI
            -> Repository contracts
               -> Persistence
                    -> in-memory reference backend
-                   -> SQLAlchemy / SQLite implementation (current transitional code)
                    -> SQLAlchemy / PostgreSQL implementation
 ```
 
@@ -46,16 +45,9 @@ The model plane contains:
 
 All supported model-plane mutations execute under `MODEL_PLANE_GUARD`.
 
-On SQLite, that logical guard is currently realized by
-`SqliteModelWriteUnitOfWork`, which acquires `BEGIN IMMEDIATE` before the first
-decision read. That SQLite writer reservation is a backend-specific
-implementation detail of the current backend, not the cross-backend
-architecture.
-
 Accepted direction:
 
-- PostgreSQL is now the authoritative target backend for the project
-- SQLite remains only as transitional implementation code until M2.5.12
+- PostgreSQL is the authoritative and sole supported SQL backend
 - PostgreSQL realizes `MODEL_PLANE_GUARD` with a transaction-scoped advisory
   lock without redefining the architecture around one global database writer
   lock
@@ -83,14 +75,16 @@ Current implemented PostgreSQL persistence state:
   independent domains that can be held simultaneously
 - production/runtime composition now consumes `DATABASE_URL`
 - PostgreSQL is now the default runtime backend when `DATABASE_URL` is absent
-- explicit `postgresql+psycopg` `DATABASE_URL` composes the FastAPI
-  application with shared PostgreSQL SQLAlchemy repositories and UoWs, while
-  explicit `sqlite:///...` remains temporary compatibility only
+- `DATABASE_URL` must use the `postgresql+psycopg` dialect
+- FastAPI application composition uses shared PostgreSQL SQLAlchemy
+  repositories with `PostgresqlModelWriteUnitOfWork` for model mutations and
+  `PostgresqlOwnershipGraphWriteUnitOfWork` for supported ownership-topology
+  mutations
 - PostgreSQL runtime composition assumes an Alembic-migrated schema and does
   not call `create_schema(...)` or `create_all(...)`
 - ordinary PostgreSQL data-plane writes do not participate in either guard
 - no supported migration path exists from historical SQLite development
-  databases into PostgreSQL
+  databases into PostgreSQL; SQLite support has been removed
 
 ## Runtime Data Plane
 
@@ -138,8 +132,7 @@ Current unresolved concern identified for M2.5:
 
 - some data-plane workflows create or modify bindings that depend on mutable
   model-plane admission state
-- current SQLite behavior must not be treated as proof that those
-  cross-plane races are architecturally solved
+- current PostgreSQL coverage does not yet solve those cross-plane races
 - the exact cross-plane binding protocol is intentionally deferred to later
   M2.5 inventory/characterization/ADR slices
 
@@ -529,11 +522,9 @@ JSON remains in use for:
 - historical ObjectChange snapshots
 - DataTypeVersion constraint snapshots
 
-SQLite foreign keys are enabled in the engine factory.
-
 Current SQL backend status:
 
-- SQLite remains the default transitional application/runtime SQL backend
+- PostgreSQL with `psycopg` is the sole supported SQL backend
 - PostgreSQL connectivity, `psycopg` driver support, `DATABASE_URL`
   configuration, and generic SQLAlchemy engine construction are implemented
 - real PostgreSQL integration-test connectivity and isolated schema harnesses
@@ -547,29 +538,25 @@ Current SQL backend status:
 - the two PostgreSQL logical guards use distinct transaction-scoped advisory
   locks and are independently test-certified
 - production composition consumes `DATABASE_URL`
-- SQLite remains the default when `DATABASE_URL` is absent
-- explicit `postgresql+psycopg` `DATABASE_URL` composes the FastAPI
-  application with `PostgresqlModelWriteUnitOfWork` for model mutations and
-  `PostgresqlOwnershipGraphWriteUnitOfWork` for ownership-topology mutations
+- PostgreSQL is the default runtime backend when `DATABASE_URL` is absent
+- application composition has no SQLite branch
+- `PostgresqlModelWriteUnitOfWork` is used for model mutations
+- `PostgresqlOwnershipGraphWriteUnitOfWork` is used for supported
+  ownership-topology mutations
 - PostgreSQL application startup assumes the target schema has already been
   migrated through Alembic and does not run `create_schema(...)` or
   `create_all(...)`
-- application startup/runtime composition still remains deliberately SQLite by
-  default in this phase
 - cross-plane binding protocols are still pending later M2.5 work
-- PostgreSQL schema evolution now uses Alembic; the older recreate-after-
-  structural-change workflow applies only to transitional historical SQLite
-  development, not current PostgreSQL schema management
-- no supported migration path from historical SQLite development databases to
-  PostgreSQL exists
-
-Current startup behavior is explicit in the production composition module:
-`src/netauto/main.py` creates the SQLite engine and calls `create_schema(engine)`.
+- PostgreSQL schema evolution uses Alembic as the sole authoritative schema
+  mechanism
+- authoritative persistence, API, application, CLI, and concurrency tests use
+  PostgreSQL
+- SQLite support has been removed; no supported migration path from historical
+  SQLite development databases to PostgreSQL exists
 
 Accepted persistence direction:
 
 - PostgreSQL is the authoritative and only intended supported SQL backend
-- SQLite is deprecated transitional code and scheduled for removal in M2.5.12
 - NETAUTO does not commit to long-term SQLite/PostgreSQL feature parity
 - Alembic is the authoritative PostgreSQL schema-evolution mechanism
 - M3 dogfooding is blocked until the PostgreSQL transactional foundation closes
@@ -579,12 +566,12 @@ Accepted persistence direction:
 The in-memory repositories are reference implementations of persistence-neutral
 repository behavior.
 
-They are not SQL/SQLite emulators. They enforce shared repository semantics
+They are not SQL backend emulators. They enforce shared repository semantics
 such as lifecycle rules, duplicate/not-found behavior, deterministic ordering,
 and immutability rules, but they do not attempt to emulate:
 
 - foreign-key enforcement details
-- SQLite locking
+- PostgreSQL transaction/locking details
 - transaction isolation
 - SQL statement ordering
 - backend-specific corruption behavior
@@ -631,7 +618,6 @@ Current limitations that are intentionally not hidden:
 - PostgreSQL is the authoritative/default application/runtime SQL backend
 - PostgreSQL is the authoritative integration and concurrency validation
   backend
-- SQLite remains explicit legacy compatibility only until M2.5.12 removal
 - Alembic baseline exists, PostgreSQL repository parity is complete, and both
   PostgreSQL concurrency guards are implemented
 - a comprehensive integrity verifier is not implemented
@@ -644,8 +630,6 @@ Current limitations that are intentionally not hidden:
 - additional cross-plane binding races between data-plane admissions and
   concurrent model-plane lifecycle/delete activity have now been identified as
   distinct M2.5 work
-- SQLite's physical single-writer behavior is no longer treated as
-  authoritative architecture guidance
 
 ## Transition Note
 
@@ -658,8 +642,8 @@ and validation backend:
   schema that has already been migrated before startup
 - PostgreSQL repository, API, application, CLI, and concurrency integration
   coverage run in the ordinary test baseline
-- explicit `sqlite:///...` configuration still works as transitional
-  compatibility only until M2.5.12
+- SQLite runtime support, SQLite-specific writer UoWs, and SQLite-backed test
+  authority have been removed
 - later M2.5 slices still need to characterize and formalize unresolved
   cross-plane transactional admission rules using real PostgreSQL
   transactions

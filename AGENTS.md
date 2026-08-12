@@ -44,7 +44,6 @@ The CLI MUST NOT import application/domain services directly.
 - SQLAlchemy 2
 - PostgreSQL as the authoritative/default SQL backend
 - Alembic as the authoritative PostgreSQL schema-evolution mechanism
-- SQLite as transitional legacy compatibility pending M2.5.12 removal
 - Typer
 - HTTPX
 - pytest

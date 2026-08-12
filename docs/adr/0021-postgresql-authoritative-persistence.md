@@ -113,7 +113,15 @@ same stable NETAUTO advisory namespace:
 - key `1` -> `MODEL_PLANE_GUARD`
 - key `2` -> `OWNERSHIP_GRAPH_GUARD`
 
-Still unresolved after M2.5.9:
+M2.5.12 subsequently removed:
+
+- SQLite runtime/backend selection support
+- SQLite-specific writer unit-of-work implementations and retry paths
+- SQLite-backed test authority and legacy compatibility coverage
+
+PostgreSQL is now the sole supported SQL backend.
+
+Still unresolved after M2.5.12:
 
 - cross-plane binding protocols
 - later invariant-specific lock ordering and retry policy
