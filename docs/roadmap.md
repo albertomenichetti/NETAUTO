@@ -95,6 +95,8 @@ Current implementation fact:
   persistence is complete
 - PostgreSQL `MODEL_PLANE_GUARD` is implemented with a transaction-scoped
   advisory lock
+- PostgreSQL `OWNERSHIP_GRAPH_GUARD` is implemented with a distinct
+  transaction-scoped advisory lock
 - PostgreSQL is not yet the application/runtime backend
 
 Accepted direction:
@@ -180,6 +182,7 @@ Accepted direction:
 - implement only ownership-topology coordination
 - prove ownership-vs-ownership serialization
 - preserve logical independence from `MODEL_PLANE_GUARD`
+- complete
 
 ### M2.5.10 — PostgreSQL application composition
 

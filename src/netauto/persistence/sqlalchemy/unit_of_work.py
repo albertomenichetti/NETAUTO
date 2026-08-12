@@ -27,10 +27,12 @@ from netauto.persistence.sqlalchemy.relationship_repository import (
 )
 
 # Stable PostgreSQL advisory-lock namespace/domain keys for NETAUTO.
-# 0x4E455441 is the ASCII bytes for "NETA". Key 1 is reserved for
-# MODEL_PLANE_GUARD; M2.5.9 will use a distinct key for OWNERSHIP_GRAPH_GUARD.
+# 0x4E455441 is the ASCII bytes for "NETA".
+# Key 1 is reserved for MODEL_PLANE_GUARD.
+# Key 2 is reserved for OWNERSHIP_GRAPH_GUARD.
 _POSTGRESQL_ADVISORY_NAMESPACE_KEY = 0x4E455441
 _POSTGRESQL_MODEL_PLANE_GUARD_KEY = 1
+_POSTGRESQL_OWNERSHIP_GRAPH_GUARD_KEY = 2
 
 
 class _SqlAlchemyUnitOfWorkBase:
@@ -88,6 +90,27 @@ class SqlAlchemyUnitOfWork(_SqlAlchemyUnitOfWorkBase):
     """Ordinary SQLAlchemy unit of work."""
 
 
+def _ensure_postgresql_bind(session: Session) -> None:
+    bind = session.get_bind()
+    if bind.dialect.name != "postgresql":
+        raise RuntimeError("PostgreSQL advisory-guard unit of work requires a PostgreSQL bind.")
+
+
+def _try_acquire_postgresql_advisory_guard(session: Session, *, guard_key: int) -> bool:
+    return bool(
+        session.execute(
+            text(
+                "SELECT pg_try_advisory_xact_lock("
+                ":namespace_key, :guard_key)"
+            ),
+            {
+                "namespace_key": _POSTGRESQL_ADVISORY_NAMESPACE_KEY,
+                "guard_key": guard_key,
+            },
+        ).scalar_one()
+    )
+
+
 class PostgresqlModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
     """PostgreSQL-backed model-plane writer UoW using a transaction advisory lock."""
 
@@ -111,24 +134,14 @@ class PostgresqlModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
     def _ensure_postgresql_bind(self) -> None:
         if self._session is None:
             raise RuntimeError("Unit of work is not active.")
-        bind = self._session.get_bind()
-        if bind.dialect.name != "postgresql":
-            raise RuntimeError("PostgresqlModelWriteUnitOfWork requires a PostgreSQL bind.")
+        _ensure_postgresql_bind(self._session)
 
     def _try_acquire_model_plane_guard(self) -> bool:
         if self._session is None:
             raise RuntimeError("Unit of work is not active.")
-        return bool(
-            self._session.execute(
-                text(
-                    "SELECT pg_try_advisory_xact_lock("
-                    ":namespace_key, :guard_key)"
-                ),
-                {
-                    "namespace_key": _POSTGRESQL_ADVISORY_NAMESPACE_KEY,
-                    "guard_key": _POSTGRESQL_MODEL_PLANE_GUARD_KEY,
-                },
-            ).scalar_one()
+        return _try_acquire_postgresql_advisory_guard(
+            self._session,
+            guard_key=_POSTGRESQL_MODEL_PLANE_GUARD_KEY,
         )
 
     def _after_session_created(self) -> None:
@@ -140,6 +153,52 @@ class PostgresqlModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
                 break
             self._sleeper(self._retry_delay_seconds)
         raise ModelWriteUnavailable("Model mutation is temporarily unavailable.")
+
+
+class PostgresqlOwnershipGraphWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
+    """PostgreSQL-backed ownership-topology writer UoW using a transaction advisory lock."""
+
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        *,
+        max_guard_attempts: int = 2,
+        retry_delay_seconds: float = 0.1,
+        sleeper: Callable[[float], None] = _sleep,
+    ) -> None:
+        super().__init__(session_factory)
+        if max_guard_attempts < 1:
+            raise ValueError("max_guard_attempts must be at least 1.")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must be non-negative.")
+        self._max_guard_attempts = max_guard_attempts
+        self._retry_delay_seconds = retry_delay_seconds
+        self._sleeper = sleeper
+
+    def _ensure_postgresql_bind(self) -> None:
+        if self._session is None:
+            raise RuntimeError("Unit of work is not active.")
+        _ensure_postgresql_bind(self._session)
+
+    def _try_acquire_ownership_graph_guard(self) -> bool:
+        if self._session is None:
+            raise RuntimeError("Unit of work is not active.")
+        return _try_acquire_postgresql_advisory_guard(
+            self._session,
+            guard_key=_POSTGRESQL_OWNERSHIP_GRAPH_GUARD_KEY,
+        )
+
+    def _after_session_created(self) -> None:
+        self._ensure_postgresql_bind()
+        for attempt in range(1, self._max_guard_attempts + 1):
+            if self._try_acquire_ownership_graph_guard():
+                return
+            if attempt == self._max_guard_attempts:
+                break
+            self._sleeper(self._retry_delay_seconds)
+        raise OwnershipGraphWriteUnavailable(
+            "Ownership topology mutation is temporarily unavailable."
+        )
 
 
 def _is_sqlite_busy(error: OperationalError) -> bool:

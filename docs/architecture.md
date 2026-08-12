@@ -59,7 +59,8 @@ Accepted direction:
 - PostgreSQL realizes `MODEL_PLANE_GUARD` with a transaction-scoped advisory
   lock without redefining the architecture around one global database writer
   lock
-- PostgreSQL `OWNERSHIP_GRAPH_GUARD` remains pending
+- PostgreSQL realizes `OWNERSHIP_GRAPH_GUARD` with a distinct
+  transaction-scoped advisory lock
 
 Current implemented PostgreSQL persistence state:
 
@@ -73,9 +74,16 @@ Current implemented PostgreSQL persistence state:
 - `PostgresqlModelWriteUnitOfWork` implements `MODEL_PLANE_GUARD` with
   `pg_try_advisory_xact_lock(...)` and bounded acquisition that maps
   exhaustion to `ModelWriteUnavailable`
+- `PostgresqlOwnershipGraphWriteUnitOfWork` implements
+  `OWNERSHIP_GRAPH_GUARD` with a distinct `pg_try_advisory_xact_lock(...)`
+  key and bounded acquisition that maps exhaustion to
+  `OwnershipGraphWriteUnavailable`
+- supported ownership-topology writers serialize with each other on
+  PostgreSQL, while `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` remain
+  independent domains that can be held simultaneously
 - ordinary PostgreSQL data-plane writes do not participate in this guard
 - application/runtime composition still remains on SQLite
-- PostgreSQL `OWNERSHIP_GRAPH_GUARD` remains pending
+- ordinary PostgreSQL data-plane writes do not participate in either guard
 - no supported migration path exists from historical SQLite development
   databases into PostgreSQL
 
@@ -111,6 +119,11 @@ There is deliberately no global logical database writer lock.
 - `attach_component`
 - `detach_component`
 - `delete_object` / subtree delete
+
+On PostgreSQL, that guard now uses its own transaction-scoped advisory key
+distinct from `MODEL_PLANE_GUARD`. Supported ownership-topology writers
+serialize with each other without becoming a global database-writer lock, and
+model-plane and ownership-topology guarded transactions can coexist.
 
 Ordinary Object content mutation does not acquire either logical guard.
 `update_object` and `migrate_objects` rely on optimistic conditional

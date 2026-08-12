@@ -89,6 +89,22 @@ structural transaction. Concurrent supported `attach_component`,
 `detach_component`, and `delete_object` workflows cannot invalidate subtree
 discovery mid-transaction without first waiting for the guard.
 
+Current PostgreSQL realization:
+
+- `PostgresqlOwnershipGraphWriteUnitOfWork`
+- exclusive transaction-scoped advisory locking via
+  `pg_try_advisory_xact_lock(...)`
+- stable dedicated ownership advisory key distinct from
+  `MODEL_PLANE_GUARD`
+- acquisition before ownership decision reads
+- supported `attach_component`, `detach_component`, and `delete_object`
+  topology writers serialize through that guard
+- automatic release at transaction end
+- raw SQL writes or unsupported workflows that bypass the supported
+  application path still bypass the semantic guard
+- the physical schema still does not by itself forbid all multi-node
+  ownership cycles
+
 ## Consequences
 
 - The database physically guarantees endpoint existence, one owner per child,

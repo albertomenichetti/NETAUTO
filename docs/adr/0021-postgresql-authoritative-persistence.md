@@ -88,11 +88,10 @@ verified against PostgreSQL rather than deferred.
 
 This ADR does not yet decide:
 
-- the exact PostgreSQL implementation of `OWNERSHIP_GRAPH_GUARD`
 - the exact cross-plane model-binding protocol
-- whether individual invariants use row locks, advisory locks,
-  `SERIALIZABLE`, or a combination
-- final lock ordering
+- whether individual invariants beyond the two implemented logical guards use
+  row locks, advisory locks, `SERIALIZABLE`, or a combination
+- final lock ordering for later cross-plane protocols
 - retry policy for PostgreSQL serialization or deadlock failures
 - final transaction isolation level for all workflows
 
@@ -104,8 +103,17 @@ After acceptance of this ADR, M2.5.8 resolved the PostgreSQL realization of
 `MODEL_PLANE_GUARD` to an exclusive transaction-level advisory lock using
 `pg_try_advisory_xact_lock(...)`.
 
-Still unresolved after M2.5.8:
+M2.5.9 now resolves the PostgreSQL realization of
+`OWNERSHIP_GRAPH_GUARD` to a distinct exclusive transaction-level advisory
+lock using `pg_try_advisory_xact_lock(...)`.
 
-- the exact PostgreSQL implementation of `OWNERSHIP_GRAPH_GUARD`
+The two implemented guard domains now use distinct advisory keys within the
+same stable NETAUTO advisory namespace:
+
+- key `1` -> `MODEL_PLANE_GUARD`
+- key `2` -> `OWNERSHIP_GRAPH_GUARD`
+
+Still unresolved after M2.5.9:
+
 - cross-plane binding protocols
 - later invariant-specific lock ordering and retry policy

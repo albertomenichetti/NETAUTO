@@ -114,6 +114,24 @@ at the same time.
 - `detach_component`
 - `delete_object` / subtree delete
 
+PostgreSQL now realizes this using transaction-scoped advisory locking with:
+
+- shared NETAUTO advisory namespace key
+- dedicated ownership advisory key `2`
+- acquisition before the first ownership decision read
+- bounded acquisition retries only
+- exhaustion mapping to `OwnershipGraphWriteUnavailable`
+- automatic release at transaction end
+
+`MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` are therefore both logically
+and physically independent on PostgreSQL:
+
+- model-plane advisory key `1`
+- ownership-topology advisory key `2`
+
+Real PostgreSQL tests now prove those two guards can be held simultaneously on
+distinct transactions.
+
 SQLite currently realizes this guard using `BEGIN IMMEDIATE` before the first
 decision read in the structural transaction.
 
@@ -181,9 +199,10 @@ Consequently:
 Current implementation status:
 
 - PostgreSQL `MODEL_PLANE_GUARD` is implemented
-- PostgreSQL `OWNERSHIP_GRAPH_GUARD` remains pending for M2.5.9
+- PostgreSQL `OWNERSHIP_GRAPH_GUARD` is implemented with a distinct advisory
+  key
 - no cross-plane binding protocol is implied by the `MODEL_PLANE_GUARD`
-  realization alone
+  and `OWNERSHIP_GRAPH_GUARD` realizations alone
 
 Newly identified scope boundary:
 

@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from netauto.application.objecttemplate import ObjectTemplateApplicationService
 from netauto.application.unit_of_work import ModelWriteUnavailable
