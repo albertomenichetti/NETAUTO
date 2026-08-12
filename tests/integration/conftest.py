@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+import os
+from collections.abc import Generator
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import Engine, text
+from sqlalchemy.engine import URL, Connection, make_url
+
+from netauto.persistence.sqlalchemy.database import create_database_engine
+
+
+def _get_test_database_url() -> str:
+    database_url = os.environ.get("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for PostgreSQL integration tests")
+    return database_url
+
+
+def _validated_postgresql_test_url() -> URL:
+    database_url = _get_test_database_url()
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql" or url.get_driver_name() != "psycopg":
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL must use the postgresql+psycopg dialect"
+        )
+    return url
+
+
+def _schema_name() -> str:
+    return f"netauto_test_{uuid4().hex}"
+
+
+@pytest.fixture(scope="session")
+def postgresql_test_database_url() -> str:
+    _validated_postgresql_test_url()
+    return _get_test_database_url()
+
+
+@pytest.fixture(scope="session")
+def postgresql_engine(postgresql_test_database_url: str) -> Generator[Engine, None, None]:
+    engine = create_database_engine(postgresql_test_database_url)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def postgresql_schema(postgresql_engine: Engine) -> Generator[str, None, None]:
+    schema_name = _schema_name()
+    quoted_schema = _quoted_identifier(postgresql_engine, schema_name)
+    with postgresql_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(text(f"CREATE SCHEMA {quoted_schema}"))
+    try:
+        yield schema_name
+    finally:
+        with postgresql_engine.connect().execution_options(
+            isolation_level="AUTOCOMMIT"
+        ) as connection:
+            connection.execute(text(f"DROP SCHEMA {quoted_schema} CASCADE"))
+            exists_after_drop = connection.execute(
+                text("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = :schema_name)"),
+                {"schema_name": schema_name},
+            ).scalar_one()
+        assert exists_after_drop is False
+
+
+@pytest.fixture
+def postgresql_connection(
+    postgresql_engine: Engine,
+    postgresql_schema: str,
+) -> Generator[Connection, None, None]:
+    quoted_schema = _quoted_identifier(postgresql_engine, postgresql_schema)
+    connection = postgresql_engine.connect().execution_options(
+        isolation_level="AUTOCOMMIT"
+    )
+    connection.execute(text(f"SET search_path TO {quoted_schema}"))
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def _quoted_identifier(engine: Engine, identifier: str) -> str:
+    preparer = engine.dialect.identifier_preparer
+    return preparer.quote_identifier(identifier)
