@@ -504,8 +504,8 @@ Current SQL backend status:
 - Alembic baseline migration infrastructure is implemented for PostgreSQL
 - DataType and ObjectTemplate SQLAlchemy repository parity is established on
   PostgreSQL
-- Object/ObjectChange/ComponentMembership repository parity remains pending
-  M2.5.6
+- Object, ObjectChange, and ComponentMembership SQLAlchemy repository parity
+  is established on PostgreSQL
 - RelationshipDefinition/Relationship repository parity remains pending M2.5.7
 - PostgreSQL model-plane concurrency guard work remains pending M2.5.8
 - current development recreates the database after structural schema changes
@@ -582,8 +582,8 @@ Current limitations that are intentionally not hidden:
 - SQLite remains the current application/runtime SQL backend
 - PostgreSQL is implemented only as persistence infrastructure in this phase;
   application/FastAPI/CLI runtime composition has not switched yet
-- Alembic baseline exists, but repository parity beyond DataType/ObjectTemplate
-  is still pending
+- Alembic baseline exists, but Relationship repository parity and PostgreSQL
+  concurrency guards are still pending
 - a comprehensive integrity verifier is not implemented
 - raw SQL can bypass some semantic invariants
 - multi-node ownership cycles are not declaratively impossible in SQL

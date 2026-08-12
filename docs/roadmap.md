@@ -86,7 +86,8 @@ Current implementation fact:
   to the current ORM schema
 - DataType repository parity on PostgreSQL is complete
 - ObjectTemplate repository parity on PostgreSQL is complete
-- Object-plane repository parity remains next in M2.5.6
+- Object, ObjectChange, and ComponentMembership repository parity on
+  PostgreSQL are complete
 - Relationship repository parity remains pending M2.5.7
 
 Accepted direction:
@@ -149,6 +150,7 @@ Accepted direction:
 - ComponentMembership
 - PostgreSQL integration coverage
 - no new concurrency semantics
+- complete
 
 ### M2.5.7 — Relationship repository parity
 
