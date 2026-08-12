@@ -79,9 +79,15 @@ persistence direction of the project before any dogfooding work resumes.
 
 Current implementation fact:
 
-- SQLite is still the only SQL backend physically implemented in the codebase
+- PostgreSQL connectivity, engine support, and real integration-test
+  infrastructure are implemented
 - PostgreSQL is not yet the application/runtime backend
-- Alembic baseline is now implemented
+- Alembic baseline is implemented and certifies empty-schema PostgreSQL upgrade
+  to the current ORM schema
+- DataType repository parity on PostgreSQL is complete
+- ObjectTemplate repository parity on PostgreSQL is complete
+- Object-plane repository parity remains next in M2.5.6
+- Relationship repository parity remains pending M2.5.7
 
 Accepted direction:
 
@@ -134,6 +140,7 @@ Accepted direction:
 - ObjectTemplate repositories
 - PostgreSQL integration coverage
 - no new concurrency behavior
+- complete
 
 ### M2.5.6 — Object-plane repository parity
 

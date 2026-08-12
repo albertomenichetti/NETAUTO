@@ -496,13 +496,19 @@ SQLite foreign keys are enabled in the engine factory.
 
 Current SQL backend status:
 
-- SQLite is the only SQL backend physically implemented in the codebase
-- PostgreSQL is not implemented yet
-- Alembic baseline migration infrastructure is now implemented for PostgreSQL
-- repository/runtime parity on PostgreSQL is not implemented yet
+- SQLite remains the current application/runtime SQL backend
+- PostgreSQL connectivity, `psycopg` driver support, `DATABASE_URL`
+  configuration, and generic SQLAlchemy engine construction are implemented
+- real PostgreSQL integration-test connectivity and isolated schema harnesses
+  are implemented
+- Alembic baseline migration infrastructure is implemented for PostgreSQL
+- DataType and ObjectTemplate SQLAlchemy repository parity is established on
+  PostgreSQL
+- Object/ObjectChange/ComponentMembership repository parity remains pending
+  M2.5.6
+- RelationshipDefinition/Relationship repository parity remains pending M2.5.7
+- PostgreSQL model-plane concurrency guard work remains pending M2.5.8
 - current development recreates the database after structural schema changes
-- `psycopg` dependency support, `DATABASE_URL` configuration, and generic
-  SQLAlchemy engine construction now exist as transitional infrastructure
 - application startup still remains deliberately on SQLite in this phase
 - no supported migration path from existing SQLite development databases to
   PostgreSQL exists
@@ -573,9 +579,11 @@ The CLI remains a REST client and currently has top-level groups:
 
 Current limitations that are intentionally not hidden:
 
-- SQLite remains the only SQL backend implemented in the current code
-- PostgreSQL is not implemented yet
-- Alembic is not implemented yet
+- SQLite remains the current application/runtime SQL backend
+- PostgreSQL is implemented only as persistence infrastructure in this phase;
+  application/FastAPI/CLI runtime composition has not switched yet
+- Alembic baseline exists, but repository parity beyond DataType/ObjectTemplate
+  is still pending
 - a comprehensive integrity verifier is not implemented
 - raw SQL can bypass some semantic invariants
 - multi-node ownership cycles are not declaratively impossible in SQL
