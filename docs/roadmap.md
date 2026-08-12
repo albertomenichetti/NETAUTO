@@ -97,7 +97,6 @@ Current implementation fact:
   advisory lock
 - PostgreSQL `OWNERSHIP_GRAPH_GUARD` is implemented with a distinct
   transaction-scoped advisory lock
-- PostgreSQL is not yet the application/runtime backend
 
 Accepted direction:
 

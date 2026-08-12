@@ -81,7 +81,6 @@ Current implemented PostgreSQL persistence state:
 - supported ownership-topology writers serialize with each other on
   PostgreSQL, while `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` remain
   independent domains that can be held simultaneously
-- ordinary PostgreSQL data-plane writes do not participate in this guard
 - application/runtime composition still remains on SQLite
 - ordinary PostgreSQL data-plane writes do not participate in either guard
 - no supported migration path exists from historical SQLite development
@@ -533,16 +532,21 @@ Current SQL backend status:
   configuration, and generic SQLAlchemy engine construction are implemented
 - real PostgreSQL integration-test connectivity and isolated schema harnesses
   are implemented
-- Alembic baseline migration infrastructure is implemented for PostgreSQL
-- DataType and ObjectTemplate SQLAlchemy repository parity is established on
-  PostgreSQL
-- Object, ObjectChange, and ComponentMembership SQLAlchemy repository parity
-  is established on PostgreSQL
-- RelationshipDefinition/Relationship repository parity remains pending M2.5.7
-- PostgreSQL model-plane concurrency guard work remains pending M2.5.8
-- current development recreates the database after structural schema changes
-- application startup still remains deliberately on SQLite in this phase
-- no supported migration path from existing SQLite development databases to
+- Alembic is implemented and authoritative for PostgreSQL schema creation
+- PostgreSQL SQLAlchemy repository parity is complete for `DataType`,
+  `ObjectTemplate`, `Object`, `ObjectChange`, `ComponentMembership`,
+  `RelationshipDefinition`, and `Relationship`
+- PostgreSQL `MODEL_PLANE_GUARD` is implemented
+- PostgreSQL `OWNERSHIP_GRAPH_GUARD` is implemented
+- the two PostgreSQL logical guards use distinct transaction-scoped advisory
+  locks and are independently test-certified
+- application startup/runtime composition still remains deliberately SQLite in
+  this phase
+- cross-plane binding protocols are still pending later M2.5 work
+- PostgreSQL schema evolution now uses Alembic; the older recreate-after-
+  structural-change workflow applies only to transitional historical SQLite
+  development, not current PostgreSQL schema management
+- no supported migration path from historical SQLite development databases to
   PostgreSQL exists
 
 Current startup behavior is explicit in the production composition module:
