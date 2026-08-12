@@ -16,6 +16,7 @@ from netauto.core.objecttemplate import (
 from netauto.core.relationship import (
     Relationship,
     RelationshipAlreadyExists,
+    RelationshipDefinitionPersistenceError,
     RelationshipNotFound,
     RelationshipPersistenceError,
 )
@@ -549,11 +550,11 @@ def test_postgresql_relationship_list_incident_to_objects_semantics(
 
     assert repo.list_incident_to_objects(set()) == ()
     assert repo.list_incident_to_objects(
-        {
+        [
             subtree_source.id,
             subtree_child.id,
             subtree_source.id,
-        }
+        ]
     ) == (outgoing, incoming, internal, self_link)
 
 
@@ -579,7 +580,7 @@ def test_postgresql_relationship_restrict_semantics(
     postgresql_model_session.commit()
 
     with postgresql_model_session.begin_nested():
-        with pytest.raises(Exception):
+        with pytest.raises(RelationshipDefinitionPersistenceError):
             definition_repo.delete(definition_id)
 
     source_row = postgresql_model_session.get(ObjectRow, str(source_object.id))
