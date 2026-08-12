@@ -88,7 +88,12 @@ Current implementation fact:
 - ObjectTemplate repository parity on PostgreSQL is complete
 - Object, ObjectChange, and ComponentMembership repository parity on
   PostgreSQL are complete
-- Relationship repository parity remains pending M2.5.7
+- RelationshipDefinition and runtime Relationship repository parity on
+  PostgreSQL are complete
+- PostgreSQL repository parity across current DataType/ObjectTemplate/Object/
+  ObjectChange/ComponentMembership/RelationshipDefinition/Relationship
+  persistence is complete
+- PostgreSQL is not yet the application/runtime backend
 
 Accepted direction:
 
@@ -157,6 +162,7 @@ Accepted direction:
 - RelationshipDefinition
 - runtime Relationship
 - PostgreSQL integration coverage
+- complete
 
 ### M2.5.8 — PostgreSQL MODEL_PLANE_GUARD
 

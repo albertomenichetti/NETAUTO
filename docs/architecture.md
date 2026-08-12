@@ -18,7 +18,7 @@ CLI
               -> Persistence
                    -> in-memory reference backend
                    -> SQLAlchemy / SQLite implementation (current transitional code)
-                   -> SQLAlchemy / PostgreSQL implementation (accepted target, not yet implemented)
+                   -> SQLAlchemy / PostgreSQL implementation
 ```
 
 Key rules:
@@ -59,6 +59,20 @@ Accepted direction:
 - PostgreSQL must realize the same logical model-plane guard without
   redefining the architecture around one global database writer lock
 - the exact PostgreSQL primitive remains intentionally undecided at this stage
+
+Current implemented PostgreSQL persistence state:
+
+- PostgreSQL connectivity, engine construction, and real integration-test
+  harnesses are implemented
+- Alembic is the authoritative PostgreSQL schema creation mechanism and a
+  baseline migration exists for the current schema
+- shared SQLAlchemy repository parity is established on PostgreSQL for
+  `DataType`, `ObjectTemplate`, `Object`, `ObjectChange`,
+  `ComponentMembership`, `RelationshipDefinition`, and `Relationship`
+- application/runtime composition still remains on SQLite
+- PostgreSQL `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` remain pending
+- no supported migration path exists from historical SQLite development
+  databases into PostgreSQL
 
 ## Runtime Data Plane
 

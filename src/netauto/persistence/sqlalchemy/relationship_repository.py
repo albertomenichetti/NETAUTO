@@ -23,6 +23,11 @@ from netauto.persistence.sqlalchemy.models import RelationshipDefinitionRow, Rel
 
 
 def _is_duplicate_relationship_integrity_error(error: IntegrityError) -> bool:
+    original_error = getattr(error, "orig", None)
+    sqlstate = getattr(original_error, "sqlstate", None)
+    if sqlstate == "23505":
+        return True
+
     message = str(getattr(error, "orig", error))
     if "UNIQUE constraint failed: relationships.id" in message:
         return True
