@@ -34,10 +34,13 @@ def test_postgresql_harness_smoke(
     ).scalar_one()
     assert schema_exists is True
 
-    postgresql_connection.execute(text("CREATE TABLE harness_probe (value integer NOT NULL)"))
-    postgresql_connection.execute(text("INSERT INTO harness_probe (value) VALUES (1)"))
-
-    stored_value = postgresql_connection.execute(
-        text("SELECT value FROM harness_probe")
-    ).scalar_one()
-    assert stored_value == 1
+    probe_name = "harness_probe_smoke"
+    postgresql_connection.execute(text(f"CREATE TABLE {probe_name} (value integer NOT NULL)"))
+    try:
+        postgresql_connection.execute(text(f"INSERT INTO {probe_name} (value) VALUES (1)"))
+        stored_value = postgresql_connection.execute(
+            text(f"SELECT value FROM {probe_name}")
+        ).scalar_one()
+        assert stored_value == 1
+    finally:
+        postgresql_connection.execute(text(f"DROP TABLE {probe_name}"))

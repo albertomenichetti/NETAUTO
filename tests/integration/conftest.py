@@ -8,6 +8,8 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.engine import URL, Connection, make_url
 
+import netauto.persistence.sqlalchemy.models  # noqa: F401
+from netauto.persistence.sqlalchemy.base import Base
 from netauto.persistence.sqlalchemy.database import create_database_engine
 
 
@@ -72,17 +74,43 @@ def postgresql_connection(
     postgresql_engine: Engine,
     postgresql_schema: str,
 ) -> Generator[Connection, None, None]:
-    quoted_schema = _quoted_identifier(postgresql_engine, postgresql_schema)
     connection = postgresql_engine.connect().execution_options(
         isolation_level="AUTOCOMMIT"
     )
-    connection.execute(text(f"SET search_path TO {quoted_schema}"))
+    _set_search_path(connection, postgresql_engine, postgresql_schema)
     try:
         yield connection
     finally:
         connection.close()
 
 
+@pytest.fixture(scope="session")
+def postgresql_orm_schema(
+    postgresql_engine: Engine,
+    postgresql_schema: str,
+) -> Generator[str, None, None]:
+    before_public_tables = set(_inspector_table_names(postgresql_engine, schema="public"))
+    with postgresql_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        _set_search_path(connection, postgresql_engine, postgresql_schema)
+        Base.metadata.create_all(connection)
+
+    after_public_tables = set(_inspector_table_names(postgresql_engine, schema="public"))
+    assert after_public_tables == before_public_tables
+
+    yield postgresql_schema
+
+
 def _quoted_identifier(engine: Engine, identifier: str) -> str:
     preparer = engine.dialect.identifier_preparer
     return preparer.quote_identifier(identifier)
+
+
+def _set_search_path(connection: Connection, engine: Engine, schema: str) -> None:
+    quoted_schema = _quoted_identifier(engine, schema)
+    connection.execute(text(f"SET search_path TO {quoted_schema}"))
+
+
+def _inspector_table_names(engine: Engine, *, schema: str) -> list[str]:
+    from sqlalchemy import inspect
+
+    return inspect(engine).get_table_names(schema=schema)
