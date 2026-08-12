@@ -557,8 +557,7 @@ Accepted persistence direction:
 - PostgreSQL is the authoritative and only intended supported SQL backend
 - SQLite is deprecated transitional code and scheduled for removal in M2.5.12
 - NETAUTO does not commit to long-term SQLite/PostgreSQL feature parity
-- Alembic moves before dogfooding and will become the authoritative schema
-  evolution mechanism in M2.5.4
+- Alembic is the authoritative PostgreSQL schema-evolution mechanism
 - M3 dogfooding is blocked until the PostgreSQL transactional foundation closes
 
 ## In-Memory Persistence
