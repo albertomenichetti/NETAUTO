@@ -81,7 +81,12 @@ Current implemented PostgreSQL persistence state:
 - supported ownership-topology writers serialize with each other on
   PostgreSQL, while `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` remain
   independent domains that can be held simultaneously
-- application/runtime composition still remains on SQLite
+- production/runtime composition now consumes `DATABASE_URL`
+- SQLite remains the default runtime backend when `DATABASE_URL` is absent
+- explicit `postgresql+psycopg` `DATABASE_URL` composes the FastAPI
+  application with shared PostgreSQL SQLAlchemy repositories and UoWs
+- PostgreSQL runtime composition assumes an Alembic-migrated schema and does
+  not call `create_schema(...)` or `create_all(...)`
 - ordinary PostgreSQL data-plane writes do not participate in either guard
 - no supported migration path exists from historical SQLite development
   databases into PostgreSQL
@@ -540,8 +545,16 @@ Current SQL backend status:
 - PostgreSQL `OWNERSHIP_GRAPH_GUARD` is implemented
 - the two PostgreSQL logical guards use distinct transaction-scoped advisory
   locks and are independently test-certified
-- application startup/runtime composition still remains deliberately SQLite in
-  this phase
+- production composition consumes `DATABASE_URL`
+- SQLite remains the default when `DATABASE_URL` is absent
+- explicit `postgresql+psycopg` `DATABASE_URL` composes the FastAPI
+  application with `PostgresqlModelWriteUnitOfWork` for model mutations and
+  `PostgresqlOwnershipGraphWriteUnitOfWork` for ownership-topology mutations
+- PostgreSQL application startup assumes the target schema has already been
+  migrated through Alembic and does not run `create_schema(...)` or
+  `create_all(...)`
+- application startup/runtime composition still remains deliberately SQLite by
+  default in this phase
 - cross-plane binding protocols are still pending later M2.5 work
 - PostgreSQL schema evolution now uses Alembic; the older recreate-after-
   structural-change workflow applies only to transitional historical SQLite

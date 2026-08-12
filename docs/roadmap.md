@@ -97,6 +97,9 @@ Current implementation fact:
   advisory lock
 - PostgreSQL `OWNERSHIP_GRAPH_GUARD` is implemented with a distinct
   transaction-scoped advisory lock
+- application composition can now run on PostgreSQL via `DATABASE_URL`
+- PostgreSQL guard UoWs are wired into the real FastAPI composition
+- default runtime composition remains transitional SQLite until M2.5.11
 
 Accepted direction:
 
@@ -188,6 +191,7 @@ Accepted direction:
 - wire application/FastAPI/UoWs to PostgreSQL
 - real API smoke coverage
 - SQLite not removed yet
+- complete
 
 ### M2.5.11 — PostgreSQL becomes authoritative runtime/test backend
 

@@ -1,26 +1,6 @@
-from sqlalchemy.orm import sessionmaker
+from netauto.composition import create_runtime_application
+from netauto.config import get_database_url
 
-from netauto.api.app import create_app
-from netauto.persistence.sqlalchemy.database import (
-    create_schema,
-    create_sqlite_engine,
-)
-from netauto.persistence.sqlalchemy.unit_of_work import (
-    SqlAlchemyUnitOfWork,
-    SqliteModelWriteUnitOfWork,
-    SqliteOwnershipGraphWriteUnitOfWork,
-)
-
-engine = create_sqlite_engine("sqlite:///netauto.sqlite3")
-create_schema(engine)
-
-session_factory = sessionmaker(
-    engine,
-    expire_on_commit=False,
-)
-
-app = create_app(
-    lambda: SqlAlchemyUnitOfWork(session_factory),
-    model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
-    ownership_graph_uow_factory=lambda: SqliteOwnershipGraphWriteUnitOfWork(session_factory),
-)
+runtime = create_runtime_application(get_database_url())
+engine = runtime.engine
+app = runtime.app
