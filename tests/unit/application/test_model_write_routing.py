@@ -28,8 +28,10 @@ from netauto.core.datatype import (
     DataTypeVersionStatus,
     PrimitiveTypeRegistry,
 )
+from netauto.core.object import Object
 from netauto.core.objecttemplate import (
     ObjectTemplate,
+    ObjectTemplateComponent,
     ObjectTemplateProperty,
     ObjectTemplateVersion,
     ObjectTemplateVersionRef,
@@ -562,6 +564,7 @@ def test_create_app_wires_model_plane_and_runtime_services_to_expected_factories
 ) -> None:
     ordinary_uow = _full_uow()
     model_uow = _full_uow()
+    ownership_uow = _full_uow()
 
     def ordinary() -> FullFakeUnitOfWork:
         return ordinary_uow
@@ -569,7 +572,14 @@ def test_create_app_wires_model_plane_and_runtime_services_to_expected_factories
     def model() -> FullFakeUnitOfWork:
         return model_uow
 
-    app: FastAPI = create_app(ordinary, model_write_uow_factory=model)
+    def ownership() -> FullFakeUnitOfWork:
+        return ownership_uow
+
+    app: FastAPI = create_app(
+        ordinary,
+        model_write_uow_factory=model,
+        ownership_graph_uow_factory=ownership,
+    )
 
     assert app.state.datatype_service._uow_factory is ordinary
     assert app.state.datatype_service._model_write_uow_factory is model
@@ -578,6 +588,7 @@ def test_create_app_wires_model_plane_and_runtime_services_to_expected_factories
     assert app.state.relationship_definition_service._uow_factory is ordinary
     assert app.state.relationship_definition_service._model_write_uow_factory is model
     assert app.state.object_service._uow_factory is ordinary
+    assert app.state.object_service._ownership_graph_uow_factory is ownership
     assert app.state.relationship_service._uow_factory is ordinary
 
 
@@ -647,16 +658,25 @@ def test_runtime_services_remain_on_ordinary_factory_only() -> None:
         _template_version(other_template.id, version=1, status=ObjectTemplateVersionStatus.DRAFT)
     )
     uow.object_templates.replace_version(other_template_v1)
-    created = ObjectApplicationService(ordinary).create_object(
+    created = ObjectApplicationService(
+        ordinary,
+        ownership_graph_uow_factory=ordinary,
+    ).create_object(
         template_id=template.id,
         template_version=1,
         properties={"hostname": "router-01"},
     )
-    updated = ObjectApplicationService(ordinary).update_object(
+    updated = ObjectApplicationService(
+        ordinary,
+        ownership_graph_uow_factory=ordinary,
+    ).update_object(
         object_id=created.id,
         properties={"hostname": "router-02"},
     )
-    migrated = ObjectApplicationService(ordinary).migrate_objects(
+    migrated = ObjectApplicationService(
+        ordinary,
+        ownership_graph_uow_factory=ordinary,
+    ).migrate_objects(
         template_id=template.id,
         source_version=1,
         target_version=2,
@@ -673,7 +693,10 @@ def test_runtime_services_remain_on_ordinary_factory_only() -> None:
     uow.relationship_definitions.add(definition)
     source = uow.objects.get(updated.id)
     assert source is not None
-    target = ObjectApplicationService(ordinary).create_object(
+    target = ObjectApplicationService(
+        ordinary,
+        ownership_graph_uow_factory=ordinary,
+    ).create_object(
         template_id=other_template.id,
         template_version=1,
         properties={},
@@ -689,3 +712,51 @@ def test_runtime_services_remain_on_ordinary_factory_only() -> None:
     assert created.id == updated.id
     assert migrated.migrated_count == 1
     assert ordinary.calls == 6
+
+
+def test_structural_object_workflows_route_to_ownership_graph_factory() -> None:
+    uow = _full_uow()
+    ordinary = CountingFactory(uow)
+    structural = CountingFactory(uow)
+    service = ObjectApplicationService(
+        ordinary,
+        ownership_graph_uow_factory=structural,
+    )
+
+    node = _template(name="node")
+    uow.object_templates.add(node)
+    uow.object_templates.add_version(
+        ObjectTemplateVersion(
+            template_id=node.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.DRAFT,
+            components=(ObjectTemplateComponent(name="children", template_id=node.id),),
+        )
+    )
+    uow.object_templates.replace_version(
+        ObjectTemplateVersion(
+            template_id=node.id,
+            version=1,
+            status=ObjectTemplateVersionStatus.PUBLISHED,
+            components=(ObjectTemplateComponent(name="children", template_id=node.id),),
+        )
+    )
+    root = Object(id=uuid4(), template_id=node.id, template_version=1, properties={})
+    child = Object(id=uuid4(), template_id=node.id, template_version=1, properties={})
+    other_parent = Object(id=uuid4(), template_id=node.id, template_version=1, properties={})
+    doomed = Object(id=uuid4(), template_id=node.id, template_version=1, properties={})
+    uow.objects.add(root)
+    uow.objects.add(child)
+    uow.objects.add(other_parent)
+    uow.objects.add(doomed)
+
+    service.attach_component(
+        parent_object_id=root.id,
+        slot_name="children",
+        child_object_id=child.id,
+    )
+    service.detach_component(child.id)
+    service.delete_object(doomed.id)
+
+    assert structural.calls == 3
+    assert ordinary.calls == 0

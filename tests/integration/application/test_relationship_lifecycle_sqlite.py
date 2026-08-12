@@ -91,7 +91,10 @@ def test_object_deletion_cleans_up_incident_relationships_before_fk_restrict(
     def uow_factory() -> SqlAlchemyUnitOfWork:
         return SqlAlchemyUnitOfWork(session_factory)
 
-    object_service = ObjectApplicationService(uow_factory)
+    object_service = ObjectApplicationService(
+        uow_factory,
+        ownership_graph_uow_factory=uow_factory,
+    )
     definition_service = RelationshipDefinitionApplicationService(
         uow_factory,
         model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),

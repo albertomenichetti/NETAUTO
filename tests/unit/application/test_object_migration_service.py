@@ -155,7 +155,7 @@ def _service() -> tuple[
         )
 
     return (
-        ObjectApplicationService(factory),
+        ObjectApplicationService(factory, ownership_graph_uow_factory=factory),
         datatypes,
         object_templates,
         objects,
@@ -1045,7 +1045,10 @@ def test_migration_concurrent_modification_produces_no_history_and_no_commit() -
             conflict_commits,
         )
 
-    conflict_service = ObjectApplicationService(factory)
+    conflict_service = ObjectApplicationService(
+        factory,
+        ownership_graph_uow_factory=factory,
+    )
 
     with pytest.raises(ObjectConcurrentModification):
         conflict_service.migrate_objects(

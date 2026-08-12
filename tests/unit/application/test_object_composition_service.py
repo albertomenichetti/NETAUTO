@@ -155,7 +155,7 @@ def _service() -> tuple[
         )
 
     return (
-        ObjectApplicationService(factory),
+        ObjectApplicationService(factory, ownership_graph_uow_factory=factory),
         datatypes,
         object_templates,
         objects,

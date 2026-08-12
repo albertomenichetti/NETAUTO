@@ -8,6 +8,7 @@ from netauto.persistence.sqlalchemy.database import (
 from netauto.persistence.sqlalchemy.unit_of_work import (
     SqlAlchemyUnitOfWork,
     SqliteModelWriteUnitOfWork,
+    SqliteOwnershipGraphWriteUnitOfWork,
 )
 
 engine = create_sqlite_engine("sqlite:///netauto.sqlite3")
@@ -21,4 +22,5 @@ session_factory = sessionmaker(
 app = create_app(
     lambda: SqlAlchemyUnitOfWork(session_factory),
     model_write_uow_factory=lambda: SqliteModelWriteUnitOfWork(session_factory),
+    ownership_graph_uow_factory=lambda: SqliteOwnershipGraphWriteUnitOfWork(session_factory),
 )

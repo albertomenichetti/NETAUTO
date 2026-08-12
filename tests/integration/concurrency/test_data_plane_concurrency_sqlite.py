@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import event
 from sqlalchemy.engine import Engine, create_engine
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from netauto.application.object import ObjectApplicationService
@@ -25,10 +25,12 @@ from netauto.core.datatype import (
 from netauto.core.object import (
     ComponentMembership,
     ComponentMembershipAlreadyExists,
+    ComponentOwnershipCycle,
     Object,
     ObjectChange,
     ObjectChangeKind,
     ObjectConcurrentModification,
+    ObjectNotFound,
 )
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -41,6 +43,7 @@ from netauto.core.relationship import (
     Relationship,
     RelationshipAlreadyExists,
     RelationshipDefinition,
+    RelationshipObjectNotFound,
 )
 from netauto.persistence.sqlalchemy.database import create_schema
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
@@ -55,7 +58,10 @@ from netauto.persistence.sqlalchemy.relationship_repository import (
     SqlAlchemyRelationshipDefinitionRepository,
     SqlAlchemyRelationshipRepository,
 )
-from netauto.persistence.sqlalchemy.unit_of_work import SqlAlchemyUnitOfWork
+from netauto.persistence.sqlalchemy.unit_of_work import (
+    SqlAlchemyUnitOfWork,
+    SqliteOwnershipGraphWriteUnitOfWork,
+)
 
 
 def _engine(tmp_path: Path, filename: str, *, timeout: float = 0.0) -> Engine:
@@ -185,6 +191,7 @@ class ScenarioHooks:
     before_add_membership: Callable[[str, ComponentMembership], None] | None = None
     before_object_change_add: Callable[[str, ObjectChange], None] | None = None
     before_relationship_add: Callable[[str, Relationship], None] | None = None
+    before_commit: Callable[[str], None] | None = None
 
 
 class HookedObjectRepository(SqlAlchemyObjectRepository):
@@ -266,6 +273,59 @@ class HookedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork):
         self.relationship_definitions = SqlAlchemyRelationshipDefinitionRepository(self._session)
         self.object_templates = SqlAlchemyObjectTemplateRepository(self._session)
 
+    def commit(self) -> None:
+        if self._hooks.before_commit is not None:
+            self._hooks.before_commit(self._role)
+        super().commit()
+
+
+class HookedSqliteOwnershipGraphWriteUnitOfWork(SqliteOwnershipGraphWriteUnitOfWork):
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        *,
+        role: str,
+        hooks: ScenarioHooks,
+        max_reservation_attempts: int = 2,
+        retry_delay_seconds: float = 0.0,
+        sleeper: Callable[[float], None] | None = None,
+    ) -> None:
+        super().__init__(
+            session_factory,
+            max_reservation_attempts=max_reservation_attempts,
+            retry_delay_seconds=retry_delay_seconds,
+            sleeper=(lambda _delay: None) if sleeper is None else sleeper,
+        )
+        self._role = role
+        self._hooks = hooks
+
+    def _initialize_repositories(self) -> None:
+        if self._session is None:
+            raise RuntimeError("Unit of work is not active.")
+        self.datatypes = SqlAlchemyDataTypeRepository(self._session)
+        self.object_changes = HookedObjectChangeRepository(
+            self._session,
+            role=self._role,
+            hooks=self._hooks,
+        )
+        self.objects = HookedObjectRepository(
+            self._session,
+            role=self._role,
+            hooks=self._hooks,
+        )
+        self.relationships = HookedRelationshipRepository(
+            self._session,
+            role=self._role,
+            hooks=self._hooks,
+        )
+        self.relationship_definitions = SqlAlchemyRelationshipDefinitionRepository(self._session)
+        self.object_templates = SqlAlchemyObjectTemplateRepository(self._session)
+
+    def commit(self) -> None:
+        if self._hooks.before_commit is not None:
+            self._hooks.before_commit(self._role)
+        super().commit()
+
 
 @dataclass
 class OperationOutcome:
@@ -310,37 +370,22 @@ class OrderedWriteGate:
 
 
 @dataclass
-class DeleteAttachGate:
-    delete_ready: threading.Event = field(default_factory=threading.Event)
-    attach_completed: threading.Event = field(default_factory=threading.Event)
+class SerializedOwnershipCommitGate:
+    first_role: str
+    first_ready: threading.Event = field(default_factory=threading.Event)
+    allow_first_commit: threading.Event = field(default_factory=threading.Event)
+    first_completed: threading.Event = field(default_factory=threading.Event)
 
-    def before_object_change_add(self, role: str, change: ObjectChange) -> None:
-        if role != "delete" or change.kind is not ObjectChangeKind.DELETED:
+    def before_commit(self, role: str) -> None:
+        if role != self.first_role:
             return
-        self.delete_ready.set()
-        assert self.attach_completed.wait(timeout=5.0)
+        self.first_ready.set()
+        assert self.allow_first_commit.wait(timeout=5.0)
 
-    def before_add_membership(self, role: str, _membership: ComponentMembership) -> None:
-        if role != "attach":
-            return
-        assert self.delete_ready.wait(timeout=5.0)
-
-
-@dataclass
-class DeleteRelationshipGate:
-    delete_ready: threading.Event = field(default_factory=threading.Event)
-    create_completed: threading.Event = field(default_factory=threading.Event)
-
-    def before_object_change_add(self, role: str, change: ObjectChange) -> None:
-        if role != "delete" or change.kind is not ObjectChangeKind.DELETED:
-            return
-        self.delete_ready.set()
-        assert self.create_completed.wait(timeout=5.0)
-
-    def before_relationship_add(self, role: str, _relationship: Relationship) -> None:
-        if role != "create":
-            return
-        assert self.delete_ready.wait(timeout=5.0)
+    def sleeper(self, _delay: float) -> None:
+        assert self.first_ready.wait(timeout=5.0)
+        self.allow_first_commit.set()
+        assert self.first_completed.wait(timeout=5.0)
 
 
 def _make_object_service(
@@ -348,15 +393,24 @@ def _make_object_service(
     *,
     role: str | None = None,
     hooks: ScenarioHooks | None = None,
+    ownership_sleeper: Callable[[float], None] | None = None,
 ) -> ObjectApplicationService:
     if role is None or hooks is None:
-        return ObjectApplicationService(lambda: SqlAlchemyUnitOfWork(session_factory))
+        return ObjectApplicationService(
+            lambda: SqlAlchemyUnitOfWork(session_factory),
+            ownership_graph_uow_factory=lambda: SqliteOwnershipGraphWriteUnitOfWork(
+                session_factory,
+                retry_delay_seconds=0.0,
+            ),
+        )
     return ObjectApplicationService(
-        lambda: HookedSqlAlchemyUnitOfWork(
+        lambda: HookedSqlAlchemyUnitOfWork(session_factory, role=role, hooks=hooks),
+        ownership_graph_uow_factory=lambda: HookedSqliteOwnershipGraphWriteUnitOfWork(
             session_factory,
             role=role,
             hooks=hooks,
-        )
+            sleeper=ownership_sleeper,
+        ),
     )
 
 
@@ -566,10 +620,15 @@ def test_characterizes_same_child_competing_owners_race(tmp_path: Path) -> None:
     create_schema(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
     _, parent_a, parent_b, child = _create_component_fixture(session_factory)
-    gate = OrderedWriteGate(first_role="attach_a")
-    hooks = ScenarioHooks(before_add_membership=lambda role, membership: gate.wait(role))
+    gate = SerializedOwnershipCommitGate(first_role="attach_a")
+    hooks = ScenarioHooks(before_commit=gate.before_commit)
     service_a = _make_object_service(session_factory, role="attach_a", hooks=hooks)
-    service_b = _make_object_service(session_factory, role="attach_b", hooks=hooks)
+    service_b = _make_object_service(
+        session_factory,
+        role="attach_b",
+        hooks=hooks,
+        ownership_sleeper=gate.sleeper,
+    )
     outcome_a = OperationOutcome()
     outcome_b = OperationOutcome()
 
@@ -609,10 +668,15 @@ def test_characterizes_reciprocal_attach_cycle_race(tmp_path: Path) -> None:
     session_factory = sessionmaker(engine, expire_on_commit=False)
     template, parent_a, parent_b, _ = _create_component_fixture(session_factory)
     del template
-    gate = OrderedWriteGate(first_role="attach_a")
-    hooks = ScenarioHooks(before_add_membership=lambda role, membership: gate.wait(role))
+    gate = SerializedOwnershipCommitGate(first_role="attach_a")
+    hooks = ScenarioHooks(before_commit=gate.before_commit)
     service_a = _make_object_service(session_factory, role="attach_a", hooks=hooks)
-    service_b = _make_object_service(session_factory, role="attach_b", hooks=hooks)
+    service_b = _make_object_service(
+        session_factory,
+        role="attach_b",
+        hooks=hooks,
+        ownership_sleeper=gate.sleeper,
+    )
     outcome_a = OperationOutcome()
     outcome_b = OperationOutcome()
 
@@ -641,8 +705,8 @@ def test_characterizes_reciprocal_attach_cycle_race(tmp_path: Path) -> None:
         _read_memberships(session_factory, child_id=parent_b.id),
     )
     assert outcome_a.succeeded is True
-    assert outcome_b.succeeded is True
-    assert owners[0] == (_membership(parent_b.id, parent_a.id),)
+    assert isinstance(outcome_b.error, ComponentOwnershipCycle)
+    assert owners[0] == ()
     assert owners[1] == (_membership(parent_a.id, parent_b.id),)
 
     engine.dispose()
@@ -877,19 +941,22 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
     session_factory = sessionmaker(engine, expire_on_commit=False)
     template, root, _, child = _create_component_fixture(session_factory)
     del template
-    gate = DeleteAttachGate()
-    hooks = ScenarioHooks(
-        before_object_change_add=gate.before_object_change_add,
-        before_add_membership=gate.before_add_membership,
-    )
+    gate = SerializedOwnershipCommitGate(first_role="delete")
+    hooks = ScenarioHooks(before_commit=gate.before_commit)
     delete_service = _make_object_service(session_factory, role="delete", hooks=hooks)
-    attach_service = _make_object_service(session_factory, role="attach", hooks=hooks)
+    attach_service = _make_object_service(
+        session_factory,
+        role="attach",
+        hooks=hooks,
+        ownership_sleeper=gate.sleeper,
+    )
     delete_outcome = OperationOutcome()
     attach_outcome = OperationOutcome()
 
     delete_thread = _run_in_thread(
         lambda: delete_service.delete_object(root.id),
         outcome=delete_outcome,
+        completed=gate.first_completed,
     )
     attach_thread = _run_in_thread(
         lambda: attach_service.attach_component(
@@ -898,7 +965,6 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
             child_object_id=child.id,
         ),
         outcome=attach_outcome,
-        completed=gate.attach_completed,
     )
     delete_thread.join()
     attach_thread.join()
@@ -908,10 +974,8 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
     owner = _read_memberships(session_factory, child_id=child.id)
     root_history = _read_history(session_factory, root.id)
     child_history = _read_history(session_factory, child.id)
-    # Characterization: attach reports success, delete reports success, the
-    # parent disappears, and the newly attached child survives detached.
     assert delete_outcome.succeeded is True
-    assert attach_outcome.succeeded is True
+    assert isinstance(attach_outcome.error, ObjectNotFound)
     assert persisted_root is None
     assert persisted_child is not None
     assert owner == ()
@@ -921,17 +985,103 @@ def test_characterizes_delete_vs_attach_race(tmp_path: Path) -> None:
     engine.dispose()
 
 
+def test_delete_after_prior_attach_discovers_expanded_subtree(tmp_path: Path) -> None:
+    engine = _engine(tmp_path, "c1b_delete_after_attach.sqlite3")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    _template_value, root, _, child = _create_component_fixture(session_factory)
+    gate = SerializedOwnershipCommitGate(first_role="attach")
+    hooks = ScenarioHooks(before_commit=gate.before_commit)
+    attach_service = _make_object_service(session_factory, role="attach", hooks=hooks)
+    delete_service = _make_object_service(
+        session_factory,
+        role="delete",
+        hooks=hooks,
+        ownership_sleeper=gate.sleeper,
+    )
+    attach_outcome = OperationOutcome()
+    delete_outcome = OperationOutcome()
+
+    attach_thread = _run_in_thread(
+        lambda: attach_service.attach_component(
+            parent_object_id=root.id,
+            slot_name="children",
+            child_object_id=child.id,
+        ),
+        outcome=attach_outcome,
+        completed=gate.first_completed,
+    )
+    delete_thread = _run_in_thread(
+        lambda: delete_service.delete_object(root.id),
+        outcome=delete_outcome,
+    )
+    attach_thread.join()
+    delete_thread.join()
+
+    assert attach_outcome.succeeded is True
+    assert delete_outcome.succeeded is True
+    assert _read_object(session_factory, root.id) is None
+    assert _read_object(session_factory, child.id) is None
+    assert _read_history(session_factory, root.id)
+    assert _read_history(session_factory, child.id)
+
+    engine.dispose()
+
+
+def test_detach_then_attach_serialize_through_ownership_guard(tmp_path: Path) -> None:
+    engine = _engine(tmp_path, "c1b_detach_attach.sqlite3")
+    create_schema(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    _template_value, parent_a, parent_b, child = _create_component_fixture(session_factory)
+    with SqlAlchemyUnitOfWork(session_factory) as uow:
+        uow.objects.add_membership(_membership(parent_a.id, child.id))
+        uow.commit()
+
+    gate = SerializedOwnershipCommitGate(first_role="detach")
+    hooks = ScenarioHooks(before_commit=gate.before_commit)
+    detach_service = _make_object_service(session_factory, role="detach", hooks=hooks)
+    attach_service = _make_object_service(
+        session_factory,
+        role="attach",
+        hooks=hooks,
+        ownership_sleeper=gate.sleeper,
+    )
+    detach_outcome = OperationOutcome()
+    attach_outcome = OperationOutcome()
+
+    detach_thread = _run_in_thread(
+        lambda: detach_service.detach_component(child.id),
+        outcome=detach_outcome,
+        completed=gate.first_completed,
+    )
+    attach_thread = _run_in_thread(
+        lambda: attach_service.attach_component(
+            parent_object_id=parent_b.id,
+            slot_name="children",
+            child_object_id=child.id,
+        ),
+        outcome=attach_outcome,
+    )
+    detach_thread.join()
+    attach_thread.join()
+
+    assert detach_outcome.succeeded is True
+    assert attach_outcome.succeeded is True
+    assert _read_memberships(session_factory, child_id=child.id) == (
+        _membership(parent_b.id, child.id),
+    )
+
+    engine.dispose()
+
+
 def test_characterizes_relationship_create_vs_endpoint_delete_race(tmp_path: Path) -> None:
     engine = _engine(tmp_path, "c0_7_relationship_delete.sqlite3")
     create_schema(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
     _, definition, source, target = _create_relationship_fixture(session_factory)
-    gate = DeleteRelationshipGate()
-    hooks = ScenarioHooks(
-        before_object_change_add=gate.before_object_change_add,
-        before_relationship_add=gate.before_relationship_add,
-    )
-    create_service = _make_relationship_service(session_factory, role="create", hooks=hooks)
+    gate = SerializedOwnershipCommitGate(first_role="delete")
+    hooks = ScenarioHooks(before_commit=gate.before_commit)
+    create_service = _make_relationship_service(session_factory)
     delete_service = _make_object_service(session_factory, role="delete", hooks=hooks)
     create_outcome = OperationOutcome()
     delete_outcome = OperationOutcome()
@@ -939,7 +1089,9 @@ def test_characterizes_relationship_create_vs_endpoint_delete_race(tmp_path: Pat
     delete_thread = _run_in_thread(
         lambda: delete_service.delete_object(source.id),
         outcome=delete_outcome,
+        completed=gate.first_completed,
     )
+    assert gate.first_ready.wait(timeout=5.0)
     create_thread = _run_in_thread(
         lambda: create_service.create_relationship(
             relationship_definition_id=definition.id,
@@ -947,17 +1099,24 @@ def test_characterizes_relationship_create_vs_endpoint_delete_race(tmp_path: Pat
             target_object_id=target.id,
         ),
         outcome=create_outcome,
-        completed=gate.create_completed,
     )
+    gate.allow_first_commit.set()
     delete_thread.join()
     create_thread.join()
 
     persisted_source = _read_object(session_factory, source.id)
     relationships = _read_relationships(session_factory)
-    assert isinstance(delete_outcome.error, IntegrityError)
-    assert create_outcome.succeeded is True
-    assert persisted_source is not None
-    assert len(relationships) == 1
-    assert _read_history(session_factory, source.id) == ()
+    assert not (persisted_source is None and len(relationships) == 1)
+    assert (
+        delete_outcome.succeeded
+        and isinstance(
+            create_outcome.error,
+            (RelationshipObjectNotFound, OperationalError, IntegrityError),
+        )
+        or (
+            create_outcome.succeeded
+            and isinstance(delete_outcome.error, (IntegrityError, OperationalError))
+        )
+    )
 
     engine.dispose()

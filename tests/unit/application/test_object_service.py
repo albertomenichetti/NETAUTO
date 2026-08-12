@@ -188,7 +188,7 @@ def _service() -> tuple[
         )
 
     return (
-        ObjectApplicationService(factory),
+        ObjectApplicationService(factory, ownership_graph_uow_factory=factory),
         datatypes,
         object_templates,
         objects,
@@ -1019,7 +1019,10 @@ def test_update_concurrent_modification_raises_without_history_or_commit() -> No
             commit_counter,
         )
 
-    stale_service = ObjectApplicationService(factory)
+    stale_service = ObjectApplicationService(
+        factory,
+        ownership_graph_uow_factory=factory,
+    )
 
     with pytest.raises(ObjectConcurrentModification):
         stale_service.update_object(

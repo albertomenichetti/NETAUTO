@@ -8,7 +8,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from netauto.api.schemas.datatypes import ErrorBody, ErrorDetail, ErrorResponse
-from netauto.application.unit_of_work import ModelWriteUnavailable
+from netauto.application.unit_of_work import (
+    ModelWriteUnavailable,
+    OwnershipGraphWriteUnavailable,
+)
 from netauto.core.datatype import (
     ConflictingConstraints,
     DataTypeAlreadyExists,
@@ -171,6 +174,18 @@ async def model_write_unavailable_exception_handler(
         HTTPStatus.SERVICE_UNAVAILABLE,
         code="model_write_busy",
         message="Model mutation is temporarily unavailable",
+        headers={"Retry-After": "1"},
+    )
+
+
+async def ownership_graph_write_unavailable_exception_handler(
+    _request: Request,
+    _exc: OwnershipGraphWriteUnavailable,
+) -> JSONResponse:
+    return _response(
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        code="ownership_graph_busy",
+        message="Ownership topology mutation is temporarily unavailable",
         headers={"Retry-After": "1"},
     )
 
@@ -656,6 +671,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         ModelWriteUnavailable,
         cast("Any", model_write_unavailable_exception_handler),
     )
+    app.add_exception_handler(
+        OwnershipGraphWriteUnavailable,
+        cast("Any", ownership_graph_write_unavailable_exception_handler),
+    )
 
     for exception_type, status_code, code, message in _EXCEPTION_MAP:
         async def _handler(
@@ -675,6 +694,6 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"model": ErrorResponse, "description": "Not found"},
     409: {"model": ErrorResponse, "description": "Conflict"},
     422: {"model": ErrorResponse, "description": "Validation error"},
-    503: {"model": ErrorResponse, "description": "Model mutation temporarily unavailable"},
+    503: {"model": ErrorResponse, "description": "Temporary service unavailability"},
     500: {"model": ErrorResponse, "description": "Persistence error"},
 }

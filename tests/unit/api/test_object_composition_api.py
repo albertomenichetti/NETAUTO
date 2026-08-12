@@ -7,7 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from netauto.api.app import create_app
-from netauto.application.unit_of_work import ObjectUnitOfWork
+from netauto.application.unit_of_work import (
+    ObjectUnitOfWork,
+    OwnershipGraphWriteUnavailable,
+)
 from netauto.core.object import ComponentMembership, Object, ObjectPersistenceError
 from netauto.core.objecttemplate import (
     ObjectTemplate,
@@ -109,6 +112,24 @@ class BrokenObjectUnitOfWork(FakeUnitOfWork):
             InMemoryRelationshipRepository(),
             InMemoryRelationshipDefinitionRepository(),
             [0],
+        )
+
+
+class BusyOwnershipGraphUnitOfWork(FakeUnitOfWork):
+    def __init__(self) -> None:
+        super().__init__(
+            InMemoryDataTypeRepository(),
+            InMemoryObjectTemplateRepository(),
+            InMemoryObjectRepository(),
+            InMemoryObjectChangeRepository(),
+            InMemoryRelationshipRepository(),
+            InMemoryRelationshipDefinitionRepository(),
+            [0],
+        )
+
+    def __enter__(self) -> BusyOwnershipGraphUnitOfWork:
+        raise OwnershipGraphWriteUnavailable(
+            "Ownership topology mutation is temporarily unavailable"
         )
 
 
@@ -576,6 +597,30 @@ def test_component_membership_persistence_error_maps_to_500() -> None:
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "persistence_error"
+
+
+def test_ownership_graph_unavailable_maps_to_503() -> None:
+    def ordinary_factory() -> BrokenObjectUnitOfWork:
+        return BrokenObjectUnitOfWork()
+
+    def busy_ownership_factory() -> BusyOwnershipGraphUnitOfWork:
+        return BusyOwnershipGraphUnitOfWork()
+
+    with TestClient(
+        create_app(
+            ordinary_factory,
+            model_write_uow_factory=ordinary_factory,
+            ownership_graph_uow_factory=busy_ownership_factory,
+        )
+    ) as client:
+        response = client.delete(f"/api/v1/objects/components/{uuid4()}")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "ownership_graph_busy"
+    assert response.json()["error"]["message"] == (
+        "Ownership topology mutation is temporarily unavailable"
+    )
+    assert response.headers["Retry-After"] == "1"
 
 
 def test_openapi_contains_object_composition_routes_and_schemas(

@@ -9,7 +9,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from netauto.application.unit_of_work import ModelWriteUnavailable
+from netauto.application.unit_of_work import (
+    ModelWriteUnavailable,
+    OwnershipGraphWriteUnavailable,
+)
 from netauto.persistence.sqlalchemy.datatype_repository import SqlAlchemyDataTypeRepository
 from netauto.persistence.sqlalchemy.object_change_repository import (
     SqlAlchemyObjectChangeRepository,
@@ -88,8 +91,8 @@ def _is_sqlite_busy(error: OperationalError) -> bool:
     return sqlite_errorcode & 0xFF == sqlite3.SQLITE_BUSY
 
 
-class SqliteModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
-    """SQLite-backed model-plane writer UoW using a transaction-scoped writer reservation."""
+class _SqliteReservedWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
+    """SQLite UoW with bounded `BEGIN IMMEDIATE` reservation acquisition."""
 
     def __init__(
         self,
@@ -107,6 +110,9 @@ class SqliteModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
         self._max_reservation_attempts = max_reservation_attempts
         self._retry_delay_seconds = retry_delay_seconds
         self._sleeper = sleeper
+
+    def _reservation_exhausted_exception(self) -> Exception:
+        raise NotImplementedError
 
     def _begin_immediate(self) -> None:
         if self._session is None:
@@ -135,7 +141,21 @@ class SqliteModelWriteUnitOfWork(_SqlAlchemyUnitOfWorkBase):
                     self._session.rollback()
                 raise
         if last_busy_error is None:
-            raise RuntimeError("Model writer acquisition failed without a captured cause.")
-        raise ModelWriteUnavailable(
-            "Model mutation is temporarily unavailable."
-        ) from last_busy_error
+            raise RuntimeError("SQLite writer acquisition failed without a captured cause.")
+        raise self._reservation_exhausted_exception() from last_busy_error
+
+
+class SqliteModelWriteUnitOfWork(_SqliteReservedWriteUnitOfWork):
+    """SQLite-backed model-plane writer UoW using a transaction-scoped writer reservation."""
+
+    def _reservation_exhausted_exception(self) -> Exception:
+        return ModelWriteUnavailable("Model mutation is temporarily unavailable.")
+
+
+class SqliteOwnershipGraphWriteUnitOfWork(_SqliteReservedWriteUnitOfWork):
+    """SQLite-backed ownership-topology writer UoW using a transaction-scoped writer reservation."""
+
+    def _reservation_exhausted_exception(self) -> Exception:
+        return OwnershipGraphWriteUnavailable(
+            "Ownership topology mutation is temporarily unavailable."
+        )

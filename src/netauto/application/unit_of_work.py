@@ -16,6 +16,10 @@ class ModelWriteUnavailable(Exception):
     """Raised when a model-plane mutation cannot acquire the logical writer."""
 
 
+class OwnershipGraphWriteUnavailable(Exception):
+    """Raised when an ownership-topology mutation cannot acquire the logical writer."""
+
+
 class DataTypeUnitOfWork(Protocol):
     """Persistence-neutral unit of work for datatype orchestration."""
 

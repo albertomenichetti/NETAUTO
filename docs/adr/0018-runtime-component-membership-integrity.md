@@ -78,6 +78,17 @@ Multi-node cycles such as `A1 -> A2 -> A1` or `A1 -> A2 -> A3 -> A1` are not
 made impossible by declarative SQL constraints in this slice. They remain
 semantic invariants prevented by supported application workflows.
 
+Supported structural mutations now protect semantic ownership acyclicity using:
+
+- `OWNERSHIP_GRAPH_GUARD`
+- fresh cycle validation after guard acquisition
+
+Supported structural subtree deletion also now executes subtree discovery
+against a stable supported ownership topology for the duration of the
+structural transaction. Concurrent supported `attach_component`,
+`detach_component`, and `delete_object` workflows cannot invalidate subtree
+discovery mid-transaction without first waiting for the guard.
+
 ## Consequences
 
 - The database physically guarantees endpoint existence, one owner per child,
@@ -93,5 +104,8 @@ semantic invariants prevented by supported application workflows.
   subtree discovery, cycle detection, runtime Relationship cleanup, audit
   history, descendants-before-parent deletion order, and single-UoW commit
   semantics.
+- Multi-node ownership cycles remain physically representable by raw storage
+  writes that bypass supported workflows. The application guard and cycle
+  validation do not turn the SQL schema into a complete graph constraint.
 - Same-template runtime composition remains supported because the self-edge
   check compares Object instance IDs, not ObjectTemplate identities.

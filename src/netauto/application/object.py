@@ -53,8 +53,11 @@ class ObjectApplicationService:
         self,
         uow_factory: ObjectUnitOfWorkFactory,
         clock: Callable[[], datetime] | None = None,
+        *,
+        ownership_graph_uow_factory: ObjectUnitOfWorkFactory | None = None,
     ) -> None:
         self._uow_factory = uow_factory
+        self._ownership_graph_uow_factory = ownership_graph_uow_factory or uow_factory
         self._validation = ObjectValidationEngine()
         self._inheritance = ObjectTemplateInheritanceResolver()
         self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -200,7 +203,7 @@ class ObjectApplicationService:
         slot_name: str,
         child_object_id: UUID,
     ) -> ComponentMembership:
-        with self._uow_factory() as uow:
+        with self._ownership_graph_uow_factory() as uow:
             parent = uow.objects.get(parent_object_id)
             if parent is None:
                 raise ObjectNotFound("Parent object does not exist.")
@@ -257,7 +260,7 @@ class ObjectApplicationService:
             return membership
 
     def detach_component(self, child_object_id: UUID) -> ComponentMembership:
-        with self._uow_factory() as uow:
+        with self._ownership_graph_uow_factory() as uow:
             child = uow.objects.get(child_object_id)
             if child is None:
                 raise ObjectNotFound("Object does not exist.")
@@ -289,7 +292,7 @@ class ObjectApplicationService:
             return uow.objects.list_components(parent.id, slot_name=slot_name)
 
     def delete_object(self, object_id: UUID) -> None:
-        with self._uow_factory() as uow:
+        with self._ownership_graph_uow_factory() as uow:
             target = uow.objects.get(object_id)
             if target is None:
                 raise ObjectNotFound("Object does not exist.")

@@ -108,20 +108,48 @@ Only demonstrated `UNSAFE` SQLite races belong here.
 
 ## Remediation Status
 
+- C0.2 reciprocal attach / ownership cycle race
+  remediated by M2.C1b ownership-graph coordination
 - C0.3 concurrent Object updates
   remediated by M2.C1a optimistic conditional Object replace
 - C0.4 Object update vs migration
   remediated by M2.C1a optimistic conditional Object replace
-- C0.2 reciprocal attach / ownership cycle race
-  pending C1b ownership-graph coordination
 - C0.6 subtree delete vs attach
-  pending C1b ownership-graph coordination
+  remediated by M2.C1b ownership-graph coordination
 - C0.1 same-child competing owners
-  unchanged; remains protected by physical constraint
+  physical PK remains the structural guarantee; C1b now also serializes
+  supported attach decisions before the owner check
 - C0.5 duplicate runtime Relationship create
   unchanged; remains protected by physical constraint
 - C0.7 Relationship create vs endpoint delete
-  unchanged; remains fail-safe via physical FK protection
+  unchanged historically; remains fail-safe via physical FK protection
+
+## Post-C1 Status Notes
+
+- C0.1 same-child competing owners
+  Supported concurrent attach workflows now serialize through
+  `OWNERSHIP_GRAPH_GUARD`, so the stale double-owner-check interleaving is no
+  longer reachable through supported application paths. The physical
+  `PRIMARY KEY(child_object_id)` remains the structural defense-in-depth
+  guarantee.
+- C0.2 reciprocal attach / ownership cycle race
+  Supported concurrent attach workflows now serialize through
+  `OWNERSHIP_GRAPH_GUARD`. The second attach revalidates after guard
+  acquisition and observes the committed first edge, so the stale reciprocal
+  cycle interleaving is no longer reachable through supported workflows.
+- C0.6 subtree delete vs attach
+  Supported `delete_object` and `attach_component` workflows now serialize
+  through `OWNERSHIP_GRAPH_GUARD`. Subtree discovery is performed while the
+  guard is held, so stale discovery cannot survive a concurrent supported
+  attach or detach.
+- C0.7 Relationship create vs endpoint delete
+  Historical C0 classification remains `FAILS_SAFELY` with portable endpoint
+  FK protection. On SQLite after C1b, `delete_object` acquires the ownership
+  writer reservation before incident-relationship discovery, so SQLite may
+  physically serialize runtime Relationship creation earlier than PostgreSQL
+  eventually will. PostgreSQL runtime Relationship safety must still rely on
+  relational FK behavior because runtime Relationship creation does not acquire
+  `OWNERSHIP_GRAPH_GUARD`.
 
 ## PostgreSQL Revisit
 
@@ -132,6 +160,11 @@ protected by physical constraints.
 PostgreSQL still requires a fresh concurrency review because backend behavior
 will differ, but this slice did not produce a SQLite-specific fail-safe case in
 the mandatory matrix.
+
+Additional future characterization items:
+
+- `delete_object` vs concurrent Object property update
+- `delete_object` vs concurrent Object migration
 
 ## Invariants Physically Protected By S3 Constraints
 

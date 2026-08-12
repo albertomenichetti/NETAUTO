@@ -90,9 +90,29 @@ Therefore a future PostgreSQL backend must be able to represent, conceptually:
 
 at the same time.
 
-C1b will implement the current backend realization of
-`OWNERSHIP_GRAPH_GUARD`. It is ratified here but not implemented in this ADR's
-slice.
+`OWNERSHIP_GRAPH_GUARD` is now implemented for:
+
+- `attach_component`
+- `detach_component`
+- `delete_object` / subtree delete
+
+SQLite currently realizes this guard using `BEGIN IMMEDIATE` before the first
+decision read in the structural transaction.
+
+SQLite acquisition semantics are:
+
+- bounded `SQLITE_BUSY` retry on guard acquisition only
+- no application command replay
+- no commit retry
+
+If acquisition is exhausted, the backend raises
+`OwnershipGraphWriteUnavailable`, which REST maps to HTTP `503 Service
+Unavailable`.
+
+Although `MODEL_PLANE_GUARD` and `OWNERSHIP_GRAPH_GUARD` are distinct logical
+domains, SQLite currently maps both onto the same single-writer reservation.
+That physical contention is a SQLite backend limitation, not the intended
+cross-backend architecture.
 
 ### Object content/state mutation
 
@@ -127,8 +147,29 @@ Consequently:
   concurrent
 - an ownership attach and an unrelated Object property update remain logically
   concurrent
+- a future PostgreSQL backend must be able to acquire `MODEL_PLANE_GUARD` and
+  `OWNERSHIP_GRAPH_GUARD` independently, for example with separate advisory
+  lock keys or separate transactional guard rows
 - a future PostgreSQL implementation must not solve runtime concurrency by
   introducing one global database writer lock
+
+### Cross-domain caveat
+
+`OWNERSHIP_GRAPH_GUARD` coordinates supported structural mutations against each
+other.
+
+It does not by itself prove every cross-domain interaction safe on future
+PostgreSQL backends.
+
+In particular, the following remain explicitly uncharacterized for future
+concurrency review:
+
+- `delete_object` vs concurrent Object property update
+- `delete_object` vs concurrent Object migration
+
+These interactions cross the ownership-topology and Object-content domains and
+must not be claimed solved merely because SQLite currently uses one physical
+writer reservation.
 
 ## Consequences
 

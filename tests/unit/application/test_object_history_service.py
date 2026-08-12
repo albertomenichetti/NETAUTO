@@ -261,7 +261,11 @@ def _service(
         )
 
     return (
-        ObjectApplicationService(factory, clock=clock),
+        ObjectApplicationService(
+            factory,
+            clock=clock,
+            ownership_graph_uow_factory=factory,
+        ),
         datatypes,
         object_templates,
         objects,
@@ -1124,7 +1128,7 @@ def test_update_concurrent_modification_produces_no_history_and_no_commit() -> N
             commits,
         )
 
-    service = ObjectApplicationService(factory)
+    service = ObjectApplicationService(factory, ownership_graph_uow_factory=factory)
 
     with pytest.raises(ObjectConcurrentModification):
         service.update_object(

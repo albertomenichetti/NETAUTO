@@ -113,6 +113,7 @@ def test_object_history_survives_create_update_delete_and_rollback_is_atomic(
     service = ObjectApplicationService(
         uow_factory,
         clock=lambda: next(timestamps),
+        ownership_graph_uow_factory=uow_factory,
     )
 
     hostname, hostname_v1 = DataTypeFactory().create(

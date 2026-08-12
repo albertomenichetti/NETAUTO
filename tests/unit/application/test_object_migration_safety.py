@@ -187,7 +187,11 @@ def _service(
         )
 
     return (
-        ObjectApplicationService(factory, clock=clock),
+        ObjectApplicationService(
+            factory,
+            clock=clock,
+            ownership_graph_uow_factory=factory,
+        ),
         datatypes,
         object_templates,
         objects,

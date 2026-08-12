@@ -207,7 +207,7 @@ def _service_with_repo(
         )
 
     return (
-        ObjectApplicationService(factory),
+        ObjectApplicationService(factory, ownership_graph_uow_factory=factory),
         datatypes,
         object_templates,
         objects,
@@ -581,7 +581,7 @@ def test_delete_discovers_complete_subtree_before_first_mutation() -> None:
             commits,
         )
 
-    service = ObjectApplicationService(factory)
+    service = ObjectApplicationService(factory, ownership_graph_uow_factory=factory)
     a = _object(repo)
     b = _object(repo)
     c = _object(repo)
@@ -636,7 +636,7 @@ def test_delete_corrupt_cycle_raises_before_any_mutation_or_commit() -> None:
             commits,
         )
 
-    service = ObjectApplicationService(factory)
+    service = ObjectApplicationService(factory, ownership_graph_uow_factory=factory)
 
     with pytest.raises(ComponentOwnershipCycle):
         service.delete_object(a.id)
