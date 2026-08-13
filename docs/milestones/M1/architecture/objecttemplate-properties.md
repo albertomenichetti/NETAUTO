@@ -85,7 +85,7 @@ Una LIST required vuota è invalida.
 
 L'assenza di una LIST optional e una LIST optional vuota sono semanticamente entrambe cardinalità zero.
 
-La representation canonica API/persistence di cardinalità zero viene definita separatamente.
+Per canonical Object runtime state M1, cardinalità zero viene rappresentata con property key assente.
 
 ## 5. migration_default
 
@@ -112,7 +112,13 @@ Ogni valore deve essere valido e canonicalizzato secondo la exact DTV pinnata.
 
 JSON `null` non è un domain value valido.
 
-Durante `Object create` il caller deve fornire esplicitamente tutti i valori required; il kernel non usa automaticamente `migration_default`.
+Durante Object create il caller deve fornire esplicitamente tutti i valori required; il kernel non usa automaticamente `migration_default`.
+
+Durante Object schema migration:
+
+> `migration_default` fills absence; it never replaces existing information.
+
+Se un source semantic value esiste ma non è valido nel target, lo schema change fallisce invece di sostituirlo automaticamente.
 
 ## 6. Effective property identity
 
@@ -130,7 +136,35 @@ una property inherited.
 
 L'autorità sulla definizione di una inherited property resta nella lineage che l'ha dichiarata.
 
-M1 non introduce una stable `property_id` separata dal name.
+M1 non introduce una stable `property_id`.
+
+### 6.1 Historical/migration semantic key
+
+Quando serve riconoscere la continuità della stessa property tra due exact effective schemas, la semantic key è:
+
+```text
+PropertySemanticKey
+=
+(declaring_template_id, name)
+```
+
+dove `declaring_template_id` è la ObjectTemplate lineage che localmente dichiara la property.
+
+Il solo effective name non è sufficiente.
+
+Quindi:
+
+```text
+Parent / serial_number
+!=
+Child / serial_number
+```
+
+anche se il nome coincide.
+
+Una property removed e successivamente reintroduced con lo stesso nome dalla **stessa declaring lineage** conserva la stessa historical semantic identity.
+
+Le historical evolution constraints continuano quindi attraverso il gap; remove/re-add non può essere usato per aggirare stabilità di `name`, `datatype_id`, `value_mode` direction o altre evolution rules.
 
 ## 7. Property appena introdotta nel DRAFT
 
@@ -185,7 +219,7 @@ zero scalar values -> zero list values
 scalar value V     -> [V]
 ```
 
-La candidate finale viene comunque validata integralmente contro il target schema.
+La candidate finale viene comunque validata integralmente contro il target schema e la target exact DTV.
 
 Non sono normali mutation M1:
 
@@ -200,7 +234,7 @@ Se introdotte in futuro, richiederanno controlled property/data migration esplic
 
 Una local property storicizzata può essere rimossa in una versione successiva.
 
-Durante Object migration verso uno schema che non contiene più tale property, il relativo runtime value viene eliminato.
+Durante Object migration verso uno schema che non contiene più tale semantic property, il relativo runtime value viene eliminato.
 
 Non esistono preservation bucket, mapping o conversioni implicite.
 
