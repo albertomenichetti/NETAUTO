@@ -1,6 +1,6 @@
 # M1 — Object Architecture
 
-**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency baseline ratified; transport/read API details remain before final M1 architecture freeze.
+**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency baseline e public command DTO contract ratificati; read/error API details restano prima del final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -11,7 +11,8 @@ Documenti collegati:
 - `object-runtime-state.md` — identity, create, canonical runtime properties, rename, data change, delete e current-state reads;
 - `object-schema-change.md` — forward intra-lineage schema migration, definitive closures, property carry-forward e attachment validation;
 - `object-ownership.md` — component ownership, attach/detach, single-owner, acyclicity e concurrency domains;
-- `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface.
+- `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface;
+- `api-wire-contract.md` — public Object command DTO/wire contract API-03.6.
 
 Le semantics e invarianti osservabili sono definite nei documenti Object. I meccanismi PostgreSQL concreti sono già normativi in `persistence-model.md`, `persistence-uow-concurrency.md`, nei documenti `concurrency-postgresql-realization-*.md` e nella `concurrency-postgresql-test-matrix.md`.
 
@@ -147,10 +148,22 @@ ownership graph gate = pg_advisory_xact_lock(OWNERSHIP_GRAPH_WRITE_GATE)
 READ COMMITTED mutation isolation + full-UoW retry discipline
 lifecycle physical table/event shape and historical non-FK identities
 Relationship exact-view/FK lifetime interaction
+Object CREATE/RENAME/DATA_CHANGE/SCHEMA_CHANGE/ATTACH/DETACH/DELETE public command DTO shape (API-03.6)
+```
+
+In particolare API-03.6 definisce:
+
+```text
+Object CREATE properties omission -> {}
+DATA_CHANGE non-empty SET|REMOVE discriminated operation set
+one operation per property; array order non-semantic
+SCHEMA_CHANGE exact target_version only; no remediation payload
+ATTACH/DETACH body = slot_name + child_object_id
+DELETE no body/cascade/force options
 ```
 
 Restano ancora da finalizzare nel transport/application/read layer:
 
-- DTO/REST shape di DATA_CHANGE `SET`/`REMOVE`;
 - public error/status taxonomy;
+- canonical Object/ownership/read projection DTO e pagination/filter conventions;
 - expanded/composite read API shape futura.
