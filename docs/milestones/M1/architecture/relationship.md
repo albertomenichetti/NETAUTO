@@ -1,6 +1,6 @@
 # M1 — Relationship Architecture
 
-**Status:** DRAFT
+**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency realization complete; transport/API and test-harness details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -12,11 +12,14 @@ Documenti collegati:
 - `relationship-resolution.md` — model-plane resolved contract, semantic equivalence, conflict rules e capability reads;
 - `relationship-runtime.md` — factual `Relationship`, runtime resolution closure, idempotency, delete e runtime reads;
 - `relationship-concurrency.md` — transaction boundary, model/data-plane concurrency domains e high-risk races;
-- `relationship-consistency-review.md` — consistency pass finale R2 e delta rispetto alla precedente architecture Relationship;
+- `relationship-consistency-review.md` — consistency pass finale R2;
+- `concurrency-postgresql-realization-relationship.md` — concrete PostgreSQL realization RC/RF/RA/ES + REALIZE-15;
+- `persistence-model.md` / `persistence-uow-concurrency.md` — physical schema, FK/constraints, UoW/isolation/lock baseline;
+- `concurrency-postgresql-test-matrix.md` — real-PG race coverage;
 - `object-lifecycle-changelog.md` — lifecycle event-set semantics per Relationship;
 - `object.md` — invariant cross-domain di lifecycle event-set atomicity.
 
-I meccanismi PostgreSQL concreti — PK/FK, constraint, lock mode, advisory/row locks, isolation level, retry e query shape — saranno definiti nei successivi persistence/concurrency contract. Qui sono normative le semantics e le invarianti osservabili.
+Le semantics e invarianti osservabili restano normative nei documenti di dominio; i meccanismi PostgreSQL non sono più “da definire” ma sono normativi nei persistence/realization contract sopra.
 
 ## 2. Modello concettuale
 
@@ -188,15 +191,26 @@ Future property/schema evolution non modifica `symmetric`, Resolution set, endpo
 - historical relationship reconstruction;
 - controlled future mutation di structural relationship type soltanto tramite workflow espliciti, non generic update.
 
-## 9. Decisioni tecniche ancora da finalizzare
+## 9. Technical-contract status
 
-- PostgreSQL physical schema definitivo;
-- PK/FK/unique/check/constraint-trigger layout;
-- model-plane conflict serialization primitive;
-- runtime exact-view uniqueness authority e retry strategy;
-- transaction isolation;
-- efficient ObjectTemplate ancestry lookup;
-- lifecycle event persistence representation;
-- REST/DTO e error taxonomy;
-- indexes per model capability lookup e runtime `from_object_id` navigation.
+Le seguenti decisioni non sono più aperte:
 
+```text
+PostgreSQL physical schema e authoritative tables
+PK/FK/UNIQUE/CHECK layout; no constraint-trigger baseline
+model-plane Definition conflict serialization = transaction advisory gate
+runtime exact-view authority = PK(resolution_id, from_object_id, to_object_id)
+unique-collision behavior = whole-UoW rollback + fresh semantic convergence UoW
+READ COMMITTED mutation isolation
+ObjectTemplate ancestry authority = stable parent lineage; recursive lookup, no closure authority
+lifecycle physical representation e one-statement Relationship metadata observation
+runtime from_object_id / relationship / Definition lookup indices
+RD.RENAME non-key owner = FOR NO KEY UPDATE; RD.DELETE = FOR UPDATE
+Relationship DELETE exact-id owner = FOR UPDATE
+```
+
+Restano aperti prima del coding freeze soltanto aspetti di transport/application e test harness, non la persistence/concurrency architecture:
+
+- REST/DTO command/read shapes;
+- public error/status taxonomy;
+- PGTEST-03 deterministic concurrency harness implementation contract.
