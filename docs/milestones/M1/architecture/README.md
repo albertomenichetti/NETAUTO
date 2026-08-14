@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics, PostgreSQL persistence/concurrency/test architecture and the complete public HTTP/JSON API contract (API-01..03.11B) are substantially closed. The only explicitly remaining pre-freeze architecture question is the JSON Schema compiler surface/role, if retained in M1.
+**Status:** DRAFT architecture baseline — domain semantics, PostgreSQL persistence/concurrency/test architecture and the complete public HTTP/JSON API contract (API-01..03.11B) are substantially closed. No feature/design question remains explicitly open; the baseline is ready for the final architecture consistency/freeze review.
 
 ## 1. Purpose
 
@@ -172,7 +172,10 @@ The following are not implementation-choice TODOs anymore:
 - API-03.11 canonical error DTO is flat `{code,message,details}`, with bounded semantic details and no SQL/stack/constraint leakage; `internal_error` is the only public 500 code;
 - domain-defined idempotent no-op/convergence remains success and is never reclassified as conflict solely because no persistence row changed;
 - API-03.11 success policy is frozen: GET=200; newly created public resource=201 + `Location`; normal semantic mutation=200 with resulting projection; ATTACH=200; DETACH=204 including detached no-op; DELETE=204; Relationship CREATE convergence=200 vs new fact=201; absent exact Relationship DELETE=204; no `202` asynchronous kernel success;
-- DT/OT CREATE return command-specific lineage + v1 DRAFT results; DT/OT CREATE_NEXT returns the new exact-version DTO; generic success/changed flags and SQL affected-row responses are forbidden.
+- DT/OT CREATE return command-specific lineage + v1 DRAFT results; DT/OT CREATE_NEXT returns the new exact-version DTO; generic success/changed flags and SQL affected-row responses are forbidden;
+- JSON Schema is not a NETAUTO validation language, compile target or public schema projection; no JSON Schema compiler/API/persisted representation is part of the M1 architecture;
+- JSON Schema compiler/projection is intentionally not retained as an RFE. NETAUTO domain/application validation remains the sole semantic authority;
+- internal effective-schema caches or compiled execution structures, if ever justified by measurements, remain implementation optimizations and are not a JSON Schema capability or second validation authority.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -180,13 +183,19 @@ Reopening any closed area requires an explicit architecture change, not a local 
 
 ## 4. Remaining pre-coding/final-freeze work
 
-At the current checkpoint the only explicitly documented architecture question remaining before final M1 freeze is:
+No feature/design area is currently open in the M1 architecture baseline.
+
+The next activity is the **final architecture consistency/freeze review**. Its purpose is not to invent additional capability, but to verify that:
 
 ```text
-JSON Schema compiler surface/role, if retained in M1
+all normative documents agree
+no stale-open marker remains
+all public/API decisions map back to domain semantics
+all persistence/concurrency/test authorities remain aligned
+no historical docs.old assumption leaks back into the M1 baseline
 ```
 
-If that capability is removed from M1 rather than retained, document the removal explicitly rather than leaving it as an implementation-choice TODO.
+Any genuine contradiction found by that review is an architecture defect and must be repaired before freeze. Absence of defects allows the baseline to be marked frozen and implementation planning to begin.
 
 If later review discovers a new architecture gap, add it here and to the owning domain/cross-cutting document in the same documentation cycle.
 
