@@ -29,6 +29,8 @@ DATA_CHANGE
 SCHEMA_CHANGE
 ATTACH_TO
 DETACH_FROM
+RELATIONSHIP_CREATED
+RELATIONSHIP_DELETED
 DELETED
 ```
 
@@ -91,11 +93,31 @@ destination_canonical_name?
 slot_declaring_template_id?
 slot_name?
 
+relationship_id?
+relationship_definition_id?
+relationship_forward_name?
+relationship_reverse_name?
+
 before_json?
 after_json?
 ```
 
-`object_id` identifica sempre il **subject** dell'evento.
+`object_id` è il primary Object reference dell'event kind.
+
+La sua semantica specifica dipende dal kind:
+
+```text
+intrinsic events
+    -> subject Object
+
+ATTACH_TO / DETACH_FROM
+    -> child / subject
+
+RELATIONSHIP_CREATED / RELATIONSHIP_DELETED
+    -> canonical source endpoint
+```
+
+Per gli event che coinvolgono due Object, `destination_object_id` contiene il secondo endpoint secondo la semantica specifica del kind.
 
 ## 5. Intrinsic event shape
 
@@ -116,6 +138,10 @@ destination_object_id
 destination_canonical_name
 slot_declaring_template_id
 slot_name
+relationship_id
+relationship_definition_id
+relationship_forward_name
+relationship_reverse_name
 ```
 
 Snapshot semantics:
@@ -180,7 +206,7 @@ after  = absent
 
 Event `canonical_name` contiene il final/last known name.
 
-## 6. Structural event direction
+## 6. Ownership structural event direction
 
 Per:
 
@@ -194,18 +220,20 @@ object_id
     = child / subject
 
 canonical_name
-    = child canonical_name at event time
+    = child canonical_name observed for the event
 
 destination_object_id
     = parent / owner
 
 destination_canonical_name
-    = parent canonical_name at event time
+    = parent canonical_name observed for the event
 
 slot_declaring_template_id
 slot_name
     = historical SlotSemanticKey
 ```
+
+Relationship-specific fields sono assenti.
 
 `before_json` e `after_json` sono assenti: la structural transition è completamente descritta dai typed event fields.
 
@@ -216,7 +244,98 @@ child ATTACH_TO parent / slot
 child DETACH_FROM parent / slot
 ```
 
-## 7. Unified stream rationale
+I canonical names sono historical display metadata osservati nello snapshot coerente della mutation; non introducono da soli un requisito di generic serialization con concurrent Object.RENAME.
+
+## 7. Relationship structural event direction
+
+Per:
+
+```text
+RELATIONSHIP_CREATED
+RELATIONSHIP_DELETED
+```
+
+la persisted orientation è sempre la canonical runtime orientation della RelationshipDefinition, indipendentemente dal verso API/navigation da cui la mutation è stata richiesta.
+
+```text
+object_id
+    = canonical source endpoint
+
+destination_object_id
+    = canonical target endpoint
+
+relationship_id
+    = historical exact runtime Relationship id
+
+relationship_definition_id
+    = historical stable definition id
+
+canonical_name
+    = source canonical name observed for the event
+
+destination_canonical_name
+    = target canonical name observed for the event
+
+relationship_forward_name
+relationship_reverse_name
+    = directional labels belonging to the same semantic
+      RelationshipDefinition snapshot used by the mutation
+```
+
+Ownership-specific fields:
+
+```text
+slot_declaring_template_id
+slot_name
+```
+
+sono assenti.
+
+`before_json` e `after_json` sono assenti.
+
+Una create/delete Relationship e il relativo lifecycle event committano o rollbackano insieme.
+
+Idempotent runtime no-op non produce duplicate event.
+
+### 7.1 Relationship lifecycle read projection
+
+Per una directed Relationship, lo stesso persisted event viene orientato rispetto all'Object richiesto.
+
+Se l'Object richiesto è il canonical source:
+
+```text
+direction = OUTGOING
+name = relationship_forward_name
+related_object = destination
+```
+
+Se è il canonical target:
+
+```text
+direction = INCOMING
+name = relationship_reverse_name
+related_object = source
+```
+
+Per una symmetric Relationship:
+
+```text
+direction = SYMMETRIC
+name = relationship_forward_name == relationship_reverse_name
+related_object = other endpoint
+```
+
+Per self-loop:
+
+```text
+direction = SELF
+```
+
+Un directed self-loop ricopre entrambi i directional role; la projection deve poter esporre entrambe le relative semantic labels e non collassarle impropriamente in un unico role.
+
+Il verso con cui il caller ha invocato la mutation non fa parte della semantic history.
+
+## 8. Unified stream rationale
 
 Un singolo changelog rende dirette query operative come:
 
@@ -235,9 +354,12 @@ OR
 destination_object_id = X
 ```
 
-perché l'Object può partecipare come child o parent.
+perché l'Object può partecipare come:
 
-## 8. Historical references, not live FKs
+- child o parent in ownership;
+- source o target in Relationship.
+
+## 9. Historical references, not live FKs
 
 Gli identifier salvati nel changelog sono historical identity references.
 
@@ -249,19 +371,23 @@ In particolare:
 object_id
 destination_object_id
 slot_declaring_template_id
+relationship_id
+relationship_definition_id
 ```
 
-non devono avere semantics di live FK verso current Object/ObjectTemplate rows.
+non devono avere semantics di live FK verso current Object/ObjectTemplate/Relationship/RelationshipDefinition rows.
 
 Ragioni:
 
 - `DELETED` deve sopravvivere alla rimozione dell'Object;
-- structural history deve sopravvivere alla successiva delete di child/parent;
+- structural history deve sopravvivere alla successiva delete degli Object coinvolti;
+- `RELATIONSHIP_DELETED` deve sopravvivere alla rimozione della runtime Relationship;
+- historical Relationship event non deve bloccare RelationshipDefinition delete;
 - il changelog non deve diventare hidden blocker della whole-lineage model delete.
 
 Il fatto che non siano live FK non indebolisce la mutation atomicity: gli identifier vengono registrati nella stessa UoW in cui la transition reale viene validata e committata.
 
-Per gli structural event non viene denormalizzato il canonical FQI della declaring ObjectTemplate; sono sufficienti:
+Per ownership event non viene denormalizzato il canonical FQI della declaring ObjectTemplate; sono sufficienti:
 
 ```text
 slot_declaring_template_id
@@ -270,7 +396,9 @@ slot_name
 
 insieme ai canonical names degli Object.
 
-## 9. Append-only kernel semantics
+Per Relationship event vengono denormalizzati i directional labels della definition per preservare la leggibilità operativa anche dopo una futura delete/rename della definition.
+
+## 10. Append-only kernel semantics
 
 Le normali kernel/application workflow:
 
@@ -289,7 +417,7 @@ Una correzione del current state produce una nuova domain mutation/event, non ri
 
 Il livello di enforcement DB contro direct DBA UPDATE/DELETE è technical/operational policy separata; M1 non pretende compliance-grade forensic guarantees.
 
-## 10. Lifecycle public surface is read-only
+## 11. Lifecycle public surface is read-only
 
 Il lifecycle changelog non è un aggregate direttamente mutabile dal dominio.
 
@@ -310,12 +438,14 @@ Object.DATA_CHANGE
 Object.SCHEMA_CHANGE
 Object.ATTACH
 Object.DETACH
+Relationship.CREATE
+Relationship.DELETE
 Object.DELETE
 ```
 
 Le sole interfacce esposte verso il domain/application changelog sono read/query interfaces.
 
-## 11. Atomicity
+## 12. Atomicity
 
 Per ogni reale mutation M1:
 
@@ -331,7 +461,7 @@ committano o rollbackano insieme.
 
 Idempotent no-op non produce eventi duplicati.
 
-## 12. Query/read consistency
+## 13. Query/read consistency
 
 Changelog reads possono filtrare almeno concettualmente per:
 
@@ -339,6 +469,8 @@ Changelog reads possono filtrare almeno concettualmente per:
 kind
 object_id
 destination_object_id
+relationship_id
+relationship_definition_id
 time/cursor range
 ```
 
