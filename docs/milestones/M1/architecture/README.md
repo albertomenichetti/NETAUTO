@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory, all core command DTO rules, PrimitiveType public lexical forms, canonical read/list contracts and failure-class HTTP mapping are consolidated. Remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics, PostgreSQL persistence/concurrency/test architecture and the complete public HTTP/JSON API contract (API-01..03.11B) are substantially closed. The only explicitly remaining pre-freeze architecture question is the JSON Schema compiler surface/role, if retained in M1.
 
 ## 1. Purpose
 
@@ -58,7 +58,8 @@ concurrency-postgresql-test-matrix.md
 api-contract.md
     Application-command/query boundary, HTTP/JSON adapter principles,
     /api/v1/core capability namespace, canonical 32-mutation route inventory,
-    semantic read projections and failure boundary. API-01..02.
+    semantic read projections and complete public success/failure boundary.
+    API-01..02 plus API-03 integration.
 
 api-wire-contract.md
     API-03 command/wire registry: API-03.1 strict caller-intent,
@@ -67,7 +68,7 @@ api-wire-contract.md
     API-03.6 Object command DTO, API-03.7 Relationship command DTO,
     API-03.8 PrimitiveType public lexical forms + byte-size contract,
     API-03.9 read registry, API-03.10 list registry,
-    API-03.11A failure-class/error-shape registry.
+    API-03.11 complete error/success registry.
 
 api-read-contract.md
     API-03.9 canonical single-resource/projection read DTO: DataType,
@@ -81,8 +82,8 @@ api-list-contract.md
 
 api-error-contract.md
     API-03.11 failure boundary: transport-neutral failure classes,
-    public HTTP status mapping, canonical error DTO; concrete M1 error-code
-    catalog and success mapping are completed in API-03.11B.
+    finite concrete public error-code catalog, bounded details schemas,
+    HTTP status mapping and success body/status/Location policy.
 ```
 
 ### DataType
@@ -165,10 +166,13 @@ The following are not implementation-choice TODOs anymore:
 - Object collection pagination key is immutable `id ASC`, while exact `canonical_name` filter is supported independently;
 - Object-specific lifecycle route means events involving the Object (`object_id=X OR destination_object_id=X`) and lifecycle ordering is `(occurred_at,id) DESC`;
 - API-03.10 PERSIST-15 read-path indices are normative: `objects(canonical_name,id)`, `object_lifecycle_events(kind,occurred_at,id)`, and partial `object_lifecycle_events(relationship_name,occurred_at,id) WHERE relationship_name IS NOT NULL`;
-- API-03.11A failure classes/status baseline is frozen: `INVALID_REQUEST=400`, `NOT_FOUND=404`, `SEMANTIC_VALIDATION=422`, `STATE_CONFLICT=409`, `INTERNAL_FAILURE=500`;
-- API-03.11A reserves 404 for missing URI/path target identity; missing command operands are normally 422; malformed `expected_revision` is 400 while stale well-formed revision is 409;
-- API-03.11A canonical error DTO is flat `{code,message,details}`, with stable snake_case `code`, human-readable non-branching `message`, object-shaped `details`, and no SQL/stack/constraint leakage for internal failures;
-- domain-defined idempotent no-op/convergence remains success and is never reclassified as conflict solely because no persistence row changed.
+- API-03.11 failure classes/status baseline is frozen: `INVALID_REQUEST=400`, `NOT_FOUND=404`, `SEMANTIC_VALIDATION=422`, `STATE_CONFLICT=409`, `INTERNAL_FAILURE=500`;
+- API-03.11 reserves 404 for missing URI/path target identity; missing command operands use `referenced_resource_not_found`/422; malformed `expected_revision` is 400 while stale well-formed revision is `stale_revision`/409;
+- API-03.11 finite public error-code catalog is frozen; known M1 lifecycle/default/dependency/ownership/schema-change/Relationship conflicts use dedicated stable codes and no generic conflict escape hatch;
+- API-03.11 canonical error DTO is flat `{code,message,details}`, with bounded semantic details and no SQL/stack/constraint leakage; `internal_error` is the only public 500 code;
+- domain-defined idempotent no-op/convergence remains success and is never reclassified as conflict solely because no persistence row changed;
+- API-03.11 success policy is frozen: GET=200; newly created public resource=201 + `Location`; normal semantic mutation=200 with resulting projection; ATTACH=200; DETACH=204 including detached no-op; DELETE=204; Relationship CREATE convergence=200 vs new fact=201; absent exact Relationship DELETE=204; no `202` asynchronous kernel success;
+- DT/OT CREATE return command-specific lineage + v1 DRAFT results; DT/OT CREATE_NEXT returns the new exact-version DTO; generic success/changed flags and SQL affected-row responses are forbidden.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -176,12 +180,13 @@ Reopening any closed area requires an explicit architecture change, not a local 
 
 ## 4. Remaining pre-coding/final-freeze work
 
-Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include:
+At the current checkpoint the only explicitly documented architecture question remaining before final M1 freeze is:
 
 ```text
-API-03.11B concrete error-code/details catalog + success HTTP status/body policy
-JSON Schema compiler surface/role if retained in M1
+JSON Schema compiler surface/role, if retained in M1
 ```
+
+If that capability is removed from M1 rather than retained, document the removal explicitly rather than leaving it as an implementation-choice TODO.
 
 If later review discovers a new architecture gap, add it here and to the owning domain/cross-cutting document in the same documentation cycle.
 
