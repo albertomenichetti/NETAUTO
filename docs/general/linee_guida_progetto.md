@@ -38,9 +38,9 @@ Il codice non costituisce una fonte autonoma di decisioni architetturali: eventu
 
 Durante la core review il branch di riferimento è `core_review`.
 
-La directory `docs.old/` costituisce memoria storica del progetto ed è da considerarsi read-only. Il suo contenuto non è normativo per il design corrente.
-
 La documentazione corrente viene sviluppata sotto `docs/`.
+
+Il materiale storico eventualmente necessario è recuperabile dalla Git history e non costituisce autorità per il design o l'implementazione corrente. Directory o file storici rimossi dal working tree non devono essere ripristinati come baseline implicita.
 
 I documenti temporanei non ancora assegnati a una milestone possono risiedere in `docs/wip/`.
 
