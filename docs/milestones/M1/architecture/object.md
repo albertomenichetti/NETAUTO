@@ -1,6 +1,6 @@
 # M1 — Object Architecture
 
-**Status:** DRAFT
+**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency baseline ratified; transport/read API details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -13,7 +13,7 @@ Documenti collegati:
 - `object-ownership.md` — component ownership, attach/detach, single-owner, acyclicity e concurrency domains;
 - `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface.
 
-I meccanismi PostgreSQL concreti — row/advisory locks, FK, CHECK, isolation level, retry, lock ordering e query shape — saranno definiti nei concurrency/persistence contract. Qui sono normative le semantics e le invarianti osservabili.
+Le semantics e invarianti osservabili sono definite nei documenti Object. I meccanismi PostgreSQL concreti sono già normativi in `persistence-model.md`, `persistence-uow-concurrency.md`, nei documenti `concurrency-postgresql-realization-*.md` e nella `concurrency-postgresql-test-matrix.md`.
 
 ## 2. Responsabilità
 
@@ -97,19 +97,20 @@ Ownership/component state e Relationship state sono domini relazionali distinti 
 - **OBJ-INV-030 — Read-only lifecycle surface:** il changelog espone pubblicamente solo read/query operations.
 - **OBJ-INV-031 — Strong concurrent consistency:** nessun supported interleaving può committare uno stato che viola le invarianti sopra.
 
-## 5. High-risk concurrency invariants
+## 5. High-risk concurrency invariants — resolved realization
 
-Richiedono design PostgreSQL e integration/concurrency test dedicati:
+Le seguenti race sono semanticamente high-risk ma **non più aperte come design PostgreSQL**:
 
-1. `SCHEMA_CHANGE(parent)` vs `ATTACH/DETACH` sugli outgoing edges dello stesso parent;
-2. concurrent `ATTACH` sullo stesso child rispetto al single-owner invariant;
-3. concurrent edge-add rispetto all'ownership acyclicity;
-4. `DATA_CHANGE` vs `SCHEMA_CHANGE` sullo stesso Object;
-5. `DELETE` vs nuove ownership/Relationship references.
+1. `SCHEMA_CHANGE(parent)` vs `ATTACH/DETACH`: parent Object è shared concurrency owner; non-delete owner mode `FOR NO KEY UPDATE`.
+2. concurrent `ATTACH` sullo stesso child: `PRIMARY KEY(child_object_id)` è final single-owner authority.
+3. concurrent edge-add e acyclicity: real ATTACH usa `pg_advisory_xact_lock(OWNERSHIP_GRAPH_WRITE_GATE)`; protected graph read avviene in statement successivo con fresh `READ COMMITTED` snapshot.
+4. `DATA_CHANGE` vs `SCHEMA_CHANGE`: complete current Object row owner, candidate rederived after owner lock.
+5. `DELETE` vs nuove ownership/Relationship references: immediate FK `RESTRICT` is final lifetime authority.
+6. target OTV admission: exact target `FOR SHARE` and PUBLISHED recheck through `S-BINDING-ADMISSION`.
 
-M1 privilegia correctness e semplicità rispetto al massimo parallelismo. Per il cycle predicate è ratificata la strategia di un global ownership-graph write gate per gli edge-add (`ATTACH`), lasciando il meccanismo PostgreSQL concreto ai concurrency contract.
+M1 privilegia correctness e semplicità rispetto al massimo parallelismo. Le intentional over-serialization e non-serialization sono registrate in `concurrency-postgresql-realization-matrix.md` e coperte da `T-PAR` test scenarios.
 
-Relationship possiede concurrency domain propri definiti nei relativi documenti e non eredita il global ownership cycle gate.
+Relationship possiede concurrency domain propri e non eredita il global ownership cycle gate.
 
 ## 6. Candidate future / RFE
 
@@ -128,18 +129,28 @@ Relationship possiede concurrency domain propri definiti nei relativi documenti 
 
 Le expanded/composite reads e historical reconstruction sono candidate ad alta priorità per M2.
 
-## 7. Decisioni tecniche ancora da finalizzare
+## 7. Technical-contract status
 
-- PostgreSQL representation finale di canonical properties;
-- exact max length e DB type di `canonical_name`;
-- clock authority di `occurred_at`;
+Le seguenti decisioni non sono più aperte:
+
+```text
+Object properties persistence = canonical JSONB object
+canonical_name = TEXT semantic bound 1..255
+occurred_at = PostgreSQL transaction_timestamp()
+exact Object->OTV composite FK RESTRICT
+ownership parent/child FK RESTRICT
+persistence CHECK/index layout baseline
+Object non-delete owner = FOR NO KEY UPDATE; DELETE = FOR UPDATE
+parent-local ownership/schema owner = parent Object FOR NO KEY UPDATE
+single-owner = PK(child_object_id)
+ownership graph gate = pg_advisory_xact_lock(OWNERSHIP_GRAPH_WRITE_GATE)
+READ COMMITTED mutation isolation + full-UoW retry discipline
+lifecycle physical table/event shape and historical non-FK identities
+Relationship exact-view/FK lifetime interaction
+```
+
+Restano ancora da finalizzare nel transport/application/read layer:
+
 - DTO/REST shape di DATA_CHANGE `SET`/`REMOVE`;
-- exact FK/CHECK/index layout;
-- parent-local serialization mechanism per ownership/schema change;
-- child single-owner enforcement;
-- concrete global graph write gate mechanism;
-- transaction isolation e retry strategy;
-- lifecycle event persistence shape definitiva;
-- error taxonomy;
-- expanded read API shape futura.
-
+- public error/status taxonomy;
+- expanded/composite read API shape futura.
