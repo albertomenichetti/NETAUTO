@@ -47,7 +47,8 @@ concurrency-postgresql-realization-relationship.md
     Detailed REALIZE-12..14 plus Relationship REALIZE-15 impact.
 
 concurrency-postgresql-test-matrix.md
-    PGTEST real-PostgreSQL concurrency scenario contract and coverage map.
+    PGTEST real-PostgreSQL scenario census, coverage mapping and
+    deterministic concurrency harness contract.
 ```
 
 ### DataType
@@ -110,7 +111,8 @@ The following are not implementation-choice TODOs anymore:
 - RelationshipDefinition conflict transaction advisory gate and post-wait fresh-snapshot rule;
 - runtime Relationship exact-view arbitration, fresh-UoW convergence and exact-ID ABA semantics;
 - Relationship lifecycle one-statement metadata snapshot semantics;
-- canonical real-PostgreSQL concurrency scenario census and 19-predicate coverage mapping (PGTEST-01..02).
+- canonical real-PostgreSQL concurrency scenario census and 19-predicate coverage mapping (PGTEST-01..02);
+- deterministic real-PostgreSQL concurrency harness contract, blocker observation, timeout/isolation/diagnostic rules and stress-vs-contract separation (PGTEST-03).
 
 Reopening any of these requires an explicit architecture change, not a local implementation optimization.
 
@@ -119,7 +121,7 @@ Reopening any of these requires an explicit architecture change, not a local imp
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-PGTEST-03 deterministic PostgreSQL concurrency harness contract
+PGTEST-04 reusable deterministic scenario execution recipes / mapping
 transport / REST / DTO command and read shapes
 public error/status taxonomy
 remaining API wire-format decisions where distinct from canonical persistence
@@ -146,6 +148,8 @@ Stale phrases such as “mechanism still to be finalized” must not remain when
 
 Architecture review before implementation must actively search for such stale-open markers.
 
+If a new design point reveals a retroactive finding, the design sequence is interrupted: the finding is propagated immediately to every affected normative document before the next design point is ratified. Deferring propagation to a later sweep is not allowed when the affected baseline is already known.
+
 ## 6. Coding gate
 
 Before creating implementation `steps.md` or coding M1 behavior, verify:
@@ -153,7 +157,7 @@ Before creating implementation `steps.md` or coding M1 behavior, verify:
 1. owning domain contract is frozen enough for the change;
 2. persistence authority is identified;
 3. every relevant non-`I` concurrency predicate maps to a REALIZE mechanism;
-4. required real-PG scenario IDs exist;
+4. required real-PG scenario IDs and harness contract exist;
 5. no architecture document states a contradictory or still-open version of the same decision.
 
 If any item fails, return to architecture rather than deciding in code.
