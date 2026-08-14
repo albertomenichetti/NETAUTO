@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline, public command DTO and canonical single/projection read DTO ratificati; list/pagination/error details remain before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency, public command DTO e canonical read/list contract ratificati; failure mapping resta prima del final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -13,7 +13,8 @@ Documenti collegati:
 - `objecttemplate-components.md` — ownership slots, compatibility polimorfica, evolution e naming;
 - `objecttemplate-effective-schema.md` — effective schema, create/revise, publication certification e active model graph;
 - `api-wire-contract.md` — public CREATE/REVISE command DTO e selector semantics API-03.3/API-03.5;
-- `api-read-contract.md` — canonical lineage/exact-version/effective-schema/capability read DTO, API-03.9.
+- `api-read-contract.md` — canonical lineage/exact-version/effective-schema/capability read DTO, API-03.9;
+- `api-list-contract.md` — API-03.10 collection envelope, keyset cursor, ordering, list summaries e filters.
 
 Le semantics e le invarianti di dominio sono definite qui e nei documenti collegati. I meccanismi PostgreSQL concreti sono già normativi in:
 
@@ -124,6 +125,7 @@ effective-schema authority = derived exact chain; no authoritative cache
 public exact/implicit parent/DTV selector semantics (API-03.3)
 public ObjectTemplate CREATE/REVISE command DTO (API-03.5)
 canonical ObjectTemplate lineage/exact local/effective-schema/capability read DTO (API-03.9)
+ObjectTemplate collection/list/pagination/filter contract (API-03.10)
 ```
 
 API-03.5 rende normativi per il public command boundary:
@@ -151,7 +153,7 @@ OT.REVISE
 
 `position` è declaration state esplicito e resta l'autorità dell'ordering locale; l'ordine degli array request non costituisce una seconda ordering authority.
 
-API-03.9 rende inoltre normativi:
+API-03.9 rende normativi:
 
 ```text
 stable lineage read
@@ -170,8 +172,34 @@ relationship-capability read
     -> resolved semantic capability DTO, not autonomous Resolution resource
 ```
 
-Restano da finalizzare prima del coding freeze soltanto contract non ancora chiusi:
+API-03.10 rende inoltre normativi:
 
-- collection/list envelope, pagination/filter e list-item policy (API-03.10);
-- REST status/error taxonomy;
+```text
+ObjectTemplate lineage collection
+    -> (namespace,name) ASC
+    -> full bounded lineage DTO
+    -> exact filters namespace/name/abstract/parent_template_id
+
+nested OTV collection
+    -> version ASC
+    -> summary without properties/components
+    -> status filter
+
+relationship-capabilities
+    -> resolution_id ASC
+    -> complete API-03.9 capability item
+    -> exact name filter
+
+all paginated collections
+    -> {items,next_cursor}
+    -> opaque keyset cursor
+    -> limit default 100, max 500
+    -> no offset/page-number/generic sort
+```
+
+Ogni pagina è snapshot-consistent per la singola request; il cursor non promette repeatable membership cross-request.
+
+Restano da finalizzare prima del coding freeze soltanto:
+
+- REST success/error taxonomy e failure mapping;
 - eventuale compiled schema/cache implementation policy se M1 la mantiene come optimization non-authoritative.
