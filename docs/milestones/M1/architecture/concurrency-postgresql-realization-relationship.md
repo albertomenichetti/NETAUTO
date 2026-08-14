@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Concurrency Realization: Relationship model/runtime
 
-**Status:** DRAFT — REALIZE-12..REALIZE-14 ratificati; il documento viene esteso con i successivi consistency sweep.
+**Status:** DRAFT — REALIZE-12..REALIZE-15 ratificati; Relationship predicate realization completa e consistency sweep applicato.
 
 Companion di `concurrency-postgresql-realization-matrix.md`. La catena normativa resta:
 
@@ -58,7 +58,7 @@ Equivalence e conflict appartengono alla stessa protected critical section. Una 
 ### 1.3 `RD.RENAME`
 
 ```text
-Definition header FOR UPDATE
+Definition header FOR NO KEY UPDATE
 -> load/re-read own complete aggregate
 -> acquire conflict gate
 -> fresh certified-set read
@@ -68,7 +68,7 @@ Definition header FOR UPDATE
 -> commit while holding gate
 ```
 
-Same-Definition rename/delete lifetime resta serializzata dalla Definition header, non dal global gate.
+Same-Definition rename/delete lifetime resta serializzata dalla Definition header: RENAME usa il non-key owner mode, DELETE il delete owner mode; il global gate non è la lifetime authority.
 
 ### 1.4 `RD.DELETE`
 
@@ -299,3 +299,51 @@ Almeno:
 10. incomplete projection -> full UoW rollback;
 11. metadata mutation after snapshot but before factual commit does not invalidate event set;
 12. transaction-start `occurred_at` may precede metadata mutation observed by later snapshot.
+
+---
+
+## 4. REALIZE-15 — Relationship impact of the lock-strength consistency sweep
+
+The sweep keeps all Relationship semantic predicates and authorities unchanged but refines non-key mutable owner locks from `FOR UPDATE` to `FOR NO KEY UPDATE`.
+
+### 4.1 RelationshipDefinition rename
+
+`RD.RENAME` changes Resolution names and no referenced Definition key. Its owner primitive is therefore:
+
+```text
+Definition header FOR NO KEY UPDATE
+-> RELATIONSHIP_DEFINITION_CONFLICT_GATE
+```
+
+`RD.DELETE` remains `Definition header FOR UPDATE` because it deletes the referenced identity.
+
+This distinction preserves same-Definition writer serialization while avoiding a lock strength that would unnecessarily conflict with pure referential key-share protection from concurrent runtime Relationship creation.
+
+### 4.2 Runtime Relationship vs Object metadata/state mutation
+
+Object `RENAME`, `DATA_CHANGE` and `SCHEMA_CHANGE` similarly use their Object row as `FOR NO KEY UPDATE` owner; Object DELETE remains `FOR UPDATE`.
+
+Therefore a runtime Relationship CREATE that establishes current Object FKs is not intentionally serialized with non-key Object mutations merely because of referential integrity. The semantic relationship remains the one already defined:
+
+```text
+REL.CREATE × OBJ.RENAME -> ES snapshot only when a real event set is produced
+REL.CREATE × OBJ.DATA_CHANGE/SCHEMA_CHANGE -> semantic I
+REL.CREATE × OBJ.DELETE -> RL/FK arbitration
+```
+
+### 4.3 Lifecycle dependency strength remains `FOR SHARE`
+
+The refinement does **not** weaken lifecycle-sensitive dependency admission/certification locks. Whenever RelationshipDefinition or ObjectTemplate semantics require `FOR SHARE`, that stronger shared lock remains intentional and continues to conflict with non-key lifecycle state writers.
+
+### 4.4 Required sweep tests
+
+Add explicit real-PG tests that prove:
+
+1. `REL.CREATE × RD.RENAME` does not block solely because of Definition FK key protection;
+2. `REL.CREATE × OBJ.RENAME` does not block solely because of Object FK key protection;
+3. `REL.CREATE × OBJ.DATA_CHANGE` and `REL.CREATE × OBJ.SCHEMA_CHANGE` remain free of artificial FK-vs-owner serialization where no other predicate applies;
+4. `REL.CREATE × RD.DELETE` and `REL.CREATE × OBJ.DELETE` still arbitrate correctly through FK `RESTRICT`/delete semantics;
+5. same-Definition rename writers remain serialized;
+6. same-Object non-key intrinsic writers remain serialized.
+
+The refinement changes mechanism strength only; it does not alter RF, RA, ES or RL semantics.
