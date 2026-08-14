@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04` and `STACK-05` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05` and `STACK-06` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -707,6 +707,105 @@ if an application-service unit test requires FastAPI dependency_overrides
 A DI/container framework may be reconsidered only if future composition complexity demonstrates a concrete need, for example a substantially larger dynamic/plugin-driven object graph that explicit Python wiring no longer represents clearly.
 
 It is not introduced speculatively for M1 or merely to reduce a small amount of explicit bootstrap code.
+
+### STACK-06 — logging and minimal observability
+
+**Status:** RATIFIED.
+
+#### Logging technology
+
+```text
+Python stdlib logging
+```
+
+is the project logging baseline.
+
+NETAUTO does not adopt a structured-logging framework such as `structlog` as part of the baseline. Logging configuration is centralized at process/bootstrap composition; individual modules obtain normal hierarchical loggers and do not install their own handlers or configure the logging system independently.
+
+#### Logging ownership
+
+Pure domain code should not normally produce logging side effects.
+
+Domain/application semantics are expressed through returned values and project/domain failures. Application, transport and infrastructure boundaries decide which operationally meaningful events require logging.
+
+Expected application outcomes such as normal not-found, semantic-validation or state-conflict responses are not `ERROR` merely because they are unsuccessful HTTP responses.
+
+Unexpected/internal failures are logged once, at the outer boundary where they are finally handled or leave the process, with exception context when appropriate. The project avoids repeated logging of the same exception at repository, application and HTTP layers.
+
+#### Log levels and volume
+
+The baseline uses the standard logging levels according to operational significance:
+
+```text
+DEBUG
+    -> diagnostic detail
+
+INFO
+    -> meaningful process/infrastructure lifecycle events
+
+WARNING
+    -> abnormal but handled operational conditions
+
+ERROR
+    -> unexpected/internal failures requiring operator attention
+```
+
+Ordinary successful kernel commands are not automatically logged at `INFO`; the project avoids turning routine application traffic into high-volume application logs without an operational requirement.
+
+#### Request correlation
+
+The HTTP adapter may assign a lightweight request identifier and make it available to logging context through Python `contextvars` or an equivalently small standard-library mechanism.
+
+The request identifier is transport/infrastructure observability metadata only. It does not become a domain/application identifier, does not define transaction identity and does not modify lifecycle-event semantics.
+
+This lightweight correlation is the only request-tracing mechanism required by the M1 baseline.
+
+#### Log format
+
+The default M1 log format is ordinary human-readable text.
+
+Application code emits standard `logging.LogRecord` events and does not depend on a project-specific structured-event API. Formatters remain a bootstrap/deployment concern, so a future deployment may adopt JSON or another formatter without rewriting domain/application code.
+
+#### SQL and access logging
+
+SQLAlchemy/driver SQL logging is disabled during normal operation and may be enabled diagnostically at `DEBUG` when required. Normal application logging must not duplicate every SQL statement.
+
+HTTP access logging uses the Uvicorn/runtime baseline unless a concrete operational requirement demonstrates that NETAUTO needs a different access-log implementation.
+
+#### Sensitive data
+
+Secrets and other values designated sensitive by an integration must never be intentionally emitted to normal logs.
+
+Logging/exception code should prefer identifiers and bounded diagnostic context over unrestricted serialization of request bodies, persistence rows or application state.
+
+#### Deferred observability capabilities
+
+The project does not select the following as part of M1 or the current technology baseline:
+
+```text
+OpenTelemetry / distributed tracing
+Prometheus or another metrics framework
+structured-logging framework
+application-wide JSON logging contract
+custom tracing/span framework
+```
+
+These capabilities may be introduced later from concrete operational requirements and measured need. Their absence from M1 must not be compensated by speculative abstractions in application/domain code.
+
+#### Proportionality / M1 implementation rule
+
+M1 implements only the logging/observability support it actually consumes.
+
+A sufficient M1 realization may consist of:
+
+```text
+centralized stdlib logging configuration
+small startup/shutdown and unexpected-error logging
+lightweight request_id middleware/context
+existing Uvicorn access logging
+```
+
+No observability framework, metrics registry, tracing abstraction or structured-event layer is created merely to anticipate future deployment needs.
 
 ## 4. Technology-review rule
 
