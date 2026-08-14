@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO, API-03.6 Object command DTO e il `core.byte_size` public wire contract sono ratificati. Le restanti Relationship/read/failure decisioni non sono ancora congelate.
+**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO, API-03.6 Object command DTO, API-03.7 Relationship command DTO e il `core.byte_size` public wire contract sono ratificati. Restano primitive lexical forms, read/list e failure mapping.
 
 ## 1. Scopo e boundary
 
@@ -641,7 +641,167 @@ A3.62 Object command DTOs never expose caller-controlled Object id, template_id 
 
 ---
 
-## 8. `core.byte_size` public wire contract
+## 8. API-03.7 — RelationshipDefinition / Relationship command DTO
+
+### 8.1 RelationshipDefinition CREATE
+
+CREATE usa una strict union discriminata dal required boolean `symmetric`.
+
+Non-symmetric:
+
+```json
+{
+  "symmetric": false,
+  "perspectives": [
+    {
+      "template_id": "<uuid-a>",
+      "name": "is_hosted_by"
+    },
+    {
+      "template_id": "<uuid-b>",
+      "name": "hosts"
+    }
+  ]
+}
+```
+
+`perspectives` contiene esattamente due elementi `{template_id,name}`. L'ordine non ha significato semantico e i due names devono essere distinti, anche con endpoint template uguali.
+
+Symmetric:
+
+```json
+{
+  "symmetric": true,
+  "endpoint_template_ids": [
+    "<uuid-a>",
+    "<uuid-b>"
+  ],
+  "name": "connects_to"
+}
+```
+
+`endpoint_template_ids` contiene esattamente due template lineage IDs, semanticamente unordered; gli ID possono essere uguali. Il caller fornisce un solo semantic name. Il kernel genera una Resolution per same-template oppure due reciprocal Resolution con lo stesso name per different-template.
+
+Il caller non fornisce `RelationshipDefinition.id` né `RelationshipResolution.id` durante CREATE.
+
+### 8.2 RelationshipDefinition RENAME
+
+La route è:
+
+```text
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/rename
+```
+
+`symmetric` non viene reinviato nel body perché è stable aggregate state già identificato dal path.
+
+Non-symmetric rename:
+
+```json
+{
+  "resolutions": [
+    {
+      "resolution_id": "<uuid-r1>",
+      "name": "hosted_by"
+    },
+    {
+      "resolution_id": "<uuid-r2>",
+      "name": "hosts"
+    }
+  ]
+}
+```
+
+`resolutions` contiene esattamente due elementi, copre il complete current Resolution set, è unordered e vieta duplicate `resolution_id`.
+
+Symmetric rename:
+
+```json
+{
+  "name": "connected_to"
+}
+```
+
+Un solo semantic name, indipendentemente dal fatto che il complete aggregate possieda fisicamente una oppure due Resolution rows.
+
+Le due request shape sono strutturalmente disgiunte. Il transport può validarne la shape senza leggere persisted state; l'application/domain verifica che la shape scelta sia coerente con la current Definition symmetry e che, per non-symmetric, gli ID appartengano al complete child set della Definition. Shape/symmetry mismatch è semantic command failure.
+
+### 8.3 RelationshipDefinition DELETE
+
+```text
+DELETE /api/v1/core/relationship-definitions/{relationship_definition_id}
+```
+
+Nessun body e nessuna option `force`, `cascade` o implicit factual-relationship cleanup.
+
+### 8.4 Runtime Relationship CREATE
+
+```json
+{
+  "resolution_id": "<uuid>",
+  "from_object_id": "<uuid>",
+  "to_object_id": "<uuid>"
+}
+```
+
+Esattamente questi tre required field. Non sono caller input:
+
+```text
+relationship_id
+relationship_definition_id
+name
+symmetric
+from_template_id
+to_template_id
+```
+
+`relationship_definition_id` deriva dalla selected Resolution. `Relationship.id` è kernel-generated quando nasce un nuovo factual relationship.
+
+`from_object_id == to_object_id` non viene rifiutato strutturalmente: self-loop admission resta domain semantics.
+
+La selected Resolution preserva la perspective assignment per non-symmetric Definition; symmetric Resolution/assignment equivalenti possono convergere sullo stesso factual Relationship secondo il runtime idempotency contract.
+
+### 8.5 Runtime Relationship DELETE
+
+```text
+DELETE /api/v1/core/relationships/{relationship_id}
+```
+
+Nessun body. DELETE resta exact-ID based e non esiste semantic-tuple delete alternative; questo preserva anche la ratificata ABA safety.
+
+### 8.6 Ordering e generated identity
+
+Gli array che rappresentano semantic set unordered non acquisiscono orientation dall'ordine JSON:
+
+```text
+non-symmetric perspectives[]
+symmetric endpoint_template_ids[]
+non-symmetric rename resolutions[]
+```
+
+M1 continua a non introdurre `source`/`target` o `forward`/`reverse` field.
+
+### 8.7 Decisioni API-03.7
+
+```text
+A3.63 RelationshipDefinition CREATE is a strict union discriminated by the required symmetric boolean.
+A3.64 Non-symmetric CREATE contains exactly symmetric=false and a two-element perspectives array of {template_id,name}; perspective order is not semantic and names must be distinct.
+A3.65 Symmetric CREATE contains exactly symmetric=true, a two-element endpoint_template_ids array and one semantic name; endpoint order is not semantic and the IDs may be equal.
+A3.66 Definition/Resolution identities are kernel-generated during CREATE; callers never supply them.
+A3.67 RelationshipDefinition RENAME does not resend symmetric.
+A3.68 Non-symmetric RENAME body contains a complete two-element resolutions array of {resolution_id,name}; order is irrelevant and duplicate resolution IDs are invalid.
+A3.69 Symmetric RENAME body contains exactly one name field, independent of whether the aggregate physically owns one or two Resolutions.
+A3.70 RENAME request shape and current Definition symmetry must agree; mismatch is a semantic command failure.
+A3.71 RelationshipDefinition DELETE has no body and no cascade/force option.
+A3.72 Relationship CREATE body contains exactly resolution_id, from_object_id and to_object_id; all required.
+A3.73 Relationship CREATE never accepts caller-supplied relationship_id, relationship_definition_id, names or endpoint template metadata.
+A3.74 from_object_id == to_object_id is not rejected structurally; self-loop admission remains domain semantics.
+A3.75 Relationship DELETE is exact relationship_id based, has no body, and exposes no semantic-tuple delete alternative.
+A3.76 Array ordering never creates orientation for semantic unordered Definition sets; source/target or forward/reverse fields remain absent.
+```
+
+---
+
+## 9. `core.byte_size` public wire contract
 
 Ovunque il public API accetti semantic `core.byte_size` — Object property, DataType constraint/enum, ObjectTemplate `migration_default` — sono ammessi:
 
@@ -691,13 +851,11 @@ A3-BS-07 one primitive parser/canonicalizer reused across all byte_size input po
 
 ---
 
-## 9. API-03 remaining work
+## 10. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-RelationshipDefinition discriminated CREATE/RENAME DTOs
-Relationship CREATE DTO
 remaining primitive public-input lexical forms
 canonical read DTO conventions
 pagination/filter/list envelopes
