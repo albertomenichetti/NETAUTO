@@ -1,6 +1,6 @@
 # M1 — Relationship Architecture
 
-**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency realization and public command DTO contract complete; read/failure API details remain before final M1 architecture freeze.
+**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency realization, public command DTO e canonical single/projection read DTO complete; list/pagination/failure API details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -18,7 +18,8 @@ Documenti collegati:
 - `concurrency-postgresql-test-matrix.md` — real-PG race coverage;
 - `object-lifecycle-changelog.md` — lifecycle event-set semantics per Relationship;
 - `object.md` — invariant cross-domain di lifecycle event-set atomicity;
-- `api-wire-contract.md` — public command DTO/wire shape, API-03.7.
+- `api-wire-contract.md` — public command DTO/wire shape, API-03.7;
+- `api-read-contract.md` — canonical Definition/factual/Object-relative Relationship read DTO, API-03.9.
 
 Le semantics e invarianti osservabili restano normative nei documenti di dominio; i meccanismi PostgreSQL non sono più “da definire” ma sono normativi nei persistence/realization contract sopra.
 
@@ -143,7 +144,7 @@ Nessuna delle due è semanticamente "forward".
 
 ## 6. Public command DTO contract
 
-API-03.7 in `api-wire-contract.md` è ora normativo per il transport M1.
+API-03.7 in `api-wire-contract.md` è normativo per il transport M1.
 
 In sintesi:
 
@@ -177,7 +178,32 @@ Definition/Resolution/Relationship identities create-time restano kernel-generat
 
 Questa sezione non sostituisce le domain validation in `relationship-definition.md` / `relationship-runtime.md`: aggregate shape, lineage admission, conflict/equivalence, factual convergence e symmetry semantics restano application/domain authority.
 
-## 7. Modelling guideline
+## 7. Public read DTO contract
+
+API-03.9 in `api-read-contract.md` è normativo per le current read projections M1.
+
+```text
+RelationshipDefinition GET
+    -> complete Definition + Resolution aggregate
+    -> nested child non duplica relationship_definition_id
+    -> no forward/reverse ordering
+
+Relationship GET
+    -> factual aggregate
+    -> distinct semantic views[]
+    -> never raw RuntimeRelationshipResolution closure
+
+Object relationship read
+    -> self-contained ObjectRelationshipView
+    -> semantic deduplication
+
+relationship capability read
+    -> resolution_id + definition_id + name + from/to template lineage
+```
+
+Inheritance overlap non può produrre duplicate public semantic views. Symmetric/non-symmetric self-loop cardinality segue la semantic view definition già congelata nel runtime domain.
+
+## 8. Modelling guideline
 
 Una Relationship capability dovrebbe essere dichiarata sul template-space più generale per cui la semantics è corretta per tutti i discendenti:
 
@@ -188,7 +214,7 @@ lowest necessary
 
 Non creare specialization duplicate soltanto per restringere artificialmente lo spazio di compatibility.
 
-## 8. Future typed Relationship properties
+## 9. Future typed Relationship properties
 
 M1 non introduce:
 
@@ -217,7 +243,7 @@ RuntimeRelationshipResolution
 
 Future property/schema evolution non modifica `symmetric`, Resolution set, endpoint lineage o resolved graph topology.
 
-## 9. Candidate future / RFE
+## 10. Candidate future / RFE
 
 - `RelationshipDefinitionVersion`;
 - typed Relationship properties;
@@ -228,7 +254,7 @@ Future property/schema evolution non modifica `symmetric`, Resolution set, endpo
 - historical relationship reconstruction;
 - controlled future mutation di structural relationship type soltanto tramite workflow espliciti, non generic update.
 
-## 10. Technical-contract status
+## 11. Technical-contract status
 
 Le seguenti decisioni non sono più aperte:
 
@@ -245,9 +271,10 @@ runtime from_object_id / relationship / Definition lookup indices
 RD.RENAME non-key owner = FOR NO KEY UPDATE; RD.DELETE = FOR UPDATE
 Relationship DELETE exact-id owner = FOR UPDATE
 RelationshipDefinition/Relationship public command DTO shapes = API-03.7
+RelationshipDefinition/factual/Object-relative canonical read DTO shapes = API-03.9
 ```
 
 Restano aperti prima del coding freeze soltanto aspetti di transport/read/application non ancora chiusi:
 
-- canonical read DTO shapes;
+- collection/list envelope, pagination/filter e list-item policy (API-03.10);
 - public error/status taxonomy.
