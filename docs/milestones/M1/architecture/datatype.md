@@ -1,6 +1,6 @@
 # M1 — DataType Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency e DataType command DTO baseline ratificati; remaining public read/failure/primitive-wire details remain before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency, DataType command DTO e PrimitiveType public wire baseline ratificati; remaining public read/failure details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -27,7 +27,7 @@ I meccanismi PostgreSQL concreti sono definiti in:
 - `concurrency-semantic-matrix.md` e `concurrency-postgresql-realization-matrix.md` — safety predicate e realization;
 - `concurrency-postgresql-test-matrix.md` — real-PG concurrency coverage.
 
-La public command/wire representation è definita in `api-contract.md` e `api-wire-contract.md`; in particolare API-03.4 è authority per DataType CREATE/REVISE e per gli altri command DTO del dominio.
+La public command/wire representation è definita in `api-contract.md` e `api-wire-contract.md`; in particolare API-03.4 è authority per DataType CREATE/REVISE e per gli altri command DTO del dominio, mentre API-03.8 + A3-BS-01..07 sono authority per accepted PrimitiveType public-input lexical forms e canonical public output.
 
 ## 2. Responsabilità
 
@@ -252,6 +252,8 @@ Il canonical state è ciò che persistence/read/API espongono.
 - `core.ip`: canonical IPv4/IPv6 address.
 - `core.ip_prefix`: canonical valid network; host bits invalidi vengono rifiutati, non corretti.
 - `core.byte_size`: exact non-negative information quantity, canonical integer bytes; SI e IEC distinti; fractional input solo se converte a integer bytes esatti.
+
+La public accepted lexical form di ciascun primitive è congelata in `api-wire-contract.md` API-03.8; `core.byte_size` usa inoltre il dedicated contract A3-BS-01..07. Tutti gli input position (`Object` values, constraint/enum e `migration_default`) riusano lo stesso PrimitiveType parser/canonicalizer.
 
 General units/arithmetic framework è fuori M1.
 
@@ -545,21 +547,22 @@ READ COMMITTED mutation isolation baseline
 whole-UoW retry/convergence boundaries
 expected_revision public HTTP placement for REVISE/PUBLISH/DELETE_DRAFT
 DataType CREATE/REVISE/command DTO shape (API-03.4)
+PrimitiveType accepted public lexical forms + canonical public output (API-03.8 / A3-BS)
 ```
 
 In particolare:
 
-- `core.number` persiste come canonical exact-decimal JSON string;
-- `core.byte_size` persiste come integer bytes;
-- `core.datetime` persiste canonical UTC `Z` con precisione massima microsecondo;
+- `core.number` persiste e viene esposto canonicalmente come exact-decimal JSON string; API-03.8 accetta soltanto exact-decimal JSON string senza exponent/leading plus;
+- `core.byte_size` persiste e viene esposto canonicalmente come integer bytes; il public input accetta integer bytes oppure strict SI/IEC quantity string secondo A3-BS-01..07;
+- `core.datetime` persiste/esce canonical UTC `Z` con precisione massima microsecondo; API-03.8 congela la strict absolute-offset lexical form e il no-rounding contract;
+- `core.ip`/`core.ip_prefix`, date, boolean, integer e string public lexical forms sono congelate da API-03.8;
 - active DTV reverse lookup usa le authoritative property/OTV rows e gli indici di `persistence-model.md`;
 - concurrency segue REALIZE-01..15 e i test PGTEST;
 - `expected_revision` usa il required positive-integer query parameter definito da API-03.2, senza ETag/If-Match semantics;
 - API-03.4 definisce CREATE come lineage + v1 DRAFT con `constraints` omission -> `{}`, REVISE come complete constraints candidate required e gli altri command DTO DataType.
 
-Restano da definire/finalizzare prima del coding freeze soltanto i contract che appartengono ancora al transport/application layer, non alla persistence/concurrency architecture già ratificata:
+Restano da definire/finalizzare prima del coding freeze soltanto i contract che appartengono ancora al transport/application layer, non alla persistence/concurrency/primitive-wire architecture già ratificata:
 
 - public read/list response shape e pagination/filter conventions;
 - endpoint success/error taxonomy e failure mapping;
-- remaining PrimitiveType accepted public lexical forms dove distinte dal canonical persistence codec;
 - ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
