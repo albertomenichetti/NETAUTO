@@ -64,7 +64,7 @@ api-wire-contract.md
     API-03 wire/DTO decisions as ratified: API-03.1 strict caller-intent,
     omission/null rules; API-03.2 expected_revision query placement;
     API-03.3 exact/implicit selector semantics; API-03.4 DataType command DTO;
-    byte-size accepted-input/canonical-output contract.
+    API-03.5 ObjectTemplate command DTO; byte-size accepted-input/canonical-output contract.
 ```
 
 ### DataType
@@ -137,6 +137,7 @@ The following are not implementation-choice TODOs anymore:
 - API-03.2 uniform required positive-integer `expected_revision` query parameter for DTV/OTV REVISE, PUBLISH and DELETE_DRAFT, with no ETag/If-Match reinterpretation;
 - API-03.3 type-specific exact/implicit selector contract: omission resolves a default only for Object CREATE OTV selection, ObjectTemplate parent-version selection and property DTV binding/rebinding; CREATE_NEXT, SET_DEFAULT and Object SCHEMA_CHANGE remain exact-only; no generic default/latest/highest selector token;
 - API-03.4 DataType command DTO contract: CREATE builds lineage + v1 DRAFT, optional `constraints` defaults to `{}`, REVISE requires complete `constraints`, command-specific DTOs never expose caller-controlled id/version/revision/status/default state;
+- API-03.5 ObjectTemplate command DTO contract: CREATE requires explicit `abstract`, optional declaration collections default to `[]`, property/component declaration DTOs are strict, `position` is the ordering authority, and REVISE requires complete local property/component arrays;
 - `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
@@ -148,7 +149,7 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-API-03.5+ ObjectTemplate/Object/Relationship remaining command/read DTO shapes
+API-03.6+ Object/Relationship remaining command/read DTO shapes
 remaining primitive public-input lexical forms
 public error/status taxonomy and HTTP mapping
 remaining API pagination/filter/response conventions
