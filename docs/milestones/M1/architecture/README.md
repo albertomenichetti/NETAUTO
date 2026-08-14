@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary and canonical route inventory are also consolidated. Remaining pre-freeze work is explicitly tracked below.
 
 ## 1. Purpose
 
@@ -57,7 +57,8 @@ concurrency-postgresql-test-matrix.md
 ```text
 api-contract.md
     Application-command/query boundary, HTTP/JSON adapter principles,
-    route/DTO/failure contract as API-01+ are ratified.
+    /api/v1/core capability namespace, canonical 32-mutation route inventory,
+    semantic read projections and subsequent DTO/failure contracts. API-01..02.
 ```
 
 ### DataType
@@ -123,7 +124,8 @@ The following are not implementation-choice TODOs anymore:
 - canonical real-PostgreSQL concurrency scenario census and 19-predicate coverage mapping (PGTEST-01..02);
 - deterministic real-PostgreSQL concurrency harness contract, blocker observation, timeout/isolation/diagnostic rules and stress-vs-contract separation (PGTEST-03);
 - eight reusable deterministic execution recipes and complete 51-scenario recipe mapping (PGTEST-04);
-- API/application boundary: command/query contracts authoritative, HTTP/JSON adapter, operation-specific command DTO, no generic PATCH, transport-neutral failure boundary (API-01).
+- API/application boundary: command/query contracts authoritative, HTTP/JSON adapter, operation-specific command DTO principle, no generic PATCH, transport-neutral failure boundary (API-01);
+- public kernel capability namespace `/api/v1/core`, canonical POST-command/GET/DELETE method convention, complete 32-mutation route inventory, semantic read projections and forbidden generic CRUD/owned-child mutation surface (API-02).
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -134,9 +136,9 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-API-02+ route inventory / DTO and wire shapes
-public error/status taxonomy
-remaining API wire-format decisions where distinct from canonical persistence
+API-03 command/read DTO and JSON wire shapes
+public error/status taxonomy and HTTP mapping
+remaining API pagination/filter/response conventions
 JSON Schema compiler surface/role if retained in M1
 ```
 
@@ -146,14 +148,14 @@ If later review discovers a new architecture gap, add it here and to the owning 
 
 A cross-cutting decision is considered consolidated only after all documents that state the affected assumption are aligned.
 
-For example a lock-strength change must update, as applicable:
+For example a lock-strength or public-route change must update, as applicable:
 
 ```text
-canonical realization index
-persistence UoW baseline
-Object/ownership or Relationship realization companion
-owning domain concurrency/lifecycle document
+canonical realization/index document
+persistence UoW or API baseline
+Object/ownership or Relationship companion/domain document
 PostgreSQL test matrix
+public API contract
 ```
 
 Stale phrases such as “mechanism still to be finalized” must not remain when that mechanism has become normative elsewhere.
@@ -170,7 +172,7 @@ Before creating implementation `steps.md` or coding M1 behavior, verify:
 2. persistence authority is identified;
 3. every relevant non-`I` concurrency predicate maps to a REALIZE mechanism;
 4. required real-PG scenario IDs, deterministic harness contract and execution recipe mapping exist;
-5. application/API surface preserves the semantic operation boundary;
+5. application/API route, DTO and failure contract are defined for exposed behavior and preserve the semantic operation boundary;
 6. no architecture document states a contradictory or still-open version of the same decision.
 
 If any item fails, return to architecture rather than deciding in code.
