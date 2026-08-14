@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Concurrency Realization: Relationship model/runtime
 
-**Status:** DRAFT — REALIZE-12..REALIZE-13 ratificati; il documento viene esteso con i successivi predicate Relationship.
+**Status:** DRAFT — REALIZE-12..REALIZE-14 ratificati; il documento viene esteso con i successivi consistency sweep.
 
 Companion di `concurrency-postgresql-realization-matrix.md`. La catena normativa resta:
 
@@ -200,3 +200,102 @@ Almeno:
 15. rollback CREATE/DELETE preserves complete aggregate semantics;
 16. Object/Definition delete races use RL/FK;
 17. unrelated Relationship CREATEs have no global serialization.
+
+---
+
+## 3. REALIZE-14 — `S-REL-EVENT-SNAPSHOT` (`ES`)
+
+`S-REL-EVENT-SNAPSHOT` usa outcome `SNAPSHOT`, non writer serialization. La authority è una coherent committed metadata observation dei current `relationship_resolutions.name` e `objects.canonical_name` necessari all'intero lifecycle event set.
+
+### 3.1 One-statement observation boundary
+
+Una singola Relationship factual transition usa **un solo SQL metadata-observation statement** a `READ COMMITTED` per ottenere, nello stesso MVCC snapshot:
+
+```text
+all required runtime semantic views
+all Resolution relationship names
+all source/destination Object canonical names
+```
+
+Non sono ammesse più SELECT metadata separate che possano osservare snapshot differenti. Il result dello statement viene catturato dalla UoW e usato integralmente per costruire il complete event set; non si fanno metadata reread per singolo evento.
+
+Nessun `FOR SHARE`/`FOR UPDATE` viene acquisito soltanto per event metadata: `RD.RENAME` e `OBJ.RENAME` non vengono genericamente serializzati con runtime Relationship mutation.
+
+### 3.2 CREATE ordering
+
+Per una real `REL.CREATE`:
+
+```text
+validate + derive complete closure
+-> insert Relationship header
+-> insert complete runtime closure
+-> exact-view arbitration succeeds
+-> ONE metadata/semantic-view SELECT over the complete candidate closure
+-> build complete creation event set
+-> insert events
+-> commit
+```
+
+Le runtime rows inserite dalla stessa transaction sono visibili al proprio SELECT. Se factual arbitration fallisce, la UoW rollbacka prima della metadata observation.
+
+### 3.3 DELETE ordering
+
+Per `REL.DELETE(X)` current:
+
+```text
+Relationship X FOR UPDATE
+-> ONE metadata/semantic-view SELECT over the complete current closure
+-> capture complete deletion event set
+-> delete Relationship header / CASCADE closure
+-> insert captured deletion events
+-> commit
+```
+
+La semantic projection deve essere catturata prima della closure removal.
+
+### 3.4 Semantic-view dedup
+
+Il lifecycle contract resta one event per distinct:
+
+```text
+(object_id, destination_object_id, relationship_name)
+```
+
+non per runtime row. Il one-statement snapshot può quindi produrre direttamente la domain semantic projection/dedup (`SELECT DISTINCT` o equivalente), preservando complete event-set semantics anche quando più runtime rows rappresentano la stessa semantic view.
+
+### 3.5 Concurrent metadata mutation
+
+Per `RD.RENAME × REL.CREATE/DELETE`, l'event set può osservare integralmente il committed old name set oppure integralmente il committed new name set. Un non-symmetric atomic rename non può produrre half-old/half-new names nello stesso event snapshot.
+
+Per `OBJ.RENAME`, ogni endpoint canonical name proviene dallo stesso DB statement snapshot. Se due endpoint vengono rinominati da transaction indipendenti, qualunque combinazione che sia realmente esistita nello stesso committed DB snapshot è valida; ciò che è vietato è mescolare osservazioni provenienti da statement snapshot differenti.
+
+Una metadata mutation che committa dopo lo snapshot ma prima del Relationship commit non invalida il captured event set.
+
+### 3.6 No REPEATABLE READ special case
+
+Runtime Relationship mutation resta a `READ COMMITTED`. Non si introduce `REPEATABLE READ` soltanto per eventi: un singolo coherent SQL statement fornisce già l'observation boundary richiesto con minore complessità e senza snapshot transaction-wide più vecchi.
+
+### 3.7 `occurred_at` semantics
+
+`object_lifecycle_events.occurred_at = transaction_timestamp()` rappresenta l'inizio della transaction, non il metadata-observation instant, commit time o un ordine causale/globale. È quindi valido che il metadata SELECT osservi una rename committed dopo il transaction start pur producendo un evento con `occurred_at` precedente a quella rename in wall-clock time.
+
+### 3.8 Atomic completeness
+
+Se lo statement non consente di costruire il complete expected semantic-view event set, l'intera factual UoW rollbacka. Non sono ammessi partial event set. Dopo la projection, le event views vengono ordinate deterministicamente (per esempio `(object_id, destination_object_id, relationship_name)`) prima dell'insert per rendere implementazione/test/debug deterministici senza introdurre semantic identity o global ordering.
+
+### 3.9 Required PostgreSQL tests
+
+Almeno:
+
+1. RD.RENAME commits before metadata SELECT -> complete new names;
+2. RD.RENAME commits after metadata SELECT -> complete old names;
+3. non-symmetric rename never yields half-old/half-new event names;
+4. OBJ.RENAME before/after snapshot -> valid old/new canonical names;
+5. two independent endpoint renames -> only combinations that existed in one committed statement snapshot;
+6. REL.CREATE/DELETE do not lock metadata rows solely for ES;
+7. CREATE metadata SELECT occurs only after complete closure insert success;
+8. DELETE metadata SELECT occurs before closure removal;
+9. semantic-view dedup belongs to the one statement projection;
+10. incomplete projection -> full UoW rollback;
+11. metadata mutation after snapshot but before factual commit does not invalidate event set;
+12. transaction-start `occurred_at` may precede metadata mutation observed by later snapshot.
