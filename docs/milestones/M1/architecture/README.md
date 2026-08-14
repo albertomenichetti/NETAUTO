@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency are substantially closed; remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; remaining pre-freeze work is explicitly tracked below.
 
 ## 1. Purpose
 
@@ -47,8 +47,8 @@ concurrency-postgresql-realization-relationship.md
     Detailed REALIZE-12..14 plus Relationship REALIZE-15 impact.
 
 concurrency-postgresql-test-matrix.md
-    PGTEST real-PostgreSQL scenario census, coverage mapping and
-    deterministic concurrency harness contract.
+    PGTEST-01..04 real-PostgreSQL scenario census, coverage mapping,
+    deterministic harness contract and reusable execution recipes.
 ```
 
 ### DataType
@@ -112,16 +112,18 @@ The following are not implementation-choice TODOs anymore:
 - runtime Relationship exact-view arbitration, fresh-UoW convergence and exact-ID ABA semantics;
 - Relationship lifecycle one-statement metadata snapshot semantics;
 - canonical real-PostgreSQL concurrency scenario census and 19-predicate coverage mapping (PGTEST-01..02);
-- deterministic real-PostgreSQL concurrency harness contract, blocker observation, timeout/isolation/diagnostic rules and stress-vs-contract separation (PGTEST-03).
+- deterministic real-PostgreSQL concurrency harness contract, blocker observation, timeout/isolation/diagnostic rules and stress-vs-contract separation (PGTEST-03);
+- eight reusable deterministic execution recipes and complete 51-scenario recipe mapping (PGTEST-04).
 
-Reopening any of these requires an explicit architecture change, not a local implementation optimization.
+The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
+
+Reopening any closed area requires an explicit architecture change, not a local implementation optimization.
 
 ## 4. Remaining pre-coding/final-freeze work
 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-PGTEST-04 reusable deterministic scenario execution recipes / mapping
 transport / REST / DTO command and read shapes
 public error/status taxonomy
 remaining API wire-format decisions where distinct from canonical persistence
@@ -157,7 +159,7 @@ Before creating implementation `steps.md` or coding M1 behavior, verify:
 1. owning domain contract is frozen enough for the change;
 2. persistence authority is identified;
 3. every relevant non-`I` concurrency predicate maps to a REALIZE mechanism;
-4. required real-PG scenario IDs and harness contract exist;
+4. required real-PG scenario IDs, deterministic harness contract and execution recipe mapping exist;
 5. no architecture document states a contradictory or still-open version of the same decision.
 
 If any item fails, return to architecture rather than deciding in code.
