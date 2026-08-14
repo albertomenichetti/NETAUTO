@@ -176,6 +176,46 @@ acceptance/test matrix
 milestone architecture index
 ```
 
+### Pre-flight architetturale del design point successivo
+
+Prima di iniziare un design point `N+1`, quando il nuovo punto dipende da semantiche, representation contract, invarianti o meccanismi già consolidati, deve essere eseguita una **re-validation pre-flight** della baseline documentale impattata.
+
+La re-validation non deve basarsi sulla sola memoria della conversazione o su riassunti informali. Devono essere riletti i documenti normativi rilevanti nel repository, in misura proporzionata al tema.
+
+Il set minimo tipico comprende, per quanto applicabile:
+
+```text
+owning domain document
+cross-domain document directly involved
+persistence/concurrency/API contract touched by the new point
+milestone architecture index / closed-open status
+```
+
+Non è necessario rileggere meccanicamente l'intera milestone prima di ogni singolo punto quando le dipendenze sono circoscritte; è invece obbligatorio rileggere tutte le authority documentali da cui il nuovo design sta assumendo un contratto.
+
+La sequenza operativa è:
+
+```text
+identify assumptions/dependencies of N+1
+-> re-read authoritative milestone documents
+-> verify that assumptions are still current and mutually coherent
+-> if drift/conflict/stale-open marker is found: stop N+1
+-> align/propagate documentation
+-> only then resume N+1
+```
+
+Il pre-flight deve distinguere esplicitamente fra livelli diversi quando rilevante, per esempio:
+
+```text
+domain accepted input semantics
+!=
+canonical persistence representation
+!=
+public API wire representation
+```
+
+Una decisione del nuovo point non può restringere o ampliare implicitamente un contratto già congelato senza una esplicita architecture change e relativa propagation.
+
 Un consistency sweep periodico resta comunque obbligatorio come verifica difensiva: serve a trovare drift non noto, stale-open marker, TODO già chiusi e contraddizioni sfuggite alla propagation immediata.
 
 Una contraddizione tra documenti normativi è un **architecture defect**, non una libertà implementativa. Non deve essere risolta scegliendo il documento più recente o quello letto per ultimo: la documentazione va riallineata prima di codificare il comportamento interessato.
