@@ -651,8 +651,11 @@ Objects/ownership:
 
 ```text
 objects(template_id, template_version)
+objects(canonical_name, id)
 object_components(parent_object_id, slot_name, child_object_id)
 ```
+
+`objects(canonical_name, id)` è un read-path index normativo introdotto da API-03.10 per l'exact `canonical_name` filter della Object collection. `id` resta la canonical Object pagination/order key; l'indice non trasforma `canonical_name` in identity o uniqueness.
 
 Relationship runtime:
 
@@ -674,9 +677,17 @@ Lifecycle:
 (destination_object_id, occurred_at, id)
 (relationship_id, occurred_at, id)
 (relationship_definition_id, occurred_at, id)
+(kind, occurred_at, id)
+(relationship_name, occurred_at, id)
+    WHERE relationship_name IS NOT NULL
 ```
 
-Indice su `kind` soltanto se una API/query requirement M1 lo giustifica.
+API-03.10 rende quindi normativi anche:
+
+- `(kind, occurred_at, id)` per il first-class lifecycle `kind` filter;
+- il partial index `(relationship_name, occurred_at, id) WHERE relationship_name IS NOT NULL` per l'exact lifecycle `relationship_name` filter.
+
+Il precedente marker "indice su kind soltanto se una API/query requirement M1 lo giustifica" è chiuso: API-03.10 costituisce quella requirement.
 
 Non vengono introdotti baseline:
 
