@@ -1,46 +1,85 @@
-# M1 — Relationship Consistency Review
+# M1 — Relationship R2 Consistency Review
 
 **Status:** DRAFT
 
 ## 1. Scopo
 
-Questo documento registra il consistency pass finale del dominio Relationship rispetto ai design M1 già consolidati di Object e ObjectTemplate e rispetto alla baseline implementativa pre-M1.
+Questo documento registra il consistency pass finale del redesign Relationship R2.
 
-Non introduce nuove capability.
+R2 sostituisce integralmente la precedente architecture Relationship basata su:
 
-Serve come riferimento per gli implementation steps e per identificare chiaramente quali parti della baseline corrente devono essere sostituite.
+```text
+source_template
+target_template
+forward_name
+reverse_name
+canonical source/target runtime edge
+```
 
-## 2. Coerenze cross-domain confermate
+Il vecchio modello non è più normativo.
 
-### 2.1 Object SCHEMA_CHANGE non revalida Relationship
+## 2. Motivazione del redesign
 
-Runtime endpoint compatibility dipende da:
+Il precedente modello accoppiava eccessivamente:
+
+- stable relationship type;
+- symmetry inference;
+- navigation direction;
+- runtime endpoint ordering;
+- lifecycle projection;
+- future Relationship properties.
+
+R2 separa:
+
+```text
+RelationshipDefinition
+RelationshipResolution
+Relationship
+RuntimeRelationshipResolution
+```
+
+e materializza esplicitamente il resolved graph sia model-plane sia data-plane.
+
+## 3. Cross-domain consistency — ObjectTemplate
+
+`RelationshipResolution.from_template_id/to_template_id` sono stable lineage references.
+
+Conseguenze confermate:
+
+- bloccano ObjectTemplate whole-lineage hard delete;
+- non referenziano exact OTV;
+- non bloccano OTV deprecation;
+- non richiedono default/PUBLISHED exact version;
+- non entrano nell'active-model-graph exact dependency invariant.
+
+Parent lineage M1 è stable, quindi Resolution endpoint-space overlap non cambia a causa di una normale OTV mutation.
+
+## 4. Cross-domain consistency — Object
+
+Runtime endpoint admission dipende esclusivamente da:
 
 ```text
 Object.template_id
-stable lineage ancestry
+stable ObjectTemplate ancestry
 ```
 
-Normale Object `SCHEMA_CHANGE` mantiene `template_id`.
+Normale Object `SCHEMA_CHANGE` modifica soltanto `template_version`.
 
-Quindi Relationship esistenti non richiedono revalidation durante schema migration.
+Quindi:
 
-### 2.2 Object DELETE richiede zero incident Relationship
+```text
+Object.RENAME
+Object.DATA_CHANGE
+Object.SCHEMA_CHANGE
+```
 
-Object DELETE non esegue relationship cleanup implicito.
+non invalidano Relationship correnti e non richiedono runtime Relationship revalidation.
 
-Current incident Relationship sono external references e devono essere eliminate esplicitamente prima.
+Object DELETE continua a richiedere rimozione esplicita di ogni current Relationship association.
 
-### 2.3 RelationshipDefinition -> ObjectTemplate è lineage-level
+## 5. Ownership boundary
 
-Una definition:
-
-- blocca whole-lineage hard delete degli endpoint ObjectTemplate;
-- non blocca exact OTV deprecation;
-- non richiede current/default PUBLISHED version;
-- non appartiene all'active-model-graph exact dependency set.
-
-### 2.4 Ownership e Relationship restano grafi distinti
+Ownership e Relationship restano semanticamente distinti.
 
 Ownership:
 
@@ -48,7 +87,7 @@ Ownership:
 single-owner
 acyclic
 forest
-component-slot semantics
+component-slot contract
 ```
 
 Relationship:
@@ -57,189 +96,193 @@ Relationship:
 generic association
 cycles allowed
 self-loop allowed
-no implicit ownership/lifecycle composition
+resolved multi-view materialization
 ```
 
-Nessun invariant deve essere riutilizzato accidentalmente fra i due graph domain.
+Nessun ownership invariant viene riutilizzato sul Relationship graph.
 
-## 3. Correzioni emerse durante consistency pass
+## 6. Model-plane resolved contract
 
-### 3.1 Directionality class immutable
-
-Poiché M1 deriva symmetry da:
-
-```text
-source lineage == target lineage
-AND
-forward_name == reverse_name
-```
-
-RelationshipDefinition `RENAME` non può cambiare tale classificazione.
-
-Altrimenti edge già persistite verrebbero reinterpretate fra ordered e unordered semantics.
-
-Normative rule:
-
-```text
-is_symmetric(before) == is_symmetric(after)
-```
-
-### 3.2 Common lifecycle event role generalization
-
-Nel common changelog `object_id` non può più significare sempre genericamente "subject".
-
-Per Relationship event:
-
-```text
-object_id = canonical source endpoint
-destination_object_id = canonical target endpoint
-```
-
-Il significato preciso è quindi event-kind-specific.
-
-### 3.3 Exact-ID Relationship DELETE
-
-Runtime DELETE deve essere exact `relationship_id` based per evitare ABA:
-
-```text
-R1 delete
-same tuple recreate -> R2
-late delete R1
-```
-
-non può rimuovere R2.
-
-### 3.4 Canonical name denormalization is display metadata
-
-Directional labels della definition richiedono semantic snapshot coherence con runtime mutation.
-
-Object canonical names invece sono mutable display metadata e non giustificano generic serialization con Object.RENAME.
-
-### 3.5 Directed self-loop read projection
-
-Un directed self-loop può ricoprire simultaneamente source e target role.
-
-Una read projection `SELF` non deve perdere forward/reverse semantic role information.
-
-## 4. Decisione esplicita su overlapping role della stessa definition
-
-Non viene introdotto un generic self-conflict invariant sulla singola definition quando:
-
-- forward/reverse name coincidono;
-- endpoint lineage spaces si sovrappongono parzialmente.
-
-Esempio potenzialmente valido:
-
-```text
-Device --connects_to--> Router
-Device <--connects_to-- Router
-```
-
-con `Router IS-A Device`.
-
-La runtime Relationship mantiene comunque canonical source/target.
-
-L'eventuale ambiguità di navigation viene rappresentata tramite:
-
-```text
-relationship_definition_id
-direction
-```
-
-e non risolta vietando il modello.
-
-Solo l'equivalenza completa dei due directional role:
-
-```text
-same endpoint lineage
-same name
-```
-
-produce symmetric semantics M1.
-
-## 5. Baseline pre-M1 da sostituire
-
-La baseline corrente non è normativa e contiene diversi comportamenti incompatibili col design frozen.
-
-### 5.1 Exact OTV based relationship compatibility
-
-Da rimuovere:
-
-```text
-Relationship compatibility
--> Object.template_version
--> exact OTV inheritance resolver
-```
-
-Target:
-
-```text
-Relationship compatibility
--> Object.template_id
--> stable lineage ancestry
-```
-
-### 5.2 Requirement di endpoint con PUBLISHED version
-
-Da rimuovere dalla RelationshipDefinition CREATE.
-
-Target: deve bastare l'esistenza della ObjectTemplate lineage.
-
-### 5.3 Relationship conflict revalidation durante OTV publish
-
-Da rimuovere.
-
-Nel nuovo modello definition conflict dipende da stable lineage ancestry, quindi OTV lifecycle/pubblicazione non modifica gli endpoint spaces.
-
-### 5.4 Runtime duplicate create come error
-
-Da sostituire con idempotent convergence sulla Relationship current esistente.
-
-### 5.5 Runtime delete missing come error
-
-Da sostituire con idempotent no-op su exact relationship_id assente.
-
-### 5.6 Symmetric reverse uniqueness
-
-La baseline uniqueness exact `(definition, source, target)` va estesa con canonical endpoint representation per symmetric definition.
-
-### 5.7 Lifecycle integration
-
-La baseline changelog deve essere estesa a:
-
-```text
-RELATIONSHIP_CREATED
-RELATIONSHIP_DELETED
-```
-
-con typed historical fields e atomicity col runtime edge mutation.
-
-## 6. Persistence facts utili già coerenti
-
-Le FK runtime Relationship verso:
+Definition aggregate:
 
 ```text
 RelationshipDefinition
-source Object
-target Object
+    id
+    symmetric
+
+RelationshipResolution*
+    id
+    definition_id
+    from_template_id
+    to_template_id
+    name
 ```
 
-devono mantenere `RESTRICT` semantics.
+Shape:
 
-La current exact tuple uniqueness è una buona authority per directed edge dopo il consolidamento delle idempotency semantics.
+```text
+non-symmetric
+    -> 2 reciprocal Resolution
+    -> distinct names
 
-## 7. Freeze outcome
+symmetric same-template
+    -> 1 Resolution
 
-Con le decisioni consolidate nei documenti Relationship:
+symmetric different-template
+    -> 2 reciprocal Resolution
+    -> same name
+```
+
+Resolution id è stable e name-independent.
+
+## 7. Runtime resolved contract
+
+Factual aggregate:
+
+```text
+Relationship
+    id
+    relationship_definition_id
+
+RuntimeRelationshipResolution*
+    relationship_id
+    resolution_id
+    from_object_id
+    to_object_id
+```
+
+Runtime closure:
+
+```text
+non-symmetric
+    -> selected endpoint assignment preserved
+    -> reciprocal object-relative views
+
+symmetric
+    -> all distinct applicable resolution/object assignment views
+       for the unordered factual endpoint pair
+```
+
+Inheritance overlap può produrre più runtime access rows per la stessa object-relative semantic association.
+
+## 8. Semantic read vs storage resolved rows
+
+`RuntimeRelationshipResolution` è resolved storage/index state.
+
+`ObjectRelationshipView` è semantic read projection.
+
+Raw lookup:
+
+```text
+WHERE from_object_id = O
+```
+
+è sufficiente a trovare tutti gli access path di O.
+
+La semantic projection deduplica overlapping rows che descrivono la stessa:
+
+```text
+relationship_id
+from_object
+to_object
+relationship_name
+```
+
+## 9. Lifecycle correction
+
+La precedente architecture usava canonical source/target event orientation e forward/reverse names.
+
+R2 sostituisce tale modello.
+
+Una factual Relationship transition produce:
+
+> un event per ogni distinct object-relative semantic view.
+
+Event cardinality non coincide necessariamente con runtime row cardinality.
+
+Esempi:
+
+```text
+ordinary two-endpoint relationship
+    -> normalmente 2 events
+
+symmetric same-template self-loop
+    -> 1 event
+
+non-symmetric self-loop with two distinct names
+    -> 2 events
+
+inheritance-overlap symmetric runtime closure with 4 rows
+    -> può produrre solo 2 semantic-view events
+```
+
+## 10. Lifecycle event-set atomicity
+
+Per Relationship:
+
+```text
+factual header mutation
++
+complete runtime closure mutation
++
+complete required lifecycle event set
+```
+
+sono una singola atomic transition.
+
+Questo generalizza il precedente Object changelog invariant da single-event a event-set atomicity.
+
+Per intrinsic Object e ownership mutation l'event set mantiene cardinalità 1.
+
+## 11. Future Relationship properties seam
+
+R2 isola la futura schema evolution:
+
+```text
+RelationshipDefinition
+    -> stable topology/navigation
+
+future RelationshipDefinitionVersion
+    -> typed property schema
+
+Relationship
+    -> future exact RDV pin + factual properties
+
+RuntimeRelationshipResolution
+    -> unchanged access-path state
+```
+
+Una property migration può fallire o mantenere una factual Relationship sulla vecchia RDV senza reinterpretare l'associazione graph o le runtime resolution views.
+
+## 12. Baseline/current code delta
+
+L'implementazione pre-M1 dovrà essere sostituita dove assume:
+
+- `source_template_id/target_template_id` sulla Definition;
+- `forward_name/reverse_name`;
+- exact OTV based compatibility;
+- source/target runtime Relationship row;
+- one-row-per-factual-edge persistence;
+- directed/symmetric inference/canonical endpoint ordering;
+- one lifecycle Relationship event con source/target projection;
+- duplicate CREATE come errore;
+- missing runtime DELETE come errore;
+- Relationship conflict checks durante OTV publication.
+
+R2 non richiede backward compatibility con tale baseline sperimentale.
+
+## 13. Freeze outcome
+
+Con le invarianti consolidate nei documenti R2:
 
 > il dominio Relationship è semanticamente frozen per M1.
 
-Restano da definire nei successivi architecture/implementation contracts i meccanismi concreti di:
+Restano tecniche, non semanticamente aperte:
 
-- PostgreSQL constraint/locking;
-- Unit of Work;
-- API DTO/failure mapping;
-- persistence layout;
-- integration/concurrency tests.
+- PostgreSQL physical schema;
+- DB constraint/lock implementation;
+- exact transaction isolation/retry;
+- API transport shape;
+- persistence/index optimization;
+- test implementation details.
 
-Tali decisioni non devono modificare le semantics frozen qui registrate.

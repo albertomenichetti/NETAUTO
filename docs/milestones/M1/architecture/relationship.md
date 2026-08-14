@@ -8,157 +8,195 @@ Questo documento è l'indice normativo dell'architettura `Relationship` per M1.
 
 Documenti collegati:
 
-- `relationship-definition.md` — stable identity, endpoint contract, directional semantics, conflict rules, create/rename/delete;
-- `relationship-runtime.md` — runtime edge identity, compatibility, directed/symmetric semantics, create/delete, navigation e lifecycle;
-- `relationship-concurrency.md` — transaction boundary, consistency domains, referential races e high-risk concurrency cases;
-- `relationship-consistency-review.md` — consistency pass finale cross-domain e principali delta rispetto alla baseline pre-M1;
-- `object-lifecycle-changelog.md` — event stream unificato, incluso `RELATIONSHIP_CREATED` / `RELATIONSHIP_DELETED`.
+- `relationship-definition.md` — aggregate `RelationshipDefinition`, symmetry, create/rename/delete e future versioning seam;
+- `relationship-resolution.md` — model-plane resolved contract, semantic equivalence, conflict rules e capability reads;
+- `relationship-runtime.md` — factual `Relationship`, runtime resolution closure, idempotency, delete e runtime reads;
+- `relationship-concurrency.md` — transaction boundary, model/data-plane concurrency domains e high-risk races;
+- `relationship-consistency-review.md` — consistency pass finale R2 e delta rispetto alla precedente architecture Relationship;
+- `object-lifecycle-changelog.md` — lifecycle event-set semantics per Relationship;
+- `object.md` — invariant cross-domain di lifecycle event-set atomicity.
 
-I meccanismi PostgreSQL concreti — constraint, FK, lock mode, advisory/row locks, isolation level, retry e query shape — saranno definiti nei concurrency/persistence contract. Qui sono normative le semantics e le invarianti osservabili.
+I meccanismi PostgreSQL concreti — PK/FK, constraint, lock mode, advisory/row locks, isolation level, retry e query shape — saranno definiti nei successivi persistence/concurrency contract. Qui sono normative le semantics e le invarianti osservabili.
 
-## 2. Responsabilità
+## 2. Modello concettuale
 
-`RelationshipDefinition` rappresenta una stable semantic identity per un tipo di associazione fra due ObjectTemplate lineage.
-
-`Relationship` rappresenta un factual runtime edge che materializza una specifica definition fra due Object.
+M1 separa quattro concetti:
 
 ```text
 RelationshipDefinition
-    -> model-plane semantic contract
+    -> stable identity e structural classification del relationship type
+
+RelationshipResolution
+    -> model-plane resolved semantic perspective
 
 Relationship
-    -> data-plane factual edge
+    -> factual runtime association identity
+
+RuntimeRelationshipResolution
+    -> concrete object-relative resolved access path
+       verso una factual Relationship
 ```
 
-Una Relationship non è ownership/composition e non eredita le invarianti di component ownership.
-
-## 3. Principi M1
-
-- `RelationshipDefinition.id` è stable semantic identity;
-- gli endpoint della definition sono ObjectTemplate lineage references, non exact OTV;
-- source/target endpoint contract sono immutabili;
-- i directional names sono semantic labels mutabili tramite specifica `RENAME`;
-- RelationshipDefinition M1 non è versionata;
-- runtime compatibility dipende esclusivamente da stable ObjectTemplate lineage ancestry;
-- normale Object `SCHEMA_CHANGE` non richiede Relationship revalidation;
-- Relationship è un generic graph edge distinto dall'ownership graph;
-- self-loop sono ammessi;
-- runtime duplicate exact edge non sono ammessi;
-- CREATE e DELETE runtime sono idempotenti secondo i contratti definiti;
-- ogni reale runtime edge transition produce un lifecycle event atomico;
-- strong consistency viene ottenuta con concurrency domains specifici, non tramite un global Relationship graph lock.
-
-## 4. Invarianti aggregate
-
-- **REL-INV-001 — Definition stable identity:** `RelationshipDefinition.id` è l'identity autorevole e stabile del relationship type.
-- **REL-INV-002 — Stable endpoint contract:** `source_template_id` e `target_template_id` sono immutabili.
-- **REL-INV-003 — Lineage-level dependency:** gli endpoint referenziano ObjectTemplate lineage, mai exact ObjectTemplateVersion.
-- **REL-INV-004 — Endpoint existence:** ogni endpoint lineage referenziata da una definition esiste.
-- **REL-INV-005 — Directional label validity:** `forward_name` e `reverse_name` rispettano la naming grammar M1.
-- **REL-INV-006 — Semantic definition uniqueness:** due RelationshipDefinition semanticamente equivalenti, anche in orientamento inverso, non possono coesistere.
-- **REL-INV-007 — Navigation unambiguity across definitions:** directional role con stesso name e sovrapposizione sia from-space sia to-space non possono appartenere a definition distinte concorrenti.
-- **REL-INV-008 — Stable directionality class:** una `RENAME` non può trasformare una definition da symmetric a directed o viceversa.
-- **REL-INV-009 — Runtime kernel identity:** `Relationship.id` è l'identity autorevole della runtime edge ed è generato dal kernel.
-- **REL-INV-010 — Exact edge uniqueness:** per definition directed esiste al massimo una Relationship per exact `(definition, source, target)`.
-- **REL-INV-011 — Symmetric edge uniqueness:** per definition symmetric `(D,A,B)` e `(D,B,A)` rappresentano lo stesso factual edge.
-- **REL-INV-012 — Lineage-polymorphic compatibility:** source e target Object sono compatibili tramite stable lineage equality/descendancy.
-- **REL-INV-013 — No exact-OTV dependency:** runtime Relationship validity non dipende da `template_version`, properties o OTV lifecycle degli endpoint.
-- **REL-INV-014 — Self-loop allowed:** `source_object_id == target_object_id` è valido se l'Object soddisfa entrambi gli endpoint contract.
-- **REL-INV-015 — No ownership semantics:** Relationship non applica single-owner, acyclicity, subtree o implicit lifecycle composition.
-- **REL-INV-016 — Runtime referential integrity:** ogni current Relationship referenzia una current definition e due current Object.
-- **REL-INV-017 — No implicit cleanup:** Object/definition delete non eliminano Relationship implicitamente.
-- **REL-INV-018 — Definition delete safety:** RelationshipDefinition delete richiede zero current runtime Relationship referenti.
-- **REL-INV-019 — Object delete safety:** Object delete richiede zero current incident Relationship.
-- **REL-INV-020 — Runtime lifecycle atomicity:** edge create/delete e relativo lifecycle event committano o rollbackano insieme.
-- **REL-INV-021 — Historical references:** identifier Relationship/definition/Object salvati nel changelog sono historical identifiers, non live dependencies.
-- **REL-INV-022 — Definition snapshot coherence:** Relationship runtime mutation e lifecycle event osservano lo stesso semantic snapshot dei directional labels della definition.
-- **REL-INV-023 — Strong concurrent consistency:** nessun supported interleaving può committare uno stato che viola le invarianti sopra.
-
-## 5. Symmetric definition M1
-
-M1 non espone un flag `symmetric`.
-
-La symmetry è derivata dall'equivalenza completa dei due directional role:
+La `RelationshipDefinition` completa è un aggregate:
 
 ```text
-source_template_id == target_template_id
-AND
-forward_name == reverse_name
+RelationshipDefinition header
++
+complete RelationshipResolution set
 ```
 
-In questo specifico caso la definition è symmetric e gli endpoint runtime sono unordered semanticamente.
-
-M1 non supporta l'intento distinto di una Relationship directed con contemporaneamente:
+La factual `Relationship` completa è un aggregate:
 
 ```text
-same source/target lineage
-AND
-same forward/reverse name
+Relationship header
++
+complete RuntimeRelationshipResolution closure
 ```
 
-Se in futuro emergerà un use case concreto, una explicit directionality discriminator potrà essere introdotta tramite decisione architetturale dedicata.
+## 3. Principio resolved graph
 
-La sola sovrapposizione parziale degli endpoint spaces non implica symmetry.
+La complessità di interpretazione viene pagata nel model-plane.
 
-## 6. Relationship properties — future seam
+`RelationshipDefinition.CREATE/RENAME`:
 
-M1 non introduce runtime Relationship properties né `RelationshipDefinitionVersion`.
+- costruiscono/certificano il complete Resolution set;
+- preservano symmetry shape;
+- validano semantic equivalence;
+- validano conflict fra Resolution;
+- persistono un contratto già completamente risolto.
 
-Questa omissione è deliberatamente future-compatible:
+Il data-plane consuma quel contratto.
+
+`Relationship.CREATE/DELETE` non reinterpretano forward/reverse/source/target semantics. Devono preservare soltanto:
+
+- endpoint admission;
+- factual uniqueness;
+- complete runtime resolution closure;
+- referential integrity;
+- transactional/lifecycle atomicity.
+
+## 4. Assenza intenzionale di source/target e forward/reverse
+
+M1 non attribuisce un verso semanticamente privilegiato alla RelationshipDefinition.
+
+Non esistono nel domain contract:
 
 ```text
-RelationshipDefinition
-    -> stable semantic identity
-
-future RelationshipDefinitionVersion
-    -> exact property schema snapshot
-
-future Relationship
-    -> exact definition-version pin
-    -> typed canonical properties
+source_template
+target_template
+forward_name
+reverse_name
 ```
 
-La futura introduzione di typed Relationship properties potrà promuovere deterministicamente ogni definition M1 a una `v1` con schema vuoto e aggiungere l'exact version pin alle Relationship esistenti.
+Una Relationship non-symmetric possiede due endpoint perspectives distinte.
 
-Gli endpoint lineage-level restano parte della stable definition identity e non diventano version-specific.
+Esempio:
 
-Questa capability è RFE ad alta priorità.
+```text
+VM         -> Hypervisor / is_hosted_by
+Hypervisor -> VM         / hosts
+```
 
-## 7. Modelling guideline
+Nessuna delle due è semanticamente "forward".
 
-Per una RelationshipDefinition:
+## 5. Invarianti aggregate
 
-> scegliere la lineage più alta nell'albero per cui la semantica è corretta per tutti i discendenti, e scendere solo quando la semantica richiede una specializzazione.
+- **REL-INV-001 — Definition identity:** `RelationshipDefinition.id` è l'identity autorevole e stabile del relationship type.
+- **REL-INV-002 — Stable symmetry:** `RelationshipDefinition.symmetric` è structural contract immutabile.
+- **REL-INV-003 — Resolution identity:** ogni `RelationshipResolution.id` è kernel-generated, stabile e indipendente dal mutable `name`.
+- **REL-INV-004 — Stable resolution endpoints:** `from_template_id` e `to_template_id` non cambiano tramite normali mutation.
+- **REL-INV-005 — Resolution lineage references:** resolution endpoints referenziano stable ObjectTemplate lineage, mai exact OTV.
+- **REL-INV-006 — Resolution name validity:** ogni `RelationshipResolution.name` rispetta la naming grammar M1.
+- **REL-INV-007 — Non-symmetric shape:** `symmetric=false` implica esattamente due Resolution reciproche con semantic names distinti.
+- **REL-INV-008 — Symmetric shape:** `symmetric=true` implica un solo semantic name; same-template -> una Resolution, different-template -> due Resolution reciproche con lo stesso name.
+- **REL-INV-009 — Complete definition aggregate:** header e complete Resolution set committano/mutano come un aggregate indivisibile.
+- **REL-INV-010 — Definition semantic uniqueness:** due Definition con la stessa `symmetric + complete semantic Resolution set` non possono coesistere.
+- **REL-INV-011 — Cross-definition resolution conflict freedom:** Resolution di Definition distinte non possono esporre lo stesso name su from/to lineage spaces entrambi sovrapposti.
+- **REL-INV-012 — Model-plane certification:** runtime mutation non riesegue semantic-equivalence/conflict analysis già certificata dalla Definition mutation.
+- **REL-INV-013 — Factual Relationship identity:** `Relationship.id` è l'identity autorevole della factual runtime association.
+- **REL-INV-014 — Stable definition binding:** una current Relationship appartiene stabilmente a una `relationship_definition_id`.
+- **REL-INV-015 — Resolution membership coherence:** ogni runtime resolution row di Relationship X referenzia una model Resolution appartenente a `X.relationship_definition_id`.
+- **REL-INV-016 — Factual endpoint-pair coherence:** tutte le runtime rows di una Relationship rappresentano la stessa factual coppia di Object, eventualmente self-pair.
+- **REL-INV-017 — Complete runtime closure:** il runtime resolution set committed è esattamente la deterministic complete closure della factual pair sotto la Definition.
+- **REL-INV-018 — Exact resolved-view uniqueness:** una exact `(resolution_id, from_object_id, to_object_id)` appartiene ad al massimo una current factual Relationship.
+- **REL-INV-019 — Resolution-based CREATE:** runtime Relationship CREATE viene espresso tramite `resolution_id + from_object_id + to_object_id`.
+- **REL-INV-020 — Lineage-polymorphic endpoint admission:** runtime view compatibility dipende esclusivamente da stable `Object.template_id` lineage compatibility.
+- **REL-INV-021 — No exact OTV dependency:** Object `template_version`, properties, defaults e OTV lifecycle non determinano runtime Relationship validity.
+- **REL-INV-022 — Symmetric interchangeability:** per `symmetric=true` l'assegnazione dei due Object ai due capi è semanticamente intercambiabile.
+- **REL-INV-023 — Non-symmetric role preservation:** per `symmetric=false` l'endpoint assignment espresso dalla selected Resolution non è intercambiabile.
+- **REL-INV-024 — Self-loop allowed:** la factual endpoint pair può essere `(A,A)` quando admission e Definition shape lo consentono.
+- **REL-INV-025 — No ownership semantics:** Relationship non applica single-owner, acyclicity, subtree o implicit composition rules.
+- **REL-INV-026 — Idempotent CREATE:** una CREATE che trova già la exact resolved view converge sulla stessa factual Relationship e non produce nuova mutation/event set.
+- **REL-INV-027 — Exact-ID DELETE:** runtime delete è exact `relationship_id` based ed è idempotente sull'assenza.
+- **REL-INV-028 — No partial child mutation:** model/runtime Resolution child state non possiede CRUD/lifecycle pubblico autonomo.
+- **REL-INV-029 — Runtime referential integrity:** current Relationship/RuntimeResolution referenziano current Definition/Resolution/Object coerenti.
+- **REL-INV-030 — Definition delete safety:** RelationshipDefinition delete richiede zero factual Relationship correnti.
+- **REL-INV-031 — Object delete safety:** Object delete richiede zero current Relationship association.
+- **REL-INV-032 — Lifecycle semantic-view set:** ogni factual Relationship transition produce un event per ogni distinct object-relative semantic view, non per ogni runtime resolution row.
+- **REL-INV-033 — Lifecycle event-set atomicity:** factual state transition, complete runtime closure mutation e required lifecycle event set committano o rollbackano insieme.
+- **REL-INV-034 — Historical lifecycle references:** identifier e names nel changelog sono historical data, non live referential dependencies.
+- **REL-INV-035 — Strong concurrent consistency:** nessun supported interleaving può committare uno stato che viola le invarianti sopra.
 
-Sintesi:
+## 6. Modelling guideline
+
+Una Relationship capability dovrebbe essere dichiarata sul template-space più generale per cui la semantics è corretta per tutti i discendenti:
 
 ```text
 highest semantically correct,
 lowest necessary
 ```
 
-Non creare specialization duplicate soltanto per restringere artificialmente gli endpoint spaces.
+Non creare specialization duplicate soltanto per restringere artificialmente lo spazio di compatibility.
 
-I directional names sono semantic labels, non chiavi sufficienti da sole a identificare un role. Le navigation/read view mantengono esplicita la direction quando necessario.
+## 7. Future typed Relationship properties
+
+M1 non introduce:
+
+```text
+RelationshipDefinitionVersion
+Relationship properties
+```
+
+Il modello R2 fornisce un seam esplicito:
+
+```text
+RelationshipDefinition
+    -> stable topology/navigation contract
+
+future RelationshipDefinitionVersion
+    -> exact typed property schema
+
+Relationship
+    -> factual association
+    -> future exact definition-version pin
+    -> future canonical properties
+
+RuntimeRelationshipResolution
+    -> stable resolved access paths
+```
+
+Future property/schema evolution non modifica `symmetric`, Resolution set, endpoint lineage o resolved graph topology.
 
 ## 8. Candidate future / RFE
 
-- versioned `RelationshipDefinitionVersion`;
+- `RelationshipDefinitionVersion`;
 - typed Relationship properties;
-- exact RDV pin sulla runtime Relationship;
-- Relationship schema migration;
-- explicit directionality discriminator solo se emerge un caso reale non rappresentabile dalla regola symmetric M1;
-- parallel/multi-edge instances fra la stessa `(definition, endpoints)` quando giustificate da relationship properties;
-- richer relationship query/read projections;
-- historical reconstruction/composite graph views.
+- exact RDV pin sulla factual Relationship;
+- Relationship property schema migration;
+- parallel/multi-edge factual instances se future properties giustificano state distinti;
+- richer graph/composite reads;
+- historical relationship reconstruction;
+- controlled future mutation di structural relationship type soltanto tramite workflow espliciti, non generic update.
 
 ## 9. Decisioni tecniche ancora da finalizzare
 
-- exact PostgreSQL representation della semantic definition conflict authority;
-- concrete model-plane serialization mechanism per definition CREATE/RENAME;
-- canonical endpoint ordering tecnica per symmetric Relationship;
-- exact FK/index/check layout;
-- transaction isolation e retry strategy;
-- lifecycle event persistence shape finale;
-- REST/DTO shape e failure taxonomy;
-- query/index strategy per directional/effective relationship navigation.
+- PostgreSQL physical schema definitivo;
+- PK/FK/unique/check/constraint-trigger layout;
+- model-plane conflict serialization primitive;
+- runtime exact-view uniqueness authority e retry strategy;
+- transaction isolation;
+- efficient ObjectTemplate ancestry lookup;
+- lifecycle event persistence representation;
+- REST/DTO e error taxonomy;
+- indexes per model capability lookup e runtime `from_object_id` navigation.
+

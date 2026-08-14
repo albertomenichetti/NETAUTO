@@ -2,63 +2,77 @@
 
 **Status:** DRAFT
 
-## 1. Responsabilità e shape
+## 1. Factual aggregate root
 
-Concettualmente:
+Una factual runtime association possiede una stable identity:
 
 ```text
 Relationship
 ------------
 id
 relationship_definition_id
-source_object_id
-target_object_id
 ```
 
-M1 non introduce Relationship properties.
+`Relationship.id`:
 
-Relationship è un factual runtime graph edge distinto dall'ownership graph.
+- è opaque UUIDv4;
+- è generato esclusivamente dal kernel;
+- non è caller-supplied;
+- è immutable;
+- identifica il factual relationship, non una singola resolved view.
 
-## 2. Runtime identity
+`relationship_definition_id` è stable per la lifetime della Relationship.
 
-L'identity autorevole è:
+## 2. Runtime resolved child state
+
+Concettualmente:
 
 ```text
-Relationship.id
+RuntimeRelationshipResolution
+-----------------------------
+relationship_id
+resolution_id
+from_object_id
+to_object_id
 ```
 
-`id`:
+Le runtime rows sono authoritative child state della factual Relationship aggregate.
 
-- è opaco;
-- è immutabile;
-- viene generato esclusivamente dal kernel;
-- M1 usa UUIDv4;
-- non può essere specificato dal caller.
+Non sono aggregate indipendenti e non possiedono public CRUD/lifecycle autonomo.
 
-La tuple endpoint non è identity, ma è subject a edge uniqueness.
+La physical row key è persistence detail da finalizzare.
 
-## 3. Endpoint compatibility
+## 3. Relationship resolution-based CREATE
 
-Data definition `D`:
+Kernel/application primitive concettuale:
 
 ```text
-source Object S compatible iff:
-S.template_id == D.source_template_id
-OR
-S.template_id descendant-of D.source_template_id
-
-target Object T compatible iff:
-T.template_id == D.target_template_id
-OR
-T.template_id descendant-of D.target_template_id
+CREATE Relationship(
+    resolution_id,
+    from_object_id,
+    to_object_id
+)
 ```
 
-Compatibility dipende esclusivamente da:
+`relationship_definition_id` da solo non è sufficiente come CREATE selector.
+
+La selected Resolution esprime il semantic perspective da cui il caller sta descrivendo il fatto.
+
+## 4. Endpoint admission
+
+Per selected Resolution `R`:
 
 ```text
-Object.template_id
-stable ObjectTemplate lineage ancestry
+from_object.template_id
+    == R.from_template_id
+    OR descendant-of R.from_template_id
+
+to_object.template_id
+    == R.to_template_id
+    OR descendant-of R.to_template_id
 ```
+
+Admission dipende esclusivamente da stable lineage type assignment.
 
 Non dipende da:
 
@@ -66,12 +80,228 @@ Non dipende da:
 Object.template_version
 Object properties
 Object canonical_name
-OTV default/current status
+OTV lifecycle/default
 ```
 
-Poiché `Object.template_id` e ObjectTemplate parent lineage sono stable nelle normali operation M1, una Relationship admitted non viene invalidata da normale Object `SCHEMA_CHANGE`.
+Normale Object `SCHEMA_CHANGE` non richiede Relationship revalidation.
 
-## 4. Generic graph semantics
+## 5. Factual endpoint assignment
+
+### Non-symmetric
+
+La selected Resolution determina quale Object occupa quale endpoint perspective.
+
+L'assegnazione non è intercambiabile.
+
+Esempio:
+
+```text
+R1: Person -> Person / manages
+R2: Person -> Person / managed_by
+```
+
+CREATE:
+
+```text
+R1 / Alice -> Bob
+```
+
+rappresenta un factual relationship diverso da:
+
+```text
+R1 / Bob -> Alice
+```
+
+### Symmetric
+
+La factual pair è unordered semanticamente:
+
+```text
+{A,B}
+```
+
+Qualunque Resolution/assignment semanticamente applicabile alla stessa pair deve convergere sulla stessa factual Relationship.
+
+## 6. Deterministic complete runtime closure
+
+Ogni factual Relationship deve materializzare tutte le object-relative resolved access paths richieste dal proprio Definition aggregate.
+
+### 6.1 Non-symmetric
+
+Dato selected Resolution `R1` e input `A -> B`, con reciprocal Resolution `R2`:
+
+```text
+R1 / A -> B
+R2 / B -> A
+```
+
+sono il complete runtime set.
+
+Se `A == B`, restano due runtime rows quando `R1 != R2`.
+
+Non vengono aggiunte assignment inverse ulteriori anche se, per inheritance overlap, sarebbero type-compatible: rappresenterebbero l'opposto factual relationship.
+
+### 6.2 Symmetric
+
+Per una factual unordered pair `{A,B}` il runtime closure è:
+
+> il set di tutte le tuple distinte `(resolution_id, from_object_id, to_object_id)` ottenibili usando ogni model Resolution della Definition e entrambe le assignment `(A,B)` / `(B,A)` che soddisfano i rispettivi lineage compatibility predicate.
+
+Questo produce:
+
+- same-template, A != B: due runtime rows con la stessa Resolution id;
+- same-template self-loop: una runtime row;
+- different-template disjoint spaces: normalmente due rows reciproche;
+- different-template overlapping spaces: fino a quattro runtime rows.
+
+Il numero è bounded in M1 perché una Definition possiede al massimo due model Resolution.
+
+## 7. Factual endpoint-pair coherence
+
+Per ogni `Relationship.id` esiste una sola factual endpoint pair.
+
+Tutte le runtime rows devono:
+
+- usare esclusivamente gli Object di quella pair;
+- referenziare Resolution della stessa `relationship_definition_id`;
+- costituire esattamente la deterministic complete closure prevista.
+
+Sono vietati aggregate parziali o mescolati.
+
+## 8. Exact resolved-view uniqueness
+
+Semantic invariant:
+
+```text
+(resolution_id, from_object_id, to_object_id)
+```
+
+può appartenere ad al massimo una current factual Relationship.
+
+Questa è l'autorità semantica per factual duplicate detection M1.
+
+## 9. CREATE idempotency
+
+Pipeline concettuale:
+
+```text
+load selected Resolution
+load from/to Object
+validate selected endpoint admission
+
+lookup exact runtime view
+(resolution_id, from_object_id, to_object_id)
+
+if exists:
+    return its factual Relationship
+    no mutation
+    no lifecycle event set
+
+if absent:
+    load already-certified complete Definition Resolution set
+    derive deterministic complete runtime closure
+    validate complete candidate closure
+    ensure no exact view belongs to another factual Relationship
+    create Relationship header
+    create complete runtime closure
+    create required lifecycle semantic-view event set
+    commit atomically
+```
+
+CREATE effettuate tramite Resolution reciproche o, per symmetric Definition, tramite assignment inverse, convergono sulla stessa factual Relationship quando rappresentano lo stesso fatto.
+
+## 10. Runtime semantic read projection
+
+Raw runtime lookup naturale:
+
+```text
+RuntimeRelationshipResolution
+WHERE from_object_id = O
+```
+
+restituisce tutti gli access path concreti verso factual Relationship visibili da O.
+
+A causa di inheritance overlap, più runtime rows possono rappresentare la stessa object-relative semantic association.
+
+Quindi distinguiamo:
+
+```text
+RuntimeRelationshipResolution
+    -> resolved storage/index model
+
+ObjectRelationshipView
+    -> semantic read projection
+```
+
+La semantic projection collassa rows equivalenti per la stessa factual Relationship/object perspective.
+
+Concettualmente la distinct semantic view è identificata da:
+
+```text
+relationship_id
+from_object_id
+to_object_id
+current relationship name
+```
+
+Il read non richiede ricerca su `to_object_id` per scoprire tutte le association di O.
+
+## 11. DELETE primitive
+
+Kernel primitive:
+
+```text
+DELETE Relationship(relationship_id)
+```
+
+Casi:
+
+```text
+Relationship exists
+    -> remove complete runtime child set
+    -> remove header
+    -> append required RELATIONSHIP_DELETED semantic-view event set
+
+Relationship absent
+    -> successful idempotent no-op
+```
+
+Nessuna runtime child row è eliminabile singolarmente.
+
+## 12. ABA safety
+
+Scenario:
+
+```text
+Relationship X deleted
+same semantic association later recreated as Y
+late DELETE(X)
+```
+
+La late delete è no-op e non può rimuovere Y.
+
+Per questo M1 non usa delete-by-semantic-tuple come kernel primitive.
+
+## 13. Self-loop
+
+Self-loop sono ammessi quando endpoint admission lo consente.
+
+### Symmetric self-loop
+
+Normalmente una sola runtime row e una sola distinct lifecycle semantic view.
+
+### Non-symmetric self-loop
+
+Due Resolution semanticamente diverse possono produrre:
+
+```text
+A manages A
+A managed_by A
+```
+
+come due runtime rows e due distinct semantic views della stessa factual Relationship.
+
+## 14. Generic graph semantics
 
 Relationship non è component ownership.
 
@@ -85,339 +315,20 @@ subtree lifecycle
 implicit detach
 ```
 
-Il graph Relationship può contenere cicli.
+Relationship graph può contenere cicli e self-loop.
 
-## 5. Self-loop
+## 15. Delete interactions
 
-M1 ammette:
-
-```text
-source_object_id == target_object_id
-```
-
-quando lo stesso Object è type-compatible con entrambi gli endpoint contract della definition.
-
-Nessun generic `source != target` invariant viene imposto.
-
-## 6. Directed definition semantics
-
-Per una definition non symmetric:
-
-```text
-(D, A, B)
-!=
-(D, B, A)
-```
-
-quando entrambi gli edge risultano type-compatible.
-
-Source e target sono semantic roles distinti.
-
-La Relationship persistita conserva sempre l'orientamento canonico della definition:
-
-```text
-source_object_id satisfies source contract
-target_object_id satisfies target contract
-```
-
-Il verso da cui il caller naviga o invoca l'operazione non modifica questa representation.
-
-## 7. Symmetric definition semantics
-
-Per una definition symmetric M1:
-
-```text
-source_template_id == target_template_id
-AND
-forward_name == reverse_name
-```
-
-source e target non rappresentano ruoli semanticamente distinti.
-
-Quindi:
-
-```text
-(D,A,B) == (D,B,A)
-```
-
-La persistence usa una canonical endpoint ordering deterministica esclusivamente come representation detail.
-
-L'ordering tecnica non possiede domain meaning.
-
-Due create inverse:
-
-```text
-CREATE(D,A,B)
-CREATE(D,B,A)
-```
-
-convergono sulla stessa current Relationship.
-
-Self-loop symmetric resta ammesso.
-
-## 8. Runtime uniqueness
-
-Per definition directed:
-
-```text
-at most one current Relationship
-per exact (D, source, target)
-```
-
-Per definition symmetric:
-
-```text
-at most one current Relationship
-per canonical unordered pair {A,B}
-```
-
-M1 non supporta parallel/multi-edge instances indistinguibili.
-
-Una futura capability di typed Relationship properties potrà rilassare questa uniqueness qualora più edge distinti fra gli stessi endpoint abbiano state proprio.
-
-## 9. CREATE admission
-
-Command concettuale:
-
-```text
-CREATE Relationship(
-    relationship_definition_id = D,
-    endpoint A,
-    endpoint B
-)
-```
-
-L'API può essere invocata da qualunque navigation direction, ma il domain deve risolvere una canonical runtime orientation coerente con la definition.
-
-Per una nuova edge devono valere al commit:
-
-```text
-D exists
-both Objects exist
-endpoint roles are type-compatible
-edge uniqueness is preserved
-```
-
-Non servono:
-
-```text
-exact OTV closure
-property validation
-ownership validation
-cycle traversal
-graph-wide lock
-```
-
-## 10. CREATE idempotency
-
-Se la stessa factual edge è già current:
-
-```text
-CREATE
-    -> successful idempotent no-op / converge on existing Relationship
-```
-
-Nessun nuovo Relationship UUID viene creato.
-
-Nessun lifecycle event duplicato viene prodotto.
-
-Due concurrent identical CREATE possono entrambi essere osservabili come successo, ma una sola current Relationship viene materializzata.
-
-Per symmetric definition, reverse-create è included nello stesso idempotency contract.
-
-## 11. Navigation views
-
-Una Relationship è navigabile da entrambi gli endpoint.
-
-Per una directed edge persisted:
-
-```text
-source S -> target T
-```
-
-dal source:
-
-```text
-direction = OUTGOING
-name = definition.forward_name
-related_object_id = T
-```
-
-dal target:
-
-```text
-direction = INCOMING
-name = definition.reverse_name
-related_object_id = S
-```
-
-I directional names sono semantic labels, non chiavi sufficienti da sole a identificare il role.
-
-Se lo stesso name è applicabile in più role, la navigation view conserva explicit `relationship_definition_id` e `direction`.
-
-Per una symmetric edge:
-
-```text
-direction = SYMMETRIC
-name = forward_name == reverse_name
-related_object_id = other endpoint
-```
-
-Per un directed self-loop lo stesso Object ricopre entrambi i role. La view/lifecycle projection non deve perdere questa informazione: può usare `SELF` come presentation direction ma deve rendere disponibili entrambi i directional role/labels.
-
-## 12. DELETE primitive
-
-Kernel primitive:
-
-```text
-DELETE Relationship(relationship_id)
-```
-
-La delete è exact-ID based.
-
-Casi:
-
-```text
-relationship exists
-    -> remove exact edge + lifecycle event
-
-relationship already absent
-    -> successful idempotent no-op
-```
-
-Un retry tardivo di un vecchio `relationship_id` non può cancellare una nuova Relationship successivamente ricreata con la stessa semantic tuple.
-
-M1 non definisce delete-by-tuple come kernel primitive.
-
-## 13. DELETE effects
-
-Runtime Relationship delete:
-
-- rimuove soltanto l'exact edge indicata;
-- non modifica Object;
-- non modifica ownership;
-- non elimina altre Relationship;
-- non elimina RelationshipDefinition;
-- non esegue cleanup implicito.
-
-## 14. Object/definition delete interaction
-
-Current Relationship reference blocca:
+Current factual Relationship blocca:
 
 ```text
 Object.DELETE
 RelationshipDefinition.DELETE
 ```
 
-L'edge deve essere rimossa esplicitamente prima.
+Nessun cleanup implicito.
 
-Nessuna cascade semantica viene usata.
+Object DELETE è semanticamente bloccata se esiste una current runtime semantic association dell'Object. Grazie alla complete object-relative materialization, ogni endpoint non-self compare in almeno una runtime row come `from_object_id`.
 
-## 15. Lifecycle events
+Entrambe le runtime Object columns restano comunque veri current references.
 
-Una reale edge creation produce:
-
-```text
-RELATIONSHIP_CREATED
-```
-
-Una reale edge removal produce:
-
-```text
-RELATIONSHIP_DELETED
-```
-
-Edge mutation ed event append sono una singola atomic UoW.
-
-Idempotent no-op non produce eventi.
-
-Persisted structural event orientation:
-
-```text
-object_id
-    = canonical source endpoint
-
-destination_object_id
-    = canonical target endpoint
-```
-
-indipendentemente dalla navigation direction da cui il comando è stato richiesto.
-
-L'event registra:
-
-```text
-relationship_id
-relationship_definition_id
-
-canonical_name
-destination_canonical_name
-
-relationship_forward_name
-relationship_reverse_name
-```
-
-I directional labels devono appartenere allo stesso semantic definition snapshot della mutation.
-
-I canonical names sono display metadata osservati in un coherent read snapshot della mutation; non introducono un concurrency dependency che serializzi genericamente Object.RENAME con ogni Relationship mutation.
-
-`before_json` e `after_json` sono assenti.
-
-## 16. Lifecycle read projection
-
-Quando il lifecycle di Object X viene letto, lo stesso persisted Relationship event viene orientato rispetto a X.
-
-Directed, X = source:
-
-```text
-direction = OUTGOING
-name = relationship_forward_name
-related_object = destination
-```
-
-Directed, X = target:
-
-```text
-direction = INCOMING
-name = relationship_reverse_name
-related_object = source
-```
-
-Symmetric:
-
-```text
-direction = SYMMETRIC
-name = relationship_forward_name
-```
-
-Self-loop:
-
-```text
-direction = SELF
-```
-
-Per directed self-loop entrambi i role/labels devono restare rappresentabili.
-
-Il verso con cui il caller ha invocato CREATE/DELETE non fa parte della semantic history.
-
-## 17. Historical identifiers
-
-Negli event Relationship:
-
-```text
-relationship_id
-relationship_definition_id
-object_id
-destination_object_id
-```
-
-sono historical identifiers, non live foreign-key dependencies verso current state.
-
-Gli event restano leggibili dopo delete di:
-
-```text
-Relationship
-RelationshipDefinition
-Object
-```
-
-Le informazioni denormalizzate rendono l'evento operativo anche se le entity correnti non sono più fetchabili.

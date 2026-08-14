@@ -4,7 +4,7 @@
 
 ## 1. Responsabilità
 
-M1 mantiene un unico lifecycle changelog operativo per ricostruire le transizioni semantiche degli Object.
+M1 mantiene un unico lifecycle changelog operativo per rappresentare le transizioni semantiche degli Object.
 
 Non è un audit/compliance subsystem.
 
@@ -34,7 +34,7 @@ RELATIONSHIP_DELETED
 DELETED
 ```
 
-Intrinsic e structural events appartengono allo **stesso event stream**.
+Intrinsic e structural events appartengono allo stesso event stream.
 
 ## 3. Event identity e ordering
 
@@ -45,33 +45,27 @@ id
 occurred_at
 ```
 
-`id` è una opaque kernel-generated UUIDv4 event identity.
+`id` è opaque kernel-generated UUIDv4.
 
 `occurred_at`:
 
 - è assegnato da NETAUTO, non dal caller;
 - rappresenta il timestamp dell'event;
-- l'esatta application-clock vs database-clock authority è technical decision da finalizzare.
+- application-clock vs DB-clock authority resta technical decision.
 
 M1 non introduce global sequence.
 
-Canonical query/pagination ordering:
+Canonical ordering/pagination:
 
 ```text
 occurred_at
 +
-event_id as deterministic tie-breaker
+event_id deterministic tie-breaker
 ```
 
-Per esempio descending:
+L'event UUID non possiede temporal meaning.
 
-```text
-ORDER BY occurred_at DESC, id DESC
-```
-
-L'UUID tie-breaker non possiede temporal semantics; rende soltanto deterministico l'ordine tra timestamp uguali.
-
-M1 non promette strict global commit order fra transazioni concorrenti indipendenti.
+M1 non promette strict global commit order fra transaction concorrenti indipendenti.
 
 ## 4. Common event shape
 
@@ -95,31 +89,17 @@ slot_name?
 
 relationship_id?
 relationship_definition_id?
-relationship_forward_name?
-relationship_reverse_name?
+relationship_name?
 
 before_json?
 after_json?
 ```
 
-`object_id` è il primary Object reference dell'event kind.
+`object_id` è il primary Object perspective/subject dell'event kind.
 
-La sua semantica specifica dipende dal kind:
+La semantica specifica dipende dal kind.
 
-```text
-intrinsic events
-    -> subject Object
-
-ATTACH_TO / DETACH_FROM
-    -> child / subject
-
-RELATIONSHIP_CREATED / RELATIONSHIP_DELETED
-    -> canonical source endpoint
-```
-
-Per gli event che coinvolgono due Object, `destination_object_id` contiene il secondo endpoint secondo la semantica specifica del kind.
-
-## 5. Intrinsic event shape
+## 5. Intrinsic event
 
 Per:
 
@@ -131,7 +111,7 @@ SCHEMA_CHANGE
 DELETED
 ```
 
-devono essere assenti:
+sono assenti:
 
 ```text
 destination_object_id
@@ -140,11 +120,8 @@ slot_declaring_template_id
 slot_name
 relationship_id
 relationship_definition_id
-relationship_forward_name
-relationship_reverse_name
+relationship_name
 ```
-
-Snapshot semantics:
 
 ### CREATED
 
@@ -157,26 +134,20 @@ canonical_name = created/final name
 ### RENAME
 
 ```text
-before = complete canonical Object snapshot before
-after  = complete canonical Object snapshot after
+before = complete canonical snapshot before
+after  = complete canonical snapshot after
 ```
 
-Unica differenza semanticamente ammessa:
-
-```text
-canonical_name
-```
-
-Event column `canonical_name` contiene il nuovo nome.
+Unica differenza semanticamente ammessa: `canonical_name`.
 
 ### DATA_CHANGE
 
 ```text
-before = complete canonical Object snapshot before
-after  = complete canonical Object snapshot after
+before = complete canonical snapshot before
+after  = complete canonical snapshot after
 ```
 
-Devono restare uguali:
+Restano invariati:
 
 ```text
 canonical_name
@@ -184,18 +155,14 @@ template_id
 template_version
 ```
 
-Event `canonical_name` contiene il current name after change.
-
 ### SCHEMA_CHANGE
 
 ```text
-before = complete canonical source Object snapshot
-after  = complete canonical target Object snapshot
+before = complete canonical source snapshot
+after  = complete canonical target snapshot
 ```
 
-`template_id` resta uguale; `template_version` e properties possono cambiare.
-
-Event `canonical_name` contiene il current name.
+`template_id` resta invariato.
 
 ### DELETED
 
@@ -204,9 +171,7 @@ before = final complete canonical Object snapshot
 after  = absent
 ```
 
-Event `canonical_name` contiene il final/last known name.
-
-## 6. Ownership structural event direction
+## 6. Ownership structural events
 
 Per:
 
@@ -219,34 +184,49 @@ DETACH_FROM
 object_id
     = child / subject
 
-canonical_name
-    = child canonical_name observed for the event
-
 destination_object_id
     = parent / owner
-
-destination_canonical_name
-    = parent canonical_name observed for the event
 
 slot_declaring_template_id
 slot_name
     = historical SlotSemanticKey
 ```
 
-Relationship-specific fields sono assenti.
+`canonical_name` e `destination_canonical_name` sono i display metadata osservati dalla mutation.
 
-`before_json` e `after_json` sono assenti: la structural transition è completamente descritta dai typed event fields.
+`before_json`/`after_json` sono assenti.
 
-Event naming rende la direction esplicita:
+Ownership mutation reale produce un solo structural event.
+
+## 7. Relationship lifecycle semantic views
+
+R2 Relationship runtime può materializzare più resolved access rows per la stessa factual association.
+
+Il changelog non registra una row per ogni runtime resolution row.
+
+Normative rule:
+
+> una factual Relationship CREATE/DELETE produce esattamente un lifecycle event per ogni **distinct object-relative semantic view** della transizione.
+
+Una semantic view contiene:
 
 ```text
-child ATTACH_TO parent / slot
-child DETACH_FROM parent / slot
+object_id
+destination_object_id
+relationship_name
 ```
 
-I canonical names sono historical display metadata osservati nello snapshot coerente della mutation; non introducono da soli un requisito di generic serialization con concurrent Object.RENAME.
+dal punto di vista dell'Object indicato in `object_id`.
 
-## 7. Relationship structural event direction
+La deduplica concettuale all'interno della stessa factual transition usa:
+
+```text
+(object_id, destination_object_id, relationship_name)
+```
+
+non `relationship_resolution_id`.
+
+## 8. Relationship event shape
 
 Per:
 
@@ -255,98 +235,130 @@ RELATIONSHIP_CREATED
 RELATIONSHIP_DELETED
 ```
 
-la persisted orientation è sempre la canonical runtime orientation della RelationshipDefinition, indipendentemente dal verso API/navigation da cui la mutation è stata richiesta.
+ogni event contiene:
 
 ```text
 object_id
-    = canonical source endpoint
+canonical_name
 
 destination_object_id
-    = canonical target endpoint
+destination_canonical_name
 
 relationship_id
-    = historical exact runtime Relationship id
-
 relationship_definition_id
-    = historical stable definition id
-
-canonical_name
-    = source canonical name observed for the event
-
-destination_canonical_name
-    = target canonical name observed for the event
-
-relationship_forward_name
-relationship_reverse_name
-    = directional labels belonging to the same semantic
-      RelationshipDefinition snapshot used by the mutation
+relationship_name
 ```
 
-Ownership-specific fields:
+Sono assenti:
 
 ```text
 slot_declaring_template_id
 slot_name
+before_json
+after_json
 ```
 
-sono assenti.
-
-`before_json` e `after_json` sono assenti.
-
-Una create/delete Relationship e il relativo lifecycle event committano o rollbackano insieme.
-
-Idempotent runtime no-op non produce duplicate event.
-
-### 7.1 Relationship lifecycle read projection
-
-Per una directed Relationship, lo stesso persisted event viene orientato rispetto all'Object richiesto.
-
-Se l'Object richiesto è il canonical source:
+Non vengono persistiti come lifecycle semantics:
 
 ```text
-direction = OUTGOING
-name = relationship_forward_name
-related_object = destination
+source/target
+forward/reverse
+direction
+relationship_resolution_id
 ```
 
-Se è il canonical target:
+L'event è già espresso dal punto di vista dell'Object in `object_id`.
+
+## 9. Relationship event cardinality examples
+
+### Ordinary non-symmetric
 
 ```text
-direction = INCOMING
-name = relationship_reverse_name
-related_object = source
+VM is_hosted_by Hypervisor
+Hypervisor hosts VM
 ```
 
-Per una symmetric Relationship:
+produce due event:
 
 ```text
-direction = SYMMETRIC
-name = relationship_forward_name == relationship_reverse_name
-related_object = other endpoint
+VM -> Hypervisor / is_hosted_by
+Hypervisor -> VM / hosts
 ```
 
-Per self-loop:
+### Symmetric same-template, Object distinti
 
 ```text
-direction = SELF
+A connects_to B
 ```
 
-Un directed self-loop ricopre entrambi i directional role; la projection deve poter esporre entrambe le relative semantic labels e non collassarle impropriamente in un unico role.
+produce:
 
-Il verso con cui il caller ha invocato la mutation non fa parte della semantic history.
+```text
+A -> B / connects_to
+B -> A / connects_to
+```
 
-## 8. Unified stream rationale
+due event.
 
-Un singolo changelog rende dirette query operative come:
+### Symmetric self-loop
+
+```text
+A connects_to A
+```
+
+produce un solo distinct semantic-view event.
+
+### Non-symmetric self-loop
+
+```text
+A manages A
+A managed_by A
+```
+
+produce due event perché i semantic names sono distinti.
+
+### Inheritance overlap
+
+Più `RuntimeRelationshipResolution` rows possono collassare nella stessa:
+
+```text
+A -> B / name
+```
+
+semantic view.
+
+Non producono event duplicati.
+
+## 10. Relationship lifecycle names e canonical names
+
+`relationship_name` è lo historical semantic name osservato dalla Relationship mutation da un coherent committed model snapshot.
+
+Una successiva Definition RENAME non modifica event storici.
+
+`canonical_name` / `destination_canonical_name` sono historical display metadata osservati dalla mutation.
+
+Non introducono da soli generic serialization con Object.RENAME.
+
+## 11. Unified stream rationale
+
+Un singolo changelog supporta query come:
 
 ```text
 latest N global events
-latest N events involving Object X
-timeline ordered by occurred_at/id
-events after a cursor
+timeline di Object X
+events after cursor
+relationship events by relationship_id
 ```
 
-Per il lifecycle completo di un Object `X`, gli structural event rilevanti includono:
+Per Relationship event, la complete semantic-view event materialization garantisce che ogni Object endpoint possieda direttamente event con:
+
+```text
+object_id = Object.id
+```
+
+Per ownership, un Object parent continua invece a comparire come `destination_object_id`.
+
+Una query generale "events involving Object X" può quindi ancora usare:
 
 ```text
 object_id = X
@@ -354,18 +366,9 @@ OR
 destination_object_id = X
 ```
 
-perché l'Object può partecipare come:
+## 12. Historical references, not live FKs
 
-- child o parent in ownership;
-- source o target in Relationship.
-
-## 9. Historical references, not live FKs
-
-Gli identifier salvati nel changelog sono historical identity references.
-
-Non devono dipendere dall'esistenza corrente delle entity citate.
-
-In particolare:
+Nel changelog sono historical identity references:
 
 ```text
 object_id
@@ -375,61 +378,43 @@ relationship_id
 relationship_definition_id
 ```
 
-non devono avere semantics di live FK verso current Object/ObjectTemplate/Relationship/RelationshipDefinition rows.
+Non devono avere live FK semantics verso current entity rows.
 
-Ragioni:
+Il changelog deve sopravvivere a:
 
-- `DELETED` deve sopravvivere alla rimozione dell'Object;
-- structural history deve sopravvivere alla successiva delete degli Object coinvolti;
-- `RELATIONSHIP_DELETED` deve sopravvivere alla rimozione della runtime Relationship;
-- historical Relationship event non deve bloccare RelationshipDefinition delete;
-- il changelog non deve diventare hidden blocker della whole-lineage model delete.
+- Object delete;
+- Relationship delete;
+- RelationshipDefinition delete;
+- ObjectTemplate lineage delete quando altrimenti consentita.
 
-Il fatto che non siano live FK non indebolisce la mutation atomicity: gli identifier vengono registrati nella stessa UoW in cui la transition reale viene validata e committata.
+`relationship_name`, canonical names e slot name preservano leggibilità operativa storica.
 
-Per ownership event non viene denormalizzato il canonical FQI della declaring ObjectTemplate; sono sufficienti:
+## 13. Append-only kernel semantics
 
-```text
-slot_declaring_template_id
-slot_name
-```
-
-insieme ai canonical names degli Object.
-
-Per Relationship event vengono denormalizzati i directional labels della definition per preservare la leggibilità operativa anche dopo una futura delete/rename della definition.
-
-## 10. Append-only kernel semantics
-
-Le normali kernel/application workflow:
+Lifecycle event:
 
 ```text
-INSERT lifecycle event
-    -> sì, solo come parte della domain mutation che rappresenta
+INSERT
+    -> solo come effetto interno della domain mutation
 
-UPDATE existing lifecycle event
+UPDATE
     -> no
 
-DELETE existing lifecycle event
+DELETE
     -> no
 ```
 
-Una correzione del current state produce una nuova domain mutation/event, non riscrittura della storia precedente.
+Il lifecycle non è un aggregate pubblicamente mutabile.
 
-Il livello di enforcement DB contro direct DBA UPDATE/DELETE è technical/operational policy separata; M1 non pretende compliance-grade forensic guarantees.
+Le public/domain surface del changelog sono read/query only.
 
-## 11. Lifecycle public surface is read-only
+## 14. Event-set atomicity
 
-Il lifecycle changelog non è un aggregate direttamente mutabile dal dominio.
+Normative rule:
 
-Non esistono public/domain commands per:
+> ogni reale domain transition e l'intero lifecycle event set richiesto da quella transition committano o rollbackano insieme.
 
-```text
-create arbitrary lifecycle event
-update lifecycle event
-delete lifecycle event
-```
-
-Gli eventi vengono prodotti esclusivamente internamente alle rispettive mutation:
+Per:
 
 ```text
 Object.CREATE
@@ -438,30 +423,28 @@ Object.DATA_CHANGE
 Object.SCHEMA_CHANGE
 Object.ATTACH
 Object.DETACH
-Relationship.CREATE
-Relationship.DELETE
 Object.DELETE
 ```
 
-Le sole interfacce esposte verso il domain/application changelog sono read/query interfaces.
+l'event set ha cardinalità 1.
 
-## 12. Atomicity
-
-Per ogni reale mutation M1:
+Per:
 
 ```text
-domain current-state transition
-+
-corresponding lifecycle event
+Relationship.CREATE
+Relationship.DELETE
 ```
 
-committano o rollbackano insieme.
+la cardinalità è il numero di distinct object-relative semantic views.
 
-È vietato un committed current-state change senza event corrispondente e viceversa.
+Sono vietati:
 
-Idempotent no-op non produce eventi duplicati.
+- current-state mutation senza complete event set;
+- partial event set;
+- event set senza corresponding current-state transition;
+- duplicate event set per idempotent no-op.
 
-## 13. Query/read consistency
+## 15. Query/read consistency
 
 Changelog reads possono filtrare almeno concettualmente per:
 
@@ -471,11 +454,13 @@ object_id
 destination_object_id
 relationship_id
 relationship_definition_id
+relationship_name
 time/cursor range
 ```
 
-Ordinary lifecycle reads osservano committed event state.
+Ordinary lifecycle reads osservano committed state.
 
-M1 non implementa automaticamente historical reconstruction dell'Object da questa event stream.
+M1 non implementa automaticamente historical Object/Relationship reconstruction.
 
-Historical `as-of` reconstruction e richer composite timelines sono RFE ad alta priorità M2.
+Historical `as-of` reconstruction e richer composite timeline sono RFE ad alta priorità M2.
+

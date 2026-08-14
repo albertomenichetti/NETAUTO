@@ -4,30 +4,39 @@
 
 ## 1. Principio
 
-Relationship M1 deve preservare strong consistency senza introdurre un generic graph-wide lock.
+R2 separa deliberatamente i concurrency cost:
 
-Le garanzie derivano da:
+```text
+model-plane
+    -> paga interpretation + global Definition conflict consistency
 
-- stable endpoint structural facts;
-- persistence referential integrity;
-- exact runtime uniqueness;
-- model-plane serialization dei RelationshipDefinition conflict predicate;
-- per-definition coordination dove runtime lifecycle event dipende dai mutable directional labels.
+data-plane
+    -> paga endpoint admission + factual uniqueness
+       + complete closure + referential/transactional consistency
+```
 
-Il concrete PostgreSQL mechanism viene deciso negli implementation/concurrency steps.
+M1 non introduce un global Relationship graph lock.
 
-## 2. Structural facts che non cambiano nelle normali operation
+Il concrete PostgreSQL mechanism viene definito successivamente.
 
-Le seguenti facts sono stable:
+## 2. Stable structural facts
+
+Restano stable nelle normali operation:
 
 ```text
 Object.template_id
 ObjectTemplate parent lineage
-RelationshipDefinition.source_template_id
-RelationshipDefinition.target_template_id
+
+RelationshipDefinition.symmetric
+
+RelationshipResolution.id
+RelationshipResolution.from_template_id
+RelationshipResolution.to_template_id
+
+Relationship.relationship_definition_id
 ```
 
-Di conseguenza runtime type compatibility non può essere invalidata da:
+Di conseguenza runtime type validity non è minacciata da:
 
 ```text
 Object.RENAME
@@ -36,76 +45,110 @@ Object.SCHEMA_CHANGE
 OTV publish/deprecate/default changes
 ```
 
-Questa proprietà evita endpoint locks generalizzati per preservare compatibility.
+## 3. Model-plane conflict serialization
 
-## 3. Relationship CREATE predicates
+`RelationshipDefinition.CREATE` e `RENAME` possono modificare il global certified Resolution set rispetto a:
+
+```text
+Definition semantic equivalence
+cross-definition Resolution conflict
+```
+
+Due transaction concorrenti non possono entrambe validare contro uno stale conflict snapshot e committare un invalid set.
+
+Normative requirement:
+
+> Definition CREATE/RENAME vengono serializzate rispetto alla complete candidate conflict-validation + commit phase.
+
+Il concrete write gate/locking primitive non è fissato qui.
+
+## 4. Definition DELETE
+
+Definition DELETE non introduce nuovi Resolution conflicts.
+
+Deve tuttavia concorrere correttamente con runtime Relationship CREATE e con external referential dependencies.
+
+Current factual Relationship reference vince:
+
+```text
+Definition DELETE fails
+```
+
+Definition DELETE committa prima:
+
+```text
+later runtime CREATE using its Resolution fails
+```
+
+## 5. Runtime CREATE predicates
 
 Al commit devono valere:
 
 ```text
-definition exists
-source Object exists
-target Object exists
-endpoint compatibility holds
-runtime edge uniqueness holds
+selected Resolution exists
+from/to Object exist
+selected endpoint admission holds
+
+complete Definition Resolution set is coherent
+complete runtime closure is derivable
+
+every candidate runtime row references that Definition/Resolution/Object set
+exact resolved-view uniqueness holds
 ```
 
-Per symmetric definition deve essere applicata la canonical endpoint representation prima della uniqueness authority.
+Il runtime non rivalida cross-definition name conflicts.
 
-## 4. Nessun global Relationship graph lock
+## 6. Concurrent CREATE dello stesso factual relationship
 
-Relationship graph:
-
-- può contenere cicli;
-- non ha single-owner;
-- non ha graph-wide acyclicity predicate.
-
-Quindi CREATE/DELETE runtime non acquisiscono un global graph write gate analogo all'ownership graph.
-
-## 5. Runtime uniqueness authority
-
-Per directed definition:
+Esempio non-symmetric:
 
 ```text
-unique(D, source, target)
+T1 CREATE via R1: A -> B
+T2 CREATE via reciprocal R2: B -> A
 ```
 
-Per symmetric definition:
+oppure symmetric inverse/overlap equivalent input.
+
+Required outcome:
 
 ```text
-unique(D, canonical_endpoint_1, canonical_endpoint_2)
+exactly one factual Relationship header
+exactly one complete runtime closure
+exactly one required lifecycle creation event set
 ```
 
-deve essere authoritative al commit.
+Le operation concorrenti possono entrambe essere osservabili come semantic success; il loser deve convergere sulla Relationship creata dal winner.
 
-Scenario:
+Exact runtime-view uniqueness è final authority per rilevare la collisione.
+
+## 7. Partial closure forbidden
+
+Per ogni real CREATE:
 
 ```text
-T1 CREATE D/A/B
-T2 CREATE D/A/B
+Relationship header
++
+complete RuntimeRelationshipResolution closure
++
+complete distinct lifecycle semantic-view event set
 ```
 
-Risultato:
+committano oppure rollbackano insieme.
 
-```text
-one current Relationship
-both operations may converge successfully
-one lifecycle creation event
-```
+Sono vietati:
 
-Per symmetric definition lo stesso vale per concurrent:
+- header senza complete child set;
+- subset di runtime rows;
+- child rows semanticamente mescolate;
+- runtime mutation senza complete lifecycle event set;
+- lifecycle event set senza factual runtime mutation.
 
-```text
-T1 CREATE D/A/B
-T2 CREATE D/B/A
-```
-
-## 6. CREATE vs Object.DELETE
+## 8. CREATE vs Object.DELETE
 
 Race:
 
 ```text
-T1 Relationship.CREATE(D,A,B)
+T1 Relationship.CREATE involving Object A
 T2 Object.DELETE(A)
 ```
 
@@ -113,215 +156,162 @@ Required serial outcomes:
 
 ```text
 CREATE wins
-    -> Relationship current reference exists
-    -> Object.DELETE fails
-
-DELETE wins
-    -> A no longer exists
-    -> Relationship.CREATE fails
-```
-
-È vietata una current Relationship verso Object cancellato.
-
-FK/referential authority deve essere `RESTRICT` semantics, non cascade cleanup.
-
-## 7. DELETE Relationship vs Object.DELETE
-
-Race:
-
-```text
-T1 Relationship.DELETE(R)
-T2 Object.DELETE(endpoint)
-```
-
-Sono valide serializzazioni coerenti:
-
-```text
-Relationship DELETE first
-    -> reference removed
-    -> Object DELETE may proceed if all other preconditions hold
-
-Object DELETE attempt while R still exists
+    -> current runtime references exist
     -> Object DELETE fails
-```
 
-Relationship delete non è implicitamente eseguita da Object delete.
-
-## 8. CREATE vs RelationshipDefinition.DELETE
-
-Race:
-
-```text
-T1 Relationship.CREATE using D
-T2 RelationshipDefinition.DELETE(D)
-```
-
-Required outcomes:
-
-```text
-CREATE wins
-    -> D becomes current-referenced
-    -> definition DELETE fails
-
-definition DELETE wins
-    -> D no longer exists
+Object DELETE wins
     -> CREATE fails
 ```
 
-È vietata una current Relationship verso definition cancellata.
+Persistence current references devono avere RESTRICT semantics, non cascade cleanup.
 
-## 9. Definition model-plane conflict domain
-
-`RelationshipDefinition.CREATE` e `RelationshipDefinition.RENAME` possono modificare il global set rispetto a:
+## 9. Relationship DELETE vs Object.DELETE
 
 ```text
-semantic equivalence
-directional role conflict
+Relationship DELETE first
+    -> complete factual association removed
+    -> Object DELETE may proceed if all remaining preconditions hold
+
+Object DELETE while Relationship still current
+    -> Object DELETE fails
 ```
 
-Due transaction concorrenti non possono entrambe validare su uno stale snapshot e committare un conflicting set.
+Object DELETE non chiama implicitamente Relationship DELETE.
 
-Normative requirement:
-
-> model-plane mutation che può alterare il RelationshipDefinition semantic conflict set viene serializzata rispetto alla conflict validation + commit phase.
-
-M1 può usare un model-plane write gate/concurrency domain dedicato.
-
-Il concrete PostgreSQL primitive non è fissato qui.
-
-## 10. Definition RENAME vs runtime mutation
-
-Runtime lifecycle events denormalizzano:
+## 10. CREATE vs RelationshipDefinition.DELETE
 
 ```text
-relationship_forward_name
-relationship_reverse_name
+CREATE wins
+    -> factual Relationship references Definition
+    -> Definition DELETE fails
+
+Definition DELETE wins
+    -> selected Resolution/Definition no longer exist
+    -> CREATE fails
 ```
 
-Race:
+## 11. Definition CREATE vs ObjectTemplate whole-lineage DELETE
+
+Resolution endpoint refs sono stable lineage dependencies.
 
 ```text
-T1 Relationship.CREATE/DELETE using D
-T2 RelationshipDefinition.RENAME(D)
+Definition CREATE wins
+    -> template lineage delete fails
+
+template lineage delete wins
+    -> Definition CREATE fails
 ```
 
-Il committed runtime transition e il relativo event devono appartenere a una serial history coerente.
+No coordination è richiesta con exact OTV deprecation.
 
-Valido:
+## 12. RENAME vs runtime mutation
+
+Definition RENAME modifica soltanto Resolution names.
+
+Non invalida:
 
 ```text
-runtime transition before rename
-    -> event stores old names
+resolution_id
+endpoint compatibility
+factual identity
+runtime closure membership
+```
+
+Runtime CREATE/DELETE non viene genericamente serializzata con RENAME.
+
+Lifecycle event `relationship_name` deve però provenire da un coherent committed model snapshot osservato dalla mutation.
+
+Per una non-symmetric rename atomica non sono ammessi event set con semantic names provenienti da metà old candidate e metà new candidate.
+
+Il concrete mechanism può essere, per esempio, una singola snapshot-consistent read del complete Resolution set; non è fissato qui.
+
+## 13. Object.RENAME vs lifecycle event
+
+Object canonical names nel Relationship lifecycle event sono historical display metadata.
+
+Relationship mutation non viene serializzata genericamente con Object.RENAME soltanto per tali fields.
+
+L'event set salva i canonical names osservati nello snapshot coerente della mutation.
+
+## 14. Relationship DELETE concurrency
+
+Due concurrent:
+
+```text
+DELETE(X)
+DELETE(X)
+```
+
+convergono:
+
+```text
+one removes complete aggregate + deletion event set
+other is idempotent no-op
+```
+
+Nessun duplicate deletion event set.
+
+## 15. DELETE vs CREATE same semantic association
+
+Stato iniziale: Relationship X esiste.
+
+Valide serializzazioni:
+
+```text
+CREATE first
+    -> converges on X
+DELETE then removes X
+    -> final absent
 ```
 
 oppure:
 
 ```text
-rename before runtime transition
-    -> event stores new names
+DELETE first
+    -> removes X
+CREATE then creates new Relationship Y
+    -> final present
 ```
 
-Vietato:
+Nessuna resurrection di X.
+
+## 16. Read consistency
+
+Definition read:
 
 ```text
-runtime validation/semantic snapshot from one definition state
-+
-event labels from another state
+header + complete Resolution set
 ```
 
-Normative requirement:
+devono appartenere allo stesso committed snapshot.
 
-> runtime Relationship mutation e RelationshipDefinition.RENAME si coordinano sulla specifica definition rispetto al mutable label snapshot.
+Runtime factual read non deve osservare aggregate parziali.
 
-Non serve un global lock per tutte le runtime Relationship mutation.
-
-## 11. Object.RENAME vs Relationship lifecycle event
-
-`canonical_name` e `destination_canonical_name` nei structural event sono historical display metadata, non endpoint semantic contract.
-
-Relationship mutation non deve essere serializzata genericamente con Object.RENAME soltanto per questi campi.
-
-L'event registra i canonical names osservati nello snapshot coerente della mutation.
-
-Non promette che tali display names siano gli exact current names al physical commit instant in presenza di una independent concurrent rename.
-
-## 12. Relationship DELETE idempotency e ABA
-
-DELETE è exact-ID based:
+Raw Object relationship lookup usa:
 
 ```text
-DELETE(R1)
+RuntimeRelationshipResolution.from_object_id
 ```
 
-Se:
+e la semantic read projection deduplica eventuali overlapping Resolution access paths.
 
-```text
-R1 deleted
-same semantic tuple later recreated as R2
-late retry DELETE(R1)
-```
+## 17. High-risk PostgreSQL concurrency tests
 
-il retry è un no-op e non può rimuovere `R2`.
+M1 deve verificare almeno:
 
-Questo è parte del semantic contract, non soltanto API convenience.
+1. concurrent CREATE della stessa non-symmetric factual Relationship tramite Resolution reciproche;
+2. concurrent symmetric inverse CREATE;
+3. symmetric inheritance-overlap CREATE con candidate closure multipla;
+4. CREATE vs Object DELETE;
+5. Relationship DELETE vs Object DELETE;
+6. CREATE vs Definition DELETE;
+7. Definition CREATE vs ObjectTemplate whole-lineage DELETE;
+8. conflicting Definition CREATE vs CREATE;
+9. Definition RENAME vs conflicting CREATE/RENAME;
+10. Definition RENAME vs runtime CREATE/DELETE lifecycle-name snapshot;
+11. concurrent DELETE dello stesso relationship_id;
+12. DELETE/recreate same semantic association + late DELETE old id;
+13. rollback test che impedisca header/closure/event-set partial commit.
 
-## 13. RelationshipDefinition whole-lineage references
+I test verificano outcome serialmente validi, non uno specifico scheduling.
 
-RelationshipDefinition endpoint lineage references devono concorrere correttamente con ObjectTemplate whole-lineage delete.
-
-Required serial outcomes:
-
-```text
-definition reference wins
-    -> template lineage delete fails
-
-template lineage delete wins
-    -> definition create fails
-```
-
-RelationshipDefinition non costituisce invece lifecycle-sensitive exact-version consumer e non partecipa a OTV deprecation locking.
-
-## 14. Lifecycle atomicity
-
-Per una reale runtime mutation:
-
-```text
-current Relationship edge mutation
-+
-Object lifecycle event append
-```
-
-committano o rollbackano insieme.
-
-Sono vietati:
-
-```text
-edge without event
-event without edge transition
-duplicate event for idempotent no-op
-```
-
-## 15. Read consistency
-
-Current Relationship reads restituiscono committed runtime edge state.
-
-Navigation reads che combinano edge e definition labels devono osservare uno snapshot transazionalmente coerente della singola operation.
-
-Non è garantita repeatability fra richieste separate.
-
-## 16. High-risk PostgreSQL concurrency tests
-
-M1 deve includere almeno test reali PostgreSQL per:
-
-1. concurrent identical directed CREATE;
-2. concurrent inverse CREATE su symmetric definition;
-3. Relationship CREATE vs Object DELETE;
-4. Relationship DELETE vs Object DELETE;
-5. Relationship CREATE vs RelationshipDefinition DELETE;
-6. RelationshipDefinition CREATE vs conflicting CREATE;
-7. RelationshipDefinition RENAME vs conflicting CREATE/RENAME;
-8. RelationshipDefinition RENAME vs Relationship CREATE/DELETE lifecycle label snapshot;
-9. ObjectTemplate whole-lineage DELETE vs RelationshipDefinition CREATE;
-10. delete/recreate same semantic tuple + late DELETE retry sul vecchio relationship_id.
-
-I test devono verificare outcome serialmente validi, non uno specifico lock scheduling.

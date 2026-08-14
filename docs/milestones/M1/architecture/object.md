@@ -11,7 +11,7 @@ Documenti collegati:
 - `object-runtime-state.md` — identity, create, canonical runtime properties, rename, data change, delete e current-state reads;
 - `object-schema-change.md` — forward intra-lineage schema migration, definitive closures, property carry-forward e attachment validation;
 - `object-ownership.md` — component ownership, attach/detach, single-owner, acyclicity e concurrency domains;
-- `object-lifecycle-changelog.md` — lifecycle event stream unico, event shape, ordering, historical references e read-only surface.
+- `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface.
 
 I meccanismi PostgreSQL concreti — row/advisory locks, FK, CHECK, isolation level, retry, lock ordering e query shape — saranno definiti nei concurrency/persistence contract. Qui sono normative le semantics e le invarianti osservabili.
 
@@ -61,7 +61,7 @@ Ownership/component state e Relationship state sono domini relazionali distinti 
 - M1 non introduce `Object.state_revision`;
 - strong consistency viene ottenuta dai concurrency contract delle singole operation;
 - nessuna mutation nasconde remediation, move, detach, subtree delete o data transformation implicita;
-- ogni reale lifecycle transition e il relativo changelog event sono atomici.
+- ogni reale lifecycle transition e il relativo **required lifecycle event set** sono atomici.
 
 ## 4. Invarianti aggregate
 
@@ -89,10 +89,10 @@ Ownership/component state e Relationship state sono domini relazionali distinti 
 - **OBJ-INV-022 — Single-owner child:** ogni child appartiene ad al massimo un `(owner, slot)`.
 - **OBJ-INV-023 — Ownership acyclic:** l'ownership graph committed è aciclico.
 - **OBJ-INV-024 — Effective-slot validity:** ogni outgoing edge usa uno slot effettivo della current exact OTV del parent e un child type-compatible.
-- **OBJ-INV-025 — Delete isolation:** Object DELETE richiede zero incoming/outgoing ownership edge e zero external references rilevanti.
+- **OBJ-INV-025 — Delete isolation:** Object DELETE richiede zero incoming/outgoing ownership edge e zero external references rilevanti, incluse current factual Relationship association.
 - **OBJ-INV-026 — No subtree delete:** DELETE rimuove solo l'Object richiesto.
 - **OBJ-INV-027 — Unified lifecycle changelog:** intrinsic e structural events appartengono allo stesso event stream.
-- **OBJ-INV-028 — Lifecycle atomicity:** una mutation reale e il suo lifecycle event committano o rollbackano insieme.
+- **OBJ-INV-028 — Lifecycle event-set atomicity:** una mutation reale e l'intero required lifecycle event set committano o rollbackano insieme.
 - **OBJ-INV-029 — Append-only lifecycle:** il kernel non modifica/cancella event già prodotti.
 - **OBJ-INV-030 — Read-only lifecycle surface:** il changelog espone pubblicamente solo read/query operations.
 - **OBJ-INV-031 — Strong concurrent consistency:** nessun supported interleaving può committare uno stato che viola le invarianti sopra.
@@ -108,6 +108,8 @@ Richiedono design PostgreSQL e integration/concurrency test dedicati:
 5. `DELETE` vs nuove ownership/Relationship references.
 
 M1 privilegia correctness e semplicità rispetto al massimo parallelismo. Per il cycle predicate è ratificata la strategia di un global ownership-graph write gate per gli edge-add (`ATTACH`), lasciando il meccanismo PostgreSQL concreto ai concurrency contract.
+
+Relationship possiede concurrency domain propri definiti nei relativi documenti e non eredita il global ownership cycle gate.
 
 ## 6. Candidate future / RFE
 
@@ -140,3 +142,4 @@ Le expanded/composite reads e historical reconstruction sono candidate ad alta p
 - lifecycle event persistence shape definitiva;
 - error taxonomy;
 - expanded read API shape futura.
+
