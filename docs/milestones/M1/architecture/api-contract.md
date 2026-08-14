@@ -625,4 +625,4 @@ A2.18 API-03.11 defines the transport-neutral failure-class/code to HTTP mapping
 
 API-03.1..11B are consolidated. No public HTTP/JSON command/read/list/error/success decision remains open for M1.
 
-The JSON Schema compiler surface, if retained in M1, is a separate remaining architecture question and is not part of the HTTP API mapping contract.
+JSON Schema is not part of the NETAUTO validation/API architecture: no JSON Schema compiler or public schema projection is retained, and no API work remains for that capability.
