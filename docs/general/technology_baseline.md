@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05`, `STACK-06`, `STACK-07` and `STACK-08` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05`, `STACK-06`, `STACK-07`, `STACK-08` and `STACK-09` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -1189,6 +1189,141 @@ They are not the authority for project correctness and are not required to repro
 The existing pre-review `pyproject.toml` is not made normative merely by containing historical dependencies/tool settings.
 
 After the technology review is complete, project metadata/tool configuration is aligned in one deliberate sweep. That alignment includes removing obsolete/excluded dependencies, eliminating duplicate packages, adding ratified testing/tooling dependencies, updating the Python target and moving Pyright from `basic` to `strict` without piecemeal drift during the review itself.
+
+### STACK-09 — process entrypoints and ASGI serving
+
+**Status:** RATIFIED.
+
+#### ASGI server
+
+```text
+Uvicorn
+```
+
+is the project ASGI serving baseline for FastAPI.
+
+NETAUTO uses an explicit ASGI application factory as the canonical server entrypoint. The composed FastAPI application is created deliberately through that factory rather than requiring an import-time global application whose construction performs process setup as a module side effect.
+
+Conceptually:
+
+```text
+Uvicorn
+    -> explicit application factory
+    -> load/validate NETAUTO settings
+    -> compose application
+    -> FastAPI/ASGI lifespan
+    -> serve
+```
+
+Direct Uvicorn invocation is preferred over introducing an additional FastAPI CLI discovery/wrapper layer merely for convenience.
+
+#### Process and worker model
+
+Kernel correctness is independent of the number of serving processes/workers.
+
+A single Uvicorn process/worker is a valid baseline deployment. A deployment may run multiple independent NETAUTO processes/workers when required by load or availability needs.
+
+Cross-process semantic correctness continues to be governed by PostgreSQL and the frozen persistence/concurrency architecture. Process-local Python locks, mutable globals, caches or registries must never become the authority for kernel invariants or arbitration that must remain correct with multiple processes.
+
+Worker count is a deployment/runtime concern and is not frozen as an application-level setting without a concrete need.
+
+#### Process manager
+
+NETAUTO does not select a separate project process manager as part of the baseline.
+
+In particular:
+
+```text
+Gunicorn
+```
+
+is not a project dependency or serving requirement.
+
+Deployment supervision, restart policy, replica/process count and host-level process management belong to the concrete deployment environment unless a future requirement demonstrates a need for a project-specific mechanism.
+
+#### ASGI lifespan
+
+ASGI lifespan remains enabled and is the canonical boundary for initialization and cleanup of process-local resources owned by the application, including resources such as the PostgreSQL engine/pool and other future process-lifetime infrastructure.
+
+Lifespan does not define semantic transaction boundaries; those remain owned by application operations under STACK-01 and STACK-05.
+
+Each serving process owns and releases its own process-local resources.
+
+#### Database migrations
+
+Database migration is an explicit administrative/deployment operation.
+
+NETAUTO application startup, application-factory construction and ASGI lifespan do **not** automatically execute `alembic upgrade` or another schema migration.
+
+The intended operational ordering is:
+
+```text
+explicit migration/admin step
+    -> schema at intended revision
+    -> start/replace serving processes
+```
+
+This prevents concurrent worker startup from becoming schema-migration arbitration, avoids coupling ordinary runtime privileges to DDL administration and keeps deployment/upgrade behavior explicit.
+
+#### Development reload
+
+Uvicorn development reload may be used as a local developer convenience.
+
+Automatic code reload is not a production runtime model and is not represented as an application semantic capability.
+
+#### Server/deployment configuration boundary
+
+Server binding and process controls such as:
+
+```text
+host
+port
+worker count
+reload
+proxy/server-specific behavior
+```
+
+belong to Uvicorn/deployment configuration by default.
+
+They are not duplicated automatically into NETAUTO `pydantic-settings` merely because they are configurable. A server parameter enters NETAUTO process settings only if a concrete composition/application requirement makes that ownership useful.
+
+TLS termination, reverse-proxy selection and external ingress topology are not selected as project technologies by this baseline; they remain deployment concerns until a concrete deployment target requires a project decision.
+
+#### Custom NETAUTO CLI
+
+M1 does not introduce a custom NETAUTO operator CLI merely to wrap existing tools.
+
+The current responsibilities already have explicit native entrypoints:
+
+```text
+serve
+    -> Uvicorn
+
+schema migrations
+    -> Alembic
+
+tests
+    -> pytest
+
+project/development commands
+    -> uv
+```
+
+Therefore:
+
+```text
+Typer
+```
+
+is not part of the current project baseline and should be removed from the clean-slate M1 dependency set.
+
+A future real operator CLI may be introduced when concrete NETAUTO-specific commands exist. At that point the CLI is an adapter over the same application capabilities rather than a new semantic authority, and its framework choice is evaluated against the actual command surface.
+
+#### Signals and graceful shutdown
+
+Uvicorn/ASGI owns normal serving signal handling and graceful server shutdown behavior.
+
+NETAUTO does not introduce a separate signal-management or worker-supervision framework. The application lifespan is responsible only for orderly cleanup of resources NETAUTO owns.
 
 ## 4. Technology-review rule
 
