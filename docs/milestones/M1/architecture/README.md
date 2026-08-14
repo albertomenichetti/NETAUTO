@@ -59,6 +59,10 @@ api-contract.md
     Application-command/query boundary, HTTP/JSON adapter principles,
     /api/v1/core capability namespace, canonical 32-mutation route inventory,
     semantic read projections and subsequent DTO/failure contracts. API-01..02.
+
+api-wire-contract.md
+    API-03 wire/DTO decisions as they are ratified; accepted input lexical
+    forms are kept distinct from canonical domain/persistence representation.
 ```
 
 ### DataType
@@ -136,7 +140,7 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-API-03 command/read DTO and JSON wire shapes
+API-03 remaining command/read DTO and JSON wire shapes
 public error/status taxonomy and HTTP mapping
 remaining API pagination/filter/response conventions
 JSON Schema compiler surface/role if retained in M1
@@ -163,6 +167,42 @@ Stale phrases such as “mechanism still to be finalized” must not remain when
 Architecture review before implementation must actively search for such stale-open markers.
 
 If a new design point reveals a retroactive finding, the design sequence is interrupted: the finding is propagated immediately to every affected normative document before the next design point is ratified. Deferring propagation to a later sweep is not allowed when the affected baseline is already known.
+
+### 5.1 Pre-flight revalidation before every dependent design point
+
+Before starting design point `N+1`, identify which already-consolidated M1 assumptions the new point depends on and **re-read the corresponding normative repository documents** before deriving the new design.
+
+The chat history, summaries and remembered decisions are navigation aids, not the authoritative source for this pre-flight.
+
+The scope is dependency-driven rather than mechanically global. A point that touches only one narrow contract may require a small re-read; a cross-cutting point must revalidate every affected authority. Typical sources include:
+
+```text
+owning domain document
+cross-domain contract involved by the point
+persistence/concurrency/API contract whose representation/mechanism is assumed
+this architecture index for closed/open status
+```
+
+The required sequence is:
+
+```text
+N+1 dependencies identified
+-> authoritative docs re-read
+-> assumptions checked against current baseline
+-> any drift/conflict/stale-open marker fixed and propagated
+-> only then N+1 design begins/continues
+```
+
+Particular care is required where multiple representations exist. The pre-flight must not conflate:
+
+```text
+domain accepted-input semantics
+canonical in-memory/domain state
+canonical persistence representation
+public API wire representation
+```
+
+A new transport or implementation decision may choose a representation for its own boundary, but may not silently narrow or widen an already-ratified domain contract.
 
 ## 6. Coding gate
 
