@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03.1..09 ratificati. Command DTO, exact/implicit selector, `expected_revision`, PrimitiveType public lexical forms e canonical single/projection read DTO sono consolidati. Restano API-03.10 list/pagination/filter conventions e success/failure HTTP mapping.
+**Status:** DRAFT — API-03.1..10 ratificati. Command DTO, exact/implicit selector, `expected_revision`, PrimitiveType public lexical forms, canonical read DTO e collection/list contract sono consolidati. Resta success/failure HTTP mapping.
 
 ## 1. Scopo e boundary
 
@@ -21,10 +21,15 @@ La wire ergonomics non può restringere, ampliare o reinterpretare implicitament
 
 Prima di ogni nuovo API-03 point si applica il pre-flight definito in `docs/general/linee_guida_progetto.md` e in `architecture/README.md`.
 
-Dettaglio read API-03.9:
+Authority companion:
 
 ```text
 api-read-contract.md
+    -> API-03.9 canonical single/projection DTO
+
+api-list-contract.md
+    -> API-03.10 collection envelope, keyset pagination,
+       ordering, list-item policy and filters
 ```
 
 ---
@@ -626,16 +631,132 @@ A3.99 Relationship GET returns a factual aggregate with deduplicated semantic vi
 A3.100 Object-relative Relationship read returns self-contained ObjectRelationshipView items and performs semantic deduplication.
 A3.101 Lifecycle read DTO is a discriminated union by event kind/family, not one wide nullable persistence-shaped record.
 A3.102 Intrinsic lifecycle before/after reuse canonical Object snapshot shape; null means historical state absence for CREATED/DELETED.
-A3.103 Collection route envelopes, list-item summary/full policy, pagination and filters are deliberately deferred to API-03.10.
+A3.103 Collection route envelopes, list-item summary/full policy, pagination and filters are defined separately by API-03.10 in api-list-contract.md.
 ```
 
 ---
 
-## 12. API-03 remaining work
+## 12. API-03.10 — collection/list contract
+
+La collection authority è:
+
+```text
+api-list-contract.md
+```
+
+Registry summary:
+
+```text
+envelope
+    -> {items:[...], next_cursor:string|null}
+    -> no data/page/total_count/has_more wrapper fields
+
+pagination
+    -> opaque keyset cursor only
+    -> no offset/page-number
+    -> limit omitted => 100; valid 1..500
+
+cursor
+    -> route/order/filter specific
+    -> not domain identity / DB offset / snapshot / CDC token
+    -> changing filters invalidates cursor; limit may change
+
+consistency
+    -> each page independently snapshot-consistent
+    -> no cross-request repeatable membership promise
+
+sorting
+    -> one fixed canonical order per route
+    -> no generic sort/order surface
+
+list item policy
+    -> DTV summary omits constraints
+    -> OTV summary omits declarations
+    -> Object summary omits properties
+    -> bounded lineage/Definition aggregates may reuse full DTO
+    -> nested semantic projections reuse API-03.9 item shape
+    -> lifecycle uses full event DTO
+
+filters
+    -> explicit route-specific exact filters only
+    -> no generic query DSL / fuzzy search
+```
+
+Canonical route ordering:
+
+```text
+DataType/ObjectTemplate lineage -> (namespace,name) ASC
+nested versions                 -> version ASC
+Objects                         -> id ASC
+RelationshipDefinitions         -> id ASC
+relationship capabilities       -> resolution_id ASC
+Object components               -> child_object_id ASC
+ObjectRelationshipView          -> (relationship_id,destination_object_id,name) ASC
+lifecycle                       -> (occurred_at,id) DESC
+```
+
+Object list exact filters:
+
+```text
+template_id
+template_version only with template_id
+canonical_name
+```
+
+Object-specific lifecycle route means events involving the Object:
+
+```text
+object_id = X OR destination_object_id = X
+```
+
+Lifecycle first-class filters:
+
+```text
+kind
+object_id
+destination_object_id
+relationship_id
+relationship_definition_id
+relationship_name
+occurred_from
+occurred_to
+```
+
+API-03.10 creates normative PERSIST-15 read-path indices:
+
+```text
+objects(canonical_name,id)
+object_lifecycle_events(kind,occurred_at,id)
+object_lifecycle_events(relationship_name,occurred_at,id)
+    WHERE relationship_name IS NOT NULL
+```
+
+```text
+A3.104 Every paginated collection uses {items:[...], next_cursor:string|null}. No generic data wrapper, total_count, page count or has_more field.
+A3.105 Pagination uses opaque keyset cursors only. M1 exposes no offset/page-number pagination.
+A3.106 limit is optional with default 100 and allowed range 1..500.
+A3.107 A cursor is route/query-filter/order specific and is not a domain identity, DB offset, snapshot token or change-feed token. Its internal encoding is not public contract.
+A3.108 Each page is independently snapshot-consistent. Pagination across requests does not promise repeatable dataset membership under concurrent mutation.
+A3.109 M1 collection ordering is fixed per route; no generic sort/order query surface is exposed.
+A3.110 Default canonical orders are: DataType/ObjectTemplate lineages -> namespace,name ASC; nested versions -> version ASC; Objects -> id ASC; RelationshipDefinitions -> id ASC; capabilities -> resolution_id ASC; components -> child_object_id ASC; ObjectRelationshipView -> relationship_id,destination_object_id,name ASC; lifecycle -> occurred_at,id DESC.
+A3.111 Collection routes use summary DTOs when the exact resource can carry unbounded/large state: DTV list omits constraints; OTV list omits declarations; Object list omits properties. Small/bounded lineage and Definition aggregates may reuse full read DTOs.
+A3.112 Nested capability/components/ObjectRelationshipView collections use their complete API-03.9 projection item shape.
+A3.113 Lifecycle collection items are complete API-03.9 event DTOs because M1 does not introduce a separate lifecycle-event detail route.
+A3.114 /api/v1/core/objects/{object_id}/lifecycle-events means events involving the Object: object_id == X OR destination_object_id == X.
+A3.115 M1 filters are explicit route-specific exact filters; no generic query DSL or fuzzy-search semantics are implied.
+A3.116 Object list supports template_id, dependent template_version and exact canonical_name filters. template_version without template_id is invalid.
+A3.117 Lifecycle lists support kind, object/destination Object IDs, relationship/definition IDs, exact relationship_name and occurred_from/to.
+A3.118 Cursor continuation is bound to the active filter set. Changing filters while reusing a cursor is invalid; limit may change.
+A3.119 API-03.10 establishes new M1 read-path index requirements: objects(canonical_name,id), lifecycle(kind,occurred_at,id), and partial lifecycle(relationship_name,occurred_at,id) WHERE relationship_name IS NOT NULL.
+A3.120 These index additions are normative PERSIST-15 requirements and must be kept aligned with the persistence model.
+```
+
+---
+
+## 13. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-API-03.10 collection envelopes / list-item policy / pagination / filters
 success/failure HTTP status + error-body mapping
 ```
