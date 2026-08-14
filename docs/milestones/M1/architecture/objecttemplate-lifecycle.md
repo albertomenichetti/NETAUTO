@@ -246,6 +246,8 @@ Publish non incrementa revision perché non cambia la structural candidate.
 
 Delete/revise/publish concorrenti basati sulla stessa candidate generation devono essere mutuamente consistenti.
 
+La public HTTP representation di questo token è definita da `api-wire-contract.md` / API-03.2: REVISE, PUBLISH e DELETE_DRAFT usano uniformemente il required query parameter `expected_revision` con positive-integer lexical shape. Il token non è una generic HTTP resource revision e M1 non usa ETag/If-Match per questa semantica.
+
 ## 10. default_version
 
 `ObjectTemplate.default_version` replica intenzionalmente il contratto `DataType`.
