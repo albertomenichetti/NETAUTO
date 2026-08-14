@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03.1..10 e API-03.11A ratificati. Command DTO, exact/implicit selector, `expected_revision`, PrimitiveType public lexical forms, canonical read DTO, collection/list contract e failure-class/HTTP mapping baseline sono consolidati. Restano concrete error-code catalog e success HTTP mapping (API-03.11B).
+**Status:** DRAFT — API-03.1..11B ratificati. Command DTO, selector, `expected_revision`, PrimitiveType wire forms, canonical read/list contracts and complete public error/success HTTP mapping are consolidated. No API-03 transport point remains open.
 
 ## 1. Scopo e boundary
 
@@ -19,7 +19,7 @@ domain/application command semantics
 
 La wire ergonomics non può restringere, ampliare o reinterpretare implicitamente il domain contract ratificato.
 
-Prima di ogni nuovo API-03 point si applica il pre-flight definito in `docs/general/linee_guida_progetto.md` e in `architecture/README.md`.
+Prima di ogni nuovo dependent architecture point si applica il pre-flight definito in `docs/general/linee_guida_progetto.md` e in `architecture/README.md`.
 
 Authority companion:
 
@@ -32,8 +32,8 @@ api-list-contract.md
        ordering, list-item policy and filters
 
 api-error-contract.md
-    -> API-03.11 failure classes, HTTP/error-body mapping,
-       concrete error-code catalog and success mapping
+    -> API-03.11 failure classes, concrete error-code catalog,
+       details schemas and success HTTP mapping
 ```
 
 ---
@@ -583,37 +583,26 @@ Principi registrati qui:
 ```text
 single-resource/projection response
     -> no generic data envelope
-
 nullable / zero-one state
     -> explicit null only when semantically genuine
-
 empty collection/map
     -> [] / {}
-
 DataType
     -> separate lineage and exact-version DTO
-
 ObjectTemplate
     -> separate lineage, exact local snapshot and effective-schema DTO
-
 Object GET
     -> intrinsic current state only
-
 ownership
     -> semantic SlotSemanticKey projection, not persistence-row resource
-
 Object.owner
     -> existing detached Object => HTTP 200 + null
-
 RelationshipDefinition GET
     -> complete aggregate
-
 Relationship GET
     -> deduplicated factual semantic views
-
 Object relationships
     -> ObjectRelationshipView semantic projection
-
 lifecycle
     -> discriminated event-family union
 ```
@@ -654,25 +643,20 @@ Registry summary:
 envelope
     -> {items:[...], next_cursor:string|null}
     -> no data/page/total_count/has_more wrapper fields
-
 pagination
     -> opaque keyset cursor only
     -> no offset/page-number
     -> limit omitted => 100; valid 1..500
-
 cursor
     -> route/order/filter specific
     -> not domain identity / DB offset / snapshot / CDC token
     -> changing filters invalidates cursor; limit may change
-
 consistency
     -> each page independently snapshot-consistent
     -> no cross-request repeatable membership promise
-
 sorting
     -> one fixed canonical order per route
     -> no generic sort/order surface
-
 list item policy
     -> DTV summary omits constraints
     -> OTV summary omits declarations
@@ -680,7 +664,6 @@ list item policy
     -> bounded lineage/Definition aggregates may reuse full DTO
     -> nested semantic projections reuse API-03.9 item shape
     -> lifecycle uses full event DTO
-
 filters
     -> explicit route-specific exact filters only
     -> no generic query DSL / fuzzy search
@@ -757,15 +740,15 @@ A3.120 These index additions are normative PERSIST-15 requirements and must be k
 
 ---
 
-## 13. API-03.11A — failure classes and public error shape
+## 13. API-03.11 — failure/error/success mapping
 
-The canonical error authority is:
+The canonical authority is:
 
 ```text
 api-error-contract.md
 ```
 
-Registry summary:
+Failure-class mapping:
 
 ```text
 INVALID_REQUEST       -> 400
@@ -778,55 +761,64 @@ INTERNAL_FAILURE      -> 500
 Important boundaries:
 
 ```text
-404
-    -> missing request-URI/path target identity only
-
-missing referenced command operand
-    -> normally 422 semantic validation
-
-malformed expected_revision
-    -> 400
-
-well-formed stale expected_revision
-    -> 409
-
-idempotent no-op / factual convergence
-    -> success, never conflict merely because no row changed
+404 -> missing request-URI/path target identity only
+missing referenced command operand -> 422 referenced_resource_not_found
+malformed expected_revision -> 400
+well-formed stale expected_revision -> 409 stale_revision
+idempotent no-op / factual convergence -> success
 ```
 
-Canonical public error body:
+Canonical public error body is flat `{code,message,details}`. `code` is stable machine-readable snake_case; `details` is always a bounded JSON object and never leaks SQL/stack/constraint internals.
 
-```json
-{
-  "code": "stale_revision",
-  "message": "The draft revision does not match the expected revision.",
-  "details": {}
-}
+API-03.11B freezes a finite concrete error-code catalog, including dedicated lifecycle/default/dependency/ownership/schema-change/Relationship conflict codes. No generic conflict escape hatch exists for known M1 failures; an uncovered supported failure is an architecture finding.
+
+Success policy:
+
+```text
+GET -> 200 + canonical read/list body
+new public resource -> 201 + Location + canonical/command-specific result
+normal semantic mutation -> 200 + resulting semantic resource/projection
+Relationship CREATE convergence -> 200 + factual Relationship DTO
+Relationship CREATE new fact -> 201 + Location + factual Relationship DTO
+ATTACH -> 200 + resulting component projection
+DETACH -> 204, including already-detached no-op
+DELETE -> 204
+Relationship DELETE absent exact id -> 204 idempotent no-op
+no 202/async kernel success in M1
 ```
 
-`code` is stable machine-readable snake_case; clients do not branch on `message`; `details` is always a JSON object. HTTP status derives from failure class; concrete code identifies the subtype. Internal failures never expose SQL/stack/constraint internals.
+DT/OT CREATE return command-specific lineage + v1 DRAFT results; CREATE_NEXT returns the created exact-version DTO. Generic `{success:true}`, `{changed:false}` and SQL affected-row response bodies are forbidden.
 
 ```text
 A3.121 Application/domain failures remain transport-neutral; HTTP mapping occurs only at the transport adapter.
 A3.122 M1 public failure classes map as INVALID_REQUEST=400, NOT_FOUND=404, SEMANTIC_VALIDATION=422, STATE_CONFLICT=409, INTERNAL_FAILURE=500.
-A3.123 404 is reserved for missing request-URI/path target identity; missing command operands are semantic validation unless a more specific state rule applies.
-A3.124 400 covers transport/wire/query/path malformed input that does not require mutable persisted-state interpretation.
+A3.123 404 is reserved for missing request-URI/path target identity; missing command operands are semantic validation.
+A3.124 400 covers transport/wire/query/path malformed input not requiring mutable persisted-state interpretation.
 A3.125 422 covers syntactically valid but semantically invalid candidate/operand requests.
-A3.126 409 covers meaningful commands blocked by current mutable state, lifecycle/dependency policy, conflicting facts or stale application generation.
-A3.127 Malformed expected_revision is 400; well-formed stale expected_revision is 409; no 412/ETag reinterpretation.
-A3.128 Domain-defined idempotent no-op/convergence is success and is never converted into conflict merely because no persistence row changed.
+A3.126 409 covers meaningful commands blocked by current state/lifecycle/dependency/conflicting facts/stale generation.
+A3.127 Malformed expected_revision is 400; well-formed stale expected_revision is 409; no 412/ETag semantics.
+A3.128 Domain-defined idempotent no-op/convergence is success and is never converted into conflict merely because no row changed.
 A3.129 500 represents unexpected internal/invariant/integrity failure and never exposes SQL/stack/constraint internals publicly.
-A3.130 Canonical error body is flat {code,message,details}; code is stable machine-readable snake_case, message is human-readable only, details is always a JSON object.
-A3.131 HTTP status derives from failure class; concrete code identifies the specific failure subtype.
+A3.130 Canonical error body is flat {code,message,details}; code is stable, message human-readable only, details always an object.
+A3.131 HTTP status derives from failure class; concrete code identifies the failure subtype.
+A3.132 M1 exposes the finite concrete error-code catalog defined by API-03.11B; no generic conflict/state-conflict escape hatch is allowed for known M1 failures.
+A3.133 semantic_validation_failed is the deliberate aggregate code for candidate validation rules; details.violations carries path/rule context.
+A3.134 resource_not_found is used only for missing URI/path target identity; referenced_resource_not_found is used for missing command operands.
+A3.135 Known lifecycle/default/dependency/ownership/schema-change/Relationship conflicts use dedicated 409 codes rather than SQL/persistence errors.
+A3.136 internal_error is the only public 500 code in M1 and exposes no internal persistence/stack information.
+A3.137 GET success is 200 with canonical read/list projection.
+A3.138 A newly created public resource returns 201 and a Location header; DT/OT CREATE return a command-specific lineage + v1 result.
+A3.139 DT/OT CREATE_NEXT returns 201 with the created exact-version DTO.
+A3.140 Relationship CREATE returns 201 when a new factual Relationship is created and 200 when semantic idempotency converges on an existing one; both return the same factual Relationship DTO.
+A3.141 Successful semantic mutation commands normally return 200 with the resulting canonical semantic resource/projection, never SQL row counts or generic success/changed flags.
+A3.142 ATTACH returns 200 with the resulting component projection whether newly attached or exact-idempotent.
+A3.143 DETACH returns 204 both after real removal and for the already-detached idempotent no-op.
+A3.144 Successful DELETE returns 204 with no body; Relationship DELETE additionally returns 204 when its exact ID is already absent.
+A3.145 No 202/async success status exists for M1 kernel primitives.
 ```
 
 ---
 
-## 14. API-03 remaining work
+## 14. API-03 status
 
-Still open and to be revalidated/ratified point-by-point:
-
-```text
-API-03.11B complete concrete M1 error-code catalog + details schemas
-API-03.11B success HTTP status/body mapping
-```
+API-03.1..11B are ratified and consolidated. No public HTTP/JSON command/read/list/error/success architecture point remains open inside API-03.
