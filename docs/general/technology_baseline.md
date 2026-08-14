@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02` and `STACK-03` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03` and `STACK-04` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -453,6 +453,139 @@ The transport adapter owns the mapping from transport-model failures into the ra
 Use of Pydantic for application configuration/settings is a distinct technology decision and is not implied by STACK-03.
 
 Configuration parsing/validation will be reviewed separately because external configuration is a different boundary from public HTTP DTOs.
+
+### STACK-04 — process configuration and settings
+
+**Status:** RATIFIED.
+
+#### Settings technology
+
+```text
+pydantic-settings 2.x
+```
+
+is the project baseline for typed process/deployment configuration.
+
+This choice applies to configuration of the running NETAUTO process. It does not make Pydantic the domain-model authority and does not define how future NETAUTO-managed application resources such as discovery definitions, connector configuration or automation policy are modeled.
+
+#### Configuration scope
+
+Process settings include only values required to compose and operate the process, for example as requirements emerge:
+
+```text
+PostgreSQL connection URL
+connection-pool/runtime infrastructure settings
+logging settings
+HTTP/server process settings
+infrastructure timeouts
+process-level secrets
+```
+
+Future domain/application configuration managed by NETAUTO itself should normally be represented as explicit application resources rather than accumulated indefinitely as environment variables.
+
+#### Lifecycle and fail-fast behavior
+
+Settings are constructed and validated explicitly during process bootstrap/composition.
+
+The canonical lifecycle is:
+
+```text
+process starts
+    -> load settings
+    -> validate complete settings
+    -> construct infrastructure/application
+    -> serve
+```
+
+Missing required configuration or invalid values fail process startup before the application is declared operational.
+
+Settings are not instantiated as import-time global side effects.
+
+After successful composition, process settings are treated as immutable for the lifetime of that process. Runtime mutation/reload is not part of the baseline; configuration changes require explicit recomposition/restart unless a future requirement introduces a separate dynamic-configuration design.
+
+#### Sources and precedence
+
+Production deployment configuration is environment-first, using the project prefix:
+
+```text
+NETAUTO_
+```
+
+The intended precedence is:
+
+```text
+1. explicit constructor/test injection
+2. real environment variables
+3. mounted secret files
+4. explicitly enabled local dotenv input
+5. safe code defaults
+```
+
+The source order should be configured explicitly rather than depending accidentally on library defaults.
+
+Environment parsing may perform controlled conversion from string carriers into typed process settings. This is intentionally different from the strict no-coercion public HTTP boundary defined by STACK-03.
+
+#### Dotenv policy
+
+A `.env` file is a local development/testing convenience only.
+
+Production operation must not depend on a dotenv file, and NETAUTO does not rely on implicit parent-directory discovery of dotenv configuration.
+
+If dotenv support is enabled for a local entry point, that behavior is explicit at the composition/bootstrap boundary.
+
+#### Secrets
+
+Process secrets may be supplied through environment variables or mounted secret files.
+
+NETAUTO does not select a project-wide Vault/cloud-secret-manager SDK as part of this baseline. The deployment environment remains responsible for making required secrets available to the process through a supported source.
+
+Secrets must never be emitted in normal startup/configuration logging.
+
+#### No project runtime configuration-file framework
+
+The project does not adopt TOML, YAML, INI or another project runtime configuration-file hierarchy as a canonical process-configuration source.
+
+Likewise, NETAUTO does not implement an internal layered `development` / `staging` / `production` configuration system. The deployment environment already determines the concrete settings supplied to the process.
+
+A future configuration-document requirement may be evaluated on its own merits rather than pre-building one now.
+
+#### Dependency boundary
+
+`pydantic-settings` belongs to composition/infrastructure.
+
+Domain code has no dependency on process settings or `pydantic-settings`. Application services receive the concrete infrastructure/contracts they require rather than reading process-global settings directly.
+
+#### Testing and database separation
+
+Tests construct/inject configuration explicitly and do not mutate a shared settings singleton.
+
+Runtime and test PostgreSQL configuration remain separate. Test composition must use the dedicated test database configuration rather than silently inheriting the runtime database target.
+
+#### Safe observability
+
+Startup may emit a small safe summary of operationally useful non-secret configuration.
+
+Diagnostic source tracing, if used during troubleshooting, must not become normal production logging because configuration-source diagnostics may expose sensitive values.
+
+#### Proportionality / M1 implementation rule
+
+The technology baseline defines the allowed configuration mechanism; it does **not** require speculative settings or configuration structure.
+
+M1 should introduce only settings that are actually consumed by M1 runtime/test composition.
+
+In particular, M1 must not create nested settings groups, secret backends, reload machinery, deployment profiles, generic configuration registries or placeholder settings merely to anticipate later milestones.
+
+The rule is:
+
+```text
+current requirement
+    -> current setting
+
+future possibility without current consumer
+    -> no setting yet
+```
+
+This keeps the M1 configuration surface intentionally minimal while preserving a project-wide mechanism that can grow when real requirements appear.
 
 ## 4. Technology-review rule
 
