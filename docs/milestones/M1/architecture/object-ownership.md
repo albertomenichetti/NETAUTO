@@ -1,6 +1,6 @@
 # M1 — Object Ownership
 
-**Status:** DRAFT
+**Status:** DRAFT — ownership semantics frozen; PostgreSQL realization aligned to REALIZE-10/11/15.
 
 ## 1. Responsabilità
 
@@ -22,7 +22,7 @@ SlotSemanticKey
 (declaring_template_id, name)
 ```
 
-La runtime row può persistere `slot_name`; la declaring lineage viene ricavata dalla exact effective closure del parent quando serve semantic resolution.
+La runtime row persiste `slot_name`; la declaring lineage viene ricavata dalla exact effective closure del parent quando serve semantic resolution.
 
 ## 2. Ownership invariants
 
@@ -197,7 +197,15 @@ parent outgoing ownership edges
 
 Nessun interleaving può committare un edge che non sia più valido nella current exact OTV del parent.
 
-Il meccanismo PostgreSQL specifico è da finalizzare.
+PostgreSQL realization M1:
+
+```text
+objects(parent) FOR NO KEY UPDATE
+```
+
+è il shared concurrency owner per `ATTACH`, `DETACH` e `SCHEMA_CHANGE(parent)`. Dopo ogni eventuale wait la mutation rilegge il parent current state prima delle decisioni dipendenti dallo schema/outgoing set.
+
+Questo può intentionally over-serializzare semantic-`I` mutation come `RENAME(parent) × ATTACH(parent)`; il trade-off è normativo e regression-tested.
 
 ## 10. Single-owner concurrency domain
 
@@ -216,7 +224,13 @@ con desired edge diverse:
 at most one may create ownership
 ```
 
-La persistence deve possedere una final authority forte sul child ownership uniqueness.
+Final PostgreSQL authority:
+
+```text
+object_components PRIMARY KEY(child_object_id)
+```
+
+Il child Object non viene genericamente row-lockato. Un `SELECT object_components ... FOR UPDATE` non può sostituire la PK nello state detached perché non esiste una row-gap lock authority M1.
 
 ## 11. Acyclicity concurrency domain
 
@@ -231,19 +245,27 @@ T2: ATTACH B -> A
 
 Entrambe potrebbero risultare localmente valide sullo stesso initial snapshot; non possono entrambe committare.
 
-M1 privilegia correctness e semplicità.
+Normative PostgreSQL strategy:
 
-Normative strategy:
+> ogni `ATTACH` che resta una **real edge-add candidate** dopo parent/local/current-fact validation acquisisce `pg_advisory_xact_lock(OWNERSHIP_GRAPH_WRITE_GATE)` e mantiene il gate fino al commit/rollback.
 
-> le operation `ATTACH` che aggiungono ownership edges vengono serializzate rispetto alla cycle-validation + edge-add phase tramite un global ownership-graph write gate.
+Ordering:
 
-Il concrete PostgreSQL mechanism — advisory lock o altro — è definito nel concurrency design.
+```text
+parent Object FOR NO KEY UPDATE
+-> local/current-fact validation
+-> OWNERSHIP_GRAPH_WRITE_GATE
+-> fresh post-gate child-ownership read
+-> fresh graph/cycle check
+-> edge insert + lifecycle event
+-> commit
+```
 
-Il gate è scoped al graph edge-add/cycle predicate; non serializza genericamente RENAME, DATA_CHANGE o tutte le Object mutation.
+Gate acquisition e protected graph read sono SQL statement separati: a `READ COMMITTED` il predicate dopo una blocking wait deve usare un fresh statement snapshot che includa lo state committed dal previous gate holder.
 
-DETACH non deve necessariamente acquisire il global cycle gate perché non può introdurre un ciclo.
+Il gate è stabilization mechanism; il committed `object_components` graph è l'authority.
 
-Un ATTACH che fallisce conservativamente perché un concurrent DETACH non ha ancora rimosso un path è un valido ordine seriale; sono vietati solo false-positive validity outcome che producano un cycle committed.
+DETACH non acquisisce il global cycle gate perché edge removal non può introdurre un ciclo. Un ATTACH che fallisce conservativamente perché un concurrent DETACH non è ancora visible è un valido ordine seriale.
 
 ## 12. Lifecycle events
 
@@ -273,14 +295,22 @@ L'event registra inoltre:
 
 ```text
 canonical_name
-    = child canonical_name at event time
+    = historical child display metadata observed by the mutation
 
 destination_canonical_name
-    = parent canonical_name at event time
+    = parent canonical_name from the already stabilized parent row
 
 slot_declaring_template_id
 slot_name
 ```
+
+REALIZE-15 observation rule:
+
+- parent display name deriva dalla parent row già posseduta con `FOR NO KEY UPDATE`;
+- child canonical name viene letto come committed display metadata dopo parent stabilization;
+- non si introduce un child lock soltanto per lifecycle display metadata;
+- una concurrent child RENAME può quindi far osservare old oppure new committed name secondo l'observation point;
+- questo non modifica ownership identity/validity semantics.
 
 Idempotent no-op non produce duplicate lifecycle events.
 
@@ -297,4 +327,6 @@ no incoming ownership
 no outgoing ownership
 ```
 
-Ownership FK/reference semantics devono quindi impedire implicit cascade removal quando un Object viene eliminato.
+Le parent/child Object FK in `object_components` sono current `RESTRICT` references. Se l'ownership edge vince la race, Object DELETE non può committare; se Object DELETE vince, una nuova ATTACH non può stabilire la reference.
+
+Nessun `CASCADE` ownership cleanup è ammesso.
