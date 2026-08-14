@@ -1,6 +1,6 @@
 # M1 — Kernel Consistency Baseline
 
-**Status:** DRAFT
+**Status:** FINAL / FROZEN — milestone contract ratified. Scope, goals, non-goals and acceptance criteria are definitive for M1; any change requires explicit contract reopening and architecture impact analysis.
 
 ## 1. Missione
 
@@ -192,15 +192,15 @@ Le operazioni devono preservare le invarianti dell'intero sottoinsieme di datase
 
 ### P8 — Design may challenge existing decisions
 
-Qualsiasi decisione presente nel codice o nei documenti di lavoro precedenti può essere riesaminata durante M1.
+Durante la fase di design M1, qualsiasi decisione presente nel codice o nei documenti di lavoro precedenti può essere riesaminata.
 
-Nessuna scelta viene mantenuta soltanto perché già implementata.
+Nessuna scelta viene mantenuta soltanto perché già implementata. Dopo il freeze del contract e dell'architettura, una modifica a una decisione ratificata richiede invece una riapertura esplicita del design e la relativa propagation documentale.
 
 ### P9 — Stable semantics before stable implementation
 
 La stabilità perseguita da M1 riguarda prima di tutto il significato dei concetti, delle operazioni e degli errori.
 
-I meccanismi implementativi devono derivare dalle invarianti ratificate e possono essere scelti soltanto nella successiva documentazione architetturale.
+I meccanismi implementativi devono derivare dalle invarianti ratificate e sono definiti dalla documentazione `architecture/` congelata. L'implementazione può decomporre tali decisioni, ma non reinterpretarle o sostituirle silenziosamente.
 
 ### P10 — Real PostgreSQL verification
 
@@ -281,12 +281,17 @@ La separazione tra dominio e persistenza rimane invece preservata come boundary 
 
 ---
 
-## 8. Condizione di freeze del contract
+## 8. Stato definitivo del contract
 
-`contract.md` può essere considerato congelato quando:
+Il presente `contract.md` è **FINAL / FROZEN**.
+
+Le condizioni di freeze risultano soddisfatte:
 
 - missione, obiettivi e non-obiettivi descrivono senza ambiguità il perimetro di M1;
-- gli acceptance criteria risultano sufficienti a determinare se M1 abbia raggiunto il proprio obiettivo;
-- non rimangono decisioni di scope che impediscano di iniziare la definizione dei documenti in `architecture/`.
+- gli acceptance criteria sono sufficienti a determinare se M1 abbia raggiunto il proprio obiettivo;
+- non rimangono decisioni di scope aperte;
+- la documentazione normativa in `architecture/` è stata finalizzata, sottoposta a consistency review e congelata come baseline di implementazione.
 
-Il freeze di questo documento non congela ancora i dettagli del domain model o i meccanismi implementativi: tali decisioni devono essere finalizzate e congelate nella successiva fase di documentazione architetturale prima dell'avvio dello sviluppo.
+Il contract definisce **cosa** M1 deve ottenere; `architecture/` definisce **come deve funzionare semanticamente e tecnicamente** il kernel per soddisfarlo.
+
+Una modifica futura a missione, scope, non-obiettivi o acceptance criteria richiede una riapertura esplicita del milestone contract e una verifica/propagation dell'impatto sull'architettura congelata. La successiva decomposizione in `steps.md` deve derivare da contract e architecture senza estendere implicitamente il perimetro.
