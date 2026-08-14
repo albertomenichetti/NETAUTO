@@ -1,6 +1,6 @@
 # M1 — DataType Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency, DataType command DTO e PrimitiveType public wire baseline ratificati; remaining public read/failure details remain before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics, persistence/concurrency, DataType command DTO, PrimitiveType wire contract e canonical read/list contract ratificati; failure mapping resta prima del final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -27,7 +27,11 @@ I meccanismi PostgreSQL concreti sono definiti in:
 - `concurrency-semantic-matrix.md` e `concurrency-postgresql-realization-matrix.md` — safety predicate e realization;
 - `concurrency-postgresql-test-matrix.md` — real-PG concurrency coverage.
 
-La public command/wire representation è definita in `api-contract.md` e `api-wire-contract.md`; in particolare API-03.4 è authority per DataType CREATE/REVISE e per gli altri command DTO del dominio, mentre API-03.8 + A3-BS-01..07 sono authority per accepted PrimitiveType public-input lexical forms e canonical public output.
+La public API representation è definita in:
+
+- `api-wire-contract.md` — API-03.4 DataType command DTO e API-03.8 PrimitiveType lexical forms;
+- `api-read-contract.md` — API-03.9 lineage/exact-version canonical read DTO;
+- `api-list-contract.md` — API-03.10 collection envelope, keyset cursor, ordering, summary item e filters.
 
 ## 2. Responsabilità
 
@@ -468,6 +472,16 @@ materialize exact binding
 COMMIT
 ```
 
+Public read/list semantics:
+
+- API-03.9 separa lineage read da exact-version read;
+- API-03.10 usa keyset pagination, `(namespace,name) ASC` per lineage e `version ASC` per nested versions;
+- lineage list riusa il bounded lineage DTO;
+- version list usa summary senza `constraints`;
+- exact filters M1: lineage `namespace`/`name`, version `status`.
+
+Ogni pagina resta una read snapshot-consistent indipendente; il cursor non è un cross-request snapshot token.
+
 ## 15. Metadata concurrency
 
 `description` è non-semantic metadata.
@@ -548,6 +562,8 @@ whole-UoW retry/convergence boundaries
 expected_revision public HTTP placement for REVISE/PUBLISH/DELETE_DRAFT
 DataType CREATE/REVISE/command DTO shape (API-03.4)
 PrimitiveType accepted public lexical forms + canonical public output (API-03.8 / A3-BS)
+DataType lineage/exact-version read DTO shape (API-03.9)
+DataType collection/list/pagination/filter contract (API-03.10)
 ```
 
 In particolare:
@@ -559,10 +575,10 @@ In particolare:
 - active DTV reverse lookup usa le authoritative property/OTV rows e gli indici di `persistence-model.md`;
 - concurrency segue REALIZE-01..15 e i test PGTEST;
 - `expected_revision` usa il required positive-integer query parameter definito da API-03.2, senza ETag/If-Match semantics;
-- API-03.4 definisce CREATE come lineage + v1 DRAFT con `constraints` omission -> `{}`, REVISE come complete constraints candidate required e gli altri command DTO DataType.
+- API-03.4 definisce CREATE come lineage + v1 DRAFT con `constraints` omission -> `{}`, REVISE come complete constraints candidate required e gli altri command DTO DataType;
+- API-03.9/03.10 chiudono canonical read, summary list, exact filters e keyset pagination del dominio.
 
-Restano da definire/finalizzare prima del coding freeze soltanto i contract che appartengono ancora al transport/application layer, non alla persistence/concurrency/primitive-wire architecture già ratificata:
+Restano da definire/finalizzare prima del coding freeze soltanto:
 
-- public read/list response shape e pagination/filter conventions;
 - endpoint success/error taxonomy e failure mapping;
 - ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
