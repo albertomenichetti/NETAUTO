@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01` and `STACK-02` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02` and `STACK-03` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -323,6 +323,136 @@ No generated migration is authoritative merely because Alembic produced it.
 The project does not replace Core expressions with raw SQL/Psycopg based on speculative performance assumptions.
 
 Measured hot paths may use the textual-SQL or driver escape hatch when benchmarks demonstrate material benefit and the resulting implementation remains consistent with the frozen semantic/persistence architecture.
+
+### STACK-03 — Pydantic and model boundaries
+
+**Status:** RATIFIED.
+
+#### Transport technology
+
+```text
+Pydantic 2.x
+```
+
+is the canonical FastAPI request/response model technology.
+
+Public HTTP request DTOs and public HTTP response DTOs use Pydantic models at the transport boundary.
+
+Pydantic is selected because it integrates naturally with FastAPI request parsing, response serialization/filtering and OpenAPI generation. It is not selected as the NETAUTO domain-model framework.
+
+#### Request-model strictness
+
+Public request models preserve the frozen API wire semantics.
+
+The baseline is:
+
+```text
+strict validation
+unknown fields forbidden
+no generic scalar coercion
+field omission preserved distinctly from explicit null/value
+```
+
+Transport mapping must preserve caller intent until it has been converted into the corresponding application command semantics.
+
+A request model may validate public carrier shape and structural wire constraints, but it may not silently repair or reinterpret explicit invalid intent.
+
+#### Validation authority boundary
+
+Pydantic is responsible for transport syntax and shape validation, including, where applicable:
+
+```text
+JSON/request object shape
+required/forbidden transport fields
+discriminated request variants
+strict carrier types
+basic public structural bounds
+response serialization/public shape
+```
+
+Pydantic is **not** authoritative for NETAUTO semantic validation.
+
+In particular, Pydantic must not replace:
+
+```text
+PrimitiveType parsing/canonicalization
+DataTypeVersion constraint semantics
+ObjectTemplate certification/effective-schema validation
+Object runtime-state validation
+schema-change migration semantics
+ownership/Relationship invariants
+lifecycle/default/dependency admission
+current-state-dependent validation
+```
+
+A convenient Pydantic built-in type must not narrow, widen or otherwise redefine a frozen NETAUTO lexical/domain contract.
+
+When the NETAUTO public wire contract defines a carrier such as a string whose semantic parsing is owned by the domain/application layer, the transport model should preserve that carrier rather than delegating semantic interpretation to Pydantic.
+
+#### Application command/result boundary
+
+Transport DTOs are not application commands merely because their fields look similar.
+
+The canonical flow is:
+
+```text
+HTTP JSON
+    -> Pydantic request DTO
+    -> explicit intent-preserving mapping
+    -> application command
+    -> domain/application execution
+    -> application result/semantic projection
+    -> explicit transport mapping
+    -> Pydantic response DTO
+    -> HTTP JSON
+```
+
+Application commands/results use ordinary Python types, dataclasses, enums and/or project value objects as appropriate.
+
+The application layer has no FastAPI dependency and does not use Pydantic as its semantic model authority.
+
+Pydantic dependency in the application layer is not part of the project baseline and should not be introduced merely to avoid an explicit transport/application mapping.
+
+#### Domain isolation
+
+The domain model is plain Python and has no Pydantic dependency.
+
+Domain entities, value objects, candidate state, invariant evaluation and canonicalization do not inherit from `BaseModel` and do not use Pydantic serialization/validation as their semantic representation.
+
+The domain therefore remains reusable independently of HTTP, FastAPI and Pydantic.
+
+#### Response DTO boundary
+
+Pydantic response models are an explicit public-boundary projection and provide a defensive serialization/filtering boundary.
+
+Persistence rows, SQLAlchemy rows or driver-specific objects are never exposed directly through Pydantic response serialization as an architectural shortcut.
+
+The expected flow is:
+
+```text
+persistence representation
+    -> application/domain semantic representation or projection
+    -> explicit response mapping
+    -> Pydantic response DTO
+```
+
+This keeps the public API independent of physical persistence shape.
+
+#### Failure taxonomy ownership
+
+Pydantic/FastAPI validation errors do not redefine the frozen NETAUTO error taxonomy.
+
+Transport/shape failures, semantic validation failures, state conflicts and internal failures remain classified according to the application/API contracts.
+
+In particular, the existence of a Pydantic `ValidationError` does not by itself determine that the public failure is `semantic_validation_failed` or any other semantic code.
+
+The transport adapter owns the mapping from transport-model failures into the ratified public failure boundary.
+
+#### Configuration is a separate boundary
+
+Use of Pydantic for application configuration/settings is a distinct technology decision and is not implied by STACK-03.
+
+Configuration parsing/validation will be reviewed separately because external configuration is a different boundary from public HTTP DTOs.
 
 ## 4. Technology-review rule
 
