@@ -1,6 +1,6 @@
 # M1 — API Contract
 
-**Status:** DRAFT — API-01 e API-02 ratificati; boundary, public namespace e canonical route inventory consolidati. API-03 wire/DTO decisions vengono consolidate progressivamente in `api-wire-contract.md`; failure mapping resta da definire.
+**Status:** DRAFT — API-01 e API-02 ratificati; boundary, public namespace e canonical route inventory consolidati. API-03.1..10 command/wire/read/list decisions sono consolidate nei companion contract; success/failure HTTP mapping resta da definire.
 
 ## 1. Scopo
 
@@ -19,6 +19,20 @@ HTTP request / wire DTO
 ```
 
 Il domain/application contract è autorevole. HTTP/JSON non introduce una seconda semantica CRUD del kernel.
+
+Companion API-03 authority:
+
+```text
+api-wire-contract.md
+    -> command/wire + PrimitiveType contract + API-03 registry
+
+api-read-contract.md
+    -> API-03.9 canonical single/projection DTO
+
+api-list-contract.md
+    -> API-03.10 collection envelope, keyset pagination,
+       canonical ordering, list-item policy and filters
+```
 
 ---
 
@@ -140,6 +154,8 @@ Esempi:
 - Object Relationship read espone `ObjectRelationshipView`, non raw `RuntimeRelationshipResolution` rows;
 - lifecycle read espone historical event projection read-only.
 
+API-03.9 definisce le canonical single/projection DTO. API-03.10 definisce collection envelope, keyset cursor, canonical ordering, list summaries e route-specific filters. Nessun generic resource DTO viene reintrodotto dalle list surface.
+
 ### 2.6 Stable lineage identity vs exact version identity
 
 Le API mantengono esplicita la distinzione fra stable lineage identity ed exact version identity.
@@ -214,7 +230,7 @@ domain/application failure
 -> HTTP status + error-body mapping
 ```
 
-Il failure catalog e il mapping HTTP vengono ratificati in un API point dedicato.
+Il failure catalog e il mapping HTTP vengono ratificati nel prossimo API architecture point dedicato.
 
 ### 2.10 Public transport baseline
 
@@ -281,6 +297,8 @@ M1 usa il verbo come ultimo path segment per semantic command. Non usa `:command
 Identity placement rule:
 
 > il path identifica il target stable/exact della command; selector, target candidate e altri operand restano nel body.
+
+Collection GET usa il corresponding API-03.10 keyset/list contract; non introduce alternate resource identity tramite filter.
 
 ### 4.2 DataType routes
 
@@ -371,6 +389,8 @@ GET /api/v1/core/objects/{object_id}/lifecycle-events
 
 Il parent nel path di ATTACH/DETACH rappresenta il semantic mutation target e il parent ownership concurrency domain. `child_object_id` e `slot_name` restano operand nel body. Non viene introdotta una PUT-to-owner semantics che suggerirebbe implicit MOVE.
 
+La Object collection usa API-03.10 ordering `id ASC`, summary senza properties e exact filters `template_id`, dependent `template_version`, `canonical_name`.
+
 ### 4.5 RelationshipDefinition routes
 
 Writes:
@@ -431,6 +451,18 @@ GET /api/v1/core/objects/{object_id}/lifecycle-events
 ```
 
 Non esistono lifecycle-event create/update/delete public route.
+
+API-03.10 precisa normativamente che la Object-specific route significa **event che coinvolgono l'Object**:
+
+```text
+object_id = X
+OR
+destination_object_id = X
+```
+
+Questo include quindi, per esempio, ownership event dove l'Object è parent/destination oltre agli event dove è primary subject.
+
+Lifecycle collection ordering è `(occurred_at,id) DESC`; API-03.10 definisce i first-class filter e opaque keyset pagination. Il cursor non rappresenta strict commit order, snapshot token o CDC token.
 
 ### 4.8 HTTP method policy
 
@@ -514,7 +546,7 @@ DATA_CHANGE equivalent candidate
     -> semantic success/no-op, no event
 ```
 
-Exact HTTP status e response-body detail vengono definiti nei successivi success/failure/wire contract.
+Exact HTTP status e response-body detail restano il successivo API architecture point.
 
 ---
 
@@ -532,23 +564,25 @@ A2.8  RelationshipDefinition GET returns complete aggregate; RelationshipResolut
 A2.9  Relationship CREATE is POST /api/v1/core/relationships with resolution_id/from_object_id/to_object_id body; endpoint pair is not REST identity.
 A2.10 Object relationship navigation returns semantic ObjectRelationshipView, never raw runtime rows.
 A2.11 Relationship capability discovery is GET /api/v1/core/object-templates/{template_id}/relationship-capabilities.
-A2.12 Lifecycle API is read-only under /api/v1/core/lifecycle-events and Object lifecycle projection.
+A2.12 Lifecycle API is read-only under /api/v1/core/lifecycle-events and Object lifecycle projection; the Object-specific route means event involving the Object, i.e. object_id=X OR destination_object_id=X.
 A2.13 Generic PATCH/PUT and autonomous owned-child CRUD are explicitly forbidden.
 A2.14 Command responses represent semantic result/convergence, not persistence affected-row counts.
 A2.15 expected_revision is required on relevant exact-DRAFT commands and is encoded by API-03.2 as a required positive-integer query parameter for REVISE/PUBLISH/DELETE_DRAFT.
 A2.16 `core` is an API capability namespace only; it does not create a Core domain/service/repository abstraction.
+A2.17 API-03.9/03.10 define canonical read/projection DTOs and one fixed keyset-paginated collection contract; no generic resource DTO, offset pagination or arbitrary sort surface is introduced.
 ```
 
 ---
 
-## 6. Next point
+## 6. Remaining API architecture point
 
-API-03 continua a definire canonical command DTO / JSON wire shape, inclusi:
+API-03.1..10 are consolidated. The next API design point must define:
 
-- exact/implicit version selector representation;
-- DataType constraints and primitive values;
-- OTV complete candidate property/component shape;
-- Object properties and DATA_CHANGE operation union;
-- RelationshipDefinition discriminated CREATE/RENAME inputs;
-- Relationship CREATE selector/endpoints;
-- response DTO identity/status conventions.
+```text
+transport-neutral failure taxonomy
+-> HTTP status mapping
+-> canonical error-body DTO
+-> success status/body policy for create, command convergence/no-op and delete
+```
+
+The JSON Schema compiler surface, if retained in M1, is a separate remaining architecture question and must not be conflated with HTTP failure mapping.
