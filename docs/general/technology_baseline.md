@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03` and `STACK-04` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04` and `STACK-05` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -586,6 +586,127 @@ future possibility without current consumer
 ```
 
 This keeps the M1 configuration surface intentionally minimal while preserving a project-wide mechanism that can grow when real requirements appear.
+
+### STACK-05 — dependency injection and composition root
+
+**Status:** RATIFIED.
+
+#### Composition model
+
+NETAUTO uses explicit Python dependency injection as the project composition baseline.
+
+Constructor/function injection is preferred. Dependency injection is treated as a design principle; a DI container is only one possible mechanism and is not required for the project baseline.
+
+The project does **not** adopt an external DI/container framework at this stage.
+
+#### FastAPI dependency boundary
+
+FastAPI `Depends()` is an HTTP-adapter mechanism, not the authority for constructing the NETAUTO application/domain object graph.
+
+It may be used for transport/request concerns such as:
+
+```text
+request context
+future authentication/authorization context
+HTTP-derived parameters or metadata
+access to already-composed application capabilities
+```
+
+Domain, application and persistence code do not import or depend on FastAPI `Depends()`.
+
+The project avoids recursive `Depends()` wiring for domain services, repositories, Unit of Work ownership or other core application composition merely because the framework can provide it.
+
+#### Composition root
+
+Process/application wiring is explicit at a composition/bootstrap root.
+
+Conceptually:
+
+```text
+process startup
+    -> load validated Settings
+    -> create AsyncEngine / PostgreSQL pool
+    -> create UoW/application factories and stateless services
+    -> create FastAPI application/adapters
+    -> serve
+```
+
+FastAPI lifespan may own initialization and cleanup of process-lifetime resources such as the database engine/pool, but framework lifecycle does not redefine application transaction semantics.
+
+NETAUTO does not require a project-specific `Container` abstraction merely to wrap this wiring. M1 keeps composition directly readable while the object graph remains small.
+
+#### Lifecycle/scoping rules
+
+The project distinguishes lifetimes explicitly:
+
+```text
+process lifetime
+    -> Settings
+    -> AsyncEngine / connection pool
+    -> factories
+    -> stateless application services where appropriate
+
+HTTP request lifetime
+    -> transport/request-specific context
+    -> future authentication principal / correlation metadata
+
+semantic operation lifetime
+    -> Unit of Work
+    -> PostgreSQL connection/transaction
+    -> operation-specific persistence access
+
+domain lifetime
+    -> ordinary Python objects governed by domain semantics
+```
+
+These lifetimes must not be collapsed merely because a framework offers one convenient request scope.
+
+#### Unit of Work is not request-scoped infrastructure
+
+A semantic NETAUTO Unit of Work is created and owned by the application operation that defines the transaction boundary.
+
+The baseline is:
+
+```text
+HTTP/CLI/worker caller
+    -> application operation
+    -> UoW factory
+    -> semantic UoW / transaction
+    -> commit or rollback
+```
+
+An HTTP request may commonly invoke one application operation and therefore one UoW, but this coincidence is not an architectural rule.
+
+FastAPI dependency `yield` lifecycle does not own or define transaction semantics for the kernel.
+
+This keeps the same application operation callable from future CLI, worker, discovery, reconciliation or automation entry points without requiring FastAPI request lifecycle emulation.
+
+#### Process resources and globals
+
+Process-wide resources are composed explicitly and may be exposed to the HTTP adapter through an application/runtime context owned by the FastAPI application lifecycle.
+
+Mutable import-time global singletons and service-locator access are not part of the baseline.
+
+Application services that are stateless apart from injected factories/dependencies may be process-lived; each I/O-bearing semantic operation still creates its own operation-scoped UoW as required by STACK-01 and STACK-02.
+
+#### Testing rule
+
+Domain and application tests construct their dependencies directly and do not require a FastAPI application or FastAPI dependency overrides.
+
+FastAPI `dependency_overrides` is reserved for API-adapter/integration tests where replacing an HTTP dependency is genuinely the boundary under test.
+
+A useful architectural test is:
+
+```text
+if an application-service unit test requires FastAPI dependency_overrides
+    -> the framework boundary is probably leaking inward
+```
+
+#### Future DI/container reconsideration
+
+A DI/container framework may be reconsidered only if future composition complexity demonstrates a concrete need, for example a substantially larger dynamic/plugin-driven object graph that explicit Python wiring no longer represents clearly.
+
+It is not introduced speculatively for M1 or merely to reduce a small amount of explicit bootstrap code.
 
 ## 4. Technology-review rule
 
