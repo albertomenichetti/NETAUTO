@@ -1,6 +1,6 @@
 # M1 — Relationship Architecture
 
-**Status:** DRAFT — Relationship R2 semantics, PostgreSQL persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler question remains before final M1 architecture freeze.
+**Status:** DRAFT — Relationship R2 semantics, PostgreSQL persistence/concurrency and complete public API contract are ratified. Ready for final M1 architecture consistency/freeze review.
 
 ## 1. Scopo
 
@@ -306,4 +306,4 @@ public error-code/status/success mapping = API-03.11
 
 API-03.11 rende normativi i dedicated public conflict codes per Definition equivalence/conflict e runtime factual conflict, insieme alla success policy: Definition CREATE `201 + Location`; Definition RENAME `200 + complete aggregate`; Relationship CREATE `201` per new fact e `200` per convergence; Relationship DELETE `204` anche per exact-id already-absent no-op. Nessun SQL/persistence detail entra nel public error contract.
 
-Resta come unico architecture question pre-freeze il ruolo/surface del JSON Schema compiler, se mantenuto in M1.
+Non restano decisioni Relationship aperte prima del final M1 architecture consistency/freeze review.
