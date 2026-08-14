@@ -1,16 +1,18 @@
 # M1 — Object Consistency Review
 
-**Status:** REVIEW COMPLETE — input for Object architecture DRAFT
+**Status:** REVIEW COMPLETE — semantic findings integrated; previously open persistence/concurrency items are now resolved by the M1 architecture baseline.
 
 ## 1. Result
 
-The ratified OBJ-01..OBJ-10 semantics are internally coherent with the current M1 `DataType` and `ObjectTemplate` architecture.
+The ratified Object semantics are internally coherent with the current M1 `DataType`, `ObjectTemplate`, persistence and concurrency architecture.
 
 No blocking semantic contradiction was found.
 
+The PostgreSQL realization and real-PG test coverage have subsequently been completed through REALIZE-01..15 and PGTEST-01..02. This review therefore no longer carries unresolved concurrency-design items.
+
 ## 2. Required ObjectTemplate amendments
 
-Two clarifications discovered during Object migration design belong normatively to the model-plane and are therefore reflected in replacement copies of:
+Two clarifications discovered during Object migration design belong normatively to the model-plane and are reflected in:
 
 - `objecttemplate-properties.md`
 - `objecttemplate-components.md`
@@ -50,44 +52,83 @@ The new architecture intentionally supersedes older baseline semantics where the
 
 The stable `Object.template_id` decision aligns Object with lineage-based Relationship/component compatibility.
 
-## 4. Current persistence gaps to address during implementation design
+## 4. Persistence implementation obligations — architecture resolved
 
-These are implementation/schema deltas, not new domain decisions.
+The following were gaps in the pre-M1 implementation, **not open architecture choices**. Their target state is now normative in `persistence-model.md` and the concurrency realization.
 
-### Ownership FK cascade
+### Ownership FK semantics
 
-Current persistence uses `ON DELETE CASCADE` from `object_components` to both parent and child Object rows.
+Required M1 target:
 
-M1 Object DELETE semantics require no implicit detach, therefore ownership references must have `RESTRICT`-equivalent semantics.
+```text
+object_components.parent_object_id -> objects.id RESTRICT
+object_components.child_object_id  -> objects.id RESTRICT
+```
+
+No implicit ownership cleanup on Object delete.
 
 ### Lifecycle changelog shape
 
-Current `object_changes` lacks the structural event fields required by M1:
+The M1 target is the single typed `object_lifecycle_events` table with structural fields including:
 
 ```text
 destination_object_id
 destination_canonical_name
 slot_declaring_template_id
 slot_name
+relationship_id
+relationship_definition_id
+relationship_name
+before_state
+after_state
 ```
 
-It must also support `ATTACH_TO` and `DETACH_FROM`.
-
-Lifecycle references are historical identifiers and must not become live FK blockers to Object/ObjectTemplate deletion.
+Historical identifiers are not live FK blockers. Event identity is PostgreSQL-generated UUID and `occurred_at` is `transaction_timestamp()`.
 
 ### Object current-state shape
 
-Implementation must be aligned to the ratified canonical Object state, including `canonical_name`, exact OTV pin and canonical property persistence.
+Implementation must match the ratified state:
 
-## 5. High-risk concurrency work still open
+```text
+id UUID
+canonical_name TEXT, semantic bound 1..255
+(template_id, template_version) exact OTV FK
+properties canonical JSONB object
+```
 
-The domain semantics are frozen enough to proceed, but the following mechanisms remain intentionally unresolved until the concurrency architecture:
+No `Object.state_revision` M1.
 
-- parent schema vs outgoing ATTACH/DETACH serialization;
-- single-owner child authority;
-- ownership cycle prevention with global graph write gate;
-- DATA_CHANGE vs SCHEMA_CHANGE stale-state prevention;
-- DELETE vs concurrent new references;
-- target OTV admission stabilization.
+## 5. High-risk concurrency work — resolution map
 
-These require real PostgreSQL integration/concurrency tests.
+The formerly open concurrency mechanisms are now closed:
+
+```text
+parent schema vs ATTACH/DETACH
+    -> REALIZE-09/10/15
+    -> parent Object FOR NO KEY UPDATE owner
+
+single-owner child
+    -> REALIZE-10
+    -> PK(child_object_id)
+
+ownership cycle prevention
+    -> REALIZE-11
+    -> OWNERSHIP_GRAPH_WRITE_GATE via pg_advisory_xact_lock
+       + post-gate fresh snapshot
+
+DATA_CHANGE vs SCHEMA_CHANGE
+    -> REALIZE-09
+    -> same Object FOR NO KEY UPDATE owner + post-lock re-derivation
+
+DELETE vs concurrent references
+    -> REALIZE-07
+    -> immediate FK RESTRICT final authority
+
+exact target OTV admission
+    -> REALIZE-05
+    -> target exact FOR SHARE + PUBLISHED recheck
+```
+
+The corresponding normative real-PostgreSQL scenarios are in `concurrency-postgresql-test-matrix.md` (`ROW-*`, `ARB-*`, `REF-*`, `GATE-*`, `SNAP-*`, `ATOMIC-*`, `PAR-*`).
+
+Any implementation that reopens these choices is an architecture change, not an implementation detail.
