@@ -1,6 +1,6 @@
 # M1 — DataType Architecture
 
-**Status:** DRAFT — domain semantics, persistence/concurrency, DataType command DTO, PrimitiveType wire contract e canonical read/list contract ratificati; failure mapping resta prima del final M1 architecture freeze.
+**Status:** DRAFT — domain semantics, persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler role remains before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -31,7 +31,8 @@ La public API representation è definita in:
 
 - `api-wire-contract.md` — API-03.4 DataType command DTO e API-03.8 PrimitiveType lexical forms;
 - `api-read-contract.md` — API-03.9 lineage/exact-version canonical read DTO;
-- `api-list-contract.md` — API-03.10 collection envelope, keyset cursor, ordering, summary item e filters.
+- `api-list-contract.md` — API-03.10 collection envelope, keyset cursor, ordering, summary item e filters;
+- `api-error-contract.md` — API-03.11 failure classes/codes, bounded details and success HTTP mapping.
 
 ## 2. Responsabilità
 
@@ -564,6 +565,7 @@ DataType CREATE/REVISE/command DTO shape (API-03.4)
 PrimitiveType accepted public lexical forms + canonical public output (API-03.8 / A3-BS)
 DataType lineage/exact-version read DTO shape (API-03.9)
 DataType collection/list/pagination/filter contract (API-03.10)
+public error-code/status/success mapping (API-03.11)
 ```
 
 In particolare:
@@ -576,9 +578,9 @@ In particolare:
 - concurrency segue REALIZE-01..15 e i test PGTEST;
 - `expected_revision` usa il required positive-integer query parameter definito da API-03.2, senza ETag/If-Match semantics;
 - API-03.4 definisce CREATE come lineage + v1 DRAFT con `constraints` omission -> `{}`, REVISE come complete constraints candidate required e gli altri command DTO DataType;
-- API-03.9/03.10 chiudono canonical read, summary list, exact filters e keyset pagination del dominio.
+- API-03.9/03.10 chiudono canonical read, summary list, exact filters e keyset pagination del dominio;
+- API-03.11 chiude failure classes, concrete error codes/details e success response policy senza introdurre HTTP semantics nel domain layer.
 
-Restano da definire/finalizzare prima del coding freeze soltanto:
+Resta da definire/finalizzare prima del coding freeze soltanto:
 
-- endpoint success/error taxonomy e failure mapping;
 - ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
