@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05` and `STACK-06` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05`, `STACK-06` and `STACK-07` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -806,6 +806,227 @@ existing Uvicorn access logging
 ```
 
 No observability framework, metrics registry, tracing abstraction or structured-event layer is created merely to anticipate future deployment needs.
+
+### STACK-07 — kernel testing stack and verification strategy
+
+**Status:** RATIFIED.
+
+Testing is part of the kernel correctness/safety model, not merely developer tooling. The M1 implementation must preserve the frozen semantic, persistence, concurrency and API contracts through complementary test layers; no single class of test substitutes for the others.
+
+#### Test layers
+
+The baseline distinguishes:
+
+```text
+T0  pure domain unit tests
+T1  application/orchestration tests
+T2  real-PostgreSQL persistence integration tests
+T3  deterministic real-PostgreSQL concurrency contract tests
+T4  API contract/integration tests
+T5  migration/schema tests
+T6  targeted property-based tests
+T7  supplementary stress/randomized concurrency tests
+```
+
+T0..T5 are normal kernel verification layers. T6 is part of the M1 baseline where meaningful semantic properties exist. T7 is supplementary discovery tooling and does not replace deterministic contract tests.
+
+#### Core runner and async testing
+
+```text
+pytest
+pytest-asyncio
+```
+
+are the canonical test runner and asyncio test integration.
+
+NETAUTO is asyncio-only at the project execution baseline, therefore async tests use the asyncio test model rather than maintaining test portability across Trio/other async backends.
+
+Function-scoped event-loop isolation is the default unless a specific fixture lifecycle requires a broader scope. Asyncio debug mode may be enabled in CI/test profiles as an additional diagnostic guard rail.
+
+Pytest markers used by the suite are explicitly registered and strict-marker behavior is enabled so misspelled/unregistered markers do not silently alter suite selection.
+
+#### API testing
+
+API tests use:
+
+```text
+HTTPX AsyncClient
++
+ASGITransport
+```
+
+against the composed FastAPI ASGI application.
+
+Tests that exercise application startup/shutdown must execute the real ASGI lifespan rather than assuming that transport construction implicitly runs it.
+
+API contract tests verify the frozen public contract, including status codes, response DTOs, `Location` where required, strict request shape, omitted-vs-null behavior, failure taxonomy, cursor/list behavior, idempotent/convergent outcomes and committed database/lifecycle state where applicable.
+
+#### Real PostgreSQL requirement
+
+Persistence, migration, kernel integration and concurrency correctness are demonstrated against **real PostgreSQL**.
+
+The suite does not use SQLite, fake databases, mock PostgreSQL behavior or in-process transaction simulation as substitutes for PostgreSQL semantics.
+
+Mocks/fakes may be used for pure unit/application-boundary tests when the behavior being tested is genuinely independent of PostgreSQL. They are never evidence for row-lock, FK/PK/UNIQUE arbitration, MVCC, advisory-lock, transaction or rollback correctness.
+
+#### PostgreSQL provisioning boundary
+
+NETAUTO test code does **not** provision PostgreSQL.
+
+Specifically, the project baseline excludes:
+
+```text
+Docker-based test provisioning
+Testcontainers
+auto-started embedded/local PostgreSQL
+silent fallback to another database backend
+```
+
+The test environment/operator provides an already available dedicated PostgreSQL test target through:
+
+```text
+TEST_DATABASE_URL
+```
+
+The URL must identify test infrastructure distinct from runtime production/development persistence as required by the project configuration baseline.
+
+Absence or invalidity of the required PostgreSQL test configuration must never cause fallback to SQLite or another backend. Commands intended to run the PostgreSQL-required suite must fail clearly when their required test database is unavailable; suite-selection commands may explicitly exclude PostgreSQL-marked tests.
+
+#### Test-database isolation and parallelism
+
+Concurrency scenarios use genuinely independent PostgreSQL connections/transactions and may commit real state; an outer rollback transaction is therefore not a sufficient isolation strategy.
+
+The frozen PGTEST database-isolation contract remains authoritative:
+
+```text
+parallel real-PG worker
+    -> isolated PostgreSQL test database
+
+scenario
+    -> unique semantic IDs/names
+    -> cleanup only after participating sessions terminate
+```
+
+NETAUTO does not secretly create Docker containers or hidden PostgreSQL instances to satisfy this rule.
+
+When the external test environment provides only one test database URL, PostgreSQL-required suites that could interfere through shared authority/gates run without cross-worker database parallelism. Parallel real-PG execution is enabled only when the environment explicitly provides/provisions isolated database targets per test worker (or equivalent externally managed isolation consistent with PGTEST).
+
+Pure/unit tests remain freely parallelizable where they do not share mutable external state.
+
+#### Parallel test runner
+
+```text
+pytest-xdist
+```
+
+is part of the testing toolset for scalable suite execution, but it is not allowed to weaken test isolation.
+
+It may parallelize pure tests and real-PG tests only where the database-isolation contract is satisfied. Deterministic T1/T2/T3 transaction orchestration inside a concurrency scenario remains owned by the concurrency harness, never by xdist scheduling.
+
+A test that depends accidentally on global shared state is defective; intentionally serial execution must be explicit and justified by the relevant authority/gate contract.
+
+#### Deterministic concurrency harness
+
+M1 implements reusable project-owned test infrastructure for the frozen PostgreSQL concurrency test architecture.
+
+It realizes the canonical PGTEST roles and concepts, including:
+
+```text
+CTL
+OBS
+optional blocker B
+T1 / T2 / optional T3
+stable scenario IDs
+deterministic barriers/phases
+PostgreSQL blocker/wait observation
+failure diagnostics
+```
+
+Real PostgreSQL blockers/gates/constraints are the preferred orchestration mechanism. `sleep()` is never a correctness coordination primitive. Test-only persistence interception is permitted only under the narrow escape-hatch rules already frozen in PGTEST and must never create a different production semantic path.
+
+The normative deterministic concurrency suite does not automatically rerun failed scenarios to make flakes disappear. Retry/convergence is tested only when it is part of the semantic operation contract itself.
+
+#### Timeout safety
+
+A pytest-level timeout/deadline guard (for example `pytest-timeout`) is part of the test safety tooling so broken concurrency tests cannot hang CI indefinitely.
+
+Timeouts are safety nets only. They do not establish race ordering, blocking or non-blocking semantics; deterministic database/harness coordination does that.
+
+#### Property-based testing
+
+```text
+Hypothesis
+```
+
+is part of the M1 testing baseline.
+
+It is used selectively where a meaningful semantic property exists, especially for areas such as:
+
+```text
+PrimitiveType parsing/canonicalization
+exact decimal lexical/canonical rules
+datetime lexical/canonical rules
+IP/prefix handling
+byte-size parsing
+constraint combinations
+qualified-name/cursor codecs
+pure schema/migration transformations
+```
+
+Property tests complement, rather than replace, explicit examples for frozen edge cases and contract cases.
+
+#### Coverage
+
+```text
+coverage.py
+```
+
+with branch coverage is part of the test review toolset.
+
+Coverage is diagnostic evidence, not the semantic definition of correctness. The project does not initially freeze an arbitrary percentage as a substitute for contract coverage. Critical untested branches in domain/application/persistence/error behavior are addressed based on risk and traceability rather than merely maximizing a scalar percentage.
+
+#### Migration/schema verification
+
+Migration tests use a clean real PostgreSQL test database and verify at minimum:
+
+```text
+empty/clean schema
+    -> Alembic upgrade head
+    -> expected usable schema
+    -> no unexplained drift from authoritative SQLAlchemy MetaData
+```
+
+A migration file existing in the repository is not evidence that the migration executes correctly.
+
+Future upgrade-path tests are added as persisted production schema history develops.
+
+#### Stress/randomized concurrency
+
+Stress/randomized concurrency testing is supplementary and may be selected separately from the deterministic CI contract suite.
+
+A race discovered by stress testing is reduced, where reasonably possible, to a deterministic reproducer with stable contract coverage before/with the implementation fix. Stress success never substitutes for the canonical deterministic PGTEST scenarios.
+
+Generic automatic reruns are not accepted as flakiness treatment for normative kernel tests.
+
+#### Traceability
+
+Tests that implement explicit frozen architecture contracts retain stable traceability to those contracts.
+
+In particular, the canonical PGTEST scenario IDs remain visible in test organization/naming/metadata, and API/persistence contract tests should make the authority they exercise discoverable without requiring reconstruction from implementation details.
+
+#### Regression rule
+
+When a correctness defect is discovered in production, integration testing, stress testing or review, the preferred fix workflow is:
+
+```text
+defect / race discovered
+    -> deterministic failing regression test when reasonably possible
+    -> architecture realignment if the finding changes a frozen assumption
+    -> implementation fix
+    -> permanent regression coverage
+```
+
+The kernel does not rely on a code-only fix for a reproducible correctness defect.
 
 ## 4. Technology-review rule
 
