@@ -1,6 +1,6 @@
 # M1 — Object Architecture
 
-**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency baseline e public command DTO contract ratificati; read/error API details restano prima del final M1 architecture freeze.
+**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency baseline, public command DTO e canonical single/projection read DTO ratificati; list/pagination/error API details restano prima del final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -12,7 +12,8 @@ Documenti collegati:
 - `object-schema-change.md` — forward intra-lineage schema migration, definitive closures, property carry-forward e attachment validation;
 - `object-ownership.md` — component ownership, attach/detach, single-owner, acyclicity e concurrency domains;
 - `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface;
-- `api-wire-contract.md` — public Object command DTO/wire contract API-03.6.
+- `api-wire-contract.md` — public Object command DTO/wire contract API-03.6;
+- `api-read-contract.md` — canonical Object/ownership/Relationship/lifecycle read DTO, API-03.9.
 
 Le semantics e invarianti osservabili sono definite nei documenti Object. I meccanismi PostgreSQL concreti sono già normativi in `persistence-model.md`, `persistence-uow-concurrency.md`, nei documenti `concurrency-postgresql-realization-*.md` e nella `concurrency-postgresql-test-matrix.md`.
 
@@ -149,6 +150,7 @@ READ COMMITTED mutation isolation + full-UoW retry discipline
 lifecycle physical table/event shape and historical non-FK identities
 Relationship exact-view/FK lifetime interaction
 Object CREATE/RENAME/DATA_CHANGE/SCHEMA_CHANGE/ATTACH/DETACH/DELETE public command DTO shape (API-03.6)
+canonical Object/ownership/Relationship/lifecycle single-projection read DTO shape (API-03.9)
 ```
 
 In particolare API-03.6 definisce:
@@ -162,8 +164,30 @@ ATTACH/DETACH body = slot_name + child_object_id
 DELETE no body/cascade/force options
 ```
 
+API-03.9 rende normativi:
+
+```text
+Object GET
+    -> intrinsic current state only
+    -> canonical properties
+
+Object components
+    -> semantic SlotSemanticKey projection
+
+Object owner
+    -> owned => parent + SlotSemanticKey projection
+    -> existing detached Object => HTTP 200 + JSON null
+
+Object relationships
+    -> deduplicated ObjectRelationshipView, never raw runtime rows
+
+lifecycle
+    -> discriminated event-family DTO
+    -> intrinsic before/after reuse canonical Object snapshot
+```
+
 Restano ancora da finalizzare nel transport/application/read layer:
 
 - public error/status taxonomy;
-- canonical Object/ownership/read projection DTO e pagination/filter conventions;
+- collection/list envelope, pagination/filter e list-item policy (API-03.10);
 - expanded/composite read API shape futura.
