@@ -1,6 +1,6 @@
 # M1 — Object Lifecycle Changelog
 
-**Status:** DRAFT
+**Status:** DRAFT — lifecycle semantics ratificate; metadata observation contracts allineati a REALIZE-14/15.
 
 ## 1. Responsabilità
 
@@ -62,7 +62,8 @@ Conseguenze:
 
 - tutti gli event della stessa semantic Unit of Work condividono lo stesso transaction-start timestamp;
 - `occurred_at` non rappresenta physical commit time;
-- `occurred_at` non definisce strict global commit order tra transaction concorrenti.
+- `occurred_at` non definisce strict global commit order tra transaction concorrenti;
+- per event con display metadata osservati più tardi nella stessa transaction, `occurred_at` non è il timestamp dell'observation snapshot e non impone causal ordering rispetto a concurrent metadata mutation.
 
 M1 non introduce global sequence.
 
@@ -203,11 +204,28 @@ slot_name
     = historical SlotSemanticKey
 ```
 
-`canonical_name` e `destination_canonical_name` sono i display metadata osservati dalla mutation.
+`canonical_name` e `destination_canonical_name` sono historical display metadata osservati dalla mutation; non fanno parte della ownership fact identity.
+
+REALIZE-15 fissa il concrete observation contract:
+
+```text
+destination_canonical_name
+    -> proviene dalla parent Object row già stabilizzata
+       dal parent ownership owner lock
+
+canonical_name
+    -> committed child display metadata osservato
+       dopo la parent stabilization
+       senza introdurre un child lock soltanto per l'evento
+```
+
+Una concurrent child `RENAME` può quindi produrre nell'event il committed old o new child name secondo l'observation point. Questo non modifica la semantica dell'ownership fact e non introduce un nuovo safety predicate.
+
+Ownership produce un solo structural event per real transition, quindi non necessita della multi-event snapshot machinery usata dai Relationship event.
 
 `before_json`/`after_json` sono assenti.
 
-Ownership mutation reale produce un solo structural event.
+Ownership mutation reale produce un solo structural event; una ownership no-op non produce event.
 
 ## 7. Relationship lifecycle semantic views
 
@@ -350,7 +368,17 @@ Una successiva Definition RENAME non modifica event storici.
 
 Non introducono da soli generic serialization con Object.RENAME.
 
-La concurrency requirement completa per questi metadata è `S-REL-EVENT-SNAPSHOT` in `concurrency-semantic-matrix.md`.
+La concurrency requirement completa per questi metadata è `S-REL-EVENT-SNAPSHOT` in `concurrency-semantic-matrix.md`, realizzata in `concurrency-postgresql-realization-relationship.md`.
+
+Concrete M1 observation rule:
+
+> una singola real Relationship CREATE/DELETE deriva l'intero lifecycle semantic-view event set da **un solo SQL metadata-observation statement** a `READ COMMITTED`, contenente tutti i required Resolution names e source/destination Object canonical names nello stesso MVCC snapshot.
+
+Non sono ammesse più metadata SELECT indipendenti per costruire parti dello stesso event set. Non vengono presi `FOR SHARE`/`FOR UPDATE` soltanto per questi historical metadata.
+
+Per CREATE la metadata observation avviene dopo la complete runtime closure insertion riuscita; per DELETE avviene prima della closure removal. La semantic-view dedup può essere eseguita nella stessa query.
+
+Una concurrent Definition/Object rename che committa dopo il metadata observation point ma prima del factual Relationship commit non invalida il captured event set.
 
 ## 11. Unified stream rationale
 
