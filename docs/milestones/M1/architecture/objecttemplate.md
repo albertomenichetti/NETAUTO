@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline ratified; transport/read DTO details remain before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline and public command DTO contract ratified; read DTO/error details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -11,7 +11,8 @@ Documenti collegati:
 - `objecttemplate-lifecycle.md` — stable identity, naming, inheritance, versioning, lifecycle, default, publish/deprecate/delete e read consistency;
 - `objecttemplate-properties.md` — property typing, `SCALAR`/`LIST`, `required`, `migration_default`, identity ed evolution;
 - `objecttemplate-components.md` — ownership slots, compatibility polimorfica, evolution e naming;
-- `objecttemplate-effective-schema.md` — effective schema, create/revise, publication certification e active model graph.
+- `objecttemplate-effective-schema.md` — effective schema, create/revise, publication certification e active model graph;
+- `api-wire-contract.md` — public CREATE/REVISE command DTO e selector semantics API-03.3/API-03.5.
 
 Le semantics e le invarianti di dominio sono definite qui e nei documenti collegati. I meccanismi PostgreSQL concreti sono già normativi in:
 
@@ -119,10 +120,37 @@ canonical lock ordering lineage -> exact / multi-dependency resource order
 READ COMMITTED mutation isolation
 owner lock strength including REALIZE-15 FOR NO KEY UPDATE refinement
 effective-schema authority = derived exact chain; no authoritative cache
+public exact/implicit parent/DTV selector semantics (API-03.3)
+public ObjectTemplate CREATE/REVISE command DTO (API-03.5)
 ```
 
-Restano da finalizzare prima del coding freeze soltanto contract non ancora chiusi dal persistence/concurrency design:
+API-03.5 rende inoltre normativi per il public command boundary:
+
+```text
+OT.CREATE
+    namespace/name/abstract required
+    abstract has no omitted->false default
+    description omitted -> null
+    properties/components omitted -> creation default []
+
+property declaration
+    name/position/datatype_id/value_mode/required required
+    datatype_version omission only for intentional implicit DTV binding
+    migration_default forbidden for optional, required for required property
+
+component declaration
+    exactly name/position/target_template_id
+
+OT.REVISE
+    complete local candidate replacement
+    properties/components always required, including []
+    no stable-lineage metadata in body
+```
+
+`position` è declaration state esplicito e resta l'autorità dell'ordering locale; l'ordine degli array request non costituisce una seconda ordering authority.
+
+Restano da finalizzare prima del coding freeze soltanto contract non ancora chiusi:
 
 - DTO/REST shape delle local/effective-schema reads;
-- REST endpoint/error taxonomy;
+- REST status/error taxonomy;
 - eventuale compiled schema/cache implementation policy se M1 la mantiene come optimization non-authoritative.
