@@ -1,6 +1,6 @@
 # M1 — Object Architecture
 
-**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency baseline, public command DTO e canonical single/projection read DTO ratificati; list/pagination/error API details restano prima del final M1 architecture freeze.
+**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency, public command DTO e canonical read/list contract ratificati; failure mapping resta prima del final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -13,7 +13,8 @@ Documenti collegati:
 - `object-ownership.md` — component ownership, attach/detach, single-owner, acyclicity e concurrency domains;
 - `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface;
 - `api-wire-contract.md` — public Object command DTO/wire contract API-03.6;
-- `api-read-contract.md` — canonical Object/ownership/Relationship/lifecycle read DTO, API-03.9.
+- `api-read-contract.md` — canonical Object/ownership/Relationship/lifecycle read DTO, API-03.9;
+- `api-list-contract.md` — API-03.10 Object/nested collection envelope, keyset pagination, ordering e filters.
 
 Le semantics e invarianti osservabili sono definite nei documenti Object. I meccanismi PostgreSQL concreti sono già normativi in `persistence-model.md`, `persistence-uow-concurrency.md`, nei documenti `concurrency-postgresql-realization-*.md` e nella `concurrency-postgresql-test-matrix.md`.
 
@@ -151,6 +152,7 @@ lifecycle physical table/event shape and historical non-FK identities
 Relationship exact-view/FK lifetime interaction
 Object CREATE/RENAME/DATA_CHANGE/SCHEMA_CHANGE/ATTACH/DETACH/DELETE public command DTO shape (API-03.6)
 canonical Object/ownership/Relationship/lifecycle single-projection read DTO shape (API-03.9)
+Object/nested collection pagination/filter/list policy (API-03.10)
 ```
 
 In particolare API-03.6 definisce:
@@ -186,8 +188,39 @@ lifecycle
     -> intrinsic before/after reuse canonical Object snapshot
 ```
 
-Restano ancora da finalizzare nel transport/application/read layer:
+API-03.10 rende inoltre normativi:
 
-- public error/status taxonomy;
-- collection/list envelope, pagination/filter e list-item policy (API-03.10);
-- expanded/composite read API shape futura.
+```text
+Object collection
+    -> canonical ordering id ASC
+    -> summary item omits properties
+    -> exact filters template_id, dependent template_version, canonical_name
+    -> canonical_name filter is exact, not fuzzy
+
+Object components
+    -> child_object_id ASC
+    -> exact slot_name filter
+
+Object relationships
+    -> (relationship_id,destination_object_id,name) ASC
+    -> exact relationship_definition_id/name filters
+
+Object lifecycle
+    -> (occurred_at,id) DESC
+    -> Object-specific route means object_id=X OR destination_object_id=X
+
+all paginated collections
+    -> {items,next_cursor}
+    -> opaque keyset cursor
+    -> limit default 100, max 500
+    -> no offset/page-number/generic sort
+```
+
+`Object.id`, non `canonical_name`, è deliberatamente la Object pagination key perché è immutable authoritative identity. L'exact `canonical_name` lookup è supportato dal PERSIST-15 index `objects(canonical_name,id)` senza attribuire uniqueness/identity al nome.
+
+Ogni pagina è snapshot-consistent per la singola request; il cursor non è snapshot/CDC token e non promette repeatable membership cross-request.
+
+Restano ancora da finalizzare nel transport/application layer:
+
+- public success/error status taxonomy e failure mapping;
+- expanded/composite read API shape futura resta RFE, non M1 coding blocker.
