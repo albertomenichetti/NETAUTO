@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05`, `STACK-06` and `STACK-07` are ratified; other technology decisions remain open until explicitly ratified.
+**Status:** DRAFT — project-wide technology review in progress. `STACK-01`, `STACK-02`, `STACK-03`, `STACK-04`, `STACK-05`, `STACK-06`, `STACK-07` and `STACK-08` are ratified; other technology decisions remain open until explicitly ratified.
 
 ## 1. Scope and authority
 
@@ -1027,6 +1027,168 @@ defect / race discovered
 ```
 
 The kernel does not rely on a code-only fix for a reproducible correctness defect.
+
+### STACK-08 — Python and development quality toolchain
+
+**Status:** RATIFIED.
+
+#### Python implementation and supported runtime
+
+NETAUTO targets:
+
+```text
+CPython 3.14.x
+```
+
+as the single supported Python minor-version baseline.
+
+The project metadata expresses the supported range as:
+
+```text
+>=3.14,<3.15
+```
+
+The local development/runtime pin should identify Python 3.14 consistently with the project metadata.
+
+NETAUTO is an application/kernel rather than a general-purpose compatibility library. Supporting additional Python minor versions is therefore not implicit. A move to a later minor version is an explicit project technology-baseline decision followed by the normal static-analysis and full test verification before the supported range is changed.
+
+The intended invariant is:
+
+```text
+local development
+CI
+deployment/runtime
+Ruff target
+Pyright target
+    -> the same supported CPython minor baseline
+```
+
+#### Project/dependency management
+
+```text
+uv
+```
+
+is the canonical project environment and dependency-management tool.
+
+It owns the normal project workflow for:
+
+```text
+Python/runtime selection support
+virtual environment synchronization
+dependency resolution
+dependency groups
+lockfile maintenance
+project command execution
+```
+
+The project commits `uv.lock` to Git. The lockfile is the canonical exact dependency resolution used to obtain reproducible development, CI and deployment environments.
+
+Project metadata expresses dependency intent/compatibility bounds; exact resolved versions belong in `uv.lock` rather than being duplicated as exact pins throughout `pyproject.toml` without a specific need.
+
+CI/deployment synchronization must use the committed lockfile in locked/frozen mode so a stale or missing lock update is detected rather than silently re-resolved.
+
+#### Build backend and layout
+
+```text
+Hatchling
+```
+
+remains the build backend.
+
+The existing `src/` package layout is retained.
+
+`uv` project/dependency management and Hatchling build-backend responsibilities remain distinct; adopting `uv` is not a reason to change an otherwise adequate build backend.
+
+#### Linting, formatting and import ordering
+
+```text
+Ruff
+```
+
+is the canonical tool for:
+
+```text
+linting
+formatting
+import ordering
+```
+
+The project does not add Black, isort, Flake8 or another overlapping formatter/linter merely to duplicate Ruff responsibilities.
+
+The lint configuration uses a curated correctness/maintainability rule set appropriate to the codebase. It does not blindly enable Ruff `ALL`.
+
+The baseline includes ordinary Python/error/import checks plus additional rule families with concrete value for a kernel codebase, including modern-Python, common-bug and asyncio-specific diagnostics where applicable.
+
+Suppressions are narrow and justified. A noisy rule is evaluated explicitly rather than disabling an entire useful rule family solely for convenience.
+
+Formatting and linting are CI correctness gates using the same configuration used locally.
+
+#### Static type checking
+
+```text
+Pyright
+```
+
+is the single canonical static type checker.
+
+The default project mode is:
+
+```text
+strict
+```
+
+for both `src` and `tests`.
+
+The current kernel is developed under strict typing from the beginning rather than accumulating a broad `basic`-mode debt to be repaired later.
+
+Type-checking exceptions for third-party typing limitations or genuinely dynamic boundaries must be local and justified. The project does not relax the whole codebase to accommodate one problematic integration.
+
+Mypy is not a second CI type checker. Maintaining two independent project-wide type-checker authorities is not part of the baseline.
+
+Tests are included in strict static analysis because test infrastructure, fixtures and especially the PostgreSQL concurrency harness are part of the kernel safety model.
+
+#### Configuration location
+
+Tool configuration is centralized primarily in `pyproject.toml` where the tool supports it.
+
+The project avoids introducing additional `ruff.toml`, `pyrightconfig.json`, `pytest.ini`, `setup.cfg` or equivalent files unless a concrete limitation or clarity need justifies separating a configuration later.
+
+#### Canonical developer and CI execution model
+
+Developer and CI workflows use the project environment through `uv`, conceptually:
+
+```text
+uv sync --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run pyright
+uv run pytest ...
+```
+
+The exact command decomposition may evolve with the CI/test suites, but local and CI invocations must execute the same tools against the same project configuration rather than maintaining separate hidden quality policies.
+
+Activation of a virtual environment is not a prerequisite for the canonical commands; `uv run` is the normal execution boundary.
+
+#### Dependency upgrades
+
+Dependency updates are explicit reviewed changes.
+
+A dependency-update automation may propose changes, but a new version is not accepted merely because it is available. The lockfile update is reviewed like code and must pass the applicable quality/test matrix, including real-PostgreSQL and deterministic concurrency verification where the changed dependency can affect those paths.
+
+Generic automatic merging of dependency updates is not part of the baseline.
+
+#### Pre-commit policy
+
+Git pre-commit hooks are optional developer convenience only.
+
+They are not the authority for project correctness and are not required to reproduce the canonical quality gates. CI remains the authoritative enforcement boundary.
+
+#### Alignment rule
+
+The existing pre-review `pyproject.toml` is not made normative merely by containing historical dependencies/tool settings.
+
+After the technology review is complete, project metadata/tool configuration is aligned in one deliberate sweep. That alignment includes removing obsolete/excluded dependencies, eliminating duplicate packages, adding ratified testing/tooling dependencies, updating the Python target and moving Pyright from `basic` to `strict` without piecemeal drift during the review itself.
 
 ## 4. Technology-review rule
 
