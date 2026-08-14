@@ -231,6 +231,8 @@ Delete DRAFT richiede `expected_revision`.
 
 Delete/revise/publish concorrenti sulla stessa generation devono essere mutuamente consistenti.
 
+La public HTTP representation di questo token è definita da `api-wire-contract.md` / API-03.2: REVISE, PUBLISH e DELETE_DRAFT usano uniformemente il required query parameter `expected_revision` con positive-integer lexical shape. Il token non è una generic HTTP resource revision.
+
 ## 8. Primitive canonicalization
 
 NETAUTO distingue validation, canonicalization e business normalization.
@@ -527,7 +529,7 @@ Fuori M1:
 
 ## 18. Technical-contract status
 
-Le seguenti decisioni **non sono più aperte** e sono normative nei persistence/concurrency document:
+Le seguenti decisioni **non sono più aperte** e sono normative nei persistence/concurrency/API document:
 
 ```text
 PostgreSQL canonical persistence mapping
@@ -539,6 +541,7 @@ locking / CAS / owner strength / lock ordering
 active-model reverse lookup + required indices
 READ COMMITTED mutation isolation baseline
 whole-UoW retry/convergence boundaries
+expected_revision public HTTP placement for REVISE/PUBLISH/DELETE_DRAFT
 ```
 
 In particolare:
@@ -547,11 +550,11 @@ In particolare:
 - `core.byte_size` persiste come integer bytes;
 - `core.datetime` persiste canonical UTC `Z` con precisione massima microsecondo;
 - active DTV reverse lookup usa le authoritative property/OTV rows e gli indici di `persistence-model.md`;
-- concurrency segue REALIZE-01..15 e i test PGTEST.
+- concurrency segue REALIZE-01..15 e i test PGTEST;
+- `expected_revision` usa il required positive-integer query parameter definito da API-03.2, senza ETag/If-Match semantics.
 
 Restano da definire/finalizzare prima del coding freeze soltanto i contract che appartengono ancora al transport/application layer, non alla persistence/concurrency architecture già ratificata:
 
-- REST/DTO shape di `expected_revision`;
 - endpoint/status/error taxonomy;
 - accepted API wire representation dove distinta dal canonical persistence codec;
 - ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
