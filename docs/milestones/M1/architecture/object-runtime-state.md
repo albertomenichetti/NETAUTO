@@ -49,7 +49,7 @@ Eventuale cross-lineage reclassification è RFE controllata.
 - è mutabile;
 - non viene normalizzato automaticamente;
 - deve essere non vuoto;
-- è bounded; il limite numerico definitivo è dettaglio persistence/API da finalizzare.
+- M1 ammette lunghezza `1..255` caratteri.
 
 Create:
 
@@ -67,6 +67,8 @@ canonical_name == ""
 Il fallback a `str(Object.id)` esiste soltanto alla create.
 
 `RENAME` richiede un nuovo valore esplicito e modifica esclusivamente `canonical_name`.
+
+La persistence fisica usa `TEXT NOT NULL`; il bound semantico resta `1..255` come definito anche in `persistence-model.md`.
 
 ## 3. Exact ObjectTemplateVersion pin
 
@@ -389,7 +391,7 @@ Eventuali Relationship/external references devono essere rimosse preventivamente
 DELETE e lifecycle `DELETED` sono atomici:
 
 ```text
-DELETED.before = final canonical Object snapshot
+DELETED.before = final complete canonical Object snapshot
 DELETED.after  = absent
 ```
 
