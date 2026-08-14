@@ -1,6 +1,6 @@
 # M1 — DataType Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline ratified; transport/API details remain to be completed before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency e DataType command DTO baseline ratificati; remaining public read/failure/primitive-wire details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -26,6 +26,8 @@ I meccanismi PostgreSQL concreti sono definiti in:
 - `persistence-uow-concurrency.md` — PERSIST-16..20 + REALIZE-15 lock-strength refinement;
 - `concurrency-semantic-matrix.md` e `concurrency-postgresql-realization-matrix.md` — safety predicate e realization;
 - `concurrency-postgresql-test-matrix.md` — real-PG concurrency coverage.
+
+La public command/wire representation è definita in `api-contract.md` e `api-wire-contract.md`; in particolare API-03.4 è authority per DataType CREATE/REVISE e per gli altri command DTO del dominio.
 
 ## 2. Responsabilità
 
@@ -542,6 +544,7 @@ active-model reverse lookup + required indices
 READ COMMITTED mutation isolation baseline
 whole-UoW retry/convergence boundaries
 expected_revision public HTTP placement for REVISE/PUBLISH/DELETE_DRAFT
+DataType CREATE/REVISE/command DTO shape (API-03.4)
 ```
 
 In particolare:
@@ -551,10 +554,12 @@ In particolare:
 - `core.datetime` persiste canonical UTC `Z` con precisione massima microsecondo;
 - active DTV reverse lookup usa le authoritative property/OTV rows e gli indici di `persistence-model.md`;
 - concurrency segue REALIZE-01..15 e i test PGTEST;
-- `expected_revision` usa il required positive-integer query parameter definito da API-03.2, senza ETag/If-Match semantics.
+- `expected_revision` usa il required positive-integer query parameter definito da API-03.2, senza ETag/If-Match semantics;
+- API-03.4 definisce CREATE come lineage + v1 DRAFT con `constraints` omission -> `{}`, REVISE come complete constraints candidate required e gli altri command DTO DataType.
 
 Restano da definire/finalizzare prima del coding freeze soltanto i contract che appartengono ancora al transport/application layer, non alla persistence/concurrency architecture già ratificata:
 
-- endpoint/status/error taxonomy;
-- accepted API wire representation dove distinta dal canonical persistence codec;
+- public read/list response shape e pagination/filter conventions;
+- endpoint success/error taxonomy e failure mapping;
+- remaining PrimitiveType accepted public lexical forms dove distinte dal canonical persistence codec;
 - ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
