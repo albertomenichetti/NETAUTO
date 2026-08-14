@@ -45,13 +45,24 @@ id
 occurred_at
 ```
 
-`id` è opaque kernel-generated UUIDv4.
+`id` è opaque UUID row identity usata anche come deterministic tie-breaker. Non possiede domain semantics e viene generata da PostgreSQL nella stessa Unit of Work della domain mutation; l'application può ottenere il valore tramite `INSERT ... RETURNING id`.
 
-`occurred_at`:
+Questa scelta è intenzionalmente diversa dalle domain identity come `Object.id`, `Relationship.id` e `RelationshipDefinition.id`, che sono kernel/application-generated.
 
-- è assegnato da NETAUTO, non dal caller;
-- rappresenta il timestamp dell'event;
-- application-clock vs DB-clock authority resta technical decision.
+`occurred_at` è PostgreSQL-clock authoritative:
+
+```text
+TIMESTAMPTZ NOT NULL
+DEFAULT transaction_timestamp()
+```
+
+`CURRENT_TIMESTAMP` è semanticamente equivalente in PostgreSQL.
+
+Conseguenze:
+
+- tutti gli event della stessa semantic Unit of Work condividono lo stesso transaction-start timestamp;
+- `occurred_at` non rappresenta physical commit time;
+- `occurred_at` non definisce strict global commit order tra transaction concorrenti.
 
 M1 non introduce global sequence.
 
@@ -64,8 +75,6 @@ event_id deterministic tie-breaker
 ```
 
 L'event UUID non possiede temporal meaning.
-
-M1 non promette strict global commit order fra transaction concorrenti indipendenti.
 
 ## 4. Common event shape
 
@@ -98,6 +107,8 @@ after_json?
 `object_id` è il primary Object perspective/subject dell'event kind.
 
 La semantica specifica dipende dal kind.
+
+La persistence fisica tipizzata, inclusi i campi JSONB `before_state`/`after_state`, è definita in `persistence-model.md`.
 
 ## 5. Intrinsic event
 
@@ -339,6 +350,8 @@ Una successiva Definition RENAME non modifica event storici.
 
 Non introducono da soli generic serialization con Object.RENAME.
 
+La concurrency requirement completa per questi metadata è `S-REL-EVENT-SNAPSHOT` in `concurrency-semantic-matrix.md`.
+
 ## 11. Unified stream rationale
 
 Un singolo changelog supporta query come:
@@ -408,6 +421,8 @@ Il lifecycle non è un aggregate pubblicamente mutabile.
 
 Le public/domain surface del changelog sono read/query only.
 
+Append-only è un kernel/application contract M1, non un compliance-grade trigger/DB immutability contract.
+
 ## 14. Event-set atomicity
 
 Normative rule:
@@ -463,4 +478,3 @@ Ordinary lifecycle reads osservano committed state.
 M1 non implementa automaticamente historical Object/Relationship reconstruction.
 
 Historical `as-of` reconstruction e richer composite timeline sono RFE ad alta priorità M2.
-
