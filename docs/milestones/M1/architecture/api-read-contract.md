@@ -1,10 +1,10 @@
 # M1 — API Read Contract
 
-**Status:** DRAFT — API-03.9 canonical single-resource/projection read DTO contract ratified. Collection envelopes, pagination/filter conventions and list-item policy remain API-03.10 work.
+**Status:** DRAFT — API-03.9 canonical single-resource/projection read DTO contract e API-03.10 collection/list contract ratificati. Success/failure HTTP mapping resta separato.
 
 ## 1. Scopo
 
-Questo documento è l'authority API-03.9 per le canonical public read DTO M1.
+Questo documento è l'authority API-03.9 per le canonical public single-resource/projection read DTO M1.
 
 Non introduce un generic entity/resource DTO. Le read surface restano semantic projections distinte:
 
@@ -22,7 +22,7 @@ lifecycle/history read
 
 Le persistence rows non sono public DTO authority.
 
-API-03.10 definirà separatamente collection envelope, pagination, filters e summary/full list-item policy.
+Collection envelope, pagination, filters, canonical list ordering e summary/full list-item policy sono authority separata in `api-list-contract.md` / API-03.10.
 
 ---
 
@@ -521,21 +521,44 @@ Intrinsic lifecycle before/after reuse canonical Object snapshot shape;
 null means historical state absence for CREATED/DELETED.
 
 A3.103
-Collection route envelopes, list-item summary/full policy,
-pagination and filters are deliberately deferred to API-03.10.
+Collection route envelopes, list-item policy, pagination and filters are
+defined separately by API-03.10 in api-list-contract.md.
 ```
 
 ---
 
-## 13. API-03.10 remaining list work
+## 13. API-03.10 relationship
 
-Still open:
+API-03.10 in `api-list-contract.md` is normative for all collection routes built from these DTO/projection shapes.
+
+Key consequences:
 
 ```text
-collection response envelope
-cursor/limit semantics
-canonical list ordering and tie-breakers
-list summary/full item policy
-route-specific filters
-pagination behavior under concurrent mutation
+uniform envelope
+    {items:[...], next_cursor:string|null}
+
+pagination
+    opaque keyset cursor only
+    limit default 100, range 1..500
+    no offset/page-number
+
+ordering
+    fixed per route; no generic sort/order surface
+
+list item policy
+    bounded/full where cheap
+    summary for DTV/OTV/Object where exact state may be large
+
+filters
+    explicit route-specific exact filters only
+
+consistency
+    every page independently snapshot-consistent
+    cursor is not a cross-request snapshot/CDC token
 ```
+
+Object-specific lifecycle route means events involving the Object (`object_id=X OR destination_object_id=X`).
+
+The three API-03.10 read-path index requirements are normative in PERSIST-15.
+
+Success/failure HTTP status and error-body mapping are deliberately outside API-03.9/03.10 and remain the next API architecture point.
