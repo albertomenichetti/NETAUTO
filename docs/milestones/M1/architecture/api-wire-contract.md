@@ -1,12 +1,12 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03 in progress. API-03.1 general wire strictness/intent semantics, API-03.2 `expected_revision` placement e il `core.byte_size` request/canonical wire contract sono ratificati; le restanti DTO/wire decisioni non sono ancora congelate.
+**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selector semantics e il `core.byte_size` public wire contract sono ratificati. Le restanti DTO/read/failure decisioni non sono ancora congelate.
 
 ## 1. Scopo
 
-Questo documento raccoglie le decisioni API-03 relative alla rappresentazione HTTP/JSON quando il public accepted input differisce dal canonical domain/persistence representation.
+Questo documento definisce la public HTTP/JSON representation M1 quando il wire contract deve rendere esplicite semantiche già consolidate nel domain/application layer.
 
-La catena normativa resta:
+Catena normativa:
 
 ```text
 domain/application command semantics
@@ -17,25 +17,22 @@ domain/application command semantics
 -> canonical persistence / read output
 ```
 
-La wire ergonomics non può restringere o ampliare implicitamente il domain contract già ratificato.
+La wire ergonomics non può restringere, ampliare o reinterpretare implicitamente il domain contract ratificato.
 
-Prima di aggiungere una nuova wire decision si applica il pre-flight definito in `docs/general/linee_guida_progetto.md` e in `architecture/README.md`: vengono riletti i domain/persistence/API contract da cui la representation dipende.
+Prima di ogni nuovo API-03 point si applica il pre-flight definito in `docs/general/linee_guida_progetto.md` e in `architecture/README.md`.
 
 ---
 
-## 2. API-03.1 — general wire strictness and caller intent
+## 2. API-03.1 — strict wire shape e caller intent
 
-### 2.1 Naming
+### 2.1 Naming e DTO strictness
 
-JSON object keys usano `snake_case`.
+- JSON object keys: `snake_case`;
+- semantic command path segments: `kebab-case`;
+- unknown command fields: rejected;
+- generic scalar coercion: rejected.
 
-I semantic command route segment restano `kebab-case` come definito da API-02.
-
-### 2.2 Strict DTO shape
-
-I command DTO M1 rifiutano unknown fields.
-
-Il transport non esegue generic scalar coercion fra carrier semanticamente distinti. In particolare non sono automaticamente equivalenti:
+Non sono genericamente equivalenti:
 
 ```text
 "3"  vs 3
@@ -43,17 +40,13 @@ true vs 1
 3    vs "3"
 ```
 
-Una primitive può definire esplicitamente più carrier accettati — come `core.byte_size` integer-or-quantity-string — ma quella union è parte del primitive wire contract e non una coercion generale del framework.
+Una primitive può definire esplicitamente più carrier ammessi; tale union è parte del primitive wire contract, non una coercion del framework.
 
-### 2.3 Omission vs explicit intent
-
-Omission e input esplicito sono distinti.
+### 2.2 Omission vs intent esplicito
 
 Normative rule:
 
-> un default o una implicit resolution può colmare soltanto **assenza di intent** quando la specifica command assegna una semantica all'omissione. Un valore esplicitamente fornito esprime caller intent e deve essere accettato oppure rifiutato; non viene mai corretto, sostituito o mascherato da un default.
-
-Quindi:
+> un default o una implicit resolution colma soltanto assenza di caller intent quando la specifica command assegna una semantica all'omissione. Un valore esplicito deve essere accettato oppure rifiutato; non viene mai corretto, sostituito o mascherato da un default.
 
 ```text
 field omitted
@@ -64,332 +57,325 @@ explicit valid value
     -> use according to command contract
 
 explicit invalid value
-    -> validation/domain failure
+    -> failure
     -> no fallback/default replacement
 ```
 
-### 2.4 JSON null
+JSON `null` è input esplicito, non omission. È valido soltanto quando `null` stesso è uno state/value semanticamente ammesso per quel field.
 
-JSON `null` è un input esplicito, non omission.
-
-`null` è valido soltanto quando **null stesso** è un valore/state semanticamente ammesso per quel field. Non è un generic alias per:
-
-```text
-omitted
-default
-implicit resolution
-clear
-remove
-```
-
-Esempio valido:
-
-```json
-{"description": null}
-```
-
-perché `description` è nullable state.
-
-Esempi invalidi:
-
-```json
-{"template_version": null}
-{"parent": null}
-{"migration_default": null}
-```
-
-quando il relativo contract richiede omission oppure un concrete value.
-
-### 2.5 Object CREATE `canonical_name`
-
-Il domain contract è esplicitamente:
+### 2.3 Object CREATE `canonical_name`
 
 ```text
 canonical_name omitted
     -> canonical_name = str(Object.id)
 
 canonical_name explicitly supplied
-    -> must be valid non-empty string length 1..255
+    -> valid non-empty string length 1..255
 
-canonical_name = null
-    -> invalid explicit input
-
-canonical_name = ""
-    -> invalid explicit input
+canonical_name = null / "" / invalid
+    -> failure
 ```
 
-Il UUID-string fallback colma assenza di caller intent; non passa davanti a un intent esplicito invalido.
+Il fallback UUID colma esclusivamente assenza di intent.
 
-Un eventuale `None` tecnico usato internamente dal codice come sentinel di omission non deve diventare JSON-null semantics.
+### 2.4 Implicit version resolution
 
-### 2.6 Implicit exact-version resolution
+Quando una command supporta implicit exact-version binding, l'intent implicito viene espresso tramite omissione del relativo version field. Explicit `null` è invalido.
 
-Quando una command supporta implicit default resolution di una exact version, l'intent implicito si esprime esclusivamente tramite **omissione del version field**.
+### 2.5 Validation boundary
 
-```text
-version omitted
-    -> command-specific implicit default resolution
+Il transport valida shape/syntax indipendenti da persisted mutable state, inclusi JSON carrier, required/forbidden fields, unknown fields, UUID lexical shape, positive integer lexical shape, discriminator e cardinalità statiche.
 
-version = null
-    -> invalid explicit input
-```
+Application/domain restano authority per existence, lifecycle, admission, effective schema, primitive semantic parsing/canonicalization, constraints, lineage compatibility, conflict predicate e ownership cycle.
 
-Lo stesso principio si applica a ObjectTemplate parent-version selection e DataType/property exact-version binding quando il relativo command contract permette implicit resolution.
-
-### 2.7 Canonical response independence
-
-Accepted public input lexical forms e canonical response/persistence representation possono differire soltanto quando il domain codec definisce una canonicalizzazione deterministica.
-
-Le response espongono sempre canonical domain state; non preservano automaticamente lexical choices del caller.
-
-### 2.8 Validation boundary
-
-Il transport è responsabile di shape/syntax che non dipendono da persisted mutable state, per esempio:
+### 2.6 Decisioni API-03.1
 
 ```text
-JSON carrier type
-required/forbidden request field
-unknown field
-UUID lexical shape
-positive integer shape
-closed discriminator vocabulary
-statically known array cardinality
-```
-
-Application/domain restano authority per persisted-state e semantic validation, per esempio:
-
-```text
-entity/version existence
-lifecycle state
-published admission
-effective-schema membership
-PrimitiveType semantic parsing/canonicalization/constraints
-lineage compatibility
-conflict predicates
-ownership cycles
-```
-
-Business validation non viene spostata nel router/Pydantic model.
-
----
-
-## 3. API-03.1 ratified decisions
-
-```text
-A3.1
-JSON object keys use snake_case; command route segments use kebab-case.
-
-A3.2
-Command DTOs reject unknown fields and generic scalar coercion.
-
-A3.3
-Omission and explicit caller intent are distinct.
-
-A3.4
-Defaults and implicit resolution may apply only to omitted fields when the
-command contract explicitly defines omission semantics.
-
-A3.5
-An explicitly supplied invalid value fails; it is never repaired, replaced
-or shadowed by a default.
-
-A3.6
-JSON null is valid only where null itself is an explicitly valid semantic
-field state; null never generically means omitted/default/clear/remove.
-
-A3.7
-Object CREATE canonical_name omitted -> UUID-string fallback;
-canonical_name explicit null/empty/invalid -> failure.
-
-A3.8
-Implicit exact-version/default resolution is represented by omission,
-never by null.
-
-A3.9
-Canonical response representation follows canonical domain state,
-independently from accepted non-canonical lexical input alternatives.
-
-A3.10
-Transport performs syntactic/structural validation; persisted-state and
-semantic validation remain application/domain responsibility.
+A3.1  JSON keys use snake_case; command route segments use kebab-case.
+A3.2  Command DTOs reject unknown fields and generic scalar coercion.
+A3.3  Omission and explicit caller intent are distinct.
+A3.4  Defaults/implicit resolution apply only to omitted fields where explicitly defined.
+A3.5  Explicit invalid input fails and is never repaired/replaced by a default.
+A3.6  JSON null is valid only when null itself is a valid semantic field state.
+A3.7  Object CREATE canonical_name omission uses UUID-string fallback; explicit invalid input fails.
+A3.8  Implicit exact-version/default resolution is represented by omission, never null.
+A3.9  Canonical responses follow canonical domain state, not caller lexical form.
+A3.10 Transport handles syntax/shape; persisted-state semantic validation remains below it.
 ```
 
 ---
 
-## 4. API-03.2 — `expected_revision` HTTP representation
+## 3. API-03.2 — `expected_revision`
 
-### 4.1 Scope revalidated from domain contracts
+### 3.1 Scope
 
-`expected_revision` è il generation precondition esclusivamente delle exact DRAFT mutation:
+`expected_revision` è il generation precondition esclusivamente di:
 
 ```text
 DataTypeVersion.REVISE
 DataTypeVersion.PUBLISH
 DataTypeVersion.DELETE_DRAFT
-
 ObjectTemplateVersion.REVISE
 ObjectTemplateVersion.PUBLISH
 ObjectTemplateVersion.DELETE_DRAFT
 ```
 
-Non è generic resource revision e non si applica a Object, Relationship, RelationshipDefinition, metadata LWW o default-version mutation.
+Non è una generic resource revision.
 
-### 4.2 Uniform query representation
+### 3.2 Public representation
 
-M1 usa una sola public wire representation:
+Tutte le sei route usano uniformemente:
 
 ```text
-?expected_revision=<positive-integer>
+?expected_revision=<positive-decimal-integer>
 ```
-
-per tutte e sei le route interessate.
 
 Esempi:
 
 ```text
-POST /api/v1/core/datatypes/{datatype_id}/versions/{version}/revise?expected_revision=7
-POST /api/v1/core/datatypes/{datatype_id}/versions/{version}/publish?expected_revision=7
+POST   /api/v1/core/datatypes/{datatype_id}/versions/{version}/revise?expected_revision=7
+POST   /api/v1/core/datatypes/{datatype_id}/versions/{version}/publish?expected_revision=7
 DELETE /api/v1/core/datatypes/{datatype_id}/versions/{version}?expected_revision=7
 
-POST /api/v1/core/object-templates/{template_id}/versions/{version}/revise?expected_revision=7
-POST /api/v1/core/object-templates/{template_id}/versions/{version}/publish?expected_revision=7
+POST   /api/v1/core/object-templates/{template_id}/versions/{version}/revise?expected_revision=7
+POST   /api/v1/core/object-templates/{template_id}/versions/{version}/publish?expected_revision=7
 DELETE /api/v1/core/object-templates/{template_id}/versions/{version}?expected_revision=7
 ```
-
-La separazione concettuale è:
 
 ```text
 path
     -> exact mutation target
-
 query expected_revision
-    -> optimistic generation precondition of that DRAFT target
-
-body, where present
-    -> desired semantic candidate / command operands
+    -> DRAFT generation precondition
+body, if any
+    -> semantic candidate / command operands
 ```
 
-### 4.3 REVISE body separation
+REVISE body non contiene il token. PUBLISH e DELETE_DRAFT non introducono body artificiale.
 
-`REVISE` mantiene nel JSON body soltanto la complete desired mutable candidate definita dal domain contract.
+M1 non usa `ETag`, `If-Match` o custom revision header per questa semantica.
 
-`expected_revision` non fa parte della candidate semantic snapshot e resta fuori dal body.
+Missing/empty/zero/negative/malformed `expected_revision` è transport-input failure; positive integer ben formato ma stale è application generation-conflict failure.
 
-### 4.4 PUBLISH and DELETE body policy
-
-`PUBLISH` non introduce un JSON body artificiale soltanto per trasportare `expected_revision`.
-
-`DELETE_DRAFT` non usa request body. Usa lo stesso required query parameter delle altre DRAFT generation-sensitive mutation.
-
-### 4.5 No generic HTTP revision abstraction
-
-M1 non usa per questo contract:
+### 3.3 Decisioni API-03.2
 
 ```text
-ETag
-If-Match
-X-Expected-Revision
-```
-
-La DRAFT `revision` non viene reinterpretata come generic HTTP representation version. Una futura generic resource-version/conditional-request capability richiede una decisione separata.
-
-### 4.6 Query lexical validation vs semantic stale generation
-
-`expected_revision` query value deve avere lexical shape di positive decimal integer M1.
-
-Sono transport-input failure, prima della semantic UoW:
-
-```text
-parameter omitted
-empty value
-zero
-negative value
-non-integer lexical form
-```
-
-Un positive integer ben formato ma diverso dalla current DRAFT generation è invece un application/domain stale-generation failure, non malformed transport input.
-
----
-
-## 5. API-03.2 ratified decisions
-
-```text
-A3.11
-expected_revision is represented uniformly as a required query parameter
-for DTV/OTV REVISE, PUBLISH and DELETE_DRAFT.
-
-A3.12
-expected_revision is not part of resource identity and never appears in the path.
-
-A3.13
-REVISE request bodies contain only the complete desired mutable candidate;
-the concurrency precondition remains outside that candidate.
-
-A3.14
-PUBLISH requires no artificial JSON body solely to carry expected_revision.
-
-A3.15
-DELETE_DRAFT has no request body; its required generation precondition uses
-the same query representation as REVISE/PUBLISH.
-
-A3.16
-M1 does not expose DRAFT generation through ETag/If-Match or a custom
-revision header.
-
-A3.17
-A syntactically missing/malformed expected_revision is a transport-input
-failure; a well-formed but stale expected_revision is an application
-generation-conflict failure.
+A3.11 expected_revision is a required query parameter for DTV/OTV REVISE, PUBLISH and DELETE_DRAFT.
+A3.12 It is not resource identity and never appears in the path.
+A3.13 REVISE body contains only the complete desired mutable candidate.
+A3.14 PUBLISH has no artificial body solely for expected_revision.
+A3.15 DELETE_DRAFT has no body and uses the same query representation.
+A3.16 No ETag/If-Match/custom revision-header contract in M1.
+A3.17 Malformed/missing token is transport failure; stale well-formed token is application conflict.
 ```
 
 ---
 
-## 6. API-03 pre-flight finding — `core.byte_size`
+## 4. API-03.3 — exact e implicit version selector
 
-La re-validation di `datatype.md` conferma la domain semantics M1:
+### 4.1 General rule
 
-```text
-core.byte_size
-    exact non-negative information quantity
-    SI and IEC units are semantically distinct
-    fractional input is valid only when exact conversion
-    produces an integer number of bytes
-```
-
-La re-validation di `persistence-model.md` / PERSIST-12 conferma invece il canonical persisted state:
+M1 non introduce un generic `VersionSelector` object e non usa special string token come:
 
 ```text
-core.byte_size
-    -> JSON integer number
-    -> exact bytes
+"default"
+"latest"
+"highest"
 ```
 
-Non esiste quindi alcuna contraddizione nel consentire una forma di input più ergonomica: **accepted input syntax e canonical persisted/read representation sono boundary distinti**.
+Stable lineage identity ed exact version sono type-specific sibling fields:
 
----
+```text
+template_id / template_version
+parent_template_id / parent_version
+datatype_id / datatype_version
+```
 
-## 7. Ratified `core.byte_size` public wire input
+Un version field omesso significa implicit default selection **soltanto** quando la owning domain command possiede già quella modalità di binding.
 
-Ovunque il public API accetti un semantic value di un exact DTV con `base_type = core.byte_size` — inclusi Object property input, DataType constraint/enum values e ObjectTemplate `migration_default` — M1 accetta due JSON carrier espliciti.
+### 4.2 Object CREATE
 
-### 7.1 Exact bytes integer
+Exact:
 
 ```json
-1024
+{
+  "template_id": "<uuid>",
+  "template_version": 7
+}
+```
+
+Implicit:
+
+```json
+{
+  "template_id": "<uuid>"
+}
 ```
 
 Semantica:
 
 ```text
-JSON non-negative integer
--> exact byte count
+template_version omitted
+    -> resolve ObjectTemplate.default_version
+
+template_version explicit
+    -> exact OTV selection
+
+template_version = null
+    -> invalid
 ```
 
-Boolean non è un integer byte-size input.
+Se il default è NULL, CREATE fallisce. Non esiste fallback a latest/highest PUBLISHED.
 
-### 7.2 Quantity string with explicit SI/IEC unit
+### 4.3 ObjectTemplate CREATE parent selector
 
-Esempi validi:
+Root:
+
+```json
+{
+  "namespace": "network",
+  "name": "device"
+}
+```
+
+Exact parent:
+
+```json
+{
+  "namespace": "network",
+  "name": "router",
+  "parent_template_id": "<uuid>",
+  "parent_version": 4
+}
+```
+
+Implicit parent version:
+
+```json
+{
+  "namespace": "network",
+  "name": "router",
+  "parent_template_id": "<uuid>"
+}
+```
+
+Rules:
+
+```text
+parent_template_id omitted
+    -> root
+    -> parent_version must be omitted
+
+parent_template_id present + parent_version omitted
+    -> resolve parent.default_version
+
+both present
+    -> exact parent pin
+
+explicit null
+    -> invalid
+```
+
+### 4.4 ObjectTemplate REVISE parent selector
+
+`parent_template_id` è stable lineage state e non appartiene al REVISE body.
+
+Per non-root lineage:
+
+```text
+parent_version explicit
+    -> preserve/select that exact parent pin
+
+parent_version omitted
+    -> intentional rebind via current parent default
+```
+
+Poiché REVISE è complete candidate replacement, omission non significa “leave unchanged”. Se si vuole preservare l'historical exact parent pin, `parent_version` va reinviata esplicitamente.
+
+Per root lineage, `parent_version` è forbidden.
+
+### 4.5 ObjectTemplate property DTV selector
+
+Exact property binding:
+
+```json
+{
+  "name": "memory",
+  "datatype_id": "<uuid>",
+  "datatype_version": 3,
+  "value_mode": "SCALAR",
+  "required": true,
+  "position": 10,
+  "migration_default": "1 GiB"
+}
+```
+
+Implicit DTV default binding:
+
+```json
+{
+  "name": "memory",
+  "datatype_id": "<uuid>",
+  "value_mode": "SCALAR",
+  "required": true,
+  "position": 10,
+  "migration_default": "1 GiB"
+}
+```
+
+```text
+datatype_version omitted
+    -> intentional new/rebound resolution via DataType.default_version
+
+datatype_version explicit
+    -> exact DTV pin
+```
+
+In un complete OT REVISE, preservare un historical DTV pin richiede quindi reinviare `datatype_version` esplicitamente. Omission non significa “keep current”.
+
+### 4.6 Exact-only selectors
+
+Queste operation richiedono sempre una exact version esplicita:
+
+```text
+DT.CREATE_NEXT.source_version
+OT.CREATE_NEXT.source_version
+DT.SET_DEFAULT.version
+OT.SET_DEFAULT.version
+Object.SCHEMA_CHANGE.target_version
+```
+
+Omission/null è invalida e non risolve alcun default.
+
+### 4.7 Decisioni API-03.3
+
+```text
+A3.18 Version selection uses type-specific flat fields, not a generic VersionSelector or default/latest token.
+A3.19 Stable lineage identity and exact version are separate sibling fields.
+A3.20 Omitted version means implicit default only where the owning domain command defines implicit binding.
+A3.21 Object CREATE template_version omission resolves ObjectTemplate.default_version; null is invalid; no latest/highest fallback.
+A3.22 OT CREATE: parent_template_id omitted = root; present + parent_version omitted = implicit parent default; both present = exact parent.
+A3.23 OT REVISE never carries parent_template_id; non-root parent_version omission intentionally rebinds via current parent default; root forbids parent_version.
+A3.24 Property datatype_version omission intentionally performs implicit DataType default binding/rebinding; preserving historical exact pin requires explicit version.
+A3.25 DT/OT CREATE_NEXT source_version, SET_DEFAULT version and Object SCHEMA_CHANGE target_version are mandatory exact selectors.
+A3.26 M1 exposes no generic default/latest/highest selector token.
+```
+
+---
+
+## 5. `core.byte_size` public wire contract
+
+### 5.1 Accepted input
+
+Ovunque il public API accetti un semantic `core.byte_size` value — Object property, DataType constraint/enum, ObjectTemplate `migration_default` — sono ammessi due carrier.
+
+Exact bytes:
+
+```json
+1024
+```
+
+oppure quantity string con unità SI/IEC esplicita:
 
 ```json
 "1 KiB"
@@ -398,186 +384,64 @@ Esempi validi:
 "0.1 kB"
 ```
 
-Canonical suffix vocabulary M1, case-sensitive:
+Canonical suffix vocabulary case-sensitive:
 
 ```text
-SI
-    B
-    kB
-    MB
-    GB
-    TB
-    PB
-    EB
-
-IEC
-    KiB
-    MiB
-    GiB
-    TiB
-    PiB
-    EiB
+SI:  B, kB, MB, GB, TB, PB, EB
+IEC: KiB, MiB, GiB, TiB, PiB, EiB
 ```
 
-Sono accettate esclusivamente due separator shape fra quantità e unità:
+Sono ammesse forma adiacente o con un solo ASCII space. Alias/case folding non sono ammessi.
 
-```text
-adjacent
-    "1MiB"
+La quantità usa exact decimal ordinary notation: non-negative, no exponent, no leading `+`.
 
-one ASCII space
-    "1 MiB"
-```
-
-Non vengono accettati alias alternativi o case folding, per esempio:
-
-```text
-KB
-mb
-M
-megabyte
-mega
-```
-
-La parte numerica usa exact decimal lexical semantics:
-
-```text
-non-negative
-ordinary decimal notation
-no exponent notation
-no leading plus sign
-```
-
-Quindi, per esempio:
-
-```text
-"1.5 MiB"  valid if exact conversion is integral bytes
-"1e3 B"    invalid
-"-1 MiB"   invalid
-```
-
-### 7.3 Exact conversion rule
-
-Parsing/canonicalization concettuale:
+### 5.2 Exact conversion
 
 ```text
 parse exact decimal quantity
 -> multiply by exact unit multiplier
--> require mathematical result to be an integer >= 0
--> canonical byte count integer
+-> require integer result >= 0 bytes
+-> canonical integer byte count
 ```
 
 Esempi:
 
 ```text
-1 MB
-    -> 1,000,000 bytes
-
-1 MiB
-    -> 1,048,576 bytes
-
-1.5 KiB
-    -> 1,536 bytes
-
-0.1 kB
-    -> 100 bytes
-
-0.1 KiB
-    -> invalid because 102.4 bytes is not an integer byte count
+1 MB     -> 1,000,000
+1 MiB    -> 1,048,576
+1.5 KiB  -> 1,536
+0.1 kB   -> 100
+0.1 KiB  -> invalid (102.4 bytes)
 ```
 
-Nessun floating-point arithmetic approssimato può diventare authority della conversione.
+Nessuna floating-point approximation è authority.
 
----
+### 5.3 Canonical output/persistence
 
-## 8. Canonical `core.byte_size` output and persistence
+Il canonical API read/response e persistence state sono sempre un non-negative JSON integer contenente exact bytes. La lexical unit del caller non viene preservata.
 
-Indipendentemente dalla accepted input representation, il canonical API read/response value e la persistence representation sono sempre:
+### 5.4 Decisioni byte-size
 
 ```text
-non-negative JSON integer
-containing exact bytes
-```
-
-Quindi input equivalenti:
-
-```json
-1024
-```
-
-```json
-"1 KiB"
-```
-
-convergono entrambi a canonical response/state:
-
-```json
-1024
-```
-
-La lexical unit scelta dal caller non viene preservata come domain state o display metadata.
-
----
-
-## 9. `core.byte_size` wire/domain validation boundary
-
-Il transport DTO dichiara esplicitamente la union di carrier ammessi per `core.byte_size`; non si tratta di generic scalar coercion.
-
-Il transport può rifiutare malformed JSON/type/lexical shape. Il PrimitiveType/domain codec resta authority per:
-
-- exact quantity parsing;
-- SI/IEC multiplier semantics;
-- exact-integral-byte requirement;
-- constraint validation;
-- canonicalization a integer bytes.
-
-La stessa primitive parsing/canonicalization semantics deve essere riusata in tutti i public input position che accettano `core.byte_size`; non devono esistere parser divergenti per Object values, enum, constraint o migration defaults.
-
----
-
-## 10. Ratified byte-size wire decisions
-
-```text
-A3-BS-01
-core.byte_size accepts either a non-negative JSON integer meaning exact bytes
-or a JSON string quantity using the canonical SI/IEC unit vocabulary.
-
-A3-BS-02
-SI and IEC suffixes are case-sensitive and distinct:
-B/kB/MB/GB/TB/PB/EB and KiB/MiB/GiB/TiB/PiB/EiB.
-
-A3-BS-03
-Both adjacent and one-ASCII-space quantity/unit forms are accepted;
-alternative aliases/case folding are not.
-
-A3-BS-04
-String quantities use non-negative exact decimal ordinary notation;
-exponent notation and leading plus are not accepted.
-
-A3-BS-05
-Fractional quantity input is accepted only when exact conversion yields
-an integer number of bytes.
-
-A3-BS-06
-Canonical API output and PostgreSQL persistence are always a JSON integer
-containing exact bytes; caller lexical units are not preserved.
-
-A3-BS-07
-One PrimitiveType parsing/canonicalization contract is reused across Object
-values, constraints/enums and migration_default input.
+A3-BS-01 integer exact bytes OR strict SI/IEC quantity string accepted.
+A3-BS-02 SI/IEC suffixes are case-sensitive and distinct.
+A3-BS-03 adjacent or one-ASCII-space forms accepted; no aliases/case folding.
+A3-BS-04 exact decimal ordinary notation; no exponent/leading plus.
+A3-BS-05 fractional input only when exact conversion yields integer bytes.
+A3-BS-06 canonical API output and persistence are always exact integer bytes.
+A3-BS-07 one primitive parser/canonicalizer reused across all byte_size input positions.
 ```
 
 ---
 
-## 11. API-03 remaining work
+## 6. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-exact/implicit version selector representation by command
-DataType CREATE/REVISE DTOs
-ObjectTemplate complete local candidate CREATE/REVISE DTOs
-Object CREATE/DATA_CHANGE/SCHEMA_CHANGE/ownership DTOs beyond canonical_name omission
+DataType CREATE/REVISE command DTOs
+ObjectTemplate complete local candidate CREATE/REVISE DTOs beyond selector semantics
+Object CREATE/DATA_CHANGE/SCHEMA_CHANGE/ownership DTOs beyond selector/canonical_name semantics
 RelationshipDefinition discriminated CREATE/RENAME DTOs
 Relationship CREATE DTO
 remaining primitive public-input lexical forms
