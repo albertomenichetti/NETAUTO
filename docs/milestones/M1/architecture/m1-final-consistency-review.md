@@ -1,10 +1,10 @@
 # M1 — Final Architecture Consistency Review
 
-**Status:** REVIEW COMPLETE — no blocking contradiction identified after final cross-domain/API/persistence/concurrency/test alignment. Global M1 architecture freeze is pending explicit ratification.
+**Status:** FROZEN — final consistency review complete; global M1 architecture freeze ratified on 2026-08-14.
 
 ## 1. Purpose
 
-This document records the final pre-freeze consistency review of the normative M1 architecture baseline under:
+This document records the final consistency review and freeze decision for the normative M1 architecture baseline under:
 
 ```text
 docs/milestones/M1/architecture/
@@ -204,22 +204,24 @@ They remain read-only historical material and do not regain authority through im
 
 Any implementation conflict is resolved against the normative M1 architecture, not against `docs.old/` or pre-M1 experimental code.
 
-## 9. Review conclusion
+## 9. Freeze decision — FREEZE-01
 
 No blocking contradiction or unowned M1 architecture decision remains after the corrections above.
 
-The baseline is therefore eligible for the explicit global freeze decision.
+The M1 milestone contract has also completed its final review and is `FINAL / FROZEN`.
 
-This review does **not** itself mark the architecture frozen. Freeze requires a separate ratified decision that changes the baseline state from:
-
-```text
-DRAFT / ratified components / review complete
-```
-
-to:
+Therefore the architecture baseline state is ratified as:
 
 ```text
 M1 ARCHITECTURE FROZEN
 ```
 
-After freeze, implementation planning may decompose the architecture but may not silently choose different semantics/mechanisms. Any later contradiction or genuine architecture gap requires explicit architecture reopening and documented propagation.
+Consequences:
+
+- no M1 semantic, persistence, concurrency, PostgreSQL-test or public-API decision is left to implementation choice;
+- implementation planning may decompose the frozen baseline but may not reinterpret or silently replace it;
+- internal optimizations are allowed only when they preserve every relevant frozen contract;
+- `docs.old/` remains historical/read-only and has no authority over the frozen baseline;
+- any later contradiction or genuine architecture gap requires explicit architecture reopening and same-cycle propagation to every affected normative document.
+
+With FREEZE-01 ratified, architecture design is complete and the project may proceed to the milestone implementation decomposition (`steps.md`) required by the project guidelines.
