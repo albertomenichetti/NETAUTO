@@ -1,6 +1,6 @@
 # M1 — API Read Contract
 
-**Status:** DRAFT — API-03.9 canonical single-resource/projection read DTO contract e API-03.10 collection/list contract ratificati. Success/failure HTTP mapping resta separato.
+**Status:** DRAFT — API-03.9 canonical single-resource/projection read DTO contract and API-03.10 collection/list contract are ratified; API-03.11 success/failure HTTP mapping is separately ratified in `api-error-contract.md`.
 
 ## 1. Scopo
 
@@ -561,4 +561,4 @@ Object-specific lifecycle route means events involving the Object (`object_id=X 
 
 The three API-03.10 read-path index requirements are normative in PERSIST-15.
 
-Success/failure HTTP status and error-body mapping are deliberately outside API-03.9/03.10 and remain the next API architecture point.
+API-03.11 success/failure HTTP status and error-body mapping are separately normative in `api-error-contract.md`; no read-contract decision remains open.
