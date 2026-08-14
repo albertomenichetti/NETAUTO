@@ -41,7 +41,7 @@ Tutte le naming/override/collision invariants vengono valutate sull'effective sc
 
 M1 non introduce authoritative persistent effective-schema materialization.
 
-Eventuali cache o compiled representation sono implementation optimization e non source of truth.
+Eventuali cache interne o precomputed execution structures sono implementation optimization e non source of truth né validation authority. Non costituiscono un JSON Schema compiler/projection o un secondo schema language pubblico.
 
 ## 3. DRAFT effective schema
 
@@ -247,7 +247,7 @@ DEPRECATED exact dependency
 
 Un nuovo `Object` crea un direct binding verso una exact ObjectTemplateVersion PUBLISHED.
 
-Grazie all'active model graph invariant, `Object create` non deve ricertificare a ogni richiesta lo status lifecycle dell'intera parent/DTV dependency closure.
+Grazie all'active-model-graph invariant, `Object create` non deve ricertificare a ogni richiesta lo status lifecycle dell'intera parent/DTV dependency closure.
 
 Deve poter trattare la target OTV PUBLISHED come schema attivo già certificato.
 
