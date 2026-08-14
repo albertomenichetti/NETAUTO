@@ -1,6 +1,6 @@
 # M1 — API Contract
 
-**Status:** DRAFT — API-01 e API-02 ratificati; boundary, public namespace e canonical route inventory consolidati. API-03.1..10 command/wire/read/list decisions sono consolidate nei companion contract; success/failure HTTP mapping resta da definire.
+**Status:** DRAFT — API-01 e API-02 ratificati; boundary, public namespace e canonical route inventory consolidati. API-03.1..10 e API-03.11A command/wire/read/list/failure-class decisions sono consolidate nei companion contract; concrete error-code catalog e success HTTP mapping restano da definire in API-03.11B.
 
 ## 1. Scopo
 
@@ -32,6 +32,10 @@ api-read-contract.md
 api-list-contract.md
     -> API-03.10 collection envelope, keyset pagination,
        canonical ordering, list-item policy and filters
+
+api-error-contract.md
+    -> API-03.11 failure classes, public error DTO,
+       concrete code catalog and success HTTP mapping
 ```
 
 ---
@@ -222,15 +226,55 @@ M1 non introduce un generic HTTP `Idempotency-Key` requirement. Request deduplic
 
 Domain/application code non produce `HTTPException` o HTTP status come primary failure semantics.
 
-Il flow è:
+Il flow resta:
 
 ```text
 domain/application failure
--> stable transport-neutral failure classification
--> HTTP status + error-body mapping
+-> stable transport-neutral failure class + concrete code/details
+-> HTTP adapter
+-> HTTP status + canonical error body
 ```
 
-Il failure catalog e il mapping HTTP vengono ratificati nel prossimo API architecture point dedicato.
+API-03.11A in `api-error-contract.md` congela le failure class pubbliche:
+
+```text
+INVALID_REQUEST       -> 400
+NOT_FOUND             -> 404
+SEMANTIC_VALIDATION   -> 422
+STATE_CONFLICT        -> 409
+INTERNAL_FAILURE      -> 500
+```
+
+Regole boundary importanti:
+
+```text
+404
+    -> missing URI/path target identity only
+
+missing referenced body/command operand
+    -> normally 422
+
+malformed expected_revision
+    -> 400
+
+well-formed stale expected_revision
+    -> 409
+
+idempotent domain no-op/convergence
+    -> success, never conflict solely because zero rows changed
+```
+
+Il canonical public error body è flat:
+
+```json
+{
+  "code": "stale_revision",
+  "message": "The draft revision does not match the expected revision.",
+  "details": {}
+}
+```
+
+`code` è stable machine-readable snake_case; `message` è diagnostica human-readable e non è branching contract; `details` è sempre JSON object. Il concrete M1 code catalog e i relativi details schema restano API-03.11B.
 
 ### 2.10 Public transport baseline
 
@@ -269,7 +313,7 @@ A1.5  Read DTOs are semantic projections and need not mirror persistence rows.
 A1.6  Stable lineage and exact version identities remain explicit; no API-only surrogate version identity.
 A1.7  expected_revision is an exact-DRAFT application generation token; API-03.2 maps it uniformly to a required positive-integer query parameter for REVISE/PUBLISH/DELETE_DRAFT, without generic ETag semantics.
 A1.8  Idempotency/convergence follows domain semantics; no generic Idempotency-Key requirement in M1.
-A1.9  Failures are transport-neutral before HTTP mapping.
+A1.9  Failures are transport-neutral before HTTP mapping; API-03.11A defines the public failure-class/status boundary while application/domain remain HTTP-agnostic.
 A1.10 M1 public transport baseline is HTTP/JSON via FastAPI/OpenAPI with framework types confined to the adapter.
 A1.11 M1 public kernel namespace is /api/v1/core; core is API namespacing, not a new domain layer.
 ```
@@ -546,7 +590,7 @@ DATA_CHANGE equivalent candidate
     -> semantic success/no-op, no event
 ```
 
-Exact HTTP status e response-body detail restano il successivo API architecture point.
+Exact HTTP success status e response-body detail restano API-03.11B.
 
 ---
 
@@ -570,19 +614,20 @@ A2.14 Command responses represent semantic result/convergence, not persistence a
 A2.15 expected_revision is required on relevant exact-DRAFT commands and is encoded by API-03.2 as a required positive-integer query parameter for REVISE/PUBLISH/DELETE_DRAFT.
 A2.16 `core` is an API capability namespace only; it does not create a Core domain/service/repository abstraction.
 A2.17 API-03.9/03.10 define canonical read/projection DTOs and one fixed keyset-paginated collection contract; no generic resource DTO, offset pagination or arbitrary sort surface is introduced.
+A2.18 API-03.11A defines the transport-neutral failure-class to HTTP mapping and canonical flat error DTO; concrete error subtype catalog and success status policy remain API-03.11B.
 ```
 
 ---
 
 ## 6. Remaining API architecture point
 
-API-03.1..10 are consolidated. The next API design point must define:
+API-03.1..10 and API-03.11A are consolidated. The remaining API-03.11B work is:
 
 ```text
-transport-neutral failure taxonomy
--> HTTP status mapping
--> canonical error-body DTO
--> success status/body policy for create, command convergence/no-op and delete
+complete concrete M1 error-code catalog
+code -> failure-class mapping
+details schema per concrete code
+success HTTP status/body policy for create, command convergence/no-op and delete
 ```
 
-The JSON Schema compiler surface, if retained in M1, is a separate remaining architecture question and must not be conflated with HTTP failure mapping.
+The JSON Schema compiler surface, if retained in M1, is a separate remaining architecture question and must not be conflated with HTTP failure/success mapping.
