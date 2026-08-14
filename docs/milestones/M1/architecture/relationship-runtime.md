@@ -40,7 +40,19 @@ Le runtime rows sono authoritative child state della factual Relationship aggreg
 
 Non sono aggregate indipendenti e non possiedono public CRUD/lifecycle autonomo.
 
-La physical row key è persistence detail da finalizzare.
+La persistence M1 usa come exact resolved-view authority:
+
+```text
+PRIMARY KEY (
+    resolution_id,
+    from_object_id,
+    to_object_id
+)
+```
+
+Non esiste un surrogate runtime-row id.
+
+La forma fisica persiste inoltre `relationship_definition_id` come denormalizzazione tecnica intenzionale per permettere composite FK che garantiscano declarativamente che Relationship e Resolution appartengano alla stessa Definition. Tale datum non aggiunge una nuova semantic identity; rationale e consistency mechanism sono definiti in `persistence-model.md` (PERSIST-07).
 
 ## 3. Relationship resolution-based CREATE
 
@@ -331,4 +343,3 @@ Nessun cleanup implicito.
 Object DELETE è semanticamente bloccata se esiste una current runtime semantic association dell'Object. Grazie alla complete object-relative materialization, ogni endpoint non-self compare in almeno una runtime row come `from_object_id`.
 
 Entrambe le runtime Object columns restano comunque veri current references.
-
