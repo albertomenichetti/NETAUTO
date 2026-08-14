@@ -1,10 +1,10 @@
 # M1 — Relationship R2 Consistency Review
 
-**Status:** DRAFT
+**Status:** REVIEW COMPLETE — R2 semantics frozen; persistence/concurrency technical closure integrated through REALIZE-12..15.
 
 ## 1. Scopo
 
-Questo documento registra il consistency pass finale del redesign Relationship R2.
+Questo documento registra il consistency pass finale del redesign Relationship R2 e il successivo technical closure outcome.
 
 R2 sostituisce integralmente la precedente architecture Relationship basata su:
 
@@ -271,18 +271,39 @@ L'implementazione pre-M1 dovrà essere sostituita dove assume:
 
 R2 non richiede backward compatibility con tale baseline sperimentale.
 
-## 13. Freeze outcome
+## 13. Freeze and technical closure outcome
 
-Con le invarianti consolidate nei documenti R2:
+Il dominio Relationship è semanticamente frozen per M1.
 
-> il dominio Relationship è semanticamente frozen per M1.
+Le seguenti voci, precedentemente tecniche e aperte, sono ora chiuse e normative:
 
-Restano tecniche, non semanticamente aperte:
+```text
+PostgreSQL physical schema
+    -> PERSIST-01..15
 
-- PostgreSQL physical schema;
-- DB constraint/lock implementation;
-- exact transaction isolation/retry;
-- API transport shape;
-- persistence/index optimization;
-- test implementation details.
+DB constraint/FK/UNIQUE layout
+    -> persistence-model.md
 
+model-plane conflict serialization
+    -> REALIZE-12 / RELATIONSHIP_DEFINITION_CONFLICT_GATE
+
+runtime factual uniqueness + convergence retry
+    -> REALIZE-13 / exact-view PK + fresh semantic UoW
+
+exact transaction isolation / lock strength
+    -> READ COMMITTED + PERSIST-19 / REALIZE-15
+
+lifecycle metadata observation
+    -> REALIZE-14 / one SQL statement snapshot
+
+persistence/index optimization baseline
+    -> PERSIST-15, no ancestry closure/reverse authority table
+
+real PostgreSQL race coverage
+    -> PGTEST-01..02
+```
+
+Restano prima del final M1 architecture freeze aspetti di transport/application e test-harness realization, non scelte aperte di Relationship persistence/concurrency:
+
+- REST/DTO and public error/status shape;
+- PGTEST-03 deterministic harness contract and later implementation details.
