@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Concurrency Test Matrix
 
-**Status:** DRAFT — PGTEST-01..PGTEST-03 ratificati; canonical scenario contract, census, 19-predicate coverage mapping e deterministic harness contract completi. Il successivo PGTEST point definisce reusable execution recipes per i 51 scenario ID.
+**Status:** DRAFT — PGTEST-01..PGTEST-04 ratificati; canonical scenario contract, census, 19-predicate coverage mapping, deterministic harness contract e reusable execution recipes completi. La concurrency/test architecture M1 è considerata chiusa salvo finding retroattivi o gap emersi durante l'implementation design.
 
 ## 1. Scopo
 
@@ -729,16 +729,391 @@ P3.15 deterministic contract tests are normative CI; stress tests are supplement
 
 ---
 
-## 9. Next point
+## 9. PGTEST-04 — reusable deterministic execution recipes
 
-PGTEST-04 definisce reusable deterministic execution recipes e mappa tutti i 51 canonical scenario ID a una recipe, evitando harness ad-hoc per singolo test. Candidate recipe families includono almeno:
+### 9.1 Principle
+
+Scenario ID e execution recipe hanno responsabilità distinte:
 
 ```text
-LOCK-WAITER
-FK-RACE
-UNIQUE-RACE
-GATE-WAITER
-SNAPSHOT-AFTER
-ROLLBACK-AFTER-WRITE
-NONBLOCKING-PROGRESS
+scenario ID
+    -> cosa deve essere dimostrato
+       (scope, predicate, authority, allowed/forbidden outcome, assertions)
+
+execution recipe
+    -> come costruire deterministicamente l'interleaving
+       senza ridefinire la semantics dello scenario
 ```
+
+Ogni scenario possiede esattamente una `primary_recipe` e può comporre zero o più `secondary_recipes` quando devono essere esercitati più meccanismi. Una variante che richiede una concurrency authority diversa o una primary recipe diversa non viene nascosta sotto `A/B/C`: riceve un nuovo stable scenario ID.
+
+Canonical recipe set M1:
+
+```text
+REC-LOCK
+REC-UNIQUE
+REC-FK
+REC-GATE
+REC-CUT
+REC-ROLLBACK
+REC-PROGRESS
+REC-ABA
+```
+
+### 9.2 `REC-LOCK` — owner/row-lock waiter
+
+Usata quando la safety deriva dalla serializzazione tramite una row owner authority.
+
+```text
+T1
+    acquire semantic owner
+    -> remain open at deterministic downstream point
+
+T2
+    start competing semantic operation
+    -> must block on T1 owner
+
+OBS
+    pg_blocking_pids(T2) contains T1
+
+release T1
+    -> COMMIT or ROLLBACK
+
+T2
+    wakes
+    -> mandatory re-read/revalidation
+    -> success/failure/no-op according to winner state
+```
+
+Quando la semantic UoW non espone naturalmente un post-owner barrier, il preferred construction è un downstream PostgreSQL blocker raggiungibile da T1 soltanto dopo l'owner stabilization. La recipe prova owner corretto, lock strength, post-wait re-read e serial outcome.
+
+### 9.3 `REC-UNIQUE` — PK/UNIQUE arbitration
+
+```text
+T1
+    insert candidate unique fact
+    keep transaction uncommitted
+
+T2
+    insert competing fact
+    -> waits/arbitrates on same PK/UNIQUE authority
+
+OBS
+    prove blocker/arbitration relation when blocking is observable
+
+T1 COMMIT
+
+T2
+    receives the expected unique/PK arbitration outcome
+    -> candidate UoW rollback if the operation contract requires it
+```
+
+Domain handling resta scenario-specific:
+
+```text
+NU
+    -> duplicate-name failure
+
+SO
+    -> same fact may converge; different desired ownership conflicts
+
+RF
+    -> rollback complete candidate UoW
+       -> fresh semantic UoW
+       -> converge/re-evaluate current fact
+```
+
+M1 non usa row-by-row partial `ON CONFLICT DO NOTHING` come aggregate-convergence recipe.
+
+### 9.4 `REC-FK` — referential lifetime race
+
+Submode canonici:
+
+```text
+REFERENCE_FIRST
+    T1 creates current FK reference and remains open
+    T2 attempts target DELETE
+    T1 commits
+    T2 cannot commit a state with dangling reference
+
+DELETE_FIRST
+    T1 deletes target and remains open
+    T2 attempts new reference
+    T1 commits
+    T2 cannot establish a current FK to the deleted target
+
+REMOVAL_UNBLOCKS_DELETE
+    initial current reference exists
+    T1 removes reference
+    T2 attempts target DELETE
+    removal-visible-first may allow success;
+    delete seeing current blocker may wait/fail conservatively
+```
+
+Semantic precheck e FK final authority restano distinti: la recipe non impone un particolare precheck scheduling, ma vieta sempre dangling current references.
+
+### 9.5 `REC-GATE` — logical predicate-set waiter
+
+Usata per entrambi i logical gate M1.
+
+```text
+HOLDER
+    acquire advisory xact gate
+    optionally mutate protected state
+
+WAITER
+    attempt same gate
+    -> blocks
+
+OBS
+    prove blocker relation
+
+HOLDER
+    COMMIT
+
+WAITER
+    acquires gate
+    -> executes a NEW SQL statement
+    -> obtains fresh READ COMMITTED snapshot
+    -> rereads protected predicate
+```
+
+Critical assertion:
+
+```text
+gate acquisition != protected-state observation
+```
+
+Per ownership il protected reread include fresh child-ownership state + graph predicate. Per RelationshipDefinition include fresh certified set. La recipe verifica wait, hold-through-commit e post-wait fresh-snapshot discipline; può inoltre dimostrare intentional global over-serialization.
+
+### 9.6 `REC-CUT` — committed observation cut
+
+Definisce da quale lato di un commit boundary avviene una authoritative observation senza generic writer serialization.
+
+Submode:
+
+```text
+NEW_BEFORE_OBSERVATION
+    T1 changes metadata/state and commits
+    T2 authoritative observation must see new committed state
+
+NEW_AFTER_OBSERVATION
+    T2 captures authoritative old committed observation
+    T2 is blocked at a downstream DB boundary
+    T1 changes metadata/state and commits
+    release T2
+    T2 must continue using the captured old observation
+
+CHANGE_UNCOMMITTED_DURING_OBSERVATION
+    T1 changes state but remains uncommitted
+    T2 READ COMMITTED observation sees old committed state
+```
+
+La recipe serve sia `S-REL-EVENT-SNAPSHOT` sia monotone blocker-removal races dove un uncommitted remover può essere ancora osservato come blocker e causare conservative failure.
+
+### 9.7 `REC-ROLLBACK` — rollback after physical work
+
+Dimostra:
+
+```text
+partial SQL execution != partial committed semantic transition
+```
+
+Failure/rollback injection preference:
+
+```text
+1. natural later PK/FK/constraint arbitration
+2. downstream PostgreSQL blocker + controlled statement abort/timeout
+3. persistence-level controlled transaction rollback
+4. last-resort test-only phase interceptor
+```
+
+Pattern:
+
+```text
+T1 performs one or more physical writes
+-> pause/fail before semantic UoW completion
+-> ROLLBACK
+
+OBS
+    no uncommitted current state remains visible
+    no partial lifecycle event set exists
+```
+
+Per DELETE, rollback deve ripristinare il complete previous aggregate e non lasciare deletion events. La recipe verifica transaction boundary, non una SQL ordering che non sia normativa.
+
+### 9.8 `REC-PROGRESS` — intentional non-blocking
+
+Usata per proteggere le intentional non-serialization della realization.
+
+```text
+T1
+    acquire potentially interacting lock/state
+    remain transactionally open
+
+T2
+    start operation that MUST NOT be generically serialized
+
+T2
+    reaches a deterministic positive progress point
+    while T1 is still open
+
+only then
+    release T1
+```
+
+La prova primaria è forward progress verso una phase che sarebbe irraggiungibile se il prohibited blocking esistesse. Una optional `pg_blocking_pids(T2)` negativa può supportare la diagnosi ma non sostituisce il progress proof.
+
+### 9.9 `REC-ABA` — fresh-UoW restart / exact identity
+
+Due submode canonici.
+
+```text
+EXACT_ID_ABA
+    X current
+    DELETE X -> COMMIT
+    CREATE same semantic fact -> Y -> COMMIT
+    late DELETE X -> no-op
+    assert Y remains current
+
+WINNER_DISAPPEARS_BEFORE_CONVERGENCE
+    T1 creates X
+    T2 competing CREATE loses PK arbitration and fully rolls back
+    DELETE X -> COMMIT before T2 convergence read
+    T2 restarts the semantic operation in a fresh UoW
+    -> current exact view absent
+    -> may create new Y
+```
+
+La recipe dimostra che a collisione non corrisponde una permanent winner identity e che retry/convergence riparte dal current committed state, non da candidate/cache stale.
+
+### 9.10 Canonical 51-ID -> recipe mapping
+
+```text
+ROW-01   REC-LOCK
+ROW-02   REC-LOCK
+ROW-03   REC-LOCK
+ROW-04   REC-LOCK
+ROW-05   REC-LOCK
+ROW-06   REC-LOCK
+ROW-07   REC-LOCK
+ROW-08   REC-LOCK
+ROW-09   REC-LOCK
+ROW-10   REC-CUT
+ROW-11   REC-LOCK
+ROW-12   REC-LOCK
+ROW-13   REC-LOCK
+ROW-14   REC-LOCK
+ROW-15   REC-LOCK
+ROW-16   REC-LOCK
+ROW-17   REC-LOCK
+
+ARB-01   REC-UNIQUE
+ARB-02   REC-UNIQUE
+ARB-03   REC-LOCK
+ARB-04   REC-LOCK
+ARB-05   REC-UNIQUE + REC-ABA
+ARB-06   REC-LOCK
+ARB-07   REC-ABA
+          variant B also REC-UNIQUE
+
+REF-01   REC-FK
+REF-02   REC-FK
+REF-03   REC-FK
+REF-04   REC-FK
+REF-05   REC-FK
+REF-06   REC-FK
+
+GATE-01  REC-GATE
+GATE-02  REC-GATE
+          removal variant also REC-CUT
+GATE-03  REC-GATE
+GATE-04  REC-GATE
+GATE-05  REC-GATE
+GATE-06  REC-GATE
+          blocker-delete variant also REC-CUT
+
+SNAP-01  REC-CUT
+SNAP-02  REC-CUT
+SNAP-03  REC-CUT
+SNAP-04  REC-CUT
+
+ATOMIC-01 REC-ROLLBACK
+ATOMIC-02 REC-UNIQUE + REC-ROLLBACK
+ATOMIC-03 REC-ROLLBACK
+ATOMIC-04 REC-ROLLBACK
+
+PAR-01   REC-PROGRESS
+PAR-02   REC-PROGRESS
+PAR-03   REC-LOCK
+PAR-04   REC-GATE
+PAR-05   REC-PROGRESS
+PAR-06   REC-PROGRESS
+PAR-07A  REC-LOCK
+PAR-07B  REC-PROGRESS
+```
+
+Il mapping è completo: nessuno dei 51 canonical scenario ID richiede una nona orchestration family.
+
+### 9.11 Recipe composition and variant discipline
+
+Le otto recipe sono primitive di orchestration, non una nuova tassonomia di dominio.
+
+Ogni scenario dichiara:
+
+```text
+primary_recipe
+secondary_recipes[]
+```
+
+La primary recipe identifica il meccanismo dominante della race. Secondary recipes servono quando lo stesso scenario deve esercitare una seconda proprietà, per esempio `ARB-05` con `REC-UNIQUE` primaria e `REC-ABA` secondaria.
+
+Una variante che richiede una authority differente o una primary recipe differente ottiene un nuovo scenario ID; non viene aggiunta artificialmente come `A/B/C` per evitare di estendere il census.
+
+### 9.12 Test-hook budget
+
+Prima di introdurre un test-only persistence interceptor deve essere dimostrato che l'interleaving richiesto non è realizzabile ragionevolmente tramite una delle otto recipe usando PostgreSQL blocker, PK/UNIQUE/FK arbitration, transaction boundary o advisory gate.
+
+L'interceptor resta quindi una escape hatch e non una dependency ordinaria del kernel/test design.
+
+---
+
+## 10. PGTEST-04 decisions
+
+```text
+P4.1  Eight stable orchestration recipes: REC-LOCK, REC-UNIQUE, REC-FK,
+      REC-GATE, REC-CUT, REC-ROLLBACK, REC-PROGRESS, REC-ABA.
+P4.2  Recipe defines deterministic orchestration only; scenario semantics remain authoritative.
+P4.3  Every scenario has exactly one primary recipe and optional secondary recipes.
+P4.4  REC-LOCK proves owner serialization + mandatory post-wait re-read.
+P4.5  REC-UNIQUE proves PK/UNIQUE arbitration; collision handling remains domain-specific.
+P4.6  REC-FK covers reference-first, delete-first and removal-unblocks-delete.
+P4.7  REC-GATE proves wait, hold-through-commit and fresh post-wait protected-state observation.
+P4.8  REC-CUT defines committed observation boundaries for metadata and monotone blocker-removal races.
+P4.9  REC-ROLLBACK proves no partial semantic commit after physical work; natural DB failure is preferred.
+P4.10 REC-PROGRESS proves intentional non-serialization through positive forward progress.
+P4.11 REC-ABA separately proves fresh-UoW restart and exact-identity ABA safety.
+P4.12 The canonical 51-ID -> recipe mapping is complete.
+P4.13 Variants requiring different authority/primary recipe receive a new stable scenario ID.
+P4.14 Test-only persistence interceptor requires proof that canonical PostgreSQL recipes are insufficient.
+```
+
+---
+
+## 11. Concurrency/test architecture closure
+
+Con PGTEST-01..04 la baseline M1 definisce già:
+
+```text
+what semantic races must be tested
+which stable scenario IDs cover them
+which authority/mechanism each scenario exercises
+how workers are orchestrated deterministically
+how blocking/non-blocking is proved
+how rollback/snapshot/gate/ABA cases are built
+which reusable recipe each scenario uses
+```
+
+Non viene introdotto un PGTEST-05 soltanto per progettare ulteriormente fixture/helper/test class structure: tali scelte appartengono alla successiva decomposizione implementativa, purché rispettino PGTEST-01..04.
+
+Un nuovo PGTEST design point viene aperto soltanto se implementation planning o un finding retroattivo dimostrano che una delle 51 race non è deterministicamente realizzabile con il contract corrente o richiede una nuova architecture-level test guarantee.
