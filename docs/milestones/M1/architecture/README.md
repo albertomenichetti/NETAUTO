@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics, PostgreSQL persistence/concurrency/test architecture and the complete public HTTP/JSON API contract (API-01..03.11B) are substantially closed. No feature/design question remains explicitly open; the baseline is ready for the final architecture consistency/freeze review.
+**Status:** DRAFT architecture baseline — domain semantics, PostgreSQL persistence/concurrency/test architecture and the complete public HTTP/JSON API contract (API-01..03.11B) are substantially closed. The final architecture consistency review is complete with no blocking contradiction identified; explicit global M1 architecture freeze is pending ratification.
 
 ## 1. Purpose
 
@@ -50,6 +50,10 @@ concurrency-postgresql-realization-relationship.md
 concurrency-postgresql-test-matrix.md
     PGTEST-01..04 real-PostgreSQL scenario census, coverage mapping,
     deterministic harness contract and reusable execution recipes.
+
+m1-final-consistency-review.md
+    Final pre-freeze cross-domain/API/persistence/concurrency/test review,
+    corrected alignment findings and explicit freeze eligibility outcome.
 ```
 
 ### Public/application API
@@ -185,19 +189,11 @@ Reopening any closed area requires an explicit architecture change, not a local 
 
 No feature/design area is currently open in the M1 architecture baseline.
 
-The next activity is the **final architecture consistency/freeze review**. Its purpose is not to invent additional capability, but to verify that:
+The **final architecture consistency review is complete** and recorded in `m1-final-consistency-review.md`. It found and corrected stale documentation markers but no blocking semantic/technical contradiction after alignment.
 
-```text
-all normative documents agree
-no stale-open marker remains
-all public/API decisions map back to domain semantics
-all persistence/concurrency/test authorities remain aligned
-no historical docs.old assumption leaks back into the M1 baseline
-```
+The only remaining pre-coding action is the explicit **global M1 architecture freeze decision**.
 
-Any genuine contradiction found by that review is an architecture defect and must be repaired before freeze. Absence of defects allows the baseline to be marked frozen and implementation planning to begin.
-
-If later review discovers a new architecture gap, add it here and to the owning domain/cross-cutting document in the same documentation cycle.
+If ratified, the baseline moves from reviewed DRAFT status to frozen coding baseline. Any subsequent contradiction or genuine architecture gap requires explicit architecture reopening and same-cycle propagation to every affected normative document.
 
 ## 5. Documentation alignment invariant
 
