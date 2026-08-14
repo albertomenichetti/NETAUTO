@@ -154,6 +154,34 @@ Ogni fase dipende semanticamente dalla precedente.
 
 Gli step implementativi devono derivare dal design architetturale e il design architetturale deve derivare dal contratto della milestone.
 
+## Allineamento documentale durante il design
+
+La documentazione architetturale non viene riallineata soltanto a fine fase: l'allineamento è parte della ratifica di ogni decisione.
+
+Regola forte:
+
+> quando un nuovo design point produce un finding retroattivo che modifica, raffina o chiude un'assunzione già presente in altri documenti normativi, la sequenza di design viene interrotta e il finding viene propagato immediatamente a tutti i documenti impattati prima di procedere con il design point successivo.
+
+Non è ammesso rimandare consapevolmente la propagation a un futuro consistency sweep quando sono già noti i documenti affetti.
+
+Una decisione cross-cutting è considerata consolidata soltanto quando risultano coerenti, per quanto applicabile:
+
+```text
+owning domain contract
+cross-cutting architecture/realization index
+persistence / Unit of Work baseline
+concurrency companion
+API/failure contract
+acceptance/test matrix
+milestone architecture index
+```
+
+Un consistency sweep periodico resta comunque obbligatorio come verifica difensiva: serve a trovare drift non noto, stale-open marker, TODO già chiusi e contraddizioni sfuggite alla propagation immediata.
+
+Una contraddizione tra documenti normativi è un **architecture defect**, non una libertà implementativa. Non deve essere risolta scegliendo il documento più recente o quello letto per ultimo: la documentazione va riallineata prima di codificare il comportamento interessato.
+
+Quando una decisione chiude una precedente sezione “da finalizzare”, tale sezione deve essere aggiornata nello stesso ciclo oppure trasformata in un cross-link alla decisione ora autorevole.
+
 ## Freeze del perimetro
 
 Lo sviluppo effettivo di una milestone non parte finché il suo perimetro non è congelato.
