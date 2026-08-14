@@ -1,6 +1,6 @@
 # M1 — Relationship Architecture
 
-**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency, public command DTO e canonical read/list contract complete; failure mapping resta prima del final M1 architecture freeze.
+**Status:** DRAFT — Relationship R2 semantics, PostgreSQL persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler question remains before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -20,7 +20,8 @@ Documenti collegati:
 - `object.md` — invariant cross-domain di lifecycle event-set atomicity;
 - `api-wire-contract.md` — public command DTO/wire shape, API-03.7;
 - `api-read-contract.md` — canonical Definition/factual/Object-relative Relationship read DTO, API-03.9;
-- `api-list-contract.md` — API-03.10 RelationshipDefinition/capability/Object-relative/lifecycle collection contract.
+- `api-list-contract.md` — API-03.10 RelationshipDefinition/capability/Object-relative/lifecycle collection contract;
+- `api-error-contract.md` — API-03.11 public failure codes/details and success HTTP mapping.
 
 Le semantics e invarianti osservabili restano normative nei documenti di dominio; i meccanismi PostgreSQL non sono più “da definire” ma sono normativi nei persistence/realization contract sopra.
 
@@ -300,8 +301,9 @@ Relationship DELETE exact-id owner = FOR UPDATE
 RelationshipDefinition/Relationship public command DTO shapes = API-03.7
 RelationshipDefinition/factual/Object-relative canonical read DTO shapes = API-03.9
 RelationshipDefinition/capability/Object-relative/list pagination/filter contract = API-03.10
+public error-code/status/success mapping = API-03.11
 ```
 
-Restano aperti prima del coding freeze soltanto:
+API-03.11 rende normativi i dedicated public conflict codes per Definition equivalence/conflict e runtime factual conflict, insieme alla success policy: Definition CREATE `201 + Location`; Definition RENAME `200 + complete aggregate`; Relationship CREATE `201` per new fact e `200` per convergence; Relationship DELETE `204` anche per exact-id already-absent no-op. Nessun SQL/persistence detail entra nel public error contract.
 
-- public success/error status taxonomy e failure mapping.
+Resta come unico architecture question pre-freeze il ruolo/surface del JSON Schema compiler, se mantenuto in M1.
