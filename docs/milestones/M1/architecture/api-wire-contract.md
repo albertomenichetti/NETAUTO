@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO e il `core.byte_size` public wire contract sono ratificati. Le restanti Object/Relationship/read/failure decisioni non sono ancora congelate.
+**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO, API-03.6 Object command DTO e il `core.byte_size` public wire contract sono ratificati. Le restanti Relationship/read/failure decisioni non sono ancora congelate.
 
 ## 1. Scopo e boundary
 
@@ -473,7 +473,175 @@ A3.48 The same declaration DTO shape is used for new and historical members; his
 
 ---
 
-## 7. `core.byte_size` public wire contract
+## 7. API-03.6 — Object command DTO
+
+### 7.1 CREATE
+
+Canonical shape:
+
+```json
+{
+  "template_id": "<uuid>",
+  "template_version": 4,
+  "canonical_name": "router-01",
+  "properties": {
+    "hostname": "router-01",
+    "memory": "4 GiB"
+  }
+}
+```
+
+Required:
+
+```text
+template_id
+```
+
+Optional con omission semantics già ratificate:
+
+```text
+template_version omitted
+    -> resolve ObjectTemplate.default_version
+
+canonical_name omitted
+    -> str(Object.id)
+
+properties omitted
+    -> creation default {}
+```
+
+`properties` omitted e `properties={}` significano zero runtime property values forniti dal caller. Non attivano `migration_default` e non soddisfano property required mancanti.
+
+Explicit `null` per `template_version`, `canonical_name` o `properties` è invalido.
+
+`properties` è un JSON object keyed by effective property name:
+
+```text
+SCALAR -> one PrimitiveType input value
+LIST   -> JSON array of PrimitiveType input values
+```
+
+JSON `null` non è runtime property value. Optional LIST `[]` è ammesso e canonicalizza a property key assente; required LIST `[]` fallisce.
+
+### 7.2 RENAME
+
+```json
+{
+  "canonical_name": "router-02"
+}
+```
+
+Esattamente un required string field, valido `1..255`; `null`/empty/invalid falliscono.
+
+### 7.3 DATA_CHANGE
+
+Canonical shape:
+
+```json
+{
+  "operations": [
+    {
+      "op": "SET",
+      "property": "hostname",
+      "value": "router-02"
+    },
+    {
+      "op": "REMOVE",
+      "property": "description"
+    }
+  ]
+}
+```
+
+Discriminator vocabulary:
+
+```text
+SET
+REMOVE
+```
+
+`SET` richiede esattamente `op`, `property`, `value`.
+
+`REMOVE` richiede esattamente `op`, `property` e vieta `value`.
+
+`operations` è required e non-empty. Una stessa property può apparire al massimo una volta nella request; l'ordine dell'array non ha significato semantico. La command rappresenta un set atomico di per-property change, non uno script sequenziale.
+
+Un payload non-empty può comunque convergere allo stesso semantic state corrente e produrre valid semantic no-op senza lifecycle event.
+
+Per optional LIST:
+
+```text
+SET []
+    -> valid
+    -> canonical absence
+```
+
+`SET null` è invalido.
+
+### 7.4 SCHEMA_CHANGE
+
+```json
+{
+  "target_version": 8
+}
+```
+
+Esattamente questo mandatory exact selector. Non esistono body field per `template_id`, remediation, target property override, transformation, detach o migration script.
+
+### 7.5 ATTACH / DETACH
+
+Entrambe le route usano la stessa strict body shape:
+
+```json
+{
+  "slot_name": "interfaces",
+  "child_object_id": "<uuid>"
+}
+```
+
+`parent_object_id` resta il target nel path.
+
+La shared wire shape non crea shared admission semantics:
+
+```text
+ATTACH
+    -> current slot must exist
+    -> child compatibility validated
+
+DETACH
+    -> removes only the exact runtime edge
+    -> does not require current slot existence
+    -> does not revalidate compatibility
+```
+
+La `SlotSemanticKey`/declaring lineage non è caller input e viene risolta dal kernel.
+
+### 7.6 DELETE
+
+Object DELETE non ha body e non espone `cascade`, `force`, `recursive`, implicit detach o subtree options.
+
+### 7.7 Decisioni API-03.6
+
+```text
+A3.49 Object CREATE requires template_id; template_version, canonical_name and properties are optional with their ratified omission semantics.
+A3.50 Object CREATE properties omission means {}: zero supplied runtime values; it never activates migration_default or satisfies required properties.
+A3.51 Object properties are a JSON object keyed by effective property name; SCALAR uses one primitive input value, LIST a JSON array; JSON null is never a runtime property value.
+A3.52 Object RENAME body contains exactly canonical_name:string.
+A3.53 DATA_CHANGE body contains a required non-empty operations array discriminated by SET | REMOVE.
+A3.54 SET requires exactly op/property/value; REMOVE requires exactly op/property and forbids value.
+A3.55 A property may occur at most once in one DATA_CHANGE request; operation-array order has no semantic meaning.
+A3.56 Empty DATA_CHANGE operations is malformed; a non-empty request may converge to semantic no-op with no lifecycle event.
+A3.57 SET [] remains valid for an optional LIST and canonicalizes to absence; SET null is invalid.
+A3.58 SCHEMA_CHANGE body contains exactly mandatory target_version; no remediation, override, detach or cross-lineage fields exist.
+A3.59 ATTACH and DETACH bodies contain exactly slot_name and child_object_id; parent_object_id remains the path command target.
+A3.60 Shared ATTACH/DETACH DTO does not imply shared admission semantics: ATTACH validates current slot/compatibility, DETACH may remove an exact runtime edge even when the slot is absent from the current schema.
+A3.61 Object DELETE has no body and exposes no cascade/force/recursive options.
+A3.62 Object command DTOs never expose caller-controlled Object id, template_id mutation, state revision, ownership edge id or lifecycle data.
+```
+
+---
+
+## 8. `core.byte_size` public wire contract
 
 Ovunque il public API accetti semantic `core.byte_size` — Object property, DataType constraint/enum, ObjectTemplate `migration_default` — sono ammessi:
 
@@ -523,12 +691,11 @@ A3-BS-07 one primitive parser/canonicalizer reused across all byte_size input po
 
 ---
 
-## 8. API-03 remaining work
+## 9. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-Object CREATE/DATA_CHANGE/SCHEMA_CHANGE/ownership DTOs beyond selector/canonical_name semantics
 RelationshipDefinition discriminated CREATE/RENAME DTOs
 Relationship CREATE DTO
 remaining primitive public-input lexical forms
