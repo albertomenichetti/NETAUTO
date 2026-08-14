@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03.1..10 ratificati. Command DTO, exact/implicit selector, `expected_revision`, PrimitiveType public lexical forms, canonical read DTO e collection/list contract sono consolidati. Resta success/failure HTTP mapping.
+**Status:** DRAFT — API-03.1..10 e API-03.11A ratificati. Command DTO, exact/implicit selector, `expected_revision`, PrimitiveType public lexical forms, canonical read DTO, collection/list contract e failure-class/HTTP mapping baseline sono consolidati. Restano concrete error-code catalog e success HTTP mapping (API-03.11B).
 
 ## 1. Scopo e boundary
 
@@ -30,6 +30,10 @@ api-read-contract.md
 api-list-contract.md
     -> API-03.10 collection envelope, keyset pagination,
        ordering, list-item policy and filters
+
+api-error-contract.md
+    -> API-03.11 failure classes, HTTP/error-body mapping,
+       concrete error-code catalog and success mapping
 ```
 
 ---
@@ -753,10 +757,76 @@ A3.120 These index additions are normative PERSIST-15 requirements and must be k
 
 ---
 
-## 13. API-03 remaining work
+## 13. API-03.11A — failure classes and public error shape
+
+The canonical error authority is:
+
+```text
+api-error-contract.md
+```
+
+Registry summary:
+
+```text
+INVALID_REQUEST       -> 400
+NOT_FOUND             -> 404
+SEMANTIC_VALIDATION   -> 422
+STATE_CONFLICT        -> 409
+INTERNAL_FAILURE      -> 500
+```
+
+Important boundaries:
+
+```text
+404
+    -> missing request-URI/path target identity only
+
+missing referenced command operand
+    -> normally 422 semantic validation
+
+malformed expected_revision
+    -> 400
+
+well-formed stale expected_revision
+    -> 409
+
+idempotent no-op / factual convergence
+    -> success, never conflict merely because no row changed
+```
+
+Canonical public error body:
+
+```json
+{
+  "code": "stale_revision",
+  "message": "The draft revision does not match the expected revision.",
+  "details": {}
+}
+```
+
+`code` is stable machine-readable snake_case; clients do not branch on `message`; `details` is always a JSON object. HTTP status derives from failure class; concrete code identifies the subtype. Internal failures never expose SQL/stack/constraint internals.
+
+```text
+A3.121 Application/domain failures remain transport-neutral; HTTP mapping occurs only at the transport adapter.
+A3.122 M1 public failure classes map as INVALID_REQUEST=400, NOT_FOUND=404, SEMANTIC_VALIDATION=422, STATE_CONFLICT=409, INTERNAL_FAILURE=500.
+A3.123 404 is reserved for missing request-URI/path target identity; missing command operands are semantic validation unless a more specific state rule applies.
+A3.124 400 covers transport/wire/query/path malformed input that does not require mutable persisted-state interpretation.
+A3.125 422 covers syntactically valid but semantically invalid candidate/operand requests.
+A3.126 409 covers meaningful commands blocked by current mutable state, lifecycle/dependency policy, conflicting facts or stale application generation.
+A3.127 Malformed expected_revision is 400; well-formed stale expected_revision is 409; no 412/ETag reinterpretation.
+A3.128 Domain-defined idempotent no-op/convergence is success and is never converted into conflict merely because no persistence row changed.
+A3.129 500 represents unexpected internal/invariant/integrity failure and never exposes SQL/stack/constraint internals publicly.
+A3.130 Canonical error body is flat {code,message,details}; code is stable machine-readable snake_case, message is human-readable only, details is always a JSON object.
+A3.131 HTTP status derives from failure class; concrete code identifies the specific failure subtype.
+```
+
+---
+
+## 14. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-success/failure HTTP status + error-body mapping
+API-03.11B complete concrete M1 error-code catalog + details schemas
+API-03.11B success HTTP status/body mapping
 ```
