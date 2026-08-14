@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Components
 
-**Status:** DRAFT
+**Status:** DRAFT — component-slot semantics frozen; runtime ownership concurrency realization ratified.
 
 ## 1. Responsabilità
 
@@ -205,4 +205,4 @@ Durante Object `SCHEMA_CHANGE`, un existing outgoing attachment può essere pres
 
 Gli incoming attachment del migrating child non richiedono revalidation perché `Object.template_id` rimane immutable nelle normali operation M1.
 
-I concurrency contract di `ATTACH`, `DETACH` e `SCHEMA_CHANGE` definiranno i meccanismi di enforcement.
+I concrete M1 enforcement/concurrency contract non sono più aperti: parent-local schema/edge consistency, single-owner, graph acyclicity, FK lifetime e structural-event observation sono definiti in `object-ownership.md`, `persistence-model.md`, `persistence-uow-concurrency.md` e `concurrency-postgresql-realization-object-ownership.md` (REALIZE-10/11/15), con real-PG coverage in `concurrency-postgresql-test-matrix.md`.
