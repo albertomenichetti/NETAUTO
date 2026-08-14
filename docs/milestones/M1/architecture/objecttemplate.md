@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Architecture
 
-**Status:** DRAFT
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline ratified; transport/read DTO details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -13,7 +13,12 @@ Documenti collegati:
 - `objecttemplate-components.md` — ownership slots, compatibility polimorfica, evolution e naming;
 - `objecttemplate-effective-schema.md` — effective schema, create/revise, publication certification e active model graph.
 
-I meccanismi PostgreSQL concreti — FK, constraint, lock mode, CAS, trigger, isolation level, reverse lookup e lock ordering — saranno definiti nei documenti tecnici/concurrency. Qui e nei documenti collegati sono normative le semantics e le invarianti.
+Le semantics e le invarianti di dominio sono definite qui e nei documenti collegati. I meccanismi PostgreSQL concreti sono già normativi in:
+
+- `persistence-model.md` — schema/FK/CHECK/index/representation;
+- `persistence-uow-concurrency.md` — UoW, isolation, lock strength/order, retry e logical gates;
+- `concurrency-semantic-matrix.md` + `concurrency-postgresql-realization-matrix.md` — concurrency predicate e realization;
+- `concurrency-postgresql-test-matrix.md` — real-PG coverage contract.
 
 ## 2. Responsabilità
 
@@ -98,15 +103,26 @@ Un component non è un embedded value e una property multi-valore non è un comp
 - create-next provenance/audit;
 - persistent/compiled effective-schema cache solo se giustificata da misure.
 
-## 6. Decisioni tecniche ancora da finalizzare
+## 6. Technical-contract status
 
-- schema PostgreSQL finale e collocazione fisica di `parent_template_id`;
-- FK/check/constraint-trigger definitivi;
-- DB/API representation di `value_mode` e LIST cardinality zero;
-- DTO shape di local/effective schema reads;
-- concurrency mechanism per create/create-next/revise/publish/deprecate/delete;
-- reverse-dependency query/index per active-model-graph deprecation;
-- global lock ordering OTV/DTV;
-- transaction isolation dei singoli UoW;
-- REST endpoints/error taxonomy;
-- compiled schema/caching policy.
+Le seguenti decisioni non sono più aperte:
+
+```text
+PostgreSQL schema e parent_template_id placement/denormalization
+exact DTV/OTV tuple identity e composite FK
+FK/CHECK/constraint strategy; no constraint-trigger baseline
+value_mode persistence come TEXT+CHECK
+canonical LIST zero-cardinality runtime state = key absent
+create/create-next/revise/publish/deprecate/delete concurrency mechanisms
+active-model reverse lookup + required indices
+canonical lock ordering lineage -> exact / multi-dependency resource order
+READ COMMITTED mutation isolation
+owner lock strength including REALIZE-15 FOR NO KEY UPDATE refinement
+effective-schema authority = derived exact chain; no authoritative cache
+```
+
+Restano da finalizzare prima del coding freeze soltanto contract non ancora chiusi dal persistence/concurrency design:
+
+- DTO/REST shape delle local/effective-schema reads;
+- REST endpoint/error taxonomy;
+- eventuale compiled schema/cache implementation policy se M1 la mantiene come optimization non-authoritative.
