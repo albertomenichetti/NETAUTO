@@ -1,1 +1,0 @@
-"""NETAUTO package bootstrap."""

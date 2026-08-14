@@ -6,6 +6,3 @@ __pycache__/
 *.pyc
 dist/
 build/
-.local/
-*.sqlite3
-myscripts/
