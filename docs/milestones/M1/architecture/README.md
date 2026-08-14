@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary and canonical route inventory are also consolidated. Remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory and first wire/DTO rules are consolidated. Remaining pre-freeze work is explicitly tracked below.
 
 ## 1. Purpose
 
@@ -61,8 +61,8 @@ api-contract.md
     semantic read projections and subsequent DTO/failure contracts. API-01..02.
 
 api-wire-contract.md
-    API-03 wire/DTO decisions as they are ratified; accepted input lexical
-    forms are kept distinct from canonical domain/persistence representation.
+    API-03 wire/DTO decisions as they are ratified; API-03.1 strict caller-intent,
+    omission/null rules and byte-size accepted-input/canonical-output contract.
 ```
 
 ### DataType
@@ -129,7 +129,10 @@ The following are not implementation-choice TODOs anymore:
 - deterministic real-PostgreSQL concurrency harness contract, blocker observation, timeout/isolation/diagnostic rules and stress-vs-contract separation (PGTEST-03);
 - eight reusable deterministic execution recipes and complete 51-scenario recipe mapping (PGTEST-04);
 - API/application boundary: command/query contracts authoritative, HTTP/JSON adapter, operation-specific command DTO principle, no generic PATCH, transport-neutral failure boundary (API-01);
-- public kernel capability namespace `/api/v1/core`, canonical POST-command/GET/DELETE method convention, complete 32-mutation route inventory, semantic read projections and forbidden generic CRUD/owned-child mutation surface (API-02).
+- public kernel capability namespace `/api/v1/core`, canonical POST-command/GET/DELETE method convention, complete 32-mutation route inventory, semantic read projections and forbidden generic CRUD/owned-child mutation surface (API-02);
+- API-03.1 strict request intent rules: unknown fields/coercion prohibited, omission distinct from explicit caller intent, defaults only fill omission, explicit invalid values fail, JSON null valid only as an actual nullable semantic state;
+- Object CREATE `canonical_name` omission -> UUID-string fallback while explicit null/empty/invalid input fails;
+- `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -140,7 +143,8 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-API-03 remaining command/read DTO and JSON wire shapes
+API-03.2+ expected_revision placement, selectors and remaining command/read DTO shapes
+remaining primitive public-input lexical forms
 public error/status taxonomy and HTTP mapping
 remaining API pagination/filter/response conventions
 JSON Schema compiler surface/role if retained in M1
