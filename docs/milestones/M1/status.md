@@ -5,22 +5,24 @@
 ## Current step
 
 ```text
-M1-S01 — PostgreSQL schema, migration, UoW and deterministic-test foundation
+M1-S02 — PrimitiveType and DataType vertical slice
 ```
 
-**Step status:** IN PROGRESS
+**Step status:** READY TO START
 
-M1-S00 has completed implementation review. Its clean-slate bootstrap, quality tooling, process-settings boundary, FastAPI factory/lifespan, Alembic scaffold and PostgreSQL test-configuration boundary satisfy the frozen S00 exit criteria.
+M1-S00 and M1-S01 have completed implementation review.
 
-M1-S01 now owns realization of the complete frozen PostgreSQL physical authority, initial schema migration, async runtime engine/UoW substrate and deterministic PostgreSQL concurrency-test harness foundation.
-
-The non-normative Codex execution prompt for the current step is:
+M1-S01 review accepted commit:
 
 ```text
-docs/milestones/M1/wip/M1-S01-codex-prompt.md
+a1b97f663faf27f6485e25ec23886063321f0d91
 ```
 
-The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+The reviewed S01 foundation includes the complete frozen 13-table SQLAlchemy Core authority, one Alembic head with no unexplained metadata drift, PostgreSQL structural enforcement, async READ COMMITTED runtime engine/UoW composition, centralized transaction advisory gates and the deterministic real-PostgreSQL harness foundation.
+
+Real PostgreSQL verification was executed against PostgreSQL 16.14 and covered migration/schema, representative structural constraints/FKs/CASCADE/RESTRICT, UoW commit/rollback/isolation/independent connections and a deterministic `pg_blocking_pids()` blocker proof without sleep-based orchestration.
+
+With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
 ## Authoritative baseline
 
@@ -49,8 +51,8 @@ Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`
 
 ```text
 M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
-M1-S01  IN PROGRESS      PostgreSQL schema, migration, UoW and deterministic-test foundation
-M1-S02  NOT STARTED      PrimitiveType and DataType vertical slice
+M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
+M1-S02  READY TO START   PrimitiveType and DataType vertical slice
 M1-S03  NOT STARTED      ObjectTemplate and active model graph vertical slice
 M1-S04  NOT STARTED      Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  NOT STARTED      Ownership and Object schema-change vertical slice
@@ -62,9 +64,9 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-No architecture/documentation blocker is known for M1-S01.
+None known for starting M1-S02.
 
-M1-S01 **cannot be completed** without an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`, because migration/schema, persistence/UoW and deterministic blocker verification are mandatory exit gates for this step.
+PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
 A newly discovered contradiction in frozen architecture is not an implementation blocker to work around: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
