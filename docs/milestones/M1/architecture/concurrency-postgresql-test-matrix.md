@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Concurrency Test Matrix
 
-**Status:** DRAFT — PGTEST-01 e PGTEST-02 ratificati; canonical scenario contract, census e 19-predicate coverage mapping completi. Il deterministic harness contract viene definito nel successivo PGTEST point.
+**Status:** DRAFT — PGTEST-01..PGTEST-03 ratificati; canonical scenario contract, census, 19-predicate coverage mapping e deterministic harness contract completi. Il successivo PGTEST point definisce reusable execution recipes per i 51 scenario ID.
 
 ## 1. Scopo
 
@@ -470,12 +470,275 @@ P2.10 Scenario IDs are stable source-of-truth identifiers; future scenarios appe
 
 ---
 
-## 7. Next point
+## 7. PGTEST-03 — deterministic PostgreSQL concurrency harness contract
 
-PGTEST-03 definisce il deterministic concurrency harness contract:
+### 7.1 Canonical harness roles
 
-- two/three independent transaction orchestration;
-- barrier/test-hook placement;
-- safe observation of blocked state without sleep-only coordination;
-- allowed use of `pg_locks` / `pg_stat_activity` in persistence-level tests;
-- timeout and teardown rules that prevent hanging CI or leaked transactions.
+Ogni scenario usa connection PostgreSQL realmente indipendenti con i seguenti ruoli concettuali:
+
+```text
+CTL
+    harness controller; orchestra worker/barrier/release,
+    non è una semantic transaction.
+
+OBS
+    observer/introspection connection; osserva blocker/wait/lock/current state,
+    non partecipa semanticamente alla race.
+
+B
+    optional blocker/control transaction usata per costruire
+    deterministicamente uno specifico DB wait point.
+
+T1 / T2 / [T3]
+    semantic worker transactions.
+```
+
+Ogni worker registra `scenario_id`, role e `pg_backend_pid()`. Le sessioni di test usano un `application_name` riconoscibile, per esempio `netauto-pgtest:ROW-09:T1`, esclusivamente come diagnostica/test metadata.
+
+### 7.2 External PostgreSQL blocker first
+
+Tecnica primaria di orchestration:
+
+```text
+B acquires the database lock/gate needed by T1
+-> T1 starts semantic operation and blocks at that real PostgreSQL boundary
+-> OBS proves the blocker relation
+-> T2 performs the competing operation
+-> B commits/rolls back and releases
+-> T1 wakes, re-reads and continues/fails according to the semantic contract
+```
+
+Questa tecnica è preferita a qualsiasi pause branch nel production kernel. Il test controlla l'interleaving tramite authority/mechanism reali, non tramite timing casuale.
+
+### 7.3 Positive blocking assertion
+
+La blocker relation canonica viene verificata primariamente tramite:
+
+```text
+pg_blocking_pids(worker_pid)
+```
+
+con expected blocker PID noto al harness.
+
+`pg_stat_activity` e `pg_locks` sono supporto diagnostico/mechanism inspection, inclusi `state`, `wait_event_type`, `wait_event`, `granted` e `waitstart` dove applicabili. I test non ricostruiscono manualmente come authority il blocker graph tramite self-join fragile di `pg_locks`.
+
+### 7.4 No tuple-lock representation dependency
+
+I test non assumono che una row-lock wait debba apparire come una specifica `locktype='tuple'` row in `pg_locks`. PostgreSQL può rappresentare la wait anche tramite transaction-id machinery.
+
+M1 non richiede l'estensione `pgrowlocks` per la suite normativa. Il contract testa chi blocca chi e quale semantic/physical authority viene esercitata, non una particolare rappresentazione interna del lock manager.
+
+### 7.5 Intentional non-blocking proof
+
+Il non-blocking architetturalmente rilevante non viene provato con una breve attesa temporale.
+
+Regola:
+
+> mentre la potentially conflicting transaction resta intenzionalmente open, il secondo worker deve raggiungere un successivo deterministic progress point che sarebbe impossibile se il meccanismo vietato lo stesse bloccando.
+
+Esempio `PAR-01`: mantenere aperta una `OBJ.RENAME` dopo `FOR NO KEY UPDATE` e dimostrare che `REL.CREATE` raggiunge una phase successiva alla referential-key protection prima del rilascio della rename transaction.
+
+### 7.6 Downstream blockers
+
+Il harness può usare un blocker DB posto **dopo** una phase semanticamente rilevante per fermare la UoW senza introdurre application hook.
+
+Esempio per snapshot/event ordering: una transaction B può detenere un table lock incompatibile con l'event INSERT; la Relationship UoW esegue prima il metadata snapshot e si blocca poi sull'event write. Durante il blocco può committare una metadata rename; al rilascio, l'event deve utilizzare il snapshot già catturato.
+
+Questa tecnica è test-only e non cambia production persistence semantics.
+
+### 7.7 Test-only persistence phase interceptor
+
+Un test-only persistence proxy/interceptor è ammesso **solo come escape hatch** quando un deterministic interleaving non è costruibile ragionevolmente tramite PostgreSQL blocker/gate/constraint behavior.
+
+Boundary:
+
+```text
+may:
+    observe a named persistence phase
+    signal a harness barrier
+    wait for harness release
+    record ordering
+
+must not:
+    change candidate data
+    issue additional semantic SQL
+    change isolation
+    commit/rollback
+    swallow/translate DB errors differently
+    select a different production path
+    sleep to force scheduling
+```
+
+Non si introducono `if TESTING` o pause hook nel domain/application kernel.
+
+### 7.8 Test phase vocabulary
+
+Il harness usa phase semantiche/test-level, non line numbers o SQL-string matching come source of truth. Canonical vocabulary iniziale:
+
+```text
+UOW_STARTED
+OWNER_STABILIZED
+DEPENDENCIES_STABILIZED
+GATE_WAITING
+GATE_ACQUIRED
+PROTECTED_STATE_REREAD
+CANDIDATE_WRITTEN
+CLOSURE_WRITTEN
+METADATA_SNAPSHOT_CAPTURED
+EVENT_SET_WRITTEN
+BEFORE_COMMIT
+COMMITTED
+ROLLED_BACK
+```
+
+Non tutte le UoW attraversano tutte le phase. Il vocabulary è harness-level e non diventa public production API.
+
+### 7.9 Gate fresh-snapshot tests
+
+`GATE-03A` e `GATE-06A` vengono orchestrati senza application pause hook quando possibile:
+
+```text
+B owns logical advisory gate
+T1 waits on gate
+B mutates protected state and COMMITs
+T1 acquires gate
+T1 executes a subsequent protected-read statement
+```
+
+Il semantic outcome deve dimostrare che T1 vede lo state committed dal previous holder. Questo prova simultaneamente gate wait, gate lifetime e fresh post-wait READ COMMITTED snapshot discipline.
+
+### 7.10 Isolation contract
+
+Ogni semantic worker usa esplicitamente:
+
+```text
+READ COMMITTED
+```
+
+anche se coincide con il server default. La suite non dipende da configuration ambientale dell'isolation level.
+
+OBS deve ottenere observation fresche; non mantiene accidentalmente un transaction-wide stale snapshot quando sta verificando blocker/current committed state.
+
+### 7.11 Timeout contract
+
+Timeout/deadline sono esclusivamente safety net per impedire CI hang.
+
+```text
+deterministic barrier/blocker
+    -> establishes ordering
+
+timeout
+    -> detects broken progress only
+```
+
+Il harness può usare scenario-level deadline e worker-local PostgreSQL `lock_timeout` / `statement_timeout` appropriati. I valori concreti appartengono alla test configuration, non al domain contract.
+
+Nessun `sleep()` determina quando avviare la transaction concorrente.
+
+### 7.12 Test database isolation
+
+Una ordinary outer test transaction non è sufficiente al cleanup perché i semantic worker usano connection indipendenti e alcuni outcome devono realmente COMMITtare.
+
+Baseline:
+
+```text
+isolated PostgreSQL test database per parallel test worker
++
+scenario-owned unique IDs/names
++
+explicit cleanup only after worker sessions terminate
+```
+
+Scenario che usano gli stessi global logical advisory gate non vengono eseguiti parallelamente nello stesso test database. Il suite parallelism viene ottenuto tramite database isolati, non tramite cross-scenario condivisione del protected authority state.
+
+### 7.13 Failure diagnostics
+
+Ogni failure concurrency deve rendere disponibili almeno:
+
+```text
+scenario ID
+worker roles / pg_backend_pid / application_name
+last harness phase
+worker result/exception
+pg_blocking_pids snapshot
+relevant pg_stat_activity wait/state information
+relevant pg_locks rows
+final current authority state
+final lifecycle-event state
+```
+
+La diagnostica non è domain state e non modifica il comportamento della UoW sotto test.
+
+### 7.14 Retry boundary
+
+Il harness non ritenta automaticamente uno scenario fallito per farlo passare.
+
+Sono ammessi soltanto retry/convergence che fanno parte del semantic operation contract sotto test, per esempio `REL.CREATE` exact-view collision -> rollback -> fresh semantic UoW -> convergence/re-evaluation.
+
+Un generic harness rerun è vietato come flakiness treatment della normative suite.
+
+### 7.15 Deterministic contract vs stress suite
+
+Si distinguono:
+
+```text
+Deterministic contract concurrency tests
+    normative
+    required CI
+    controlled known interleavings
+
+Stress/randomized concurrency tests
+    supplementary
+    many workers/randomized interleavings
+    discovery-oriented
+```
+
+Uno stress test che scopre una nuova race genera lavoro architetturale/testuale:
+
+```text
+stress reproducer
+-> reduce to deterministic scenario
+-> add/update stable PGTEST scenario ID
+-> align affected architecture if a new finding emerges
+-> fix implementation
+```
+
+La stress suite non sostituisce i deterministic contract tests.
+
+---
+
+## 8. PGTEST-03 decisions
+
+```text
+P3.1  independent real PostgreSQL connections for semantic workers.
+P3.2  canonical roles: CTL, OBS, optional blocker B, T1/T2/[T3].
+P3.3  external PostgreSQL blockers are the preferred deterministic coordination mechanism.
+P3.4  positive blocking is proved primarily via pg_blocking_pids; pg_stat_activity/pg_locks support diagnostics.
+P3.5  no dependency on tuple-lock representation or pgrowlocks.
+P3.6  intentional non-blocking is proved through positive progress while the other transaction remains open.
+P3.7  downstream blockers may freeze a UoW after a known phase without production hooks.
+P3.8  test-only persistence interceptor is last-resort and may pause/observe only, never change semantics/SQL/transaction behavior.
+P3.9  logical-gate tests explicitly prove post-wait fresh-snapshot behavior.
+P3.10 workers explicitly use READ COMMITTED.
+P3.11 timeouts are failure safety nets, never orchestration primitives.
+P3.12 parallel runners use isolated PostgreSQL databases; gate scenarios do not accidentally interact cross-test.
+P3.13 failure diagnostics include backend identity, phase, blocker/wait/lock information, final state and lifecycle state.
+P3.14 harness never retries failed scenarios to hide flakiness; only semantic retries defined by the operation are allowed.
+P3.15 deterministic contract tests are normative CI; stress tests are supplementary and discoveries are reduced to deterministic scenarios.
+```
+
+---
+
+## 9. Next point
+
+PGTEST-04 definisce reusable deterministic execution recipes e mappa tutti i 51 canonical scenario ID a una recipe, evitando harness ad-hoc per singolo test. Candidate recipe families includono almeno:
+
+```text
+LOCK-WAITER
+FK-RACE
+UNIQUE-RACE
+GATE-WAITER
+SNAPSHOT-AFTER
+ROLLBACK-AFTER-WRITE
+NONBLOCKING-PROGRESS
+```
