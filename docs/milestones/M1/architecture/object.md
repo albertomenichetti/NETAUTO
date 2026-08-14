@@ -1,6 +1,6 @@
 # M1 — Object Architecture
 
-**Status:** DRAFT — Object semantics, PostgreSQL persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler question remains before final M1 architecture freeze.
+**Status:** DRAFT — Object semantics, PostgreSQL persistence/concurrency and complete public API contract are ratified. Ready for final M1 architecture consistency/freeze review.
 
 ## 1. Scopo
 
@@ -226,4 +226,4 @@ API-03.11 rende inoltre normativi il finite public error-code catalog e la succe
 
 Expanded/composite read API shape futura resta RFE, non M1 coding blocker.
 
-Resta come unico architecture question pre-freeze il ruolo/surface del JSON Schema compiler, se mantenuto in M1.
+Non restano decisioni Object aperte prima del final M1 architecture consistency/freeze review.
