@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from netauto.logging import configure_logging
+from netauto.persistence.engine import build_runtime_context
 from netauto.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -17,12 +18,14 @@ def build_app(settings: Settings) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        del app
         configure_logging(settings.log_level)
+        runtime = build_runtime_context(settings.database_url)
+        app.state.runtime = runtime
         logger.info("NETAUTO process starting")
         try:
             yield
         finally:
+            await runtime.engine.dispose()
             logger.info("NETAUTO process stopping")
 
     app = FastAPI(title="NETAUTO", lifespan=lifespan)
