@@ -1,6 +1,6 @@
 # M1 — Relationship Architecture
 
-**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency realization, public command DTO e canonical single/projection read DTO complete; list/pagination/failure API details remain before final M1 architecture freeze.
+**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency, public command DTO e canonical read/list contract complete; failure mapping resta prima del final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -19,7 +19,8 @@ Documenti collegati:
 - `object-lifecycle-changelog.md` — lifecycle event-set semantics per Relationship;
 - `object.md` — invariant cross-domain di lifecycle event-set atomicity;
 - `api-wire-contract.md` — public command DTO/wire shape, API-03.7;
-- `api-read-contract.md` — canonical Definition/factual/Object-relative Relationship read DTO, API-03.9.
+- `api-read-contract.md` — canonical Definition/factual/Object-relative Relationship read DTO, API-03.9;
+- `api-list-contract.md` — API-03.10 RelationshipDefinition/capability/Object-relative/lifecycle collection contract.
 
 Le semantics e invarianti osservabili restano normative nei documenti di dominio; i meccanismi PostgreSQL non sono più “da definire” ma sono normativi nei persistence/realization contract sopra.
 
@@ -178,7 +179,7 @@ Definition/Resolution/Relationship identities create-time restano kernel-generat
 
 Questa sezione non sostituisce le domain validation in `relationship-definition.md` / `relationship-runtime.md`: aggregate shape, lineage admission, conflict/equivalence, factual convergence e symmetry semantics restano application/domain authority.
 
-## 7. Public read DTO contract
+## 7. Public read/list contract
 
 API-03.9 in `api-read-contract.md` è normativo per le current read projections M1.
 
@@ -202,6 +203,32 @@ relationship capability read
 ```
 
 Inheritance overlap non può produrre duplicate public semantic views. Symmetric/non-symmetric self-loop cardinality segue la semantic view definition già congelata nel runtime domain.
+
+API-03.10 rende inoltre normativi:
+
+```text
+RelationshipDefinition collection
+    -> id ASC
+    -> complete bounded Definition aggregate as item
+    -> no extra baseline filter oltre cursor/limit
+
+relationship-capabilities
+    -> resolution_id ASC
+    -> exact name filter
+
+Object-relative relationships
+    -> (relationship_id,destination_object_id,name) ASC
+    -> exact relationship_definition_id/name filters
+
+lifecycle Relationship filters
+    -> relationship_id
+    -> relationship_definition_id
+    -> exact historical relationship_name
+```
+
+Tutte le collection paginabili usano `{items,next_cursor}`, opaque keyset cursor, default `limit=100`, max 500 e nessun offset/page-number/generic sort.
+
+Il lifecycle exact `relationship_name` filter è supportato dal partial PERSIST-15 index `(relationship_name,occurred_at,id) WHERE relationship_name IS NOT NULL`.
 
 ## 8. Modelling guideline
 
@@ -272,9 +299,9 @@ RD.RENAME non-key owner = FOR NO KEY UPDATE; RD.DELETE = FOR UPDATE
 Relationship DELETE exact-id owner = FOR UPDATE
 RelationshipDefinition/Relationship public command DTO shapes = API-03.7
 RelationshipDefinition/factual/Object-relative canonical read DTO shapes = API-03.9
+RelationshipDefinition/capability/Object-relative/list pagination/filter contract = API-03.10
 ```
 
-Restano aperti prima del coding freeze soltanto aspetti di transport/read/application non ancora chiusi:
+Restano aperti prima del coding freeze soltanto:
 
-- collection/list envelope, pagination/filter e list-item policy (API-03.10);
-- public error/status taxonomy.
+- public success/error status taxonomy e failure mapping.
