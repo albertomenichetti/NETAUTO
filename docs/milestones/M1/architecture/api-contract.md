@@ -1,6 +1,6 @@
 # M1 — API Contract
 
-**Status:** DRAFT — API-01 e API-02 ratificati; boundary, public namespace e canonical route inventory consolidati. DTO/wire shape e failure mapping vengono definiti nei successivi API point.
+**Status:** DRAFT — API-01 e API-02 ratificati; boundary, public namespace e canonical route inventory consolidati. API-03 wire/DTO decisions vengono consolidate progressivamente in `api-wire-contract.md`; failure mapping resta da definire.
 
 ## 1. Scopo
 
@@ -72,17 +72,53 @@ SchemaChangeObjectCommand
 
 Il transport non deve inferire un intent ambiguo confrontando un generic entity payload con lo state current.
 
-### 2.4 Omission vs JSON null
+### 2.4 Omission, explicit intent e JSON null
 
-Omission e JSON `null` sono semanticamente distinti.
+Omission e input esplicito sono semanticamente distinti.
 
-Regola generale:
+Regola generale M1:
 
-> JSON `null` non è un alias generico per omitted/default/clear/remove.
+> un default o una implicit resolution può colmare esclusivamente **assenza di intent** quando la specifica command assegna una semantica all'omissione. Non corregge, sostituisce o maschera mai un valore esplicito invalido.
 
-Quando il dominio definisce una command esplicita di clear, per esempio `CLEAR_DEFAULT`, si usa quella command. Quando omission abilita una specifica semantics, per esempio implicit exact-version default resolution, il field è omesso.
+Quindi:
 
-`null` può essere ammesso soltanto quando il field domain stesso è esplicitamente nullable, per esempio nullable non-semantic `description`; non acquisisce per questo generic clear semantics per altri field.
+```text
+field omitted
+    -> può attivare una command-specific default/implicit semantics
+       soltanto se esplicitamente definita
+
+field explicitly supplied with valid value
+    -> il valore esprime caller intent e viene usato secondo il contract
+
+field explicitly supplied with invalid value
+    -> command failure
+    -> mai fallback/default automatico
+```
+
+JSON `null` è un input esplicito. Non è un alias generico per omitted/default/clear/remove.
+
+`null` è valido soltanto quando **null stesso** è uno state/value semanticamente ammesso per quel field, per esempio nullable non-semantic `description`. Quando omission abilita implicit exact-version resolution, il field deve essere realmente omesso: `null` non equivale a omission.
+
+Esempi:
+
+```text
+Object CREATE canonical_name omitted
+    -> UUID-string fallback definito dalla command
+
+Object CREATE canonical_name = null
+    -> invalid explicit intent
+
+Object CREATE template_version omitted
+    -> implicit ObjectTemplate default resolution
+
+Object CREATE template_version = null
+    -> invalid explicit input
+
+SET_DESCRIPTION description = null
+    -> valid nullable state, non fallback
+```
+
+Un eventuale `None` usato internamente dal codice per rappresentare tecnicamente "field not supplied" non modifica questa public/application semantics.
 
 ### 2.5 Read DTO come semantic projection
 
@@ -195,7 +231,7 @@ La versione appartiene alla public API nel suo complesso; M1 non introduce versi
 A1.1  Application command/query contracts are authoritative; HTTP/JSON is an adapter.
 A1.2  One semantic mutation primitive maps to one explicit command surface; no generic PATCH combining kernel UoWs.
 A1.3  Command DTOs are operation-specific, not writable entity DTOs.
-A1.4  Omitted and JSON null are distinct; null is not a generic default/clear/remove alias.
+A1.4  Omission and explicit caller intent are distinct: defaults/implicit resolution may fill omission only; explicit invalid input fails and is never replaced by a default. JSON null is valid only when null itself is a valid semantic field state.
 A1.5  Read DTOs are semantic projections and need not mirror persistence rows.
 A1.6  Stable lineage and exact version identities remain explicit; no API-only surrogate version identity.
 A1.7  expected_revision is an application generation token first; HTTP representation is a separate transport decision.
