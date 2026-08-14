@@ -167,9 +167,26 @@ M1 non introduce un API-only surrogate `version_id`.
 
 ### 2.7 `expected_revision`
 
-`expected_revision` è prima di tutto un application generation token delle exact DRAFT mutation che lo richiedono (`REVISE`, `PUBLISH`, `DELETE_DRAFT`).
+`expected_revision` è l'application generation token delle exact DRAFT mutation che lo richiedono:
 
-Non viene reinterpretato come generic Object/resource revision. La concrete HTTP representation — body/query/header/ETag integration — viene decisa separatamente nel wire contract; il transport non cambia la semantica del token.
+```text
+REVISE
+PUBLISH
+DELETE_DRAFT
+```
+
+per DataTypeVersion e ObjectTemplateVersion.
+
+Non è una generic Object/resource revision e non si applica alle altre mutation M1.
+
+La public HTTP representation è ratificata da API-03.2 in `api-wire-contract.md`:
+
+```text
+required query parameter
+?expected_revision=<positive-integer>
+```
+
+uniformemente per REVISE, PUBLISH e DELETE_DRAFT. M1 non usa ETag/If-Match o custom revision header per questo generation contract.
 
 ### 2.8 Idempotency/convergence
 
@@ -234,7 +251,7 @@ A1.3  Command DTOs are operation-specific, not writable entity DTOs.
 A1.4  Omission and explicit caller intent are distinct: defaults/implicit resolution may fill omission only; explicit invalid input fails and is never replaced by a default. JSON null is valid only when null itself is a valid semantic field state.
 A1.5  Read DTOs are semantic projections and need not mirror persistence rows.
 A1.6  Stable lineage and exact version identities remain explicit; no API-only surrogate version identity.
-A1.7  expected_revision is an application generation token first; HTTP representation is a separate transport decision.
+A1.7  expected_revision is an exact-DRAFT application generation token; API-03.2 maps it uniformly to a required positive-integer query parameter for REVISE/PUBLISH/DELETE_DRAFT, without generic ETag semantics.
 A1.8  Idempotency/convergence follows domain semantics; no generic Idempotency-Key requirement in M1.
 A1.9  Failures are transport-neutral before HTTP mapping.
 A1.10 M1 public transport baseline is HTTP/JSON via FastAPI/OpenAPI with framework types confined to the adapter.
@@ -518,7 +535,7 @@ A2.11 Relationship capability discovery is GET /api/v1/core/object-templates/{te
 A2.12 Lifecycle API is read-only under /api/v1/core/lifecycle-events and Object lifecycle projection.
 A2.13 Generic PATCH/PUT and autonomous owned-child CRUD are explicitly forbidden.
 A2.14 Command responses represent semantic result/convergence, not persistence affected-row counts.
-A2.15 expected_revision remains required by relevant exact-DRAFT commands; exact HTTP encoding is deferred to API-03.
+A2.15 expected_revision is required on relevant exact-DRAFT commands and is encoded by API-03.2 as a required positive-integer query parameter for REVISE/PUBLISH/DELETE_DRAFT.
 A2.16 `core` is an API capability namespace only; it does not create a Core domain/service/repository abstraction.
 ```
 
@@ -526,12 +543,9 @@ A2.16 `core` is an API capability namespace only; it does not create a Core doma
 
 ## 6. Next point
 
-API-03 definisce canonical command DTO / JSON wire shape, inclusi:
+API-03 continua a definire canonical command DTO / JSON wire shape, inclusi:
 
-- UUID/version/revision scalar representation;
-- omission/null/unknown-field rules;
 - exact/implicit version selector representation;
-- expected_revision encoding;
 - DataType constraints and primitive values;
 - OTV complete candidate property/component shape;
 - Object properties and DATA_CHANGE operation union;
