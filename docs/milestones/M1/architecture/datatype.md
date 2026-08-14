@@ -1,6 +1,6 @@
 # M1 — DataType Architecture
 
-**Status:** DRAFT
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline ratified; transport/API details remain to be completed before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -20,7 +20,12 @@ Questo documento definisce la semantica architetturale del dominio `DataType` pe
 - read consistency;
 - invarianti.
 
-I meccanismi PostgreSQL concreti saranno definiti nei documenti tecnici/concurrency.
+I meccanismi PostgreSQL concreti sono definiti in:
+
+- `persistence-model.md` — PERSIST-01..15;
+- `persistence-uow-concurrency.md` — PERSIST-16..20 + REALIZE-15 lock-strength refinement;
+- `concurrency-semantic-matrix.md` e `concurrency-postgresql-realization-matrix.md` — safety predicate e realization;
+- `concurrency-postgresql-test-matrix.md` — real-PG concurrency coverage.
 
 ## 2. Responsabilità
 
@@ -422,7 +427,7 @@ create-next stessa lineage
 -> allocation univoca
 ```
 
-I meccanismi concreti saranno definiti nei concurrency contract.
+I meccanismi concreti sono definiti nei concurrency/persistence contract M1 indicati nella sezione 1.
 
 ## 13. Delete semantics
 
@@ -520,16 +525,33 @@ Fuori M1:
 - audit/provenance della source di create-next;
 - advanced collection semantics a livello property oltre M1 `LIST` (SET, cardinalità arbitrarie, nested/heterogeneous collections).
 
-## 18. Decisioni tecniche ancora da finalizzare
+## 18. Technical-contract status
 
-- mapping PostgreSQL delle canonical value representation;
-- exact decimal API/persistence representation;
-- byte_size wire syntax;
-- canonical datetime textual details;
-- SQL constraints;
-- locking/CAS strategy per operation;
-- reverse-dependency query/index per active-model-graph deprecation;
-- transaction isolation;
-- REST shape di expected_revision;
-- endpoint/status/error code definitivi;
-- JSON Schema compiler role.
+Le seguenti decisioni **non sono più aperte** e sono normative nei persistence/concurrency document:
+
+```text
+PostgreSQL canonical persistence mapping
+exact-decimal persistence representation
+byte_size persistence as integer bytes
+canonical datetime persistence details
+SQL structural constraint strategy
+locking / CAS / owner strength / lock ordering
+active-model reverse lookup + required indices
+READ COMMITTED mutation isolation baseline
+whole-UoW retry/convergence boundaries
+```
+
+In particolare:
+
+- `core.number` persiste come canonical exact-decimal JSON string;
+- `core.byte_size` persiste come integer bytes;
+- `core.datetime` persiste canonical UTC `Z` con precisione massima microsecondo;
+- active DTV reverse lookup usa le authoritative property/OTV rows e gli indici di `persistence-model.md`;
+- concurrency segue REALIZE-01..15 e i test PGTEST.
+
+Restano da definire/finalizzare prima del coding freeze soltanto i contract che appartengono ancora al transport/application layer, non alla persistence/concurrency architecture già ratificata:
+
+- REST/DTO shape di `expected_revision`;
+- endpoint/status/error taxonomy;
+- accepted API wire representation dove distinta dal canonical persistence codec;
+- ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
