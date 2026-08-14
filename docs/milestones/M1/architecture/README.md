@@ -61,9 +61,10 @@ api-contract.md
     semantic read projections and subsequent DTO/failure contracts. API-01..02.
 
 api-wire-contract.md
-    API-03 wire/DTO decisions as they are ratified; API-03.1 strict caller-intent,
-    omission/null rules, API-03.2 expected_revision query placement and
-    byte-size accepted-input/canonical-output contract.
+    API-03 wire/DTO decisions as ratified: API-03.1 strict caller-intent,
+    omission/null rules; API-03.2 expected_revision query placement;
+    API-03.3 exact/implicit selector semantics; byte-size accepted-input/
+    canonical-output contract.
 ```
 
 ### DataType
@@ -134,6 +135,7 @@ The following are not implementation-choice TODOs anymore:
 - API-03.1 strict request intent rules: unknown fields/coercion prohibited, omission distinct from explicit caller intent, defaults only fill omission, explicit invalid values fail, JSON null valid only as an actual nullable semantic state;
 - Object CREATE `canonical_name` omission -> UUID-string fallback while explicit null/empty/invalid input fails;
 - API-03.2 uniform required positive-integer `expected_revision` query parameter for DTV/OTV REVISE, PUBLISH and DELETE_DRAFT, with no ETag/If-Match reinterpretation;
+- API-03.3 type-specific exact/implicit selector contract: omission resolves a default only for Object CREATE OTV selection, ObjectTemplate parent-version selection and property DTV binding/rebinding; CREATE_NEXT, SET_DEFAULT and Object SCHEMA_CHANGE remain exact-only; no generic default/latest/highest selector token;
 - `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
@@ -145,7 +147,7 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-API-03.3+ exact/implicit selectors and remaining command/read DTO shapes
+API-03.4+ remaining command/read DTO shapes
 remaining primitive public-input lexical forms
 public error/status taxonomy and HTTP mapping
 remaining API pagination/filter/response conventions
