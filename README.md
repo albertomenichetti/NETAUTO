@@ -2,7 +2,7 @@
 
 NETAUTO is a REST-API-first dynamic infrastructure modeling kernel.
 
-The project is currently rebuilding its core implementation from a frozen M1 design baseline. The previous implementation was intentionally removed: current code must derive from the normative repository documentation rather than from historical package structure or behavior.
+The core implementation is being rebuilt from a frozen M1 design baseline. The previous implementation was intentionally removed: current code must derive from the normative repository documentation rather than from historical package structure or behavior.
 
 ## Current milestone
 
@@ -15,7 +15,7 @@ M1 — **Kernel Consistency Baseline** — consolidates the four core concepts:
 
 M1 is correctness-first and PostgreSQL-only. Domain semantics, persistence, Unit of Work boundaries, concurrency guarantees, HTTP API contracts and verification requirements are designed as one coherent kernel baseline.
 
-The M1 milestone contract is `FINAL / FROZEN`, and the M1 architecture is globally `FROZEN`.
+The M1 milestone contract is `FINAL / FROZEN`, the M1 architecture is globally `FROZEN`, and the implementation decomposition in `docs/milestones/M1/steps.md` is `FINAL / FROZEN`.
 
 ## Documentation authority
 
@@ -25,20 +25,19 @@ Start here:
 
 - [`AGENTS.md`](AGENTS.md) — operating rules for Codex/coding agents;
 - [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md) — project workflow, freeze and documentation-alignment rules;
-- [`docs/general/technology_baseline.md`](docs/general/technology_baseline.md) — project-wide technology decisions;
+- [`docs/general/technology_baseline.md`](docs/general/technology_baseline.md) — project-wide technology decisions; only explicitly ratified STACK decisions are authoritative while the document remains DRAFT;
 - [`docs/milestones/M1/contract.md`](docs/milestones/M1/contract.md) — frozen M1 scope and acceptance criteria;
 - [`docs/milestones/M1/architecture/README.md`](docs/milestones/M1/architecture/README.md) — frozen M1 architecture index and normative document map;
-- `docs/milestones/M1/steps.md` — implementation decomposition once reviewed and frozen.
+- [`docs/milestones/M1/steps.md`](docs/milestones/M1/steps.md) — frozen implementation decomposition;
+- [`docs/milestones/M1/status.md`](docs/milestones/M1/status.md) — current operational implementation state.
 
 If documentation authorities conflict, the conflict is an architecture/documentation defect. It must be resolved in the documentation before the affected behavior is implemented.
 
-## Implementation status
+## Implementation state
 
-The repository is intentionally at a clean implementation baseline.
+The repository starts from an intentional clean implementation baseline. M1 implementation proceeds step-by-step from `M1-S00` according to the frozen decomposition and mandatory pre-flight rules.
 
 No removed historical code, dependency set, CLI, migration layout or package structure is implicitly authoritative. New implementation files are introduced only from the frozen M1 contracts and explicitly ratified technology decisions.
-
-Implementation starts after the M1 step decomposition is reviewed and frozen.
 
 ## Historical implementation
 
