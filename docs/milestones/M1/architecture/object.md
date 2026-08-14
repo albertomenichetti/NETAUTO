@@ -1,6 +1,6 @@
 # M1 — Object Architecture
 
-**Status:** DRAFT — Object semantics frozen; PostgreSQL persistence/concurrency, public command DTO e canonical read/list contract ratificati; failure mapping resta prima del final M1 architecture freeze.
+**Status:** DRAFT — Object semantics, PostgreSQL persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler question remains before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -14,7 +14,8 @@ Documenti collegati:
 - `object-lifecycle-changelog.md` — lifecycle event stream unico, event/event-set shape, ordering, historical references e read-only surface;
 - `api-wire-contract.md` — public Object command DTO/wire contract API-03.6;
 - `api-read-contract.md` — canonical Object/ownership/Relationship/lifecycle read DTO, API-03.9;
-- `api-list-contract.md` — API-03.10 Object/nested collection envelope, keyset pagination, ordering e filters.
+- `api-list-contract.md` — API-03.10 Object/nested collection envelope, keyset pagination, ordering e filters;
+- `api-error-contract.md` — API-03.11 public failure codes/details and success HTTP mapping.
 
 Le semantics e invarianti osservabili sono definite nei documenti Object. I meccanismi PostgreSQL concreti sono già normativi in `persistence-model.md`, `persistence-uow-concurrency.md`, nei documenti `concurrency-postgresql-realization-*.md` e nella `concurrency-postgresql-test-matrix.md`.
 
@@ -153,6 +154,7 @@ Relationship exact-view/FK lifetime interaction
 Object CREATE/RENAME/DATA_CHANGE/SCHEMA_CHANGE/ATTACH/DETACH/DELETE public command DTO shape (API-03.6)
 canonical Object/ownership/Relationship/lifecycle single-projection read DTO shape (API-03.9)
 Object/nested collection pagination/filter/list policy (API-03.10)
+public error-code/status/success mapping (API-03.11)
 ```
 
 In particolare API-03.6 definisce:
@@ -220,7 +222,8 @@ all paginated collections
 
 Ogni pagina è snapshot-consistent per la singola request; il cursor non è snapshot/CDC token e non promette repeatable membership cross-request.
 
-Restano ancora da finalizzare nel transport/application layer:
+API-03.11 rende inoltre normativi il finite public error-code catalog e la success policy: Object CREATE `201 + Location + Object DTO`; RENAME/DATA_CHANGE/SCHEMA_CHANGE `200 + Object DTO`; ATTACH `200 + component projection`; DETACH `204` anche per already-detached no-op; DELETE `204`. Known domain conflicts use dedicated semantic codes, non SQL/persistence details.
 
-- public success/error status taxonomy e failure mapping;
-- expanded/composite read API shape futura resta RFE, non M1 coding blocker.
+Expanded/composite read API shape futura resta RFE, non M1 coding blocker.
+
+Resta come unico architecture question pre-freeze il ruolo/surface del JSON Schema compiler, se mantenuto in M1.
