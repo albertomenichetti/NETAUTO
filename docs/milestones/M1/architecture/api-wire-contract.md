@@ -1,10 +1,10 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO, API-03.6 Object command DTO, API-03.7 Relationship command DTO, API-03.8 PrimitiveType public lexical forms e il `core.byte_size` public wire contract sono ratificati. Restano read/list e failure mapping.
+**Status:** DRAFT — API-03.1..09 ratificati. Command DTO, exact/implicit selector, `expected_revision`, PrimitiveType public lexical forms e canonical single/projection read DTO sono consolidati. Restano API-03.10 list/pagination/filter conventions e success/failure HTTP mapping.
 
 ## 1. Scopo e boundary
 
-Questo documento definisce la public HTTP/JSON representation M1 quando il wire contract deve rendere esplicite semantiche già consolidate nel domain/application layer.
+Questo documento è il registry normativo delle decisioni API-03 relative alla public HTTP/JSON representation M1.
 
 Catena normativa:
 
@@ -21,20 +21,26 @@ La wire ergonomics non può restringere, ampliare o reinterpretare implicitament
 
 Prima di ogni nuovo API-03 point si applica il pre-flight definito in `docs/general/linee_guida_progetto.md` e in `architecture/README.md`.
 
+Dettaglio read API-03.9:
+
+```text
+api-read-contract.md
+```
+
 ---
 
 ## 2. API-03.1 — strict wire shape e caller intent
 
-### 2.1 Regole
+Regole:
 
-- JSON object keys: `snake_case`;
-- semantic command path segments: `kebab-case`;
-- unknown command fields: rejected;
-- generic scalar coercion: rejected.
-
-Un default o una implicit resolution colma soltanto assenza di caller intent quando la specifica command assegna una semantica all'omissione. Un valore esplicito deve essere accettato oppure rifiutato; non viene mai corretto, sostituito o mascherato da un default.
-
-JSON `null` è input esplicito, non omission. È valido soltanto quando `null` stesso è uno state/value semanticamente ammesso per quel field.
+- JSON object keys `snake_case`;
+- semantic command path segments `kebab-case`;
+- unknown command fields rejected;
+- generic scalar coercion rejected;
+- omission e explicit caller intent distinti;
+- defaults/implicit resolution colmano soltanto omission quando il command contract lo definisce;
+- explicit invalid input fallisce e non viene sostituito da default;
+- JSON `null` è valido soltanto quando `null` stesso è semantic state valido.
 
 Object CREATE:
 
@@ -49,11 +55,7 @@ canonical_name = null / "" / invalid
     -> failure
 ```
 
-Quando una command supporta implicit exact-version binding, l'intent implicito viene espresso tramite omissione del relativo version field. Explicit `null` è invalido.
-
-Il transport valida shape/syntax indipendenti da persisted mutable state; application/domain restano authority per existence, lifecycle, admission, effective schema, primitive semantic parsing/canonicalization, constraints, lineage compatibility, conflict predicate e ownership cycle.
-
-### 2.2 Decisioni
+Implicit exact-version binding usa omissione del version field, mai explicit `null`.
 
 ```text
 A3.1  JSON keys use snake_case; command route segments use kebab-case.
@@ -72,9 +74,9 @@ A3.10 Transport handles syntax/shape; persisted-state semantic validation remain
 
 ## 3. API-03.2 — `expected_revision`
 
-`expected_revision` è il generation precondition esclusivamente di DTV/OTV `REVISE`, `PUBLISH` e `DELETE_DRAFT`.
+`expected_revision` è il generation precondition esclusivamente di DTV/OTV `REVISE`, `PUBLISH`, `DELETE_DRAFT`.
 
-Tutte le sei route usano:
+Public representation uniforme:
 
 ```text
 ?expected_revision=<positive-decimal-integer>
@@ -89,9 +91,9 @@ body, if any
     -> semantic candidate / command operands
 ```
 
-REVISE body non contiene il token. PUBLISH e DELETE_DRAFT non introducono body artificiale. M1 non usa `ETag`, `If-Match` o custom revision header per questa semantica.
+REVISE body non contiene il token. PUBLISH e DELETE_DRAFT non introducono body artificiali. M1 non usa `ETag`, `If-Match` o custom revision header per questa semantica.
 
-Missing/empty/zero/negative/malformed `expected_revision` è transport-input failure; positive integer ben formato ma stale è application generation-conflict failure.
+Missing/empty/zero/negative/malformed token è transport-input failure; positive integer ben formato ma stale è application generation-conflict failure.
 
 ```text
 A3.11 expected_revision is a required query parameter for DTV/OTV REVISE, PUBLISH and DELETE_DRAFT.
@@ -107,9 +109,9 @@ A3.17 Malformed/missing token is transport failure; stale well-formed token is a
 
 ## 4. API-03.3 — exact e implicit version selector
 
-M1 non introduce generic `VersionSelector` e non usa token `default`, `latest` o `highest`.
+M1 non introduce generic `VersionSelector` e non usa token `default`, `latest`, `highest`.
 
-Stable lineage identity ed exact version sono type-specific sibling fields:
+Stable lineage identity ed exact version sono sibling fields type-specific:
 
 ```text
 template_id / template_version
@@ -117,62 +119,29 @@ parent_template_id / parent_version
 datatype_id / datatype_version
 ```
 
-Un version field omesso significa implicit default selection soltanto quando la owning domain command possiede già quella modalità di binding.
-
-### Object CREATE
+Omitted version significa implicit default soltanto quando la owning domain command definisce già implicit binding.
 
 ```text
-template_version omitted -> resolve ObjectTemplate.default_version
-template_version explicit -> exact OTV selection
-template_version = null -> invalid
-```
+Object CREATE template_version omitted
+    -> ObjectTemplate.default_version
 
-Default NULL => failure; nessun latest/highest fallback.
+OT CREATE parent_template_id omitted
+    -> root; parent_version forbidden
 
-### ObjectTemplate CREATE parent
+OT CREATE parent_template_id present + parent_version omitted
+    -> parent.default_version
 
-```text
-parent_template_id omitted
-    -> root; parent_version must be omitted
-
-parent_template_id present + parent_version omitted
-    -> resolve parent.default_version
-
-both present
-    -> exact parent pin
-
-explicit null
-    -> invalid
-```
-
-### ObjectTemplate REVISE parent
-
-`parent_template_id` non appartiene al body.
-
-```text
-non-root parent_version explicit
-    -> preserve/select exact parent pin
-
-non-root parent_version omitted
+OT REVISE non-root parent_version omitted
     -> intentional rebind via current parent default
 
-root parent_version
+OT REVISE root parent_version
     -> forbidden
+
+property datatype_version omitted
+    -> intentional DataType.default_version binding/rebinding
 ```
 
-### Property DTV selector
-
-```text
-datatype_version omitted
-    -> intentional new/rebound resolution via DataType.default_version
-
-datatype_version explicit
-    -> exact DTV pin
-```
-
-In complete OT REVISE, preservare historical DTV pin richiede reinviare `datatype_version`.
-
-Exact-only selectors:
+Exact-only required selectors:
 
 ```text
 DT.CREATE_NEXT.source_version
@@ -200,20 +169,15 @@ A3.26 M1 exposes no generic default/latest/highest selector token.
 
 ### CREATE
 
-```json
-{
-  "namespace": "network.routing",
-  "name": "asn",
-  "description": "BGP autonomous system number",
-  "base_type": "core.integer",
-  "constraints": {
-    "minimum": 1,
-    "maximum": 4294967295
-  }
-}
+Required:
+
+```text
+namespace
+name
+base_type
 ```
 
-Required: `namespace`, `name`, `base_type`.
+Optional:
 
 ```text
 description omitted -> initial null
@@ -225,7 +189,7 @@ constraints = null -> invalid
 
 Caller non fornisce `id`, `version`, `revision`, `status`, `default_version`.
 
-Constraint key matrix:
+Constraint matrix:
 
 ```text
 core.string      -> min_length, max_length, pattern, enum
@@ -241,20 +205,11 @@ core.byte_size   -> minimum, maximum, enum
 
 ### REVISE
 
-```json
-{
-  "constraints": {
-    "minimum": 1,
-    "maximum": 65535
-  }
-}
-```
+Body contiene esclusivamente required `constraints` complete candidate. `{}` significa zero constraints; omission non significa keep-current.
 
-`constraints` required; `{}` significa zero constraints. Omission non significa keep-current.
+Forbidden: lineage metadata, `description`, `base_type`, lifecycle/default state, version/revision, `expected_revision`.
 
-Forbidden nel body: lineage metadata, `description`, `base_type`, lifecycle/default state, version/revision, `expected_revision`.
-
-Altre command:
+Other commands:
 
 ```text
 CREATE_NEXT     { "source_version": N }
@@ -284,22 +239,7 @@ A3.36 DataType command DTOs never expose caller-controlled id, version, revision
 
 ## 6. API-03.5 — ObjectTemplate command DTO
 
-### 6.1 CREATE
-
-Canonical shape:
-
-```json
-{
-  "namespace": "network",
-  "name": "router",
-  "description": "Network router",
-  "abstract": false,
-  "parent_template_id": "<uuid>",
-  "parent_version": 3,
-  "properties": [],
-  "components": []
-}
-```
+### CREATE
 
 Required:
 
@@ -309,43 +249,18 @@ name
 abstract
 ```
 
-`abstract` è structural lineage state immutabile e non possiede un public omitted->false default.
-
-Creation omission semantics:
+`abstract` non possiede omitted->false default.
 
 ```text
-description omitted
-    -> null
-
-properties omitted
-    -> []
-
-components omitted
-    -> []
-
-properties/components = null
-    -> invalid
+description omitted -> null
+properties omitted  -> []
+components omitted  -> []
+properties/components = null -> invalid
 ```
 
-Parent selector segue API-03.3.
+Parent fields seguono API-03.3.
 
-### 6.2 Property declaration
-
-Canonical shape:
-
-```json
-{
-  "name": "memory",
-  "position": 20,
-  "datatype_id": "<uuid>",
-  "datatype_version": 4,
-  "value_mode": "SCALAR",
-  "required": true,
-  "migration_default": "1 GiB"
-}
-```
-
-Always required:
+Property declaration always required:
 
 ```text
 name
@@ -357,104 +272,45 @@ required
 
 `datatype_version` può essere omessa soltanto per intentional implicit DTV default binding/rebinding.
 
-`migration_default` è conditional:
+`migration_default`:
 
 ```text
 required=false
-    -> migration_default MUST be absent
+    -> MUST be absent
 
 required=true + SCALAR
-    -> migration_default REQUIRED, one concrete value
+    -> REQUIRED, one concrete value
 
 required=true + LIST
-    -> migration_default REQUIRED, non-empty list
+    -> REQUIRED, non-empty list
 ```
 
-`migration_default:null` è invalido.
+`migration_default:null` invalido.
 
-### 6.3 Component declaration
-
-Canonical shape:
-
-```json
-{
-  "name": "interfaces",
-  "position": 10,
-  "target_template_id": "<uuid>"
-}
-```
-
-Esattamente questi tre field, tutti required. Nessun `target_template_version`, `required`, `min_count` o `max_count` M1.
-
-### 6.4 Ordering authority
-
-`position` è declaration state esplicito e non viene inferito dall'array index.
-
-L'ordine di `properties[]` e `components[]` nella request non è semantic authority. Local ordering è determinato da `position`; una canonical response può quindi ordinare le declaration per `position`.
-
-### 6.5 REVISE
-
-Route:
+Component declaration contiene esattamente:
 
 ```text
-POST /api/v1/core/object-templates/{template_id}/versions/{version}/revise?expected_revision=N
-```
-
-Non-root candidate:
-
-```json
-{
-  "parent_version": 5,
-  "properties": [],
-  "components": []
-}
-```
-
-Root candidate:
-
-```json
-{
-  "properties": [],
-  "components": []
-}
-```
-
-`properties` e `components` sono sempre required, anche quando `[]`, perché REVISE è complete local-candidate replacement. Omission non significa keep-current.
-
-`parent_version` segue API-03.3: non-root omission intentionally rebinds via current parent default; root lo vieta.
-
-Forbidden nel REVISE body:
-
-```text
-namespace
 name
-description
-abstract
-parent_template_id
-template_id
-version
-revision
-status
-default_version
-expected_revision
+position
+target_template_id
 ```
 
-Nuove e historical declaration usano la stessa transport shape; historical evolution legality resta domain validation e non produce DTO separati.
+`position` è explicit declaration state. Request array order non è semantic authority.
 
-### 6.6 Other ObjectTemplate commands
+### REVISE
+
+Complete local-candidate replacement:
 
 ```text
-CREATE_NEXT     { "source_version": N }
-PUBLISH         no body + expected_revision query
-SET_DEFAULT     { "version": N }
-CLEAR_DEFAULT   no body
-DEPRECATE       no body
-DELETE_DRAFT    no body + expected_revision query
-DELETE_LINEAGE  no body
-SET_DESCRIPTION { "description": string|null }
+properties required, including []
+components required, including []
 ```
 
-### 6.7 Decisioni API-03.5
+Non-root `parent_version` segue API-03.3; root lo vieta.
+
+Forbidden: stable lineage metadata, `abstract`, `parent_template_id`, lifecycle/default state, `expected_revision`.
+
+New/historical declarations usano la stessa transport shape; historical evolution legality resta domain validation.
 
 ```text
 A3.37 OT.CREATE requires namespace, name and explicit abstract; abstract has no omitted->false public default.
@@ -475,152 +331,60 @@ A3.48 The same declaration DTO shape is used for new and historical members; his
 
 ## 7. API-03.6 — Object command DTO
 
-### 7.1 CREATE
+### CREATE
 
-Canonical shape:
-
-```json
-{
-  "template_id": "<uuid>",
-  "template_version": 4,
-  "canonical_name": "router-01",
-  "properties": {
-    "hostname": "router-01",
-    "memory": "4 GiB"
-  }
-}
-```
-
-Required:
+Required `template_id`.
 
 ```text
-template_id
+template_version omitted -> ObjectTemplate.default_version
+canonical_name omitted   -> str(Object.id)
+properties omitted       -> {}
 ```
 
-Optional con omission semantics già ratificate:
+`properties={}` significa zero runtime values forniti; non attiva `migration_default` e non soddisfa required properties mancanti.
 
-```text
-template_version omitted
-    -> resolve ObjectTemplate.default_version
-
-canonical_name omitted
-    -> str(Object.id)
-
-properties omitted
-    -> creation default {}
-```
-
-`properties` omitted e `properties={}` significano zero runtime property values forniti dal caller. Non attivano `migration_default` e non soddisfano property required mancanti.
-
-Explicit `null` per `template_version`, `canonical_name` o `properties` è invalido.
-
-`properties` è un JSON object keyed by effective property name:
+Properties JSON object keyed by effective property name:
 
 ```text
 SCALAR -> one PrimitiveType input value
-LIST   -> JSON array of PrimitiveType input values
+LIST   -> JSON array
 ```
 
-JSON `null` non è runtime property value. Optional LIST `[]` è ammesso e canonicalizza a property key assente; required LIST `[]` fallisce.
+JSON null non è runtime property value. Optional LIST `[]` canonicalizza ad assenza; required LIST `[]` fallisce.
 
-### 7.2 RENAME
+### RENAME
 
-```json
-{
-  "canonical_name": "router-02"
-}
-```
+Body contiene esattamente `canonical_name:string`, valido `1..255`.
 
-Esattamente un required string field, valido `1..255`; `null`/empty/invalid falliscono.
+### DATA_CHANGE
 
-### 7.3 DATA_CHANGE
-
-Canonical shape:
-
-```json
-{
-  "operations": [
-    {
-      "op": "SET",
-      "property": "hostname",
-      "value": "router-02"
-    },
-    {
-      "op": "REMOVE",
-      "property": "description"
-    }
-  ]
-}
-```
-
-Discriminator vocabulary:
+Required non-empty `operations` array con discriminator:
 
 ```text
-SET
-REMOVE
+SET    -> exactly op, property, value
+REMOVE -> exactly op, property; value forbidden
 ```
 
-`SET` richiede esattamente `op`, `property`, `value`.
+Una property compare al massimo una volta. Array order non è semantic authority. Empty operations è malformed; non-empty request può convergere a semantic no-op senza lifecycle event.
 
-`REMOVE` richiede esattamente `op`, `property` e vieta `value`.
+### SCHEMA_CHANGE
 
-`operations` è required e non-empty. Una stessa property può apparire al massimo una volta nella request; l'ordine dell'array non ha significato semantico. La command rappresenta un set atomico di per-property change, non uno script sequenziale.
+Body contiene esattamente mandatory `target_version`; nessun remediation/override/detach/cross-lineage field.
 
-Un payload non-empty può comunque convergere allo stesso semantic state corrente e produrre valid semantic no-op senza lifecycle event.
+### ATTACH / DETACH
 
-Per optional LIST:
+Body comune:
 
 ```text
-SET []
-    -> valid
-    -> canonical absence
+slot_name
+child_object_id
 ```
 
-`SET null` è invalido.
+`parent_object_id` resta path target. Shared DTO non implica shared admission semantics: ATTACH valida current slot/compatibility, DETACH rimuove exact edge anche se slot non esiste più nello current schema.
 
-### 7.4 SCHEMA_CHANGE
+### DELETE
 
-```json
-{
-  "target_version": 8
-}
-```
-
-Esattamente questo mandatory exact selector. Non esistono body field per `template_id`, remediation, target property override, transformation, detach o migration script.
-
-### 7.5 ATTACH / DETACH
-
-Entrambe le route usano la stessa strict body shape:
-
-```json
-{
-  "slot_name": "interfaces",
-  "child_object_id": "<uuid>"
-}
-```
-
-`parent_object_id` resta il target nel path.
-
-La shared wire shape non crea shared admission semantics:
-
-```text
-ATTACH
-    -> current slot must exist
-    -> child compatibility validated
-
-DETACH
-    -> removes only the exact runtime edge
-    -> does not require current slot existence
-    -> does not revalidate compatibility
-```
-
-La `SlotSemanticKey`/declaring lineage non è caller input e viene risolta dal kernel.
-
-### 7.6 DELETE
-
-Object DELETE non ha body e non espone `cascade`, `force`, `recursive`, implicit detach o subtree options.
-
-### 7.7 Decisioni API-03.6
+No body, no cascade/force/recursive options.
 
 ```text
 A3.49 Object CREATE requires template_id; template_version, canonical_name and properties are optional with their ratified omission semantics.
@@ -643,144 +407,52 @@ A3.62 Object command DTOs never expose caller-controlled Object id, template_id 
 
 ## 8. API-03.7 — RelationshipDefinition / Relationship command DTO
 
-### 8.1 RelationshipDefinition CREATE
-
-CREATE usa una strict union discriminata dal required boolean `symmetric`.
+RelationshipDefinition CREATE è strict union discriminata da required `symmetric`.
 
 Non-symmetric:
 
-```json
-{
-  "symmetric": false,
-  "perspectives": [
-    {
-      "template_id": "<uuid-a>",
-      "name": "is_hosted_by"
-    },
-    {
-      "template_id": "<uuid-b>",
-      "name": "hosts"
-    }
-  ]
-}
+```text
+symmetric=false
+perspectives = exactly two unordered {template_id,name}
 ```
 
-`perspectives` contiene esattamente due elementi `{template_id,name}`. L'ordine non ha significato semantico e i due names devono essere distinti, anche con endpoint template uguali.
+Names distinti.
 
 Symmetric:
 
-```json
-{
-  "symmetric": true,
-  "endpoint_template_ids": [
-    "<uuid-a>",
-    "<uuid-b>"
-  ],
-  "name": "connects_to"
-}
+```text
+symmetric=true
+endpoint_template_ids = exactly two unordered lineage IDs; may be equal
+name = one semantic name
 ```
 
-`endpoint_template_ids` contiene esattamente due template lineage IDs, semanticamente unordered; gli ID possono essere uguali. Il caller fornisce un solo semantic name. Il kernel genera una Resolution per same-template oppure due reciprocal Resolution con lo stesso name per different-template.
+Definition/Resolution IDs sono kernel-generated.
 
-Il caller non fornisce `RelationshipDefinition.id` né `RelationshipResolution.id` durante CREATE.
-
-### 8.2 RelationshipDefinition RENAME
-
-La route è:
+RelationshipDefinition RENAME non reinvia `symmetric`.
 
 ```text
-POST /api/v1/core/relationship-definitions/{relationship_definition_id}/rename
-```
+non-symmetric
+    -> complete unordered two-element resolutions {resolution_id,name}
 
-`symmetric` non viene reinviato nel body perché è stable aggregate state già identificato dal path.
-
-Non-symmetric rename:
-
-```json
-{
-  "resolutions": [
-    {
-      "resolution_id": "<uuid-r1>",
-      "name": "hosted_by"
-    },
-    {
-      "resolution_id": "<uuid-r2>",
-      "name": "hosts"
-    }
-  ]
-}
-```
-
-`resolutions` contiene esattamente due elementi, copre il complete current Resolution set, è unordered e vieta duplicate `resolution_id`.
-
-Symmetric rename:
-
-```json
-{
-  "name": "connected_to"
-}
-```
-
-Un solo semantic name, indipendentemente dal fatto che il complete aggregate possieda fisicamente una oppure due Resolution rows.
-
-Le due request shape sono strutturalmente disgiunte. Il transport può validarne la shape senza leggere persisted state; l'application/domain verifica che la shape scelta sia coerente con la current Definition symmetry e che, per non-symmetric, gli ID appartengano al complete child set della Definition. Shape/symmetry mismatch è semantic command failure.
-
-### 8.3 RelationshipDefinition DELETE
-
-```text
-DELETE /api/v1/core/relationship-definitions/{relationship_definition_id}
-```
-
-Nessun body e nessuna option `force`, `cascade` o implicit factual-relationship cleanup.
-
-### 8.4 Runtime Relationship CREATE
-
-```json
-{
-  "resolution_id": "<uuid>",
-  "from_object_id": "<uuid>",
-  "to_object_id": "<uuid>"
-}
-```
-
-Esattamente questi tre required field. Non sono caller input:
-
-```text
-relationship_id
-relationship_definition_id
-name
 symmetric
-from_template_id
-to_template_id
+    -> exactly one name
 ```
 
-`relationship_definition_id` deriva dalla selected Resolution. `Relationship.id` è kernel-generated quando nasce un nuovo factual relationship.
+Shape/current-symmetry mismatch è semantic command failure.
 
-`from_object_id == to_object_id` non viene rifiutato strutturalmente: self-loop admission resta domain semantics.
+RelationshipDefinition DELETE no body/no cascade-force.
 
-La selected Resolution preserva la perspective assignment per non-symmetric Definition; symmetric Resolution/assignment equivalenti possono convergere sullo stesso factual Relationship secondo il runtime idempotency contract.
-
-### 8.5 Runtime Relationship DELETE
+Relationship CREATE body contiene esattamente:
 
 ```text
-DELETE /api/v1/core/relationships/{relationship_id}
+resolution_id
+from_object_id
+to_object_id
 ```
 
-Nessun body. DELETE resta exact-ID based e non esiste semantic-tuple delete alternative; questo preserva anche la ratificata ABA safety.
+Relationship ID e definition metadata non sono caller-supplied. Self-loop non è transport-rejected.
 
-### 8.6 Ordering e generated identity
-
-Gli array che rappresentano semantic set unordered non acquisiscono orientation dall'ordine JSON:
-
-```text
-non-symmetric perspectives[]
-symmetric endpoint_template_ids[]
-non-symmetric rename resolutions[]
-```
-
-M1 continua a non introdurre `source`/`target` o `forward`/`reverse` field.
-
-### 8.7 Decisioni API-03.7
+Relationship DELETE è exact relationship_id path based, no body, no semantic-tuple alternative.
 
 ```text
 A3.63 RelationshipDefinition CREATE is a strict union discriminated by the required symmetric boolean.
@@ -803,21 +475,7 @@ A3.76 Array ordering never creates orientation for semantic unordered Definition
 
 ## 9. API-03.8 — PrimitiveType public lexical forms
 
-### 9.1 General rule
-
-Ogni PrimitiveType possiede un unico public input carrier/lexical contract riusato in tutti gli input position che accettano quel semantic value:
-
-```text
-Object property values
-DataType minimum/maximum/enum values
-ObjectTemplate migration_default values
-```
-
-Il transport può validare carrier e lexical shape; il PrimitiveType/domain codec resta authority per semantic parsing, canonicalization e constraint validation.
-
-Canonical API output segue sempre il canonical domain/persistence representation, non la lexical form scelta dal caller.
-
-### 9.2 Primitive wire table
+Ogni PrimitiveType possiede un unico public input carrier/lexical contract riusato per Object property, DTV constraints/enum e OTV `migration_default`.
 
 | Primitive | Accepted public input | Canonical output |
 |---|---|---|
@@ -825,178 +483,31 @@ Canonical API output segue sempre il canonical domain/persistence representation
 | `core.integer` | JSON integer | JSON integer |
 | `core.number` | exact-decimal JSON string | canonical exact-decimal string |
 | `core.boolean` | JSON boolean | JSON boolean |
-| `core.date` | zero-padded `YYYY-MM-DD` string | `YYYY-MM-DD` |
+| `core.date` | zero-padded `YYYY-MM-DD` | `YYYY-MM-DD` |
 | `core.datetime` | strict offset/Z datetime string | canonical UTC `Z` string |
 | `core.ip` | IPv4/IPv6 address string | canonical IP string |
-| `core.ip_prefix` | explicit CIDR address/prefix-length string | canonical CIDR string |
+| `core.ip_prefix` | explicit CIDR address/prefix-length | canonical CIDR string |
 | `core.byte_size` | exact integer bytes OR strict SI/IEC quantity string | exact integer bytes |
 
-### 9.3 `core.string`
-
-Accetta esclusivamente JSON string.
-
-Canonicalizzazione identity: nessun trim, lowercase/case folding, Unicode normalization o business normalization implicita.
-
-Una stringa vuota è primitive-valid; eventuale `min_length` appartiene alla exact DTV.
-
-### 9.4 `core.integer`
-
-Accetta esclusivamente un vero JSON integer.
-
-Non sono integer input:
-
-```text
-"42"
-42.0
-1e3
-true
-false
-```
-
-Boolean non è mai integer. M1 non introduce implicit primitive min/max oltre ai constraint della exact DTV.
-
-### 9.5 `core.number`
-
-Accetta esclusivamente JSON string con exact-decimal lexical grammar:
+`core.number` grammar:
 
 ```text
 -?(0|[1-9][0-9]*)(\.[0-9]+)?
 ```
 
-Sono quindi vietati:
+No plus/exponent/NaN/Infinity. Numeric-equivalent strings canonicalizzano secondo PERSIST-12; negative zero -> `"0"`.
 
-```text
-leading +
-leading zero non-canonical forms such as 01
-leading decimal point such as .5
-trailing decimal point such as 1.
-exponent notation
-NaN / Infinity
-```
+`core.date`: Gregorian `0001-01-01..9999-12-31`.
 
-Input numeric-equivalent possono convergere al medesimo canonical state, per esempio:
-
-```text
-"12.50"  -> "12.5"
-"-0"     -> "0"
-"-0.000" -> "0"
-```
-
-Canonical output segue PERSIST-12:
-
-```text
-no +
-no exponent
-no superfluous leading/trailing zero
-no decimal point when integral
-negative zero -> "0"
-```
-
-La scelta string-only è intenzionale per preservare exact-decimal semantics attraverso JSON client/toolchain che non garantiscono arbitrary-precision numeric values.
-
-### 9.6 `core.boolean`
-
-Accetta esclusivamente JSON `true` / `false`.
-
-Non accetta integer, string o alias lexical come `yes/no`.
-
-### 9.7 `core.date`
-
-Accetta esclusivamente Gregorian calendar date zero-padded:
-
-```text
-YYYY-MM-DD
-```
-
-Range M1:
-
-```text
-0001-01-01 .. 9999-12-31
-```
-
-Il calendario deve essere valido. Non sono ammessi year zero, extended years, slash format o datetime-as-date.
-
-Canonical output coincide con `YYYY-MM-DD`.
-
-### 9.8 `core.datetime`
-
-Accepted lexical shape:
+`core.datetime`:
 
 ```text
 YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)
 ```
 
-Regole:
+Offset obbligatorio, no leap-second `:60`, no rounding. Digits beyond sixth accepted only when all zero; canonical output UTC `Z` with trailing fractional zeros removed.
 
-- absolute offset obbligatorio (`Z` o numeric offset);
-- uppercase `T` e `Z` canonical lexical vocabulary;
-- secondi obbligatori;
-- leap-second `:60` non supportato M1;
-- nessun arbitrary rounding;
-- timezone/offset originale non viene preservato.
-
-Fractional seconds possono avere più di sei cifre soltanto quando tutte le cifre oltre la sesta sono zero. Cifre non-zero oltre il microsecondo rendono l'input invalido.
-
-Esempi:
-
-```text
-2026-08-14T16:48:00Z                  valid
-2026-08-14T18:48:00+02:00             valid
-2026-08-14T18:48:00.123456+02:00      valid
-2026-08-14T18:48:00.123456000+02:00   valid
-2026-08-14T18:48:00.123456001+02:00   invalid
-```
-
-Canonical output:
-
-```text
-UTC
-uppercase Z
-seconds present
-fraction omitted when zero
-trailing fractional zeros removed
-max six significant fractional digits
-```
-
-### 9.9 `core.ip`
-
-Accetta valid IPv4/IPv6 textual address string.
-
-Non accetta:
-
-```text
-CIDR suffix
-zone/scope identifier such as %eth0
-```
-
-Canonical output:
-
-```text
-IPv4 -> dotted decimal
-IPv6 -> lowercase compressed canonical address text
-```
-
-### 9.10 `core.ip_prefix`
-
-Richiede explicit CIDR syntax:
-
-```text
-address/prefix-length
-```
-
-Il prefix length è decimale. Non sono ammessi netmask alias.
-
-Host bits non-zero sono invalid input e vengono rifiutati, non normalizzati/corretti.
-
-Un address privo di prefix length non riceve implicit `/32` o `/128`.
-
-Canonical output usa canonical network address + decimal prefix length.
-
-### 9.11 `core.byte_size`
-
-Resta governato dal dedicated contract A3-BS-01..07 della sezione successiva.
-
-### 9.12 Decisioni API-03.8
+`core.ip`: no CIDR/zone identifier. `core.ip_prefix`: explicit CIDR, no netmask aliases, host bits rejected rather than corrected.
 
 ```text
 A3.77 Every PrimitiveType has one public input carrier/lexical contract reused for Object values, DataType constraints/enums and migration_default.
@@ -1017,7 +528,7 @@ A3.88 Transport may validate carrier and lexical shape, but PrimitiveType/domain
 
 ## 10. `core.byte_size` public wire contract
 
-Ovunque il public API accetti semantic `core.byte_size` — Object property, DataType constraint/enum, ObjectTemplate `migration_default` — sono ammessi:
+Accepted input:
 
 ```text
 non-negative JSON integer exact bytes
@@ -1025,33 +536,18 @@ OR
 strict SI/IEC quantity string
 ```
 
-Canonical suffix vocabulary case-sensitive:
+Suffix case-sensitive:
 
 ```text
 SI:  B, kB, MB, GB, TB, PB, EB
 IEC: KiB, MiB, GiB, TiB, PiB, EiB
 ```
 
-Sono ammesse forma adiacente o con un solo ASCII space. Alias/case folding non ammessi. Quantità in exact decimal ordinary notation: non-negative, no exponent, no leading `+`.
+Adjacent o one-ASCII-space separator. No aliases/case folding. Quantity exact decimal ordinary notation, non-negative, no exponent/leading plus.
 
-```text
-parse exact decimal quantity
--> multiply by exact unit multiplier
--> require integer result >= 0 bytes
--> canonical integer byte count
-```
+Exact conversion deve produrre integer bytes; nessuna floating-point approximation è authority.
 
-Esempi:
-
-```text
-1 MB     -> 1,000,000
-1 MiB    -> 1,048,576
-1.5 KiB  -> 1,536
-0.1 kB   -> 100
-0.1 KiB  -> invalid (102.4 bytes)
-```
-
-Canonical API read/response e persistence state sono sempre non-negative JSON integer exact bytes. Caller lexical unit non preservata.
+Canonical API output/persistence = non-negative JSON integer exact bytes; caller unit non preservata.
 
 ```text
 A3-BS-01 integer exact bytes OR strict SI/IEC quantity string accepted.
@@ -1065,12 +561,81 @@ A3-BS-07 one primitive parser/canonicalizer reused across all byte_size input po
 
 ---
 
-## 11. API-03 remaining work
+## 11. API-03.9 — canonical read DTO
+
+La canonical read authority è:
+
+```text
+api-read-contract.md
+```
+
+Principi registrati qui:
+
+```text
+single-resource/projection response
+    -> no generic data envelope
+
+nullable / zero-one state
+    -> explicit null only when semantically genuine
+
+empty collection/map
+    -> [] / {}
+
+DataType
+    -> separate lineage and exact-version DTO
+
+ObjectTemplate
+    -> separate lineage, exact local snapshot and effective-schema DTO
+
+Object GET
+    -> intrinsic current state only
+
+ownership
+    -> semantic SlotSemanticKey projection, not persistence-row resource
+
+Object.owner
+    -> existing detached Object => HTTP 200 + null
+
+RelationshipDefinition GET
+    -> complete aggregate
+
+Relationship GET
+    -> deduplicated factual semantic views
+
+Object relationships
+    -> ObjectRelationshipView semantic projection
+
+lifecycle
+    -> discriminated event-family union
+```
+
+Effective-schema members expose `declaring_template_id`. Lifecycle intrinsic `before/after` reuse canonical Object snapshot; `CREATED.before` and `DELETED.after` use genuine `null` historical-state absence.
+
+```text
+A3.89 Single-resource/projection responses have no generic data envelope.
+A3.90 Canonical read DTOs expose explicit null only for genuine nullable/zero-one state; empty collections/maps use []/{} and are not null.
+A3.91 DataType lineage and exact-version reads remain separate DTOs; lineage does not inline its version collection.
+A3.92 ObjectTemplate lineage, exact-version local snapshot and effective-schema projection are three separate DTOs.
+A3.93 Effective-schema members include declaring_template_id and are returned in canonical effective ordering; request-array ordering remains unrelated.
+A3.94 Relationship capability items expose resolution_id, relationship_definition_id, name, from_template_id and to_template_id.
+A3.95 Object GET exposes only intrinsic current state: id/canonical_name/template exact pin/canonical properties.
+A3.96 Ownership reads are semantic projections and expose SlotSemanticKey data; they never expose object_components as a CRUD/resource representation.
+A3.97 GET Object.owner returns JSON null for an existing detached Object; Object-not-found remains a distinct failure.
+A3.98 RelationshipDefinition GET always returns the complete Definition + Resolution aggregate.
+A3.99 Relationship GET returns a factual aggregate with deduplicated semantic views, never raw RuntimeRelationshipResolution rows.
+A3.100 Object-relative Relationship read returns self-contained ObjectRelationshipView items and performs semantic deduplication.
+A3.101 Lifecycle read DTO is a discriminated union by event kind/family, not one wide nullable persistence-shaped record.
+A3.102 Intrinsic lifecycle before/after reuse canonical Object snapshot shape; null means historical state absence for CREATED/DELETED.
+A3.103 Collection route envelopes, list-item summary/full policy, pagination and filters are deliberately deferred to API-03.10.
+```
+
+---
+
+## 12. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-canonical read DTO conventions
-pagination/filter/list envelopes
-success/failure HTTP mapping
+API-03.10 collection envelopes / list-item policy / pagination / filters
+success/failure HTTP status + error-body mapping
 ```
