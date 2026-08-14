@@ -1,6 +1,6 @@
 # M1 — Implementation Steps
 
-**Status:** DRAFT — implementation decomposition derived from the `FINAL / FROZEN` M1 contract and globally `FROZEN` M1 architecture. This document is not yet an implementation authorization; it must be reviewed and explicitly frozen before M1 coding starts.
+**Status:** FINAL / FROZEN — implementation decomposition ratified from the `FINAL / FROZEN` M1 contract and globally `FROZEN` M1 architecture. M1 implementation is authorized to proceed step-by-step from `M1-S00`, subject to the mandatory pre-flight and verification gates defined here.
 
 ## 1. Purpose and authority
 
@@ -802,13 +802,16 @@ The next step starts only from a coherent repository state.
 
 ## 6. Freeze rule for this document
 
-This `steps.md` remains **DRAFT** until explicitly reviewed and ratified.
+This `steps.md` is **FINAL / FROZEN**.
 
-Before implementation begins:
+The prerequisites for implementation are satisfied:
 
-- the decomposition must be reviewed against the frozen M1 contract/architecture;
-- every technology choice actually required by the first implementation step must be explicitly ratified in `technology_baseline.md`;
-- this document must be changed to `FINAL / FROZEN` by explicit agreement;
-- initial `docs/milestones/M1/status.md` must then identify `M1-S00` as the current step.
+- the M1 contract is `FINAL / FROZEN`;
+- the M1 architecture is globally `FROZEN`;
+- the decomposition has been reviewed and explicitly ratified;
+- every technology choice required by `M1-S00` is explicitly ratified in `technology_baseline.md` (`STACK-01..STACK-09`);
+- `docs/milestones/M1/status.md` identifies `M1-S00` as the current operational step.
 
-After freeze, changing step boundaries or verification decomposition is allowed only when it does not reinterpret scope/semantics. Any discovered semantic/technical gap still follows the architecture reopening process.
+Implementation may therefore begin with `M1-S00`.
+
+After freeze, changing step boundaries or verification decomposition is allowed only when it does not reinterpret scope or frozen semantics. A genuine semantic/technical gap still follows the architecture reopening and re-freeze process before affected implementation continues.
