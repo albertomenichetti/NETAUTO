@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline and public command DTO contract ratified; read DTO/error details remain before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics frozen; persistence/concurrency technical baseline, public command DTO and canonical single/projection read DTO ratificati; list/pagination/error details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -12,7 +12,8 @@ Documenti collegati:
 - `objecttemplate-properties.md` — property typing, `SCALAR`/`LIST`, `required`, `migration_default`, identity ed evolution;
 - `objecttemplate-components.md` — ownership slots, compatibility polimorfica, evolution e naming;
 - `objecttemplate-effective-schema.md` — effective schema, create/revise, publication certification e active model graph;
-- `api-wire-contract.md` — public CREATE/REVISE command DTO e selector semantics API-03.3/API-03.5.
+- `api-wire-contract.md` — public CREATE/REVISE command DTO e selector semantics API-03.3/API-03.5;
+- `api-read-contract.md` — canonical lineage/exact-version/effective-schema/capability read DTO, API-03.9.
 
 Le semantics e le invarianti di dominio sono definite qui e nei documenti collegati. I meccanismi PostgreSQL concreti sono già normativi in:
 
@@ -122,9 +123,10 @@ owner lock strength including REALIZE-15 FOR NO KEY UPDATE refinement
 effective-schema authority = derived exact chain; no authoritative cache
 public exact/implicit parent/DTV selector semantics (API-03.3)
 public ObjectTemplate CREATE/REVISE command DTO (API-03.5)
+canonical ObjectTemplate lineage/exact local/effective-schema/capability read DTO (API-03.9)
 ```
 
-API-03.5 rende inoltre normativi per il public command boundary:
+API-03.5 rende normativi per il public command boundary:
 
 ```text
 OT.CREATE
@@ -149,8 +151,27 @@ OT.REVISE
 
 `position` è declaration state esplicito e resta l'autorità dell'ordering locale; l'ordine degli array request non costituisce una seconda ordering authority.
 
+API-03.9 rende inoltre normativi:
+
+```text
+stable lineage read
+    -> parent_template_id/default_version nullable state esplicito
+
+exact OTV read
+    -> local snapshot only, not effective schema
+    -> root parent_template_id/parent_version = null
+    -> local declaration arrays canonicalmente ordinate per position
+
+effective-schema read
+    -> declaring_template_id on every member
+    -> canonical ancestor-block/effective ordering
+
+relationship-capability read
+    -> resolved semantic capability DTO, not autonomous Resolution resource
+```
+
 Restano da finalizzare prima del coding freeze soltanto contract non ancora chiusi:
 
-- DTO/REST shape delle local/effective-schema reads;
+- collection/list envelope, pagination/filter e list-item policy (API-03.10);
 - REST status/error taxonomy;
 - eventuale compiled schema/cache implementation policy se M1 la mantiene come optimization non-authoritative.
