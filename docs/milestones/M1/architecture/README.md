@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory, all core command DTO rules, PrimitiveType public lexical forms and canonical read/list contracts are consolidated. Remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory, all core command DTO rules, PrimitiveType public lexical forms, canonical read/list contracts and failure-class HTTP mapping are consolidated. Remaining pre-freeze work is explicitly tracked below.
 
 ## 1. Purpose
 
@@ -58,7 +58,7 @@ concurrency-postgresql-test-matrix.md
 api-contract.md
     Application-command/query boundary, HTTP/JSON adapter principles,
     /api/v1/core capability namespace, canonical 32-mutation route inventory,
-    semantic read projections and subsequent DTO/failure contracts. API-01..02.
+    semantic read projections and failure boundary. API-01..02.
 
 api-wire-contract.md
     API-03 command/wire registry: API-03.1 strict caller-intent,
@@ -66,7 +66,8 @@ api-wire-contract.md
     API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO,
     API-03.6 Object command DTO, API-03.7 Relationship command DTO,
     API-03.8 PrimitiveType public lexical forms + byte-size contract,
-    API-03.9 read registry, API-03.10 list registry.
+    API-03.9 read registry, API-03.10 list registry,
+    API-03.11A failure-class/error-shape registry.
 
 api-read-contract.md
     API-03.9 canonical single-resource/projection read DTO: DataType,
@@ -77,6 +78,11 @@ api-list-contract.md
     API-03.10 collection envelope, opaque keyset pagination, fixed canonical
     ordering, bounded summary/full list-item policy, route-specific exact
     filters and concurrent-page semantics.
+
+api-error-contract.md
+    API-03.11 failure boundary: transport-neutral failure classes,
+    public HTTP status mapping, canonical error DTO; concrete M1 error-code
+    catalog and success mapping are completed in API-03.11B.
 ```
 
 ### DataType
@@ -158,7 +164,11 @@ The following are not implementation-choice TODOs anymore:
 - API-03.10 collection/list contract: uniform `{items,next_cursor}` envelope, opaque keyset cursor only, default `limit=100`/max 500, fixed route-specific ordering, bounded list summaries for DTV/OTV/Object, exact route-specific filters, no generic sort/query DSL, no cross-request snapshot promise;
 - Object collection pagination key is immutable `id ASC`, while exact `canonical_name` filter is supported independently;
 - Object-specific lifecycle route means events involving the Object (`object_id=X OR destination_object_id=X`) and lifecycle ordering is `(occurred_at,id) DESC`;
-- API-03.10 PERSIST-15 read-path indices are normative: `objects(canonical_name,id)`, `object_lifecycle_events(kind,occurred_at,id)`, and partial `object_lifecycle_events(relationship_name,occurred_at,id) WHERE relationship_name IS NOT NULL`.
+- API-03.10 PERSIST-15 read-path indices are normative: `objects(canonical_name,id)`, `object_lifecycle_events(kind,occurred_at,id)`, and partial `object_lifecycle_events(relationship_name,occurred_at,id) WHERE relationship_name IS NOT NULL`;
+- API-03.11A failure classes/status baseline is frozen: `INVALID_REQUEST=400`, `NOT_FOUND=404`, `SEMANTIC_VALIDATION=422`, `STATE_CONFLICT=409`, `INTERNAL_FAILURE=500`;
+- API-03.11A reserves 404 for missing URI/path target identity; missing command operands are normally 422; malformed `expected_revision` is 400 while stale well-formed revision is 409;
+- API-03.11A canonical error DTO is flat `{code,message,details}`, with stable snake_case `code`, human-readable non-branching `message`, object-shaped `details`, and no SQL/stack/constraint leakage for internal failures;
+- domain-defined idempotent no-op/convergence remains success and is never reclassified as conflict solely because no persistence row changed.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -169,7 +179,7 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include:
 
 ```text
-public success/error taxonomy and HTTP mapping
+API-03.11B concrete error-code/details catalog + success HTTP status/body policy
 JSON Schema compiler surface/role if retained in M1
 ```
 
