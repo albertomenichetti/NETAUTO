@@ -1,6 +1,6 @@
 # M1 — Object SCHEMA_CHANGE
 
-**Status:** DRAFT
+**Status:** DRAFT — semantics frozen; concurrency realization aligned to REALIZE-09/10/15.
 
 ## 1. Responsabilità
 
@@ -310,23 +310,23 @@ Le Relationships non richiedono revalidation per lo stesso motivo: Relationship 
 Conceptual Unit of Work:
 
 ```text
-read/stabilize current Object state
-resolve SourceClosure(current exact OTV)
+Object row FOR NO KEY UPDATE
+-> reload complete current Object state
+-> resolve SourceClosure(current exact OTV)
 
-admit/stabilize exact target PUBLISHED OTV
-resolve TargetClosure
+-> admit/stabilize exact target OTV FOR SHARE
+-> resolve TargetClosure
 
-migrate properties
-validate outgoing attachments
-validate complete target canonical state
+-> migrate properties
+-> validate outgoing attachments while parent Object owner is held
+-> validate complete target canonical state
 
-persist:
-    template_version = target
-    properties = migrated canonical state
-
-persist lifecycle SCHEMA_CHANGE event
-COMMIT
+-> persist template_version + properties
+-> persist lifecycle SCHEMA_CHANGE event
+-> COMMIT
 ```
+
+Il target `FOR SHARE` è `S-BINDING-ADMISSION`; l'Object non-key owner realizza `S-OBJECT-STATE` e, quando l'Object è parent, `S-PARENT-OWNERSHIP` per il current outgoing edge set.
 
 Failure in qualsiasi punto:
 
@@ -345,7 +345,9 @@ sono vietati.
 
 ## 12. DATA_CHANGE concurrency
 
-`DATA_CHANGE` e `SCHEMA_CHANGE` sullo stesso Object devono avere un ordine seriale.
+`DATA_CHANGE` e `SCHEMA_CHANGE` sullo stesso Object hanno un ordine seriale tramite la stessa Object row `FOR NO KEY UPDATE` owner.
+
+Dopo ogni eventuale wait la mutation ricarica il current complete Object state e deriva/rivalida la candidate da quello state.
 
 È vietato:
 
@@ -355,9 +357,9 @@ DATA_CHANGE commits P2
 SCHEMA_CHANGE migrates stale P1 and overwrites P2
 ```
 
-Il concrete mechanism viene definito nel concurrency contract.
+Il concrete contract è REALIZE-09 in `concurrency-postgresql-realization-object-ownership.md` e nel canonical realization index.
 
-## 13. Ownership concurrency — high risk
+## 13. Ownership concurrency — high risk, realization ratificata
 
 Invariante al commit:
 
@@ -377,16 +379,8 @@ Race critica:
 
 ```text
 T1 SCHEMA_CHANGE P
-    validates no blocking edge / old edge set
-
-T2 ATTACH to P
-    validates against old schema
-
-both commit
-    -> possible invalid current attachment
+T2 ATTACH/DETACH on P
 ```
-
-Questa race deve essere protetta con strong consistency.
 
 Semantica richiesta:
 
@@ -398,11 +392,23 @@ ATTACH wins
 SCHEMA_CHANGE wins
     -> ATTACH validates against new current schema
        and fails if no longer admissible
+
+DETACH wins
+    -> SCHEMA_CHANGE observes the removal and may become admissible
 ```
 
-`DETACH` può rendere una migration precedentemente bloccata ammissibile.
+PostgreSQL realization M1:
 
-Il meccanismo PostgreSQL è ancora da finalizzare; parent-local serialization è il concurrency domain naturale, ma non viene fissato qui come specifico lock primitive.
+```text
+SCHEMA_CHANGE(parent)
+ATTACH(parent)
+DETACH(parent)
+    -> same parent Object row FOR NO KEY UPDATE owner
+```
+
+Per ATTACH, dopo parent stabilization e local validation, ogni real edge-add entra inoltre nel `OWNERSHIP_GRAPH_WRITE_GATE` per `S-OWN-CYCLE`; SCHEMA_CHANGE/DETACH non prendono quel global gate.
+
+Dettaglio normativo: `concurrency-postgresql-realization-object-ownership.md` REALIZE-10/11/15.
 
 ## 14. Lifecycle event
 
