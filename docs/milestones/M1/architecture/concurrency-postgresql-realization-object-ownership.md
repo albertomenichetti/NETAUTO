@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Concurrency Realization: aggregate, Object, ownership
 
-**Status:** DRAFT — REALIZE-08..REALIZE-11 ratificati. Documento companion di `concurrency-postgresql-realization-matrix.md`; le decisioni qui contenute fanno parte della stessa realization matrix e verranno mantenute traceable predicate -> authority -> PostgreSQL mechanism -> real-PG test.
+**Status:** DRAFT — REALIZE-08..REALIZE-11 ratificati; REALIZE-15 applica il lock-strength refinement `FOR NO KEY UPDATE` agli owner non-key e completa il consistency sweep. Documento companion di `concurrency-postgresql-realization-matrix.md`; le decisioni qui contenute fanno parte della stessa realization matrix e vengono mantenute traceable predicate -> authority -> PostgreSQL mechanism -> real-PG test.
 
 ## 1. REALIZE-08 — `S-AGGREGATE-LIFETIME` (`AL`) e `S-METADATA-LWW` (`ML`)
 
@@ -12,11 +12,11 @@ M1 non introduce un universal aggregate `FOR SHARE` lock.
 
 Le mutation che già usano la lineage header (`CREATE_NEXT`, `DELETE_DRAFT`, `PUBLISH`, `SET_DEFAULT`, `CLEAR_DEFAULT`, `DEPRECATE`) rendezvous naturalmente con la whole-lineage delete sulla root row.
 
-`REVISE` resta invece exact-DRAFT `FOR UPDATE`: il `CASCADE` della lineage delete deve eliminare quella exact version row e quindi non può rimuoverla mentre una revise la possiede. Outcome ammessi: revise-first e successiva whole-lineage delete, oppure delete-first e nessuna successiva mutation della generation rimossa.
+`REVISE` resta invece exact-DRAFT owner, ora realizzato con `FOR NO KEY UPDATE` perché non modifica né elimina la row identity. Il `CASCADE` della lineage delete deve eliminare quella exact version row e quindi non può rimuoverla mentre una revise la possiede. Outcome ammessi: revise-first e successiva whole-lineage delete, oppure delete-first e nessuna successiva mutation della generation rimossa.
 
 `SET_DESCRIPTION` vive sulla lineage header e usa un single-statement atomic `UPDATE`; la row-write arbitration PostgreSQL coordina `SET_DESCRIPTION × DELETE_LINEAGE` senza pre-lock aggiuntivo.
 
-`RD.RENAME × RD.DELETE` serializza sulla RelationshipDefinition header `FOR UPDATE`.
+`RD.RENAME × RD.DELETE` serializza sulla stessa RelationshipDefinition header: RENAME usa il non-key owner mode, DELETE il delete/key-changing owner mode.
 
 External references non appartengono ad `AL`: restano `S-REFERENCE-LIFETIME` con FK `RESTRICT` final authority.
 
@@ -48,10 +48,9 @@ Per ogni Object esistente:
 RENAME
 DATA_CHANGE
 SCHEMA_CHANGE
-DELETE
 ```
 
-la mutation acquisisce `objects(O) FOR UPDATE` **prima** di qualunque state-dependent candidate derivation.
+la mutation acquisisce `objects(O) FOR NO KEY UPDATE` **prima** di qualunque state-dependent candidate derivation. `DELETE` acquisisce invece `objects(O) FOR UPDATE`, perché elimina la referenced row identity.
 
 Dopo il lock la UoW ricarica il complete current state, deriva la candidate, esegue le dependency/schema validation ulteriori richieste, persiste current state e complete lifecycle event nella stessa semantic transaction. Una candidate derivata soltanto da una pre-lock read non può essere committata senza post-lock re-derivation/revalidation.
 
@@ -62,18 +61,18 @@ Dopo il lock la UoW ricarica il complete current state, deriva la candidate, ese
 `SCHEMA_CHANGE` compone più authority senza confonderle:
 
 ```text
-objects(O) FOR UPDATE       -> S-OBJECT-STATE
-target exact OTV FOR SHARE  -> S-BINDING-ADMISSION
-outgoing ownership read     -> S-PARENT-OWNERSHIP validation
+objects(O) FOR NO KEY UPDATE -> S-OBJECT-STATE
+target exact OTV FOR SHARE   -> S-BINDING-ADMISSION
+outgoing ownership read      -> S-PARENT-OWNERSHIP validation
 ```
 
-`DELETE` usa lo stesso Object owner per il final intrinsic snapshot; external ownership/Relationship races restano finalizzate dalle FK `RESTRICT` di `S-REFERENCE-LIFETIME`. Delete-first impedisce qualsiasi resurrection.
+`DELETE` usa `FOR UPDATE` sulla stessa Object row per il final intrinsic snapshot; external ownership/Relationship races restano finalizzate dalle FK `RESTRICT` di `S-REFERENCE-LIFETIME`. Delete-first impedisce qualsiasi resurrection.
 
 Lifecycle `before` deriva dallo state ricaricato post-lock; `after` dalla stessa canonical candidate persistita. Current-state write ed event insert sono atomici nella stessa UoW.
 
 M1 non introduce `Object.state_revision`, generic Object CAS o operation-specific conditional-update concurrency models.
 
-Required PG tests: rename/rename, rename/data-change event composability, data-change/data-change no lost update, equivalent data-change one real transition + no-op, both DATA_CHANGE/SCHEMA_CHANGE orderings, concurrent schema changes source re-evaluation, intrinsic mutation/delete races, rollback waiter behavior, lifecycle before/after identity, intentional `RENAME(parent) × ATTACH(parent)` physical contention.
+Required PG tests: rename/rename, rename/data-change event composability, data-change/data-change no lost update, equivalent data-change one real transition + no-op, both DATA_CHANGE/SCHEMA_CHANGE orderings, concurrent schema changes source re-evaluation, intrinsic mutation/delete races, rollback waiter behavior, lifecycle before/after identity, intentional `RENAME(parent) × ATTACH(parent)` physical contention, e compatibilità `REL.CREATE × OBJ.RENAME` senza serialization dovuta soltanto alla FK.
 
 ---
 
@@ -89,7 +88,7 @@ DETACH(parent,...)
 SCHEMA_CHANGE(parent)
 ```
 
-acquisiscono `objects(parent) FOR UPDATE` prima delle rispettive state-dependent decisioni. ATTACH valida slot e child compatibility contro il parent schema ricaricato post-lock. SCHEMA_CHANGE, dopo il lock, valida il target schema contro l'outgoing set current. DETACH può rimuovere un blocker e quindi non rivalida lo slot per poter cancellare un existing current fact.
+acquisiscono `objects(parent) FOR NO KEY UPDATE` prima delle rispettive state-dependent decisioni. ATTACH valida slot e child compatibility contro il parent schema ricaricato post-lock. SCHEMA_CHANGE, dopo il lock, valida il target schema contro l'outgoing set current. DETACH può rimuovere un blocker e quindi non rivalida lo slot per poter cancellare un existing current fact.
 
 ### 3.2 `S-OWNERSHIP-FACT` (`OF`)
 
@@ -135,11 +134,11 @@ su `object_components`.
 
 Una child può avere al massimo un current owner/slot anche nello state initially absent. Un `SELECT ... FOR UPDATE` su `object_components WHERE child_object_id=C` non è sufficiente come absent-state guard e non sostituisce la PK.
 
-M1 non prende generic `objects(child) FOR UPDATE` per ownership: `child.template_id` è stable per le normal mutation, single-owner è PK-enforced e Object DELETE lifetime è FK-enforced. Questo evita unnecessary contention con child RENAME/DATA_CHANGE/SCHEMA_CHANGE.
+M1 non prende generic lock sulla `objects(child)` row per ownership: `child.template_id` è stable per le normal mutation, single-owner è PK-enforced e Object DELETE lifetime è FK-enforced. Questo evita unnecessary contention con child RENAME/DATA_CHANGE/SCHEMA_CHANGE.
 
 Identical ATTACH/DETACH converge sul current fact; una real transition produce esattamente un lifecycle event, un no-op nessun event.
 
-Il prossimo graph gate può fisicamente serializzare molte ATTACH, ma **non** è l'authority di `S-SINGLE-OWNER`.
+Il graph gate può fisicamente serializzare molte ATTACH, ma **non** è l'authority di `S-SINGLE-OWNER`.
 
 Required PG tests: ATTACH/SCHEMA_CHANGE(parent), DETACH/SCHEMA_CHANGE(parent), identical ATTACH one edge/event, different-parent same-child at most one owner, ATTACH/DETACH exact, cross-parent detach/attach, identical DETACH one removal/event, wrong-owner DETACH safety, child intrinsic operations not lock requirements, direct PK tests, absent-state races, rollback behavior, parent over-serialization, no-op event absence, explicit ABA behavior.
 
@@ -160,7 +159,7 @@ Il gate non contiene né sostituisce il graph state; serializza soltanto le real
 Ogni real ATTACH segue:
 
 ```text
-parent Object FOR UPDATE
+parent Object FOR NO KEY UPDATE
 -> local slot/compatibility/self checks
 -> read current child ownership
 -> fast exit on exact no-op or conflict
@@ -201,7 +200,7 @@ Il advisory xact lock resta detenuto fino al commit. Rilasciarlo prima renderebb
 Ordering M1:
 
 ```text
-parent Object FOR UPDATE
+parent Object FOR NO KEY UPDATE
 -> OWNERSHIP_GRAPH_WRITE_GATE
 ```
 
@@ -217,7 +216,57 @@ Required PG tests: opposite concurrent edges `A->B` / `B->A`, longer cycle, unre
 
 ---
 
-## 5. Gate-wide invariant carried forward
+## 5. REALIZE-15 — lock-strength refinement e ownership-event observation
+
+### 5.1 Non-key owner mode
+
+Il consistency sweep ha mostrato che `FOR UPDATE` come primitive universale è più forte del necessario e può interferire con la referential-lifetime machinery. M1 usa quindi:
+
+```text
+non-key mutable-state owner
+    -> FOR NO KEY UPDATE
+
+row delete / referenced-key-changing owner
+    -> FOR UPDATE
+
+lifecycle-sensitive dependency
+    -> FOR SHARE
+```
+
+Il refinement non cambia concurrency authority, lock order o safety predicate. Gli owner writer della stessa row restano mutuamente esclusivi e `FOR SHARE` continua a stabilizzare lifecycle-sensitive dependency; una pure referential key-share protection può invece coesistere con non-key state mutation.
+
+Applicazioni in questo companion:
+
+```text
+Object RENAME/DATA_CHANGE/SCHEMA_CHANGE -> FOR NO KEY UPDATE
+Object DELETE                           -> FOR UPDATE
+ATTACH/DETACH parent owner              -> FOR NO KEY UPDATE
+DT/OT REVISE                            -> exact DRAFT FOR NO KEY UPDATE
+RD.RENAME                               -> Definition FOR NO KEY UPDATE
+```
+
+### 5.2 Ownership structural-event display metadata
+
+`ATTACH_TO`/`DETACH_FROM` persistono `canonical_name` del child e `destination_canonical_name` del parent come historical display metadata.
+
+Il parent canonical name proviene dallo state della parent row già stabilizzata dal parent-owner lock. Il child canonical name viene letto come committed display metadata dopo la parent stabilization, senza introdurre un child lock soltanto per l'evento.
+
+Ownership produce un singolo structural event, quindi non necessita del multi-event `S-REL-EVENT-SNAPSHOT` machinery. Edge mutation ed event restano nella stessa UoW; una concurrent child rename può produrre old o new committed display name secondo l'observation point, ma non modifica la ownership fact semantics.
+
+### 5.3 Over-serialization retained intentionally
+
+Il refinement non rimuove le contention M1 che derivano da una scelta di owner realmente condivisa, per esempio:
+
+```text
+RENAME(parent) × ATTACH(parent)
+DATA_CHANGE(parent) × DETACH(parent)
+```
+
+Entrambe usano `FOR NO KEY UPDATE` sulla stessa parent row e restano intentional implementation over-serialization. Il refinement elimina invece soltanto contention incidentale dovuta a una lock strength più forte del predicate richiesto.
+
+---
+
+## 6. Gate-wide invariant carried forward
 
 Per ogni transaction-level logical gate M1:
 
