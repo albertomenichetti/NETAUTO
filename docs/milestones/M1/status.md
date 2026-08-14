@@ -1,6 +1,6 @@
 # M1 — Implementation Status
 
-**Milestone status:** IMPLEMENTATION READY
+**Milestone status:** IMPLEMENTATION IN PROGRESS
 
 ## Current step
 
@@ -8,7 +8,15 @@
 M1-S00 — Clean-slate project bootstrap and quality/test runtime
 ```
 
-**Step status:** READY TO START
+**Step status:** IN PROGRESS
+
+The non-normative Codex execution prompt for the current step is:
+
+```text
+docs/milestones/M1/wip/M1-S00-codex-prompt.md
+```
+
+The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
 
 ## Authoritative baseline
 
@@ -36,7 +44,7 @@ Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`
 ## Step registry
 
 ```text
-M1-S00  READY TO START   Clean-slate project bootstrap and quality/test runtime
+M1-S00  IN PROGRESS      Clean-slate project bootstrap and quality/test runtime
 M1-S01  NOT STARTED      PostgreSQL schema, migration, UoW and deterministic-test foundation
 M1-S02  NOT STARTED      PrimitiveType and DataType vertical slice
 M1-S03  NOT STARTED      ObjectTemplate and active model graph vertical slice
@@ -58,4 +66,4 @@ A newly discovered contradiction in frozen architecture is not an implementation
 
 This file records operational progress only. It does not redefine milestone scope, architecture, technology choices or step semantics.
 
-A step moves to `COMPLETED` only when its implementation, applicable quality gates, required PostgreSQL/API/concurrency verification and documentation coherence satisfy the exit criteria in `steps.md`.
+A step moves to `COMPLETED` only after its implementation delta has been reviewed and its applicable quality gates, required PostgreSQL/API/concurrency verification and documentation coherence satisfy the exit criteria in `steps.md`.
