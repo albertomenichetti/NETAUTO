@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory and core command DTO rules through Object are consolidated. Remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory and all core command DTO rules through Relationship are consolidated. Remaining pre-freeze work is explicitly tracked below.
 
 ## 1. Purpose
 
@@ -65,6 +65,7 @@ api-wire-contract.md
     omission/null rules; API-03.2 expected_revision query placement;
     API-03.3 exact/implicit selector semantics; API-03.4 DataType command DTO;
     API-03.5 ObjectTemplate command DTO; API-03.6 Object command DTO;
+    API-03.7 RelationshipDefinition/Relationship command DTO;
     byte-size accepted-input/canonical-output contract.
 ```
 
@@ -140,6 +141,7 @@ The following are not implementation-choice TODOs anymore:
 - API-03.4 DataType command DTO contract: CREATE builds lineage + v1 DRAFT, optional `constraints` defaults to `{}`, REVISE requires complete `constraints`, command-specific DTOs never expose caller-controlled id/version/revision/status/default state;
 - API-03.5 ObjectTemplate command DTO contract: CREATE requires explicit `abstract`, optional declaration collections default to `[]`, property/component declaration DTOs are strict, `position` is the ordering authority, and REVISE requires complete local property/component arrays;
 - API-03.6 Object command DTO contract: CREATE properties omission means zero supplied values, DATA_CHANGE is a non-empty unordered per-property `SET|REMOVE` operation set with no duplicate property operations, SCHEMA_CHANGE has exact target only, ATTACH/DETACH use strict slot+child bodies, DELETE has no cascade/force options;
+- API-03.7 RelationshipDefinition/Relationship command DTO contract: symmetric/non-symmetric Definition CREATE/RENAME shapes follow the resolved aggregate semantics, Definition/Resolution/Relationship create-time IDs are kernel-generated, runtime Relationship CREATE accepts exactly resolution/from/to Object IDs, self-loop is not structurally forbidden, and deletes expose no cascade/semantic-tuple alternatives;
 - `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
@@ -151,8 +153,8 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-API-03.7+ RelationshipDefinition/Relationship command DTO and read DTO shapes
 remaining primitive public-input lexical forms
+canonical read DTO shapes
 public error/status taxonomy and HTTP mapping
 remaining API pagination/filter/response conventions
 JSON Schema compiler surface/role if retained in M1
@@ -218,7 +220,7 @@ A new transport or implementation decision may choose a representation for its o
 
 ## 6. Coding gate
 
-Before creating implementation `steps.md` o coding M1 behavior, verify:
+Before creating implementation `steps.md` or coding M1 behavior, verify:
 
 1. owning domain contract is frozen enough for the change;
 2. persistence authority is identified;
