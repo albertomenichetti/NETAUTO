@@ -1,0 +1,1 @@
+"""NETAUTO application package."""

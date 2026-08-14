@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "netauto"
+version = "0.1.0"
+description = "REST-API-first dynamic infrastructure modeling framework"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "alembic>=1.16,<2",
+    "fastapi>=0.116,<1",
+    "psycopg[binary]>=3.2,<4",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.10,<3",
+    "sqlalchemy>=2.0,<3",
+    "uvicorn>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.10,<8",
+    "httpx>=0.28,<1",
+    "hypothesis>=6.138,<7",
+    "pyright[nodejs]>=1.1.403,<2",
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.1,<2",
+    "pytest-timeout>=2.4,<3",
+    "pytest-xdist>=3.8,<4",
+    "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/netauto"]
+
+[tool.ruff]
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF", "ASYNC"]
+
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
+include = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+testpaths = ["tests"]
+timeout = 30
+markers = [
+    "postgresql: requires the externally supplied real PostgreSQL test target",
+    "concurrency: exercises deterministic concurrency behavior",
+    "api: exercises the public HTTP API boundary",
+    "migration: exercises Alembic or database schema evolution",
+    "property: exercises a property with Hypothesis",
+    "stress: exercises supplementary randomized or high-volume behavior",
+    "slow: exercises behavior that is intentionally slow",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["netauto"]
+
+[tool.coverage.report]
+show_missing = true

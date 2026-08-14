@@ -1,0 +1,1 @@
+"""NETAUTO test suite."""
