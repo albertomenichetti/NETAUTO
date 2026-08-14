@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory, all core command DTO rules and PrimitiveType public lexical forms are consolidated. Remaining pre-freeze work is explicitly tracked below.
+**Status:** DRAFT architecture baseline — domain semantics and PostgreSQL persistence/concurrency/test architecture are substantially closed; API boundary, route inventory, all core command DTO rules, PrimitiveType public lexical forms and canonical single/projection read DTO are consolidated. Remaining pre-freeze work is explicitly tracked below.
 
 ## 1. Purpose
 
@@ -61,12 +61,17 @@ api-contract.md
     semantic read projections and subsequent DTO/failure contracts. API-01..02.
 
 api-wire-contract.md
-    API-03 wire/DTO decisions as ratified: API-03.1 strict caller-intent,
-    omission/null rules; API-03.2 expected_revision query placement;
-    API-03.3 exact/implicit selector semantics; API-03.4 DataType command DTO;
-    API-03.5 ObjectTemplate command DTO; API-03.6 Object command DTO;
-    API-03.7 RelationshipDefinition/Relationship command DTO;
-    API-03.8 PrimitiveType public lexical forms and A3-BS byte-size contract.
+    API-03 command/wire registry: API-03.1 strict caller-intent,
+    API-03.2 expected_revision query placement, API-03.3 selectors,
+    API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO,
+    API-03.6 Object command DTO, API-03.7 Relationship command DTO,
+    API-03.8 PrimitiveType public lexical forms + byte-size contract,
+    API-03.9 read-contract registry.
+
+api-read-contract.md
+    API-03.9 canonical single-resource/projection read DTO: DataType,
+    ObjectTemplate local/effective schema, capabilities, Object intrinsic,
+    ownership, Relationship aggregate/views and lifecycle event union.
 ```
 
 ### DataType
@@ -143,7 +148,8 @@ The following are not implementation-choice TODOs anymore:
 - API-03.6 Object command DTO contract: CREATE properties omission means zero supplied values, DATA_CHANGE is a non-empty unordered per-property `SET|REMOVE` operation set with no duplicate property operations, SCHEMA_CHANGE has exact target only, ATTACH/DETACH use strict slot+child bodies, DELETE has no cascade/force options;
 - API-03.7 RelationshipDefinition/Relationship command DTO contract: symmetric/non-symmetric Definition CREATE/RENAME shapes follow the resolved aggregate semantics, Definition/Resolution/Relationship create-time IDs are kernel-generated, runtime Relationship CREATE accepts exactly resolution/from/to Object IDs, self-loop is not structurally forbidden, and deletes expose no cascade/semantic-tuple alternatives;
 - API-03.8 PrimitiveType public lexical contract: one parser/canonicalizer per primitive across Object values, constraints/enums and migration defaults; exact-decimal `core.number` is string-only without exponent; date/datetime/IP/prefix carrier grammars and canonicalization are fixed;
-- `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes.
+- `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes;
+- API-03.9 canonical single/projection read DTO contract: no generic data envelope for single reads; stable/exact/effective projections remain distinct; Object GET is intrinsic-only; ownership and Relationship reads are semantic projections; detached owner is `200 null`; lifecycle read is a discriminated event-family union.
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -154,9 +160,8 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-canonical read DTO shapes
+API-03.10 collection/list envelope, pagination/filter and list-item policy
 public error/status taxonomy and HTTP mapping
-remaining API pagination/filter/response conventions
 JSON Schema compiler surface/role if retained in M1
 ```
 
@@ -188,7 +193,7 @@ Before starting design point `N+1`, identify which already-consolidated M1 assum
 
 The chat history, summaries and remembered decisions are navigation aids, not the authoritative source for this pre-flight.
 
-The scope is dependency-driven rather than mechanically global. A point that touches only one narrow contract may require a small re-read; a cross-cutting point must revalidate every affected authority. Typical sources include:
+The scope is dependency-driven rather than mechanically global. A point che touches only one narrow contract may require a small re-read; a cross-cutting point must revalidate every affected authority. Typical sources include:
 
 ```text
 owning domain document
