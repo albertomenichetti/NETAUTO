@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Architecture
 
-**Status:** DRAFT — domain semantics frozen; persistence/concurrency, public command DTO e canonical read/list contract ratificati; failure mapping resta prima del final M1 architecture freeze.
+**Status:** DRAFT — domain semantics, persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler/compiled-schema role remains before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -14,7 +14,8 @@ Documenti collegati:
 - `objecttemplate-effective-schema.md` — effective schema, create/revise, publication certification e active model graph;
 - `api-wire-contract.md` — public CREATE/REVISE command DTO e selector semantics API-03.3/API-03.5;
 - `api-read-contract.md` — canonical lineage/exact-version/effective-schema/capability read DTO, API-03.9;
-- `api-list-contract.md` — API-03.10 collection envelope, keyset cursor, ordering, list summaries e filters.
+- `api-list-contract.md` — API-03.10 collection envelope, keyset cursor, ordering, list summaries e filters;
+- `api-error-contract.md` — API-03.11 public failure codes/details and success HTTP mapping.
 
 Le semantics e le invarianti di dominio sono definite qui e nei documenti collegati. I meccanismi PostgreSQL concreti sono già normativi in:
 
@@ -126,6 +127,7 @@ public exact/implicit parent/DTV selector semantics (API-03.3)
 public ObjectTemplate CREATE/REVISE command DTO (API-03.5)
 canonical ObjectTemplate lineage/exact local/effective-schema/capability read DTO (API-03.9)
 ObjectTemplate collection/list/pagination/filter contract (API-03.10)
+public error-code/status/success mapping (API-03.11)
 ```
 
 API-03.5 rende normativi per il public command boundary:
@@ -199,7 +201,8 @@ all paginated collections
 
 Ogni pagina è snapshot-consistent per la singola request; il cursor non promette repeatable membership cross-request.
 
-Restano da finalizzare prima del coding freeze soltanto:
+API-03.11 chiude inoltre failure classes, concrete error codes/details e success mapping HTTP senza introdurre HTTP semantics nel domain layer. Nuove resource ritornano `201 + Location`; normal semantic mutations `200` con resulting canonical projection; delete/detach seguono il ratificato `204` contract.
 
-- REST success/error taxonomy e failure mapping;
-- eventuale compiled schema/cache implementation policy se M1 la mantiene come optimization non-authoritative.
+Resta da finalizzare prima del coding freeze soltanto:
+
+- ruolo/esatta surface del JSON Schema compiler / compiled-schema capability, se mantenuta in M1.
