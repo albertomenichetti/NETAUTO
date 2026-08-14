@@ -1,14 +1,14 @@
 # M1 — Object Consistency Review
 
-**Status:** REVIEW COMPLETE — semantic findings integrated; previously open persistence/concurrency items are now resolved by the M1 architecture baseline.
+**Status:** REVIEW COMPLETE — semantic findings integrated; persistence/concurrency/API/test closure is aligned with the current M1 architecture baseline.
 
 ## 1. Result
 
-The ratified Object semantics are internally coherent with the current M1 `DataType`, `ObjectTemplate`, persistence and concurrency architecture.
+The ratified Object semantics are internally coherent with the current M1 `DataType`, `ObjectTemplate`, persistence, concurrency and public API architecture.
 
 No blocking semantic contradiction was found.
 
-The PostgreSQL realization and real-PG test coverage have subsequently been completed through REALIZE-01..15 and PGTEST-01..02. This review therefore no longer carries unresolved concurrency-design items.
+The PostgreSQL realization and real-PG test contract have subsequently been completed through REALIZE-01..15 and PGTEST-01..04. The public Object/API contract is also closed through API-03.11. This review therefore carries no unresolved Object architecture item.
 
 ## 2. Required ObjectTemplate amendments
 
@@ -129,6 +129,10 @@ exact target OTV admission
     -> target exact FOR SHARE + PUBLISHED recheck
 ```
 
-The corresponding normative real-PostgreSQL scenarios are in `concurrency-postgresql-test-matrix.md` (`ROW-*`, `ARB-*`, `REF-*`, `GATE-*`, `SNAP-*`, `ATOMIC-*`, `PAR-*`).
+The corresponding normative real-PostgreSQL scenario census, deterministic harness contract and reusable execution recipes are all closed in `concurrency-postgresql-test-matrix.md` through PGTEST-01..04.
 
 Any implementation that reopens these choices is an architecture change, not an implementation detail.
+
+## 6. Final review state
+
+No Object-specific architecture question remains open before the global M1 architecture consistency/freeze decision.
