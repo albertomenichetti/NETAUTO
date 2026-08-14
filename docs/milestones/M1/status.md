@@ -22,7 +22,7 @@ docs/milestones/M1/architecture/README.md
     FROZEN global architecture baseline
 
 docs/milestones/M1/steps.md
-    implementation decomposition approved for freeze
+    FINAL / FROZEN implementation decomposition
 
 docs/general/technology_baseline.md
     STACK-01..STACK-09 ratified
