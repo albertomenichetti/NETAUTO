@@ -54,17 +54,23 @@ Eventuale cross-lineage reclassification è RFE controllata.
 Create:
 
 ```text
-canonical_name omitted / None
+canonical_name omitted
     -> canonical_name = str(Object.id)
 
-canonical_name provided, valid and non-empty
+canonical_name explicitly provided
+    -> must be a valid non-empty string of length 1..255
     -> use exactly provided value
 
+canonical_name = null
+    -> invalid explicit input
+
 canonical_name == ""
-    -> invalid
+    -> invalid explicit input
 ```
 
-Il fallback a `str(Object.id)` esiste soltanto alla create.
+Il fallback a `str(Object.id)` esiste soltanto alla create e colma esclusivamente **assenza di intent**. Non sostituisce, corregge o maschera un valore esplicito invalido.
+
+Un eventuale `None` usato internamente dall'implementation come sentinel tecnico per rappresentare "field omitted" non costituisce public/domain input semantics e non deve essere confuso con JSON `null` esplicito.
 
 `RENAME` richiede un nuovo valore esplicito e modifica esclusivamente `canonical_name`.
 
