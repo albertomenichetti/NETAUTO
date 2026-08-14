@@ -1,6 +1,6 @@
 # M1 — Relationship Concurrency & Transaction Contracts
 
-**Status:** DRAFT
+**Status:** DRAFT — semantic concurrency contract frozen; concrete PostgreSQL realization completed in `concurrency-postgresql-realization-relationship.md` and `persistence-uow-concurrency.md`.
 
 ## 1. Principio
 
@@ -17,7 +17,7 @@ data-plane
 
 M1 non introduce un global Relationship graph lock.
 
-Il concrete PostgreSQL mechanism viene definito successivamente.
+Questo documento resta authority sul required semantic concurrency outcome. Il concrete PostgreSQL mechanism non è duplicato qui: è normativo in `concurrency-postgresql-realization-relationship.md` (REALIZE-12..15), nel canonical realization index e nel persistence UoW baseline.
 
 ## 2. Stable structural facts
 
@@ -60,7 +60,18 @@ Normative requirement:
 
 > Definition CREATE/RENAME vengono serializzate rispetto alla complete candidate conflict-validation + commit phase.
 
-Il concrete write gate/locking primitive non è fissato qui.
+Concrete realization already ratified:
+
+```text
+RD.CREATE
+    -> RELATIONSHIP_DEFINITION_CONFLICT_GATE
+
+RD.RENAME
+    -> Definition FOR NO KEY UPDATE
+    -> RELATIONSHIP_DEFINITION_CONFLICT_GATE
+```
+
+Gate acquisition e authoritative certified-set read avvengono in statement separati; il protected read usa un fresh `READ COMMITTED` snapshot dopo ogni wait. RD.DELETE non prende il gate.
 
 ## 4. Definition DELETE
 
@@ -79,6 +90,8 @@ Definition DELETE committa prima:
 ```text
 later runtime CREATE using its Resolution fails
 ```
+
+Final lifetime authority: current FK `RESTRICT`; Definition DELETE usa exact header `FOR UPDATE` perché elimina la referenced identity.
 
 ## 5. Runtime CREATE predicates
 
@@ -120,6 +133,8 @@ exactly one required lifecycle creation event set
 Le operation concorrenti possono entrambe essere osservabili come semantic success; il loser deve convergere sulla Relationship creata dal winner.
 
 Exact runtime-view uniqueness è final authority per rilevare la collisione.
+
+Concrete realization: PK `(resolution_id, from_object_id, to_object_id)`; collisione abortisce l'intera candidate UoW e la convergence avviene in una fresh semantic UoW contro current committed state.
 
 ## 7. Partial closure forbidden
 
@@ -163,7 +178,7 @@ Object DELETE wins
     -> CREATE fails
 ```
 
-Persistence current references devono avere RESTRICT semantics, non cascade cleanup.
+Persistence current references hanno `RESTRICT` semantics, non cascade cleanup. REALIZE-15 assicura inoltre che non-key Object mutation (`RENAME`, `DATA_CHANGE`, `SCHEMA_CHANGE`) usino `FOR NO KEY UPDATE` e non causino FK-only serialization del Relationship hot path.
 
 ## 9. Relationship DELETE vs Object.DELETE
 
@@ -190,6 +205,8 @@ Definition DELETE wins
     -> CREATE fails
 ```
 
+Final authority: current FK `RESTRICT`.
+
 ## 11. Definition CREATE vs ObjectTemplate whole-lineage DELETE
 
 Resolution endpoint refs sono stable lineage dependencies.
@@ -202,7 +219,7 @@ template lineage delete wins
     -> Definition CREATE fails
 ```
 
-No coordination è richiesta con exact OTV deprecation.
+No coordination è richiesta con exact OTV deprecation. Final lineage lifetime authority è la persisted FK `RESTRICT`.
 
 ## 12. RENAME vs runtime mutation
 
@@ -223,7 +240,11 @@ Lifecycle event `relationship_name` deve però provenire da un coherent committe
 
 Per una non-symmetric rename atomica non sono ammessi event set con semantic names provenienti da metà old candidate e metà new candidate.
 
-Il concrete mechanism può essere, per esempio, una singola snapshot-consistent read del complete Resolution set; non è fissato qui.
+Concrete REALIZE-14 mechanism:
+
+> ogni real Relationship transition ottiene l'intero lifecycle semantic-view event set da un solo SQL metadata-observation statement a `READ COMMITTED`, senza metadata row locks solely for event projection.
+
+Per CREATE l'observation avviene dopo complete closure insertion riuscita; per DELETE prima della closure removal.
 
 ## 13. Object.RENAME vs lifecycle event
 
@@ -231,7 +252,7 @@ Object canonical names nel Relationship lifecycle event sono historical display 
 
 Relationship mutation non viene serializzata genericamente con Object.RENAME soltanto per tali fields.
 
-L'event set salva i canonical names osservati nello snapshot coerente della mutation.
+L'intero event set salva i canonical names osservati nello stesso one-statement MVCC snapshot di REALIZE-14. `Object.RENAME` usa `FOR NO KEY UPDATE`, preservando la compatibilità con pure FK key-share protection.
 
 ## 14. Relationship DELETE concurrency
 
@@ -250,6 +271,8 @@ other is idempotent no-op
 ```
 
 Nessun duplicate deletion event set.
+
+Concrete owner: exact Relationship header `FOR UPDATE`, perché la row viene eliminata.
 
 ## 15. DELETE vs CREATE same semantic association
 
@@ -273,7 +296,7 @@ CREATE then creates new Relationship Y
     -> final present
 ```
 
-Nessuna resurrection di X.
+Nessuna resurrection di X. Late DELETE(X) non può colpire Y.
 
 ## 16. Read consistency
 
@@ -297,21 +320,13 @@ e la semantic read projection deduplica eventuali overlapping Resolution access 
 
 ## 17. High-risk PostgreSQL concurrency tests
 
-M1 deve verificare almeno:
+Il normative scenario census è ora `concurrency-postgresql-test-matrix.md`. Le race originariamente identificate qui sono coperte da:
 
-1. concurrent CREATE della stessa non-symmetric factual Relationship tramite Resolution reciproche;
-2. concurrent symmetric inverse CREATE;
-3. symmetric inheritance-overlap CREATE con candidate closure multipla;
-4. CREATE vs Object DELETE;
-5. Relationship DELETE vs Object DELETE;
-6. CREATE vs Definition DELETE;
-7. Definition CREATE vs ObjectTemplate whole-lineage DELETE;
-8. conflicting Definition CREATE vs CREATE;
-9. Definition RENAME vs conflicting CREATE/RENAME;
-10. Definition RENAME vs runtime CREATE/DELETE lifecycle-name snapshot;
-11. concurrent DELETE dello stesso relationship_id;
-12. DELETE/recreate same semantic association + late DELETE old id;
-13. rollback test che impedisca header/closure/event-set partial commit.
+- `ARB-05..07` — factual CREATE/DELETE/convergence/ABA;
+- `REF-03..04` — Object/Definition lifetime;
+- `GATE-04..06` — Definition certified-set conflicts/fresh snapshot;
+- `SNAP-01..03` — Relationship lifecycle metadata snapshot;
+- `ATOMIC-02..03` — complete closure/event atomicity;
+- `PAR-01`, `PAR-02`, `PAR-05` — intentional non-serialization / no global Relationship lock.
 
-I test verificano outcome serialmente validi, non uno specifico scheduling.
-
+I test verificano allowed outcome sets e required mechanism properties, non uno scheduling arbitrario.
