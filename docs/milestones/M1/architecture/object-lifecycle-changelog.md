@@ -1,6 +1,6 @@
 # M1 — Object Lifecycle Changelog
 
-**Status:** DRAFT — lifecycle semantics ratificate; metadata observation contracts allineati a REALIZE-14/15.
+**Status:** DRAFT — lifecycle semantics, metadata observation e public read/list semantics ratificate; allineato a REALIZE-14/15 e API-03.9/03.10.
 
 ## 1. Responsabilità
 
@@ -67,13 +67,21 @@ Conseguenze:
 
 M1 non introduce global sequence.
 
-Canonical ordering/pagination:
+Canonical deterministic ordering key:
 
 ```text
 occurred_at
 +
 event_id deterministic tie-breaker
 ```
+
+Per le public lifecycle collection API-03.10 fissa l'ordine:
+
+```text
+(occurred_at, id) DESC
+```
+
+così le timeline espongono gli event più recenti per primi. Questo ordering resta deterministico, non una promessa di strict commit chronology.
 
 L'event UUID non possiede temporal meaning.
 
@@ -399,13 +407,21 @@ object_id = Object.id
 
 Per ownership, un Object parent continua invece a comparire come `destination_object_id`.
 
-Una query generale "events involving Object X" può quindi ancora usare:
+Normative Object-specific timeline rule API-03.10:
+
+```text
+GET /api/v1/core/objects/{object_id}/lifecycle-events
+```
+
+significa **event che coinvolgono l'Object** e usa quindi:
 
 ```text
 object_id = X
 OR
 destination_object_id = X
 ```
+
+Non significa soltanto `object_id = X`; altrimenti il parent non vedrebbe i propri ATTACH/DETACH structural event.
 
 ## 12. Historical references, not live FKs
 
@@ -487,9 +503,9 @@ Sono vietati:
 - event set senza corresponding current-state transition;
 - duplicate event set per idempotent no-op.
 
-## 15. Query/read consistency
+## 15. Query/read consistency e public filters
 
-Changelog reads possono filtrare almeno concettualmente per:
+Changelog reads osservano committed state e possono filtrare concettualmente per:
 
 ```text
 kind
@@ -501,7 +517,28 @@ relationship_name
 time/cursor range
 ```
 
-Ordinary lifecycle reads osservano committed state.
+API-03.9 definisce il canonical discriminated lifecycle event DTO.
+
+API-03.10 rende public first-class i filter globali:
+
+```text
+kind
+object_id
+destination_object_id
+relationship_id
+relationship_definition_id
+relationship_name
+occurred_from
+occurred_to
+```
+
+`relationship_name` è exact-match historical name. `occurred_from/to` riusano il public datetime lexical contract API-03.8.
+
+La Object-specific lifecycle route usa il path Object come involving predicate e non accetta un secondo `object_id` query selector.
+
+Pagination M1 usa opaque keyset cursor, default `limit=100`, max 500 e canonical ordering `(occurred_at,id) DESC`. Il cursor non è snapshot token, CDC token o strict commit-order token.
+
+PERSIST-15 contiene gli indici read-path richiesti da questi filter, inclusi `(kind, occurred_at, id)` e il partial `(relationship_name, occurred_at, id) WHERE relationship_name IS NOT NULL`.
 
 M1 non implementa automaticamente historical Object/Relationship reconstruction.
 
