@@ -1,6 +1,6 @@
 # M1 — Relationship R2 Consistency Review
 
-**Status:** REVIEW COMPLETE — R2 semantics frozen; persistence/concurrency technical closure integrated through REALIZE-12..15.
+**Status:** REVIEW COMPLETE — R2 semantics frozen; persistence/concurrency/API/test closure integrated through REALIZE-12..15, PGTEST-01..04 and API-03.11.
 
 ## 1. Scopo
 
@@ -299,11 +299,11 @@ lifecycle metadata observation
 persistence/index optimization baseline
     -> PERSIST-15, no ancestry closure/reverse authority table
 
-real PostgreSQL race coverage
-    -> PGTEST-01..02
+real PostgreSQL race coverage / deterministic harness / recipes
+    -> PGTEST-01..04
+
+public command/read/list/error/success contract
+    -> API-03.7 / API-03.9 / API-03.10 / API-03.11
 ```
 
-Restano prima del final M1 architecture freeze aspetti di transport/application e test-harness realization, non scelte aperte di Relationship persistence/concurrency:
-
-- REST/DTO and public error/status shape;
-- PGTEST-03 deterministic harness contract and later implementation details.
+No Relationship-specific architecture question remains open before the global M1 architecture consistency/freeze decision.
