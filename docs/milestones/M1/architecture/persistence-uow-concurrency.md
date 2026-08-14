@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Unit of Work & Concurrency Realization Baseline
 
-**Status:** DRAFT — decisioni PERSIST-16..PERSIST-20 ratificate; complete realization matrix ancora da consolidare dopo la semantic matrix.
+**Status:** DRAFT — decisioni PERSIST-16..PERSIST-20 ratificate; REALIZE-15 raffina PERSIST-19 distinguendo non-key mutation owner (`FOR NO KEY UPDATE`) da delete/key-changing owner (`FOR UPDATE`). La complete realization matrix è consolidata nei documenti companion `concurrency-postgresql-realization-*.md`.
 
 ## 1. Scopo
 
@@ -9,7 +9,7 @@ Questo documento definisce il baseline tecnico PostgreSQL già ratificato per:
 - enforcement boundary DB vs Unit of Work;
 - semantic transaction boundary;
 - isolation level;
-- row-lock ownership e ordering;
+- row-lock ownership, strength e ordering;
 - lifecycle-sensitive dependency admission;
 - ownership graph gate;
 - RelationshipDefinition global conflict gate;
@@ -157,7 +157,7 @@ READ COMMITTED
 
 Strong consistency non viene ottenuta usando globalmente `SERIALIZABLE`, ma combinando:
 
-- row locks espliciti;
+- row locks espliciti con strength coerente al predicate;
 - exact uniqueness/PK authority;
 - foreign-key lifetime authority;
 - optimistic draft generation checks;
@@ -194,15 +194,28 @@ Un futuro uso per specifiche UoW richiede decisione esplicita e retry contract e
 
 ## 5. Lock semantics comuni — PERSIST-19
 
-### 5.1 Mutation owner
+### 5.1 Mutation owner strength
 
-Quando una persisted row è il concurrency owner della mutable state transition:
+Quando una persisted row è il concurrency owner di una mutable state transition che **non elimina la row e non modifica una referenced key**, il baseline primitive è:
+
+```text
+SELECT ... FOR NO KEY UPDATE
+```
+
+Quando la mutation elimina la row o modifica una referenced key/identity, il baseline primitive è:
 
 ```text
 SELECT ... FOR UPDATE
 ```
 
-è il baseline primitive.
+Razionale del refinement REALIZE-15:
+
+- owner writer sulla stessa row restano mutuamente esclusivi;
+- `FOR SHARE` lifecycle admission continua a confliggere con non-key state writers;
+- una pure referential key-share protection può coesistere con una non-key mutation owner;
+- non si usa una lock strength più forte del safety predicate richiesto.
+
+Questa distinzione cambia il PostgreSQL mechanism strength, non la concurrency authority semantica.
 
 ### 5.2 Lifecycle-sensitive dependency admission
 
@@ -214,7 +227,7 @@ SELECT ... FOR SHARE
 
 sulla exact dependency row.
 
-`FOR KEY SHARE` non è sufficiente perché deve bloccare un concurrent status UPDATE/deprecation.
+`FOR KEY SHARE` non è sufficiente perché deve bloccare un concurrent non-key status UPDATE/deprecation.
 
 ### 5.3 Re-read rule
 
@@ -226,11 +239,13 @@ Dopo eventuale lock wait:
 
 Quando una UoW deve acquisire lock su un equivalente set di più exact rows, l'ordine deve essere deterministico.
 
-Per model dependencies il baseline ordering key concettuale è:
+Per model dependencies la realization usa una canonical resource key concettuale:
 
 ```text
-(kind, lineage_uuid, version)
+(kind, lineage_uuid, resource_rank, version)
 ```
+
+con lineage header prima della exact version quando entrambe appartengono alla stessa resource lineage.
 
 Non viene introdotto un artificiale global lock hierarchy cross-domain oltre ai casi esplicitamente richiesti.
 
@@ -245,7 +260,7 @@ Deadlock detection resta fallback di sicurezza/retry, non meccanismo di serializ
 Concurrency owner:
 
 ```text
-stable lineage header FOR UPDATE
+stable lineage header FOR NO KEY UPDATE
 ```
 
 per stabilizzare:
@@ -256,27 +271,38 @@ per stabilizzare:
 
 ### 6.2 Draft mutation
 
-Exact DTV/OTV DRAFT row è mutation owner:
+Exact DTV/OTV DRAFT row è mutation owner.
+
+Per `REVISE` e `PUBLISH`:
 
 ```text
-FOR UPDATE
+exact DRAFT FOR NO KEY UPDATE
 ```
 
-poi si verifica:
+Per `DELETE_DRAFT`, dopo la lineage owner lock richiesta da `S-VERSION-SET`:
+
+```text
+lineage header FOR NO KEY UPDATE
+    -> exact DRAFT FOR UPDATE
+```
+
+perché la target row viene eliminata.
+
+Dopo l'owner lock si verifica:
 
 ```text
 status == DRAFT
 revision == expected_revision
 ```
 
-per `REVISE`, `PUBLISH`, `DELETE_DRAFT`.
+Il loser non riapplica automaticamente il proprio intent su una nuova generation.
 
 ### 6.3 Set default
 
 Ordering baseline:
 
 ```text
-lineage header FOR UPDATE
+lineage header FOR NO KEY UPDATE
     -> target exact version FOR SHARE
     -> recheck target PUBLISHED
 ```
@@ -284,7 +310,7 @@ lineage header FOR UPDATE
 ### 6.4 Clear default
 
 ```text
-lineage header FOR UPDATE
+lineage header FOR NO KEY UPDATE
 ```
 
 ### 6.5 Implicit default binding
@@ -308,9 +334,16 @@ con PUBLISHED recheck prima del commit.
 
 ### 6.7 Publish OTV consumer
 
-DRAFT OTV row è mutation owner `FOR UPDATE`.
+PUBLISH acquisisce sempre:
 
-Dopo candidate/freshness validation, ogni **direct lifecycle-sensitive exact dependency** viene stabilizzata con `FOR SHARE` in deterministic order e ri-validata PUBLISHED.
+```text
+consumer lineage header FOR NO KEY UPDATE
+    -> exact DRAFT OTV FOR NO KEY UPDATE
+```
+
+per default policy + draft lifecycle/generation.
+
+Dopo candidate/freshness validation, ogni **direct lifecycle-sensitive exact dependency** viene stabilizzata con `FOR SHARE` in deterministic resource order e ri-validata PUBLISHED.
 
 Non si locka transitivamente l'intera dependency closure: il direct published graph invariant è sufficiente.
 
@@ -320,7 +353,7 @@ Baseline ordering:
 
 ```text
 lineage header FOR SHARE
-    -> exact version FOR UPDATE
+    -> exact version FOR NO KEY UPDATE
     -> recheck lifecycle/default blockers
     -> reverse direct active-consumer validation
 ```
@@ -341,22 +374,37 @@ Le cross-aggregate FK `RESTRICT` restano la final race authority contro una refe
 
 ## 7. Object locking baseline
 
-L'Object row è concurrency owner per le intrinsic/current-state mutation:
+L'Object row è concurrency owner del complete current intrinsic state.
+
+Per:
 
 ```text
 RENAME
 DATA_CHANGE
 SCHEMA_CHANGE
+```
+
+baseline:
+
+```text
+Object row FOR NO KEY UPDATE
+```
+
+Per:
+
+```text
 DELETE
 ```
 
-Baseline:
+baseline:
 
 ```text
 Object row FOR UPDATE
 ```
 
-Questo garantisce la serial composability del complete intrinsic state/lifecycle snapshots.
+Questo preserva la serial composability del complete intrinsic state/lifecycle snapshots senza trasformare non-key Object mutation in un blocco referentiale più forte del necessario.
+
+Dopo il lock la UoW ricarica il complete current Object state e deriva/rivalida la candidate da quello state.
 
 ### SCHEMA_CHANGE target
 
@@ -387,7 +435,7 @@ SCHEMA_CHANGE(parent)
 quindi:
 
 ```text
-parent Object FOR UPDATE
+parent Object FOR NO KEY UPDATE
 ```
 
 serializza il current exact parent schema e il parent outgoing ownership edge set.
@@ -399,11 +447,15 @@ Questa scelta può over-serializzare semanticamente independent mutation sulla s
 Sequenza concettuale:
 
 ```text
-parent FOR UPDATE
+parent FOR NO KEY UPDATE
 -> validate current slot / child stable compatibility
+-> inspect current child ownership
+-> fast exit on exact no-op or ownership conflict
 -> ownership graph edge-add gate
+-> fresh post-gate child-ownership read
 -> cycle check on protected committed graph
--> insert edge
+-> insert edge + event
+-> commit
 ```
 
 Il child non viene genericamente row-lockato per ATTACH:
@@ -415,6 +467,10 @@ Il child non viene genericamente row-lockato per ATTACH:
 ### 8.3 DETACH
 
 DETACH usa il parent owner domain ma **non** acquisisce il graph-wide cycle gate, perché rimuovere un edge non può introdurre un ciclo.
+
+### 8.4 Ownership structural-event display metadata
+
+Per `ATTACH_TO`/`DETACH_FROM`, il parent display name proviene dalla parent row già stabilizzata; il child canonical name è historical display metadata letto come committed observation dopo parent stabilization, senza child lock introdotto soltanto per l'evento.
 
 ---
 
@@ -431,11 +487,13 @@ La complete candidate shape/equivalence/conflict predicate viene letto/ri-letto 
 Baseline:
 
 ```text
-specific Definition header FOR UPDATE
+specific Definition header FOR NO KEY UPDATE
     -> global RelationshipDefinition conflict gate
-    -> re-read complete Definition/global candidate conflicts
+    -> fresh read of complete Definition/global candidate conflicts
     -> atomic complete Resolution-name update
 ```
+
+RENAME modifica non-key semantic metadata e non usa `FOR UPDATE` soltanto perché la Definition è referenced da factual Relationship.
 
 ### 9.3 DELETE
 
@@ -465,6 +523,7 @@ validate stable endpoint admission
 lookup exact runtime view
 if present -> converge/no-op
 else derive complete candidate closure
+exact-deduplicate + canonical-sort closure rows
 attempt aggregate insert
 ```
 
@@ -484,8 +543,9 @@ Concurrent equivalent CREATE:
 
 - un candidate UoW vince;
 - l'altro può ricevere unique/PK collision;
-- la failed candidate transaction viene rollbackata;
-- la semantic operation viene ri-eseguita/ri-letta e converge sulla winner Relationship.
+- la failed candidate transaction viene rollbackata integralmente;
+- la semantic operation riparte in una fresh UoW e rivaluta il current exact view;
+- se il winner è ancora current converge sulla winner Relationship; se è già stato eliminato può creare una nuova factual identity.
 
 Nessun duplicate factual header o duplicate lifecycle creation event set è ammesso.
 
@@ -496,6 +556,8 @@ Concurrency owner:
 ```text
 Relationship header FOR UPDATE
 ```
+
+perché la row viene eliminata.
 
 Dopo il lock si ricaricano:
 
@@ -520,11 +582,17 @@ La semantic correctness resta exact-identity based:
 
 RelationshipDefinition `RENAME` non deve genericamente serializzare runtime Relationship mutation: rename non cambia structural Resolution identity, endpoint spaces o factual closure.
 
-La Relationship mutation deve però costruire `relationship_name` del complete lifecycle event set da un **coherent committed Definition snapshot**.
-
 Analogamente, Object canonical names negli Relationship event sono historical display metadata: runtime Relationship mutation non deve genericamente serializzare con `Object.RENAME` soltanto per tali fields.
 
-La complete event derivation deve osservare coherent committed metadata state secondo il predicate `S-REL-EVENT-SNAPSHOT` definito nella semantic matrix.
+La concrete `S-REL-EVENT-SNAPSHOT` realization è:
+
+> una singola real Relationship factual transition ottiene l'intero semantic lifecycle event projection da **un solo SQL metadata-observation statement** a `READ COMMITTED`.
+
+Lo statement osserva nello stesso MVCC snapshot tutti i required Resolution names e source/destination Object canonical names. Non prende `FOR SHARE`/`FOR UPDATE` soltanto per metadata storica.
+
+Per CREATE la observation avviene dopo la complete runtime closure insertion riuscita; per DELETE prima della closure removal. La semantic-view dedup può avvenire nella stessa query. Metadata mutation dopo tale observation ma prima del factual commit non invalida il captured event set.
+
+`occurred_at = transaction_timestamp()` resta transaction-start time e non timestamp del metadata observation, commit time o global ordering authority.
 
 ---
 
@@ -547,24 +615,41 @@ RELATIONSHIP_DEFINITION_CONFLICT_GATE
 
 La key strategy è centralizzata e nominata, concettualmente come namespace NETAUTO + resource key. Non si usano runtime string hash sparsi nel codice.
 
-### 12.1 OWNERSHIP_GRAPH_WRITE_GATE
+### 12.1 Fresh-snapshot rule comune
 
-Acquisito soltanto da operation `ATTACH` che aggiungono un ownership edge.
+Per ogni blocking logical gate:
+
+```text
+statement 1:
+    SELECT pg_advisory_xact_lock(...)
+
+statement 2+:
+    read/re-read protected predicate
+```
+
+Acquisition e authoritative protected read sono statement separati. A `READ COMMITTED`, il post-wait predicate deve essere osservato con un fresh statement snapshot che includa lo state committed dal precedente gate holder.
+
+Il gate è stabilization mechanism; il committed protected row set resta l'authority.
+
+### 12.2 OWNERSHIP_GRAPH_WRITE_GATE
+
+Acquisito soltanto da operation `ATTACH` che aggiungono realmente un ownership edge.
 
 Protected critical phase:
 
 ```text
 acquire gate
--> re-read graph predicate as needed
--> cycle validation
--> edge add
+-> fresh re-read child ownership
+-> fresh graph read / cycle validation
+-> edge add + event
+-> commit
 ```
 
 `DETACH` non acquisisce il gate.
 
 Normal read non acquisisce il gate.
 
-### 12.2 RELATIONSHIP_DEFINITION_CONFLICT_GATE
+### 12.3 RELATIONSHIP_DEFINITION_CONFLICT_GATE
 
 Acquisito da:
 
@@ -577,14 +662,14 @@ Protected phase:
 
 ```text
 acquire gate
--> re-read global certified set
+-> fresh re-read global certified set
 -> validate equivalence/conflicts
 -> commit candidate mutation
 ```
 
 `RelationshipDefinition.DELETE` non acquisisce il gate.
 
-### 12.3 Discipline
+### 12.4 Discipline
 
 Advisory-lock correctness è application contract:
 
@@ -600,44 +685,55 @@ I gate sono osservabili operationally tramite `pg_locks`.
 
 ---
 
-## 13. Concurrency realization matrix — struttura normativa
+## 13. Concurrency realization matrix — stato normativo
 
-La complete PostgreSQL realization matrix viene prodotta **dopo** il freeze della semantic matrix.
-
-Per ogni non-trivial pairwise cell deve contenere almeno:
+La PostgreSQL realization matrix è distribuita nei documenti:
 
 ```text
-semantic operation A
-semantic operation B
-scope qualifier
-semantic safety predicate(s)
-semantic independence vs required ordering
-concurrency owner / authority
-DB constraint / CAS / row lock / advisory gate
-isolation assumption
+concurrency-postgresql-realization-matrix.md
+concurrency-postgresql-realization-object-ownership.md
+concurrency-postgresql-realization-relationship.md
+```
+
+REALIZE-01..REALIZE-15 hanno identificato per tutti i 19 safety predicate M1:
+
+```text
+semantic scope
+required outcome
+concurrency authority
+physical authority
+PostgreSQL mechanism
+revalidation point
 retry/convergence behavior
-required PostgreSQL concurrency test
+required real-PG test family
 ```
 
 Regola forte:
 
 > se una non-trivial semantic matrix cell non può essere ricondotta a una concrete authority/mechanism e a un real PostgreSQL concurrency test, il concurrency design non è chiuso.
 
-La realization matrix deve inoltre rendere esplicita l'**over-serialization tecnica** quando una semantic `I` cell può comunque attendere per una scelta implementativa M1.
+La realization matrix rende inoltre esplicita l'**over-serialization tecnica** quando una semantic `I` cell può comunque attendere per una scelta implementativa M1.
 
-Esempio già noto:
+Esempi intenzionali ancora presenti:
 
 ```text
 OBJ.RENAME(P) × OBJ.ATTACH(P,S,C)
-semantic: I
-realization: può serializzare sulla stessa parent/Object row
+    -> same parent Object non-key owner
+
+unrelated real ownership ATTACH × ATTACH
+    -> global ownership graph gate
+
+unrelated RD.CREATE/RENAME
+    -> global Definition conflict gate
 ```
+
+REALIZE-15 elimina invece over-serialization puramente accidentale dovuta all'uso indiscriminato di `FOR UPDATE` per mutation non-key.
 
 ---
 
 ## 14. Traceability e test derivation
 
-Traceability desiderata:
+Traceability normativa:
 
 ```text
 Invariant
@@ -651,3 +747,5 @@ Invariant
 Ogni non-trivial semantic cell deve generare almeno un test race rappresentativo o essere coperta esplicitamente da una test family equivalente.
 
 Ogni futura mutation M1/M2 deve essere aggiunta alla semantic operation census e comparata con tutte le mutation esistenti **prima** di dichiararne completo il concurrency design.
+
+Il passo successivo alla complete realization è derivare e congelare la **PostgreSQL concurrency test matrix**, senza introdurre nuove semantic decision salvo che un test design riveli un gap reale.
