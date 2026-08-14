@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO, API-03.6 Object command DTO, API-03.7 Relationship command DTO e il `core.byte_size` public wire contract sono ratificati. Restano primitive lexical forms, read/list e failure mapping.
+**Status:** DRAFT — API-03 in progress. API-03.1 strict caller-intent rules, API-03.2 `expected_revision` placement, API-03.3 exact/implicit selectors, API-03.4 DataType command DTO, API-03.5 ObjectTemplate command DTO, API-03.6 Object command DTO, API-03.7 Relationship command DTO, API-03.8 PrimitiveType public lexical forms e il `core.byte_size` public wire contract sono ratificati. Restano read/list e failure mapping.
 
 ## 1. Scopo e boundary
 
@@ -801,7 +801,221 @@ A3.76 Array ordering never creates orientation for semantic unordered Definition
 
 ---
 
-## 9. `core.byte_size` public wire contract
+## 9. API-03.8 — PrimitiveType public lexical forms
+
+### 9.1 General rule
+
+Ogni PrimitiveType possiede un unico public input carrier/lexical contract riusato in tutti gli input position che accettano quel semantic value:
+
+```text
+Object property values
+DataType minimum/maximum/enum values
+ObjectTemplate migration_default values
+```
+
+Il transport può validare carrier e lexical shape; il PrimitiveType/domain codec resta authority per semantic parsing, canonicalization e constraint validation.
+
+Canonical API output segue sempre il canonical domain/persistence representation, non la lexical form scelta dal caller.
+
+### 9.2 Primitive wire table
+
+| Primitive | Accepted public input | Canonical output |
+|---|---|---|
+| `core.string` | JSON string | identical JSON string |
+| `core.integer` | JSON integer | JSON integer |
+| `core.number` | exact-decimal JSON string | canonical exact-decimal string |
+| `core.boolean` | JSON boolean | JSON boolean |
+| `core.date` | zero-padded `YYYY-MM-DD` string | `YYYY-MM-DD` |
+| `core.datetime` | strict offset/Z datetime string | canonical UTC `Z` string |
+| `core.ip` | IPv4/IPv6 address string | canonical IP string |
+| `core.ip_prefix` | explicit CIDR address/prefix-length string | canonical CIDR string |
+| `core.byte_size` | exact integer bytes OR strict SI/IEC quantity string | exact integer bytes |
+
+### 9.3 `core.string`
+
+Accetta esclusivamente JSON string.
+
+Canonicalizzazione identity: nessun trim, lowercase/case folding, Unicode normalization o business normalization implicita.
+
+Una stringa vuota è primitive-valid; eventuale `min_length` appartiene alla exact DTV.
+
+### 9.4 `core.integer`
+
+Accetta esclusivamente un vero JSON integer.
+
+Non sono integer input:
+
+```text
+"42"
+42.0
+1e3
+true
+false
+```
+
+Boolean non è mai integer. M1 non introduce implicit primitive min/max oltre ai constraint della exact DTV.
+
+### 9.5 `core.number`
+
+Accetta esclusivamente JSON string con exact-decimal lexical grammar:
+
+```text
+-?(0|[1-9][0-9]*)(\.[0-9]+)?
+```
+
+Sono quindi vietati:
+
+```text
+leading +
+leading zero non-canonical forms such as 01
+leading decimal point such as .5
+trailing decimal point such as 1.
+exponent notation
+NaN / Infinity
+```
+
+Input numeric-equivalent possono convergere al medesimo canonical state, per esempio:
+
+```text
+"12.50"  -> "12.5"
+"-0"     -> "0"
+"-0.000" -> "0"
+```
+
+Canonical output segue PERSIST-12:
+
+```text
+no +
+no exponent
+no superfluous leading/trailing zero
+no decimal point when integral
+negative zero -> "0"
+```
+
+La scelta string-only è intenzionale per preservare exact-decimal semantics attraverso JSON client/toolchain che non garantiscono arbitrary-precision numeric values.
+
+### 9.6 `core.boolean`
+
+Accetta esclusivamente JSON `true` / `false`.
+
+Non accetta integer, string o alias lexical come `yes/no`.
+
+### 9.7 `core.date`
+
+Accetta esclusivamente Gregorian calendar date zero-padded:
+
+```text
+YYYY-MM-DD
+```
+
+Range M1:
+
+```text
+0001-01-01 .. 9999-12-31
+```
+
+Il calendario deve essere valido. Non sono ammessi year zero, extended years, slash format o datetime-as-date.
+
+Canonical output coincide con `YYYY-MM-DD`.
+
+### 9.8 `core.datetime`
+
+Accepted lexical shape:
+
+```text
+YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)
+```
+
+Regole:
+
+- absolute offset obbligatorio (`Z` o numeric offset);
+- uppercase `T` e `Z` canonical lexical vocabulary;
+- secondi obbligatori;
+- leap-second `:60` non supportato M1;
+- nessun arbitrary rounding;
+- timezone/offset originale non viene preservato.
+
+Fractional seconds possono avere più di sei cifre soltanto quando tutte le cifre oltre la sesta sono zero. Cifre non-zero oltre il microsecondo rendono l'input invalido.
+
+Esempi:
+
+```text
+2026-08-14T16:48:00Z                  valid
+2026-08-14T18:48:00+02:00             valid
+2026-08-14T18:48:00.123456+02:00      valid
+2026-08-14T18:48:00.123456000+02:00   valid
+2026-08-14T18:48:00.123456001+02:00   invalid
+```
+
+Canonical output:
+
+```text
+UTC
+uppercase Z
+seconds present
+fraction omitted when zero
+trailing fractional zeros removed
+max six significant fractional digits
+```
+
+### 9.9 `core.ip`
+
+Accetta valid IPv4/IPv6 textual address string.
+
+Non accetta:
+
+```text
+CIDR suffix
+zone/scope identifier such as %eth0
+```
+
+Canonical output:
+
+```text
+IPv4 -> dotted decimal
+IPv6 -> lowercase compressed canonical address text
+```
+
+### 9.10 `core.ip_prefix`
+
+Richiede explicit CIDR syntax:
+
+```text
+address/prefix-length
+```
+
+Il prefix length è decimale. Non sono ammessi netmask alias.
+
+Host bits non-zero sono invalid input e vengono rifiutati, non normalizzati/corretti.
+
+Un address privo di prefix length non riceve implicit `/32` o `/128`.
+
+Canonical output usa canonical network address + decimal prefix length.
+
+### 9.11 `core.byte_size`
+
+Resta governato dal dedicated contract A3-BS-01..07 della sezione successiva.
+
+### 9.12 Decisioni API-03.8
+
+```text
+A3.77 Every PrimitiveType has one public input carrier/lexical contract reused for Object values, DataType constraints/enums and migration_default.
+A3.78 core.string accepts only JSON string and performs identity canonicalization; no trimming, case folding or Unicode/business normalization.
+A3.79 core.integer accepts only a JSON integer; booleans, strings, floating-number and exponent forms are not integer inputs.
+A3.80 core.number accepts only an exact-decimal JSON string using -?(0|[1-9][0-9]*)(\.[0-9]+)?; no plus sign or exponent notation; canonical output follows PERSIST-12 exact-decimal rules.
+A3.81 core.boolean accepts only JSON true/false.
+A3.82 core.date accepts exactly zero-padded YYYY-MM-DD Gregorian dates in range 0001-01-01..9999-12-31.
+A3.83 core.datetime accepts YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM), requires an absolute offset, rejects leap-second :60 and never rounds fractional precision.
+A3.84 Datetime digits beyond microseconds are accepted only when all digits beyond the sixth are zero; canonical output is UTC Z with trailing fractional zeros removed.
+A3.85 core.ip accepts valid IPv4/IPv6 textual addresses, no zone identifier or CIDR; output is canonical address text.
+A3.86 core.ip_prefix requires explicit address/prefix-length CIDR syntax; host bits are rejected, never normalized away; netmask aliases are not accepted.
+A3.87 core.byte_size remains governed by A3-BS-01..07.
+A3.88 Transport may validate carrier and lexical shape, but PrimitiveType/domain code remains authority for semantic parsing, canonicalization and constraints.
+```
+
+---
+
+## 10. `core.byte_size` public wire contract
 
 Ovunque il public API accetti semantic `core.byte_size` — Object property, DataType constraint/enum, ObjectTemplate `migration_default` — sono ammessi:
 
@@ -851,12 +1065,11 @@ A3-BS-07 one primitive parser/canonicalizer reused across all byte_size input po
 
 ---
 
-## 10. API-03 remaining work
+## 11. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-remaining primitive public-input lexical forms
 canonical read DTO conventions
 pagination/filter/list envelopes
 success/failure HTTP mapping
