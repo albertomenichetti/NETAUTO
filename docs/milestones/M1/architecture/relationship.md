@@ -1,6 +1,6 @@
 # M1 — Relationship Architecture
 
-**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency realization complete; transport/API and test-harness details remain before final M1 architecture freeze.
+**Status:** DRAFT — Relationship R2 semantics frozen; PostgreSQL persistence/concurrency realization and public command DTO contract complete; read/failure API details remain before final M1 architecture freeze.
 
 ## 1. Scopo
 
@@ -17,7 +17,8 @@ Documenti collegati:
 - `persistence-model.md` / `persistence-uow-concurrency.md` — physical schema, FK/constraints, UoW/isolation/lock baseline;
 - `concurrency-postgresql-test-matrix.md` — real-PG race coverage;
 - `object-lifecycle-changelog.md` — lifecycle event-set semantics per Relationship;
-- `object.md` — invariant cross-domain di lifecycle event-set atomicity.
+- `object.md` — invariant cross-domain di lifecycle event-set atomicity;
+- `api-wire-contract.md` — public command DTO/wire shape, API-03.7.
 
 Le semantics e invarianti osservabili restano normative nei documenti di dominio; i meccanismi PostgreSQL non sono più “da definire” ma sono normativi nei persistence/realization contract sopra.
 
@@ -140,7 +141,43 @@ Nessuna delle due è semanticamente "forward".
 - **REL-INV-034 — Historical lifecycle references:** identifier e names nel changelog sono historical data, non live referential dependencies.
 - **REL-INV-035 — Strong concurrent consistency:** nessun supported interleaving può committare uno stato che viola le invarianti sopra.
 
-## 6. Modelling guideline
+## 6. Public command DTO contract
+
+API-03.7 in `api-wire-contract.md` è ora normativo per il transport M1.
+
+In sintesi:
+
+```text
+RelationshipDefinition.CREATE
+    symmetric=false
+        -> exactly two unordered named perspectives {template_id,name}
+
+    symmetric=true
+        -> unordered two-element endpoint_template_ids
+        -> one semantic name
+
+RelationshipDefinition.RENAME
+    non-symmetric
+        -> complete unordered two-element {resolution_id,name} set
+
+    symmetric
+        -> one semantic name
+
+RelationshipDefinition.DELETE
+    -> no body / no cascade-force semantics
+
+Relationship.CREATE
+    -> exactly resolution_id + from_object_id + to_object_id
+
+Relationship.DELETE
+    -> exact relationship_id path identity / no body
+```
+
+Definition/Resolution/Relationship identities create-time restano kernel-generated. Nessun array ordering introduce source/target o forward/reverse orientation. Self-loop non viene rifiutato strutturalmente dal transport.
+
+Questa sezione non sostituisce le domain validation in `relationship-definition.md` / `relationship-runtime.md`: aggregate shape, lineage admission, conflict/equivalence, factual convergence e symmetry semantics restano application/domain authority.
+
+## 7. Modelling guideline
 
 Una Relationship capability dovrebbe essere dichiarata sul template-space più generale per cui la semantics è corretta per tutti i discendenti:
 
@@ -151,7 +188,7 @@ lowest necessary
 
 Non creare specialization duplicate soltanto per restringere artificialmente lo spazio di compatibility.
 
-## 7. Future typed Relationship properties
+## 8. Future typed Relationship properties
 
 M1 non introduce:
 
@@ -180,7 +217,7 @@ RuntimeRelationshipResolution
 
 Future property/schema evolution non modifica `symmetric`, Resolution set, endpoint lineage o resolved graph topology.
 
-## 8. Candidate future / RFE
+## 9. Candidate future / RFE
 
 - `RelationshipDefinitionVersion`;
 - typed Relationship properties;
@@ -191,7 +228,7 @@ Future property/schema evolution non modifica `symmetric`, Resolution set, endpo
 - historical relationship reconstruction;
 - controlled future mutation di structural relationship type soltanto tramite workflow espliciti, non generic update.
 
-## 9. Technical-contract status
+## 10. Technical-contract status
 
 Le seguenti decisioni non sono più aperte:
 
@@ -207,10 +244,10 @@ lifecycle physical representation e one-statement Relationship metadata observat
 runtime from_object_id / relationship / Definition lookup indices
 RD.RENAME non-key owner = FOR NO KEY UPDATE; RD.DELETE = FOR UPDATE
 Relationship DELETE exact-id owner = FOR UPDATE
+RelationshipDefinition/Relationship public command DTO shapes = API-03.7
 ```
 
-Restano aperti prima del coding freeze soltanto aspetti di transport/application e test harness, non la persistence/concurrency architecture:
+Restano aperti prima del coding freeze soltanto aspetti di transport/read/application non ancora chiusi:
 
-- REST/DTO command/read shapes;
-- public error/status taxonomy;
-- PGTEST-03 deterministic concurrency harness implementation contract.
+- canonical read DTO shapes;
+- public error/status taxonomy.
