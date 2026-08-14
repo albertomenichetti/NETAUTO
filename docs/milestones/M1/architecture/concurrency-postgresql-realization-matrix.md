@@ -1,6 +1,6 @@
 # M1 — PostgreSQL Concurrency Realization Matrix
 
-**Status:** DRAFT — REALIZE-01 e REALIZE-02 ratificati; il documento viene esteso predicate-by-predicate.
+**Status:** DRAFT — REALIZE-01..REALIZE-03 ratificati; il documento viene esteso predicate-by-predicate.
 
 ## 1. Scopo
 
@@ -98,7 +98,7 @@ Questo consente futuri miglioramenti di parallelismo senza riaprire la semantica
 Per singolo entity kind:
 
 ```text
-datatypes       UNIQUE(namespace, name)
+datatypes        UNIQUE(namespace, name)
 object_templates UNIQUE(namespace, name)
 ```
 
@@ -269,7 +269,137 @@ Almeno:
 
 ---
 
-## 5. Traceability rule
+## 5. REALIZE-03 — `S-DRAFT-GENERATION` (`DG`) e `S-LIFECYCLE-STATE` (`LS`)
+
+### 5.1 Exact-version concurrency owner
+
+La exact DTV/OTV row è il concurrency owner di:
+
+```text
+exact DRAFT generation
+exact lifecycle state
+```
+
+Per DTV l'identity è `(datatype_id, version)`; per OTV `(template_id, version)`.
+
+Le exact rows vengono stabilizzate con `FOR UPDATE` prima di mutation che cambiano `revision`, `status` o l'esistenza della DRAFT.
+
+Il DB `CHECK` limita il vocabolario dello status; monotonicità e transition admission restano UoW-enforced.
+
+### 5.2 Common DRAFT mutation pipeline
+
+Per `REVISE`, `PUBLISH`, `DELETE_DRAFT`:
+
+```text
+acquire any required higher-level lineage lock first
+-> exact DRAFT row FOR UPDATE
+-> re-read status
+-> re-read revision
+-> require status == DRAFT
+-> require revision == expected_revision
+-> execute semantic transition
+```
+
+`expected_revision` è generation token semantico e non sostituisce il row lock.
+
+Per OTV, la exact OTV row possiede concorrentemente l'intera DRAFT candidate: parent pin + local property declarations + local component declarations. Le child declaration rows non hanno autonomous mutation locking/lifecycle.
+
+### 5.3 `REVISE × REVISE`
+
+Same exact DRAFT generation:
+
+```text
+Required outcome
+    SERIALIZATION
+
+Physical authority
+    exact version row
+
+Mechanism
+    FOR UPDATE
+
+After wait
+    re-read status + revision
+```
+
+Se entrambe partono da `expected_revision=N`, la prima revise porta `N -> N+1`; la seconda osserva una generation diversa e fallisce freshness. Non esiste automatic retry con il nuovo revision, perché cambierebbe l'intent del caller.
+
+### 5.4 `REVISE × PUBLISH`
+
+Se REVISE committa prima, PUBLISH basata sulla vecchia revision fallisce freshness. Se PUBLISH committa prima, la successiva REVISE osserva status non più DRAFT e fallisce admission.
+
+Il loser non riapplica automaticamente il proprio intent sul nuovo state.
+
+### 5.5 `REVISE × DELETE_DRAFT`
+
+Se REVISE vince, cambia generation e DELETE_DRAFT con old `expected_revision` fallisce. Se DELETE_DRAFT vince, la exact target generation non esiste più e REVISE non può committare.
+
+### 5.6 `PUBLISH × DELETE_DRAFT`
+
+Se PUBLISH vince, la row diventa PUBLISHED e non è più individualmente deletable. Se DELETE_DRAFT vince, PUBLISH non trova più la target generation.
+
+### 5.7 `PUBLISH × PUBLISH` sulla stessa exact DRAFT
+
+Una sola transaction può effettuare la reale transition `DRAFT -> PUBLISHED`. La seconda, dopo il wait, osserva PUBLISHED e non produce una seconda publication transition né un secondo effetto di first-publish/default policy.
+
+La public failure/idempotency surface della seconda operation viene definita nel failure/API contract; la persistence guarantee è che la real transition avvenga al massimo una volta.
+
+### 5.8 `DEPRECATE` e lifecycle state
+
+`DEPRECATE` stabilizza la exact version con `FOR UPDATE` e, dopo ogni eventuale wait, richiede current `status == PUBLISHED` prima della transition `PUBLISHED -> DEPRECATED`.
+
+Gli ulteriori predicate di default e active-model graph possono aggiungere blocker; vengono realizzati nei successivi REALIZE point.
+
+### 5.9 `PUBLISH × DEPRECATE`
+
+La exact-row lifecycle authority impedisce transition incompatibili. Se DEPRECATE osserva ancora DRAFT non è ammissibile. Se PUBLISH committa prima, DEPRECATE può successivamente essere rivalutata sul nuovo PUBLISHED state e riuscire solo se tutti gli altri blocker (`DV`, `AM`) sono assenti.
+
+### 5.10 `DEPRECATE × DEPRECATE`
+
+Una sola transaction può effettuare la reale transition `PUBLISHED -> DEPRECATED`; la seconda osserva DEPRECATED dopo il wait e non applica una seconda real transition.
+
+La public error/idempotency mapping è differita alle failure semantics.
+
+### 5.11 Lock ordering
+
+Quando la stessa mutation richiede anche stable-lineage state, vale sempre:
+
+```text
+lineage row
+-> exact version row
+```
+
+`REVISE` normalmente non necessita della lineage row e può acquisire direttamente la exact DRAFT row.
+
+`PUBLISH` viene completata in REALIZE-04 perché first-publish/default policy può richiedere stable-lineage coordination.
+
+### 5.12 Rejected alternative: CAS-only DRAFT mutations
+
+Un conditional `UPDATE ... WHERE status='DRAFT' AND revision=:expected` potrebbe essere sufficiente per alcune DTV mutation, ma non viene adottato come modello generale M1.
+
+Ragioni:
+
+- OTV è un aggregate multi-row;
+- la exact OTV row deve possedere la complete DRAFT candidate;
+- DTV e OTV mantengono un modello di concurrency simmetrico;
+- explicit `FOR UPDATE` + recheck rende chiara la stabilization authority.
+
+### 5.13 Required PostgreSQL tests
+
+Almeno:
+
+1. `REVISE × REVISE` stessa generation -> un solo winner, loser stale;
+2. `REVISE × PUBLISH` -> entrambi gli ordini serialmente validi;
+3. `REVISE × DELETE_DRAFT` -> nessuna mutation su generation rimossa/stale;
+4. `PUBLISH × DELETE_DRAFT` -> mai publish+delete della stessa generation;
+5. `PUBLISH × PUBLISH` stessa DRAFT -> una sola real transition;
+6. `DEPRECATE × DEPRECATE` stessa PUBLISHED version -> una sola real transition;
+7. `PUBLISH × DEPRECATE` stessa exact version -> nessun lifecycle state non spiegabile dalla state machine;
+8. OTV revise concorrente non può produrre mixed child-declaration candidate.
+
+---
+
+## 6. Traceability rule
 
 Ogni successivo REALIZE point deve aggiornare questa catena:
 
