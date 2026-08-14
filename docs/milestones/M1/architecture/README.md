@@ -13,6 +13,7 @@ domain invariant / contract
 -> semantic concurrency rule
 -> PostgreSQL persistence/realization contract
 -> real PostgreSQL test contract
+-> application/API contract
 -> code
 ```
 
@@ -49,6 +50,14 @@ concurrency-postgresql-realization-relationship.md
 concurrency-postgresql-test-matrix.md
     PGTEST-01..04 real-PostgreSQL scenario census, coverage mapping,
     deterministic harness contract and reusable execution recipes.
+```
+
+### Public/application API
+
+```text
+api-contract.md
+    Application-command/query boundary, HTTP/JSON adapter principles,
+    route/DTO/failure contract as API-01+ are ratified.
 ```
 
 ### DataType
@@ -113,7 +122,8 @@ The following are not implementation-choice TODOs anymore:
 - Relationship lifecycle one-statement metadata snapshot semantics;
 - canonical real-PostgreSQL concurrency scenario census and 19-predicate coverage mapping (PGTEST-01..02);
 - deterministic real-PostgreSQL concurrency harness contract, blocker observation, timeout/isolation/diagnostic rules and stress-vs-contract separation (PGTEST-03);
-- eight reusable deterministic execution recipes and complete 51-scenario recipe mapping (PGTEST-04).
+- eight reusable deterministic execution recipes and complete 51-scenario recipe mapping (PGTEST-04);
+- API/application boundary: command/query contracts authoritative, HTTP/JSON adapter, operation-specific command DTO, no generic PATCH, transport-neutral failure boundary (API-01).
 
 The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
@@ -124,7 +134,7 @@ Reopening any closed area requires an explicit architecture change, not a local 
 Only explicitly documented open areas remain candidates for design work. At the current checkpoint these include primarily:
 
 ```text
-transport / REST / DTO command and read shapes
+API-02+ route inventory / DTO and wire shapes
 public error/status taxonomy
 remaining API wire-format decisions where distinct from canonical persistence
 JSON Schema compiler surface/role if retained in M1
@@ -160,6 +170,7 @@ Before creating implementation `steps.md` or coding M1 behavior, verify:
 2. persistence authority is identified;
 3. every relevant non-`I` concurrency predicate maps to a REALIZE mechanism;
 4. required real-PG scenario IDs, deterministic harness contract and execution recipe mapping exist;
-5. no architecture document states a contradictory or still-open version of the same decision.
+5. application/API surface preserves the semantic operation boundary;
+6. no architecture document states a contradictory or still-open version of the same decision.
 
 If any item fails, return to architecture rather than deciding in code.
