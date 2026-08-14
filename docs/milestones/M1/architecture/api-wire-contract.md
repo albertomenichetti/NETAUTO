@@ -1,6 +1,6 @@
 # M1 — API Wire Contract
 
-**Status:** DRAFT — API-03 in progress. API-03.1 general wire strictness/intent semantics e il `core.byte_size` request/canonical wire contract sono ratificati; le restanti DTO/wire decisioni non sono ancora congelate.
+**Status:** DRAFT — API-03 in progress. API-03.1 general wire strictness/intent semantics, API-03.2 `expected_revision` placement e il `core.byte_size` request/canonical wire contract sono ratificati; le restanti DTO/wire decisioni non sono ancora congelate.
 
 ## 1. Scopo
 
@@ -216,7 +216,135 @@ semantic validation remain application/domain responsibility.
 
 ---
 
-## 4. API-03 pre-flight finding — `core.byte_size`
+## 4. API-03.2 — `expected_revision` HTTP representation
+
+### 4.1 Scope revalidated from domain contracts
+
+`expected_revision` è il generation precondition esclusivamente delle exact DRAFT mutation:
+
+```text
+DataTypeVersion.REVISE
+DataTypeVersion.PUBLISH
+DataTypeVersion.DELETE_DRAFT
+
+ObjectTemplateVersion.REVISE
+ObjectTemplateVersion.PUBLISH
+ObjectTemplateVersion.DELETE_DRAFT
+```
+
+Non è generic resource revision e non si applica a Object, Relationship, RelationshipDefinition, metadata LWW o default-version mutation.
+
+### 4.2 Uniform query representation
+
+M1 usa una sola public wire representation:
+
+```text
+?expected_revision=<positive-integer>
+```
+
+per tutte e sei le route interessate.
+
+Esempi:
+
+```text
+POST /api/v1/core/datatypes/{datatype_id}/versions/{version}/revise?expected_revision=7
+POST /api/v1/core/datatypes/{datatype_id}/versions/{version}/publish?expected_revision=7
+DELETE /api/v1/core/datatypes/{datatype_id}/versions/{version}?expected_revision=7
+
+POST /api/v1/core/object-templates/{template_id}/versions/{version}/revise?expected_revision=7
+POST /api/v1/core/object-templates/{template_id}/versions/{version}/publish?expected_revision=7
+DELETE /api/v1/core/object-templates/{template_id}/versions/{version}?expected_revision=7
+```
+
+La separazione concettuale è:
+
+```text
+path
+    -> exact mutation target
+
+query expected_revision
+    -> optimistic generation precondition of that DRAFT target
+
+body, where present
+    -> desired semantic candidate / command operands
+```
+
+### 4.3 REVISE body separation
+
+`REVISE` mantiene nel JSON body soltanto la complete desired mutable candidate definita dal domain contract.
+
+`expected_revision` non fa parte della candidate semantic snapshot e resta fuori dal body.
+
+### 4.4 PUBLISH and DELETE body policy
+
+`PUBLISH` non introduce un JSON body artificiale soltanto per trasportare `expected_revision`.
+
+`DELETE_DRAFT` non usa request body. Usa lo stesso required query parameter delle altre DRAFT generation-sensitive mutation.
+
+### 4.5 No generic HTTP revision abstraction
+
+M1 non usa per questo contract:
+
+```text
+ETag
+If-Match
+X-Expected-Revision
+```
+
+La DRAFT `revision` non viene reinterpretata come generic HTTP representation version. Una futura generic resource-version/conditional-request capability richiede una decisione separata.
+
+### 4.6 Query lexical validation vs semantic stale generation
+
+`expected_revision` query value deve avere lexical shape di positive decimal integer M1.
+
+Sono transport-input failure, prima della semantic UoW:
+
+```text
+parameter omitted
+empty value
+zero
+negative value
+non-integer lexical form
+```
+
+Un positive integer ben formato ma diverso dalla current DRAFT generation è invece un application/domain stale-generation failure, non malformed transport input.
+
+---
+
+## 5. API-03.2 ratified decisions
+
+```text
+A3.11
+expected_revision is represented uniformly as a required query parameter
+for DTV/OTV REVISE, PUBLISH and DELETE_DRAFT.
+
+A3.12
+expected_revision is not part of resource identity and never appears in the path.
+
+A3.13
+REVISE request bodies contain only the complete desired mutable candidate;
+the concurrency precondition remains outside that candidate.
+
+A3.14
+PUBLISH requires no artificial JSON body solely to carry expected_revision.
+
+A3.15
+DELETE_DRAFT has no request body; its required generation precondition uses
+the same query representation as REVISE/PUBLISH.
+
+A3.16
+M1 does not expose DRAFT generation through ETag/If-Match or a custom
+revision header.
+
+A3.17
+A syntactically missing/malformed expected_revision is a transport-input
+failure; a well-formed but stale expected_revision is an application
+generation-conflict failure.
+```
+
+---
+
+## 6. API-03 pre-flight finding — `core.byte_size`
 
 La re-validation di `datatype.md` conferma la domain semantics M1:
 
@@ -240,11 +368,11 @@ Non esiste quindi alcuna contraddizione nel consentire una forma di input più e
 
 ---
 
-## 5. Ratified `core.byte_size` public wire input
+## 7. Ratified `core.byte_size` public wire input
 
 Ovunque il public API accetti un semantic value di un exact DTV con `base_type = core.byte_size` — inclusi Object property input, DataType constraint/enum values e ObjectTemplate `migration_default` — M1 accetta due JSON carrier espliciti.
 
-### 5.1 Exact bytes integer
+### 7.1 Exact bytes integer
 
 ```json
 1024
@@ -259,7 +387,7 @@ JSON non-negative integer
 
 Boolean non è un integer byte-size input.
 
-### 5.2 Quantity string with explicit SI/IEC unit
+### 7.2 Quantity string with explicit SI/IEC unit
 
 Esempi validi:
 
@@ -328,7 +456,7 @@ Quindi, per esempio:
 "-1 MiB"   invalid
 ```
 
-### 5.3 Exact conversion rule
+### 7.3 Exact conversion rule
 
 Parsing/canonicalization concettuale:
 
@@ -362,7 +490,7 @@ Nessun floating-point arithmetic approssimato può diventare authority della con
 
 ---
 
-## 6. Canonical `core.byte_size` output and persistence
+## 8. Canonical `core.byte_size` output and persistence
 
 Indipendentemente dalla accepted input representation, il canonical API read/response value e la persistence representation sono sempre:
 
@@ -391,7 +519,7 @@ La lexical unit scelta dal caller non viene preservata come domain state o displ
 
 ---
 
-## 7. `core.byte_size` wire/domain validation boundary
+## 9. `core.byte_size` wire/domain validation boundary
 
 Il transport DTO dichiara esplicitamente la union di carrier ammessi per `core.byte_size`; non si tratta di generic scalar coercion.
 
@@ -407,7 +535,7 @@ La stessa primitive parsing/canonicalization semantics deve essere riusata in tu
 
 ---
 
-## 8. Ratified byte-size wire decisions
+## 10. Ratified byte-size wire decisions
 
 ```text
 A3-BS-01
@@ -441,12 +569,12 @@ values, constraints/enums and migration_default input.
 
 ---
 
-## 9. API-03 remaining work
+## 11. API-03 remaining work
 
 Still open and to be revalidated/ratified point-by-point:
 
 ```text
-expected_revision HTTP placement
+exact/implicit version selector representation by command
 DataType CREATE/REVISE DTOs
 ObjectTemplate complete local candidate CREATE/REVISE DTOs
 Object CREATE/DATA_CHANGE/SCHEMA_CHANGE/ownership DTOs beyond canonical_name omission
