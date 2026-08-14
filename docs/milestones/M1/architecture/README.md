@@ -1,15 +1,18 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** DRAFT architecture baseline — domain semantics, PostgreSQL persistence/concurrency/test architecture and the complete public HTTP/JSON API contract (API-01..03.11B) are substantially closed. The final architecture consistency review is complete with no blocking contradiction identified; explicit global M1 architecture freeze is pending ratification.
+**Status:** FROZEN — global M1 architecture baseline ratified on 2026-08-14 after final consistency review. No M1 feature/design decision remains open to implementation choice.
 
 ## 1. Purpose
 
-`docs/milestones/M1/architecture/` is the normative architecture baseline from which M1 implementation is derived.
+`docs/milestones/M1/architecture/` is the normative frozen architecture baseline from which M1 implementation is derived.
+
+The milestone scope authority is `docs/milestones/M1/contract.md`, which is `FINAL / FROZEN`.
 
 Implementation must follow:
 
 ```text
-domain invariant / contract
+milestone contract
+-> domain invariant / contract
 -> semantic concurrency rule
 -> PostgreSQL persistence/realization contract
 -> real PostgreSQL test contract
@@ -17,9 +20,17 @@ domain invariant / contract
 -> code
 ```
 
-A contradiction between architecture documents is an **architecture defect**. It is never an implementation choice and must be resolved in documentation before coding the affected behavior.
+A contradiction between architecture documents is an **architecture defect**. It is never an implementation choice and must be resolved by explicitly reopening and realigning the affected architecture before coding the behavior.
 
 Do not infer authority from commit recency or from whichever document was read last.
+
+### 1.1 Set-level freeze authority
+
+FREEZE-01 freezes the normative architecture **as a set**.
+
+The authoritative M1 design state is defined by this index together with `m1-final-consistency-review.md`. An individual document header that still reflects an earlier authoring/review label does not create an open design choice and cannot override the global frozen state.
+
+Any later semantic or technical change to a frozen contract requires explicit architecture reopening and same-cycle propagation to every affected normative document.
 
 ## 2. Normative document map
 
@@ -52,8 +63,8 @@ concurrency-postgresql-test-matrix.md
     deterministic harness contract and reusable execution recipes.
 
 m1-final-consistency-review.md
-    Final pre-freeze cross-domain/API/persistence/concurrency/test review,
-    corrected alignment findings and explicit freeze eligibility outcome.
+    Final cross-domain/API/persistence/concurrency/test review and
+    ratified FREEZE-01 architecture-freeze record.
 ```
 
 ### Public/application API
@@ -128,7 +139,7 @@ relationship-concurrency.md
 relationship-consistency-review.md
 ```
 
-## 3. Closed M1 architecture areas
+## 3. Frozen M1 architecture areas
 
 The following are not implementation-choice TODOs anymore:
 
@@ -179,21 +190,33 @@ The following are not implementation-choice TODOs anymore:
 - DT/OT CREATE return command-specific lineage + v1 DRAFT results; DT/OT CREATE_NEXT returns the new exact-version DTO; generic success/changed flags and SQL affected-row responses are forbidden;
 - JSON Schema is not a NETAUTO validation language, compile target or public schema projection; no JSON Schema compiler/API/persisted representation is part of the M1 architecture;
 - JSON Schema compiler/projection is intentionally not retained as an RFE. NETAUTO domain/application validation remains the sole semantic authority;
-- internal effective-schema caches or compiled execution structures, if ever justified by measurements, remain implementation optimizations and are not a JSON Schema capability or second validation authority.
+- internal effective-schema caches or precomputed execution structures, if ever justified by measurements, remain implementation optimizations and are not a JSON Schema capability or second validation authority.
 
-The PostgreSQL concurrency/test architecture is therefore considered closed for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
+The PostgreSQL concurrency/test architecture is frozen for M1. A PGTEST-05 is not planned merely to design fixtures, helper classes or test-file structure: those are implementation-decomposition concerns as long as they preserve PGTEST-01..04. Reopen the PGTEST architecture only for a genuine architecture-level gap or retroactive finding.
 
-Reopening any closed area requires an explicit architecture change, not a local implementation optimization.
+## 4. Freeze state and reopening rule
 
-## 4. Remaining pre-coding/final-freeze work
+FREEZE-01 is ratified.
 
-No feature/design area is currently open in the M1 architecture baseline.
+```text
+M1 ARCHITECTURE FROZEN
+```
 
-The **final architecture consistency review is complete** and recorded in `m1-final-consistency-review.md`. It found and corrected stale documentation markers but no blocking semantic/technical contradiction after alignment.
+No feature/design area is open in the M1 architecture baseline.
 
-The only remaining pre-coding action is the explicit **global M1 architecture freeze decision**.
+The final architecture consistency review is recorded in `m1-final-consistency-review.md`; it found and corrected stale documentation markers and identified no blocking semantic or technical contradiction after alignment.
 
-If ratified, the baseline moves from reviewed DRAFT status to frozen coding baseline. Any subsequent contradiction or genuine architecture gap requires explicit architecture reopening and same-cycle propagation to every affected normative document.
+Implementation planning may now proceed to `docs/milestones/M1/steps.md`.
+
+A later contradiction or genuine architecture gap is not an implementation choice. It requires:
+
+```text
+explicit architecture reopening
+-> authoritative docs re-read
+-> decision/refinement ratified
+-> same-cycle propagation to every affected normative document
+-> freeze restored before affected implementation continues
+```
 
 ## 5. Documentation alignment invariant
 
@@ -211,36 +234,36 @@ public API contract
 
 Stale phrases such as “mechanism still to be finalized” must not remain when that mechanism has become normative elsewhere.
 
-Architecture review before implementation must actively search for such stale-open markers.
+If a frozen architecture gap is discovered, the design is explicitly reopened before implementation chooses a different behavior.
 
-If a new design point reveals a retroactive finding, the design sequence is interrupted: the finding is propagated immediately to every affected normative document before the next design point is ratified. Deferring propagation to a later sweep is not allowed when the affected baseline is already known.
+### 5.1 Revalidation after an explicit reopening
 
-### 5.1 Pre-flight revalidation before every dependent design point
+When a frozen design point is reopened, identify which already-consolidated M1 assumptions it depends on and **re-read the corresponding normative repository documents** before deriving the change.
 
-Before starting design point `N+1`, identify which already-consolidated M1 assumptions the new point depends on and **re-read the corresponding normative repository documents** before deriving the new design.
+The chat history, summaries and remembered decisions are navigation aids, not the authoritative source.
 
-The chat history, summaries and remembered decisions are navigation aids, not the authoritative source for this pre-flight.
-
-The scope is dependency-driven rather than mechanically global. A point that touches only one narrow contract may require a small re-read; a cross-cutting point must revalidate every affected authority. Typical sources include:
+The scope is dependency-driven. A narrow change may require a small re-read; a cross-cutting point must revalidate every affected authority. Typical sources include:
 
 ```text
 owning domain document
-cross-domain contract involved by the point
+cross-domain document directly involved
 persistence/concurrency/API contract whose representation/mechanism is assumed
-this architecture index for closed/open status
+this architecture index
 ```
 
 The required sequence is:
 
 ```text
-N+1 dependencies identified
+reopening scope identified
 -> authoritative docs re-read
--> assumptions checked against current baseline
--> any drift/conflict/stale-open marker fixed and propagated
--> only then N+1 design begins/continues
+-> assumptions checked against current frozen baseline
+-> decision/refinement ratified
+-> drift/conflict fixed and propagated
+-> freeze restored
+-> implementation resumes
 ```
 
-Particular care is required where multiple representations exist. The pre-flight must not conflate:
+Particular care is required where multiple representations exist. Reopening work must not conflate:
 
 ```text
 domain accepted-input semantics
@@ -249,17 +272,16 @@ canonical persistence representation
 public API wire representation
 ```
 
-A new transport or implementation decision may choose a representation for its own boundary, but may not silently narrow or widen an already-ratified domain contract.
-
 ## 6. Coding gate
 
-Before creating implementation `steps.md` or coding M1 behavior, verify:
+Before creating or executing an implementation step, verify:
 
-1. owning domain contract is frozen enough for the change;
-2. persistence authority is identified;
-3. every relevant non-`I` concurrency predicate maps to a REALIZE mechanism;
-4. required real-PG scenario IDs, deterministic harness contract and execution recipe mapping exist;
-5. application/API route, DTO and failure contract are defined for exposed behavior and preserve the semantic operation boundary;
-6. no architecture document states a contradictory or still-open version of the same decision.
+1. `docs/milestones/M1/contract.md` is FINAL / FROZEN;
+2. this architecture baseline is FROZEN;
+3. the owning domain contract and persistence authority for the step are identified;
+4. every relevant non-`I` concurrency predicate maps to a REALIZE mechanism;
+5. required real-PG scenario IDs, deterministic harness contract and execution recipe mapping exist;
+6. application/API route, DTO and failure contract are defined for exposed behavior and preserve the semantic operation boundary;
+7. no known contradiction or explicitly reopened architecture point affects the step.
 
-If any item fails, return to architecture rather than deciding in code.
+If any item fails, return to architecture/contract review rather than deciding in code.
