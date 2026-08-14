@@ -1,6 +1,6 @@
 # M1 — DataType Architecture
 
-**Status:** DRAFT — domain semantics, persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler role remains before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics, persistence/concurrency and complete public API contract are ratified; no JSON Schema compiler/projection is part of the NETAUTO architecture. Ready for final M1 architecture consistency/freeze review.
 
 ## 1. Scopo
 
@@ -300,7 +300,7 @@ Validity: `re.compile()`.
 
 Matching semantics: full match, equivalente a `re.fullmatch()`.
 
-NETAUTO semantics sono normative; JSON Schema è eventuale compile target e deve preservarle.
+Queste semantics NETAUTO sono normative. M1 non adotta JSON Schema come validation language, compile target o public schema projection.
 
 ### 9.2 Enum
 
@@ -546,6 +546,8 @@ Fuori M1:
 - audit/provenance della source di create-next;
 - advanced collection semantics a livello property oltre M1 `LIST` (SET, cardinalità arbitrarie, nested/heterogeneous collections).
 
+JSON Schema compiler/projection is intentionally **not** listed as an RFE: NETAUTO domain semantics remain the sole validation authority, and no JSON Schema capability is planned by this architecture.
+
 ## 18. Technical-contract status
 
 Le seguenti decisioni **non sono più aperte** e sono normative nei persistence/concurrency/API document:
@@ -566,6 +568,7 @@ PrimitiveType accepted public lexical forms + canonical public output (API-03.8 
 DataType lineage/exact-version read DTO shape (API-03.9)
 DataType collection/list/pagination/filter contract (API-03.10)
 public error-code/status/success mapping (API-03.11)
+JSON Schema compiler/projection excluded from NETAUTO architecture; no RFE retained
 ```
 
 In particolare:
@@ -581,6 +584,4 @@ In particolare:
 - API-03.9/03.10 chiudono canonical read, summary list, exact filters e keyset pagination del dominio;
 - API-03.11 chiude failure classes, concrete error codes/details e success response policy senza introdurre HTTP semantics nel domain layer.
 
-Resta da definire/finalizzare prima del coding freeze soltanto:
-
-- ruolo/esatta surface del JSON Schema compiler, se mantenuto in M1.
+Non restano decisioni DataType aperte prima del final M1 architecture consistency/freeze review.
