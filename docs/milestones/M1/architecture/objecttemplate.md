@@ -1,6 +1,6 @@
 # M1 — ObjectTemplate Architecture
 
-**Status:** DRAFT — domain semantics, persistence/concurrency and complete public API contract are ratified; only the separate JSON Schema compiler/compiled-schema role remains before final M1 architecture freeze.
+**Status:** DRAFT — domain semantics, persistence/concurrency and complete public API contract are ratified; no JSON Schema compiler/projection is part of the NETAUTO architecture. Ready for final M1 architecture consistency/freeze review.
 
 ## 1. Scopo
 
@@ -105,7 +105,9 @@ Un component non è un embedded value e una property multi-valore non è un comp
 - component target migration verso lineage non correlate;
 - richer presentation/layout metadata;
 - create-next provenance/audit;
-- persistent/compiled effective-schema cache solo se giustificata da misure.
+- internal effective-schema cache or compiled execution representation only if justified by measurements; this is a performance optimization, not a public schema language or validation authority.
+
+JSON Schema compiler/projection is intentionally **not** listed as an RFE. NETAUTO does not plan a JSON Schema validation or schema-export capability in this architecture.
 
 ## 6. Technical-contract status
 
@@ -128,6 +130,7 @@ public ObjectTemplate CREATE/REVISE command DTO (API-03.5)
 canonical ObjectTemplate lineage/exact local/effective-schema/capability read DTO (API-03.9)
 ObjectTemplate collection/list/pagination/filter contract (API-03.10)
 public error-code/status/success mapping (API-03.11)
+JSON Schema compiler/projection excluded from NETAUTO architecture; no RFE retained
 ```
 
 API-03.5 rende normativi per il public command boundary:
@@ -203,6 +206,4 @@ Ogni pagina è snapshot-consistent per la singola request; il cursor non promett
 
 API-03.11 chiude inoltre failure classes, concrete error codes/details e success mapping HTTP senza introdurre HTTP semantics nel domain layer. Nuove resource ritornano `201 + Location`; normal semantic mutations `200` con resulting canonical projection; delete/detach seguono il ratificato `204` contract.
 
-Resta da finalizzare prima del coding freeze soltanto:
-
-- ruolo/esatta surface del JSON Schema compiler / compiled-schema capability, se mantenuta in M1.
+Non restano decisioni ObjectTemplate aperte prima del final M1 architecture consistency/freeze review.
