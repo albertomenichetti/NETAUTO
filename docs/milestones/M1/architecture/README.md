@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** FROZEN — global M1 architecture baseline ratified on 2026-08-14 after final consistency review and revalidated on 2026-08-15 after the ownership current-edge authority clarification. No M1 feature/design decision remains open to implementation choice.
+**Status:** FROZEN — global M1 architecture baseline ratified on 2026-08-14 after final consistency review and revalidated on 2026-08-15 after the ownership current-edge authority clarification and the S07 RelationshipResolution physical-key correction. No M1 feature/design decision remains open to implementation choice.
 
 ## 1. Purpose
 
@@ -56,7 +56,8 @@ concurrency-postgresql-realization-object-ownership.md
     Detailed REALIZE-08..11 plus Object/ownership REALIZE-15 impact.
 
 concurrency-postgresql-realization-relationship.md
-    Detailed REALIZE-12..14 plus Relationship REALIZE-15 impact.
+    Detailed REALIZE-12..14 plus Relationship REALIZE-15 impact,
+    including the mutable Resolution-name physical-key rule required by PAR-02.
 
 concurrency-postgresql-test-matrix.md
     PGTEST-01..04 real-PostgreSQL scenario census, coverage mapping,
@@ -65,7 +66,7 @@ concurrency-postgresql-test-matrix.md
 m1-final-consistency-review.md
     Final cross-domain/API/persistence/concurrency/test review and
     ratified FREEZE-01 architecture-freeze record, including the
-    2026-08-15 ownership current-edge authority clarification.
+    2026-08-15 ownership current-edge clarification and S07 PAR-02 correction.
 ```
 
 ### Public/application API
@@ -152,6 +153,7 @@ The following are not implementation-choice TODOs anymore:
 - `SCHEMA_CHANGE` cannot commit a target pin that would leave an outgoing ownership edge without the same current `SlotSemanticKey` and compatible child; unresolvable persisted edges are internal invariant corruption, not supported legacy ownership state;
 - DETACH removes an exact current edge without repeating ATTACH-style compatibility admission, but still resolves that current edge's `SlotSemanticKey` from the stabilized current parent schema for semantic projection/lifecycle purposes;
 - Relationship R2 physical authority, exact runtime-view PK and Definition/Resolution same-definition constraints;
+- `RelationshipResolution.name` is mutable non-key metadata: the former `UNIQUE(relationship_definition_id,from_template_id,to_template_id,name)` is not part of the frozen schema, and no FK-referenziable baseline UNIQUE/index may make name a key-changing column; complete child-shape uniqueness remains domain/UoW-enforced;
 - typed lifecycle-event persistence, historical non-FK identities and `transaction_timestamp()` semantics;
 - primitive persistence codec including exact-decimal JSON string, datetime UTC `Z`, integer byte-size;
 - DB-vs-UoW enforcement boundary and no-constraint-trigger baseline;
@@ -208,7 +210,7 @@ M1 ARCHITECTURE FROZEN
 
 No feature/design area is open in the M1 architecture baseline.
 
-The final architecture consistency review is recorded in `m1-final-consistency-review.md`; it includes the 2026-08-15 ownership current-edge authority clarification and confirms that the reopen/propagate/re-freeze cycle completed without changing milestone scope or physical schema.
+The final architecture consistency review is recorded in `m1-final-consistency-review.md`; it includes both 2026-08-15 reopen/propagate/re-freeze corrections: ownership current-edge authority and the S07 PAR-02 mutable Resolution-name physical-key correction. The latter changes one physical constraint but not milestone/domain/API scope.
 
 Implementation planning may proceed to `docs/milestones/M1/steps.md`.
 
