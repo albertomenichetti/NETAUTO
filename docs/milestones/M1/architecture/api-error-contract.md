@@ -334,6 +334,26 @@ Relationship.CREATE, new factual relationship
 
 DT/OT CREATE are intentionally command-specific results because one atomic operation creates a stable lineage and its v1 DRAFT. This is not a generic response envelope.
 
+The public JSON shape is explicitly:
+
+```json
+// DT.CREATE
+{
+  "datatype": { "...": "DataType lineage DTO API-03.9" },
+  "version": { "...": "exact DataTypeVersion v1 DTO API-03.9" }
+}
+```
+
+```json
+// OT.CREATE
+{
+  "object_template": { "...": "ObjectTemplate lineage DTO API-03.9" },
+  "version": { "...": "exact ObjectTemplateVersion v1 DTO API-03.9" }
+}
+```
+
+`datatype` / `object_template` and `version` are literal public response-field names. The nested values reuse the canonical API-03.9 DTOs unchanged; the command result introduces no third lineage/version semantic representation and does not establish a generic response-envelope convention for other operations.
+
 ### 12.3 Normal semantic mutation commands
 
 A successful state-changing command normally returns `200 OK` with the resulting canonical semantic resource/projection:
@@ -452,10 +472,13 @@ GET success is 200 with canonical read/list projection.
 
 A3.138
 A newly created public resource returns 201 and a Location header.
-DT/OT CREATE return a command-specific lineage + v1 result.
+DT.CREATE returns `{datatype:<DataType lineage DTO>, version:<exact v1 DTV DTO>}`;
+OT.CREATE returns `{object_template:<ObjectTemplate lineage DTO>, version:<exact v1 OTV DTO>}`.
+The nested DTOs are the canonical API-03.9 representations and the outer field
+names are literal public API contract.
 
 A3.139
-DT/OT CREATE_NEXT returns 201 with the created exact-version DTO.
+DT/OT.CREATE_NEXT returns 201 with the created exact-version DTO.
 
 A3.140
 Relationship CREATE returns 201 when a new factual Relationship is created
@@ -482,6 +505,11 @@ as required by its explicit idempotent/ABA contract.
 
 A3.145
 No 202/async success status exists for M1 kernel primitives.
+
+A3.146
+DT/OT CREATE command-result composition is specific to those atomic create
+commands and MUST NOT be generalized into a common response envelope for
+ordinary reads or unrelated mutations.
 ```
 
 ---
