@@ -127,14 +127,11 @@ class ObjectPageDto(BaseModel):
     next_cursor: str | None
 
 
-class IntrinsicLifecycleEventDto(BaseModel):
+class IntrinsicLifecycleEventBaseDto(BaseModel):
     id: UUID
     occurred_at: datetime
-    kind: EventKind
     object_id: UUID
     canonical_name: str
-    before: ObjectDto | None
-    after: ObjectDto | None
 
     @field_serializer("occurred_at")
     def serialize_occurred_at(self, value: datetime) -> str:
@@ -143,6 +140,30 @@ class IntrinsicLifecycleEventDto(BaseModel):
                 PrimitiveType.DATETIME, value.isoformat(timespec="microseconds"), {}
             )
         )
+
+
+class CreatedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
+    kind: Literal["CREATED"]
+    before: None
+    after: ObjectDto
+
+
+class ChangedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
+    kind: Literal["RENAME", "DATA_CHANGE", "SCHEMA_CHANGE"]
+    before: ObjectDto
+    after: ObjectDto
+
+
+class DeletedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
+    kind: Literal["DELETED"]
+    before: ObjectDto
+    after: None
+
+
+type IntrinsicLifecycleEventDto = Annotated[
+    CreatedLifecycleEventDto | ChangedLifecycleEventDto | DeletedLifecycleEventDto,
+    Field(discriminator="kind"),
+]
 
 
 class LifecyclePageDto(BaseModel):
@@ -164,15 +185,44 @@ def _summary(value: ObjectSummary) -> ObjectSummaryDto:
 
 
 def _event(value: IntrinsicLifecycleEvent) -> IntrinsicLifecycleEventDto:
-    return IntrinsicLifecycleEventDto(
-        id=value.id,
-        occurred_at=value.occurred_at,
-        kind=value.kind,
-        object_id=value.object_id,
-        canonical_name=value.canonical_name,
-        before=None if value.before is None else _object(value.before),
-        after=None if value.after is None else _object(value.after),
-    )
+    if value.kind is EventKind.CREATED and value.after is not None:
+        return CreatedLifecycleEventDto(
+            id=value.id,
+            occurred_at=value.occurred_at,
+            kind="CREATED",
+            object_id=value.object_id,
+            canonical_name=value.canonical_name,
+            before=None,
+            after=_object(value.after),
+        )
+    if value.kind in {
+        EventKind.RENAME,
+        EventKind.DATA_CHANGE,
+        EventKind.SCHEMA_CHANGE,
+    } and (value.before is not None and value.after is not None):
+        changed_kind = cast(
+            Literal["RENAME", "DATA_CHANGE", "SCHEMA_CHANGE"], value.kind.value
+        )
+        return ChangedLifecycleEventDto(
+            id=value.id,
+            occurred_at=value.occurred_at,
+            kind=changed_kind,
+            object_id=value.object_id,
+            canonical_name=value.canonical_name,
+            before=_object(value.before),
+            after=_object(value.after),
+        )
+    if value.kind is EventKind.DELETED and value.before is not None:
+        return DeletedLifecycleEventDto(
+            id=value.id,
+            occurred_at=value.occurred_at,
+            kind="DELETED",
+            object_id=value.object_id,
+            canonical_name=value.canonical_name,
+            before=_object(value.before),
+            after=None,
+        )
+    raise RuntimeError("unsupported intrinsic lifecycle response state")
 
 
 def _object_page(value: Page[ObjectSummary]) -> ObjectPageDto:

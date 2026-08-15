@@ -213,11 +213,29 @@ async def test_object_create_mutations_reads_lists_and_lifecycle(
         "RENAME",
         "CREATED",
     ]
+    expected_event_fields = {
+        "id",
+        "occurred_at",
+        "kind",
+        "object_id",
+        "canonical_name",
+        "before",
+        "after",
+    }
+    assert all(set(item) == expected_event_fields for item in events)
     assert events[-1]["before"] is None
     assert events[-1]["after"]["id"] == object_id
+    assert events[1]["before"]["canonical_name"] == object_id
+    assert events[1]["after"]["canonical_name"] == "  Router 01  "
     assert events[0]["before"]["properties"]["values"] == [2, 2]
     assert events[0]["after"]["properties"] == {"required_value": 3}
     assert all(item["id"] and item["occurred_at"].endswith("Z") for item in events)
+
+    structural_kind = await object_client.get(
+        "/api/v1/core/lifecycle-events", params={"kind": "ATTACH_TO"}
+    )
+    assert structural_kind.status_code == 200, structural_kind.text
+    assert structural_kind.json() == {"items": [], "next_cursor": None}
 
     first_page = await object_client.get(
         "/api/v1/core/lifecycle-events", params={"limit": 1}
