@@ -324,10 +324,12 @@ Definition -> Resolution è owned child state e usa `CASCADE`.
 
 Endpoint ObjectTemplate lineage FK usano `RESTRICT`.
 
-È ammessa una defensive exact-child uniqueness:
+La complete Definition shape, inclusa l'assenza di duplicate semantic child tuple all'interno dello stesso aggregate, è authority domain/UoW e viene validata atomicamente sulla complete candidate Definition.
+
+Non esiste in M1 una business/exact-child UNIQUE su:
 
 ```text
-UNIQUE (
+(
   relationship_definition_id,
   from_template_id,
   to_template_id,
@@ -335,7 +337,9 @@ UNIQUE (
 )
 ```
 
-La complete Definition shape resta UoW-enforced.
+La precedente defensive uniqueness su tale tuple è stata rimossa durante il reopen M1-S07: `RelationshipResolution.name` è mutable non-key metadata e non deve partecipare a una UNIQUE/index key che PostgreSQL possa considerare FK-referenziabile. Altrimenti `RD.RENAME`, pur modificando soltanto `name`, acquisirebbe un key-changing row lock e serializzerebbe artificialmente il runtime FK insertion path, violando REALIZE-15 / PAR-02.
+
+Restano invece invariati PK `id`, i lineage FK e il technical `UNIQUE(id, relationship_definition_id)` necessario alla same-Definition composite FK del runtime.
 
 ### 7.2 Runtime factual aggregate
 
@@ -671,7 +675,7 @@ runtime_relationship_resolutions(relationship_id)
 relationships(relationship_definition_id)
 ```
 
-Più i technical UNIQUE `(id, relationship_definition_id)` richiesti dalle composite FK di PERSIST-07.
+Più i technical UNIQUE `(id, relationship_definition_id)` richiesti dalle composite FK di PERSIST-07. Nessun baseline UNIQUE/index FK-referenziabile include `relationship_resolutions.name`.
 
 Lifecycle:
 
