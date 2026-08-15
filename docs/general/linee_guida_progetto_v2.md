@@ -8,7 +8,7 @@ Lo sviluppo viene fatto su cicli di milestone, identificati da M, e cicli di fix
 I cicli di milestone hanno naming convention M1, M2,...Mn ed è all'interno di tali cicli che il software evolve.
 I cicli di fix hanno naming convention F1-1, F1-2, F2-1,....Fn-m; in generale Fx-y è il ciclo di fix y e temporalmente è stato eseguito tra Mx ed Mx+1; durante i cicli di fix si risolvono eventuali problemi ma non si introducono funzionalità e non si cambia l'api contract.
 
-Cicli di fix e cicli di maintenance vengono effettuati su branch dedicati il cui nome corrisponde al nome del ciclo.
+I cicli di fix vengono effettuati su branch dedicati il cui nome corrisponde al nome del ciclo.
 
 ## Funzionamento di un ciclo di milestone (M)
 
@@ -28,7 +28,11 @@ Durante la fase di design vengono definiti:
 Durante questa fase non viene sviluppato codice applicativo.
 L'implementazione viene eseguita da Codex esclusivamente dopo il freeze del design della milestone.
 
-Per ogni step implementativo, che prende il nome di slice, ed ha identificativo S1, S2, ...Sn:
+Per ogni step implementativo, che prende il nome di slice, viene utilizzato un identificativo locale zero-padded `S01`, `S02`, ... `Snn`. L'identificativo completo include sempre il ciclo di appartenenza, per esempio `M1-S01`, `M2-S03`.
+
+Nei documenti interni alla stessa milestone è ammesso usare la forma locale `Snn` quando il contesto è inequivocabile; nei prompt, nei commit, nei report, nei riferimenti cross-document e nelle comunicazioni operative deve essere preferita la forma completa `Mx-Snn`.
+
+Per ogni slice:
 
 1. viene prodotto un prompt implementativo coerente con il design congelato;
 2. Codex realizza lo sviluppo e pubblica il relativo delta sul repository GitHub;
@@ -589,4 +593,173 @@ La chiusura formale della milestone prevede quindi 3 azioni distinte che devono 
 
 ## Funzionamento di un ciclo di fix (F)
 
-TBD
+Un ciclo di fix corregge difetti della baseline già consegnata. Non introduce nuove capability, non amplia intenzionalmente il comportamento del prodotto e non modifica intenzionalmente il public API contract. Se l'analisi dimostra che la correzione richiede una nuova capability, una breaking change o una nuova semantica di prodotto, il lavoro non appartiene più a un ciclo di fix e deve essere pianificato in una milestone.
+
+Ogni ciclo `Fx-y` parte dall'AS-IS autorevole corrente in `docs/architecture/`. La documentazione del fix deve poter identificare con precisione quale comportamento consegnato è difettoso, quale authority viene violata e quale comportamento avrebbe già dovuto essere garantito.
+
+### Struttura documentale del fix
+
+La documentazione di un ciclo di fix risiede sotto:
+
+```text
+docs/fixes/<Fx-y>/
+├── wip/
+├── defects.md
+├── steps.md
+├── status.md
+└── architecture/
+```
+
+`architecture/` è utilizzata quando almeno un defect richiede una correzione o una chiarificazione architetturale; può rimanere minimale quando tutti i defect sono puramente implementativi e l'AS-IS esistente è già univoco e corretto.
+
+`wip/` segue la stessa disciplina degli execution aid delle milestone: contiene soltanto materiale operativo ancora attivo; prompt conclusi o superseded rimangono recuperabili dalla Git history e vengono rimossi dal working tree.
+
+### `defects.md`
+
+`defects.md` è il documento che definisce il perimetro correttivo del ciclo e svolge, per un fix, il ruolo di ingresso che `contract.md` svolge per una milestone.
+
+Ogni defect deve avere un identificativo stabile e univoco nel ciclo, per esempio:
+
+```text
+F1-1-DEF-001
+F1-1-DEF-002
+F2-1-DEF-001
+```
+
+Per ogni defect devono essere documentati almeno:
+
+- **Observed defect** — il comportamento osservato e perché costituisce un difetto;
+- **Reproduction evidence** — una prova concreta, ripetibile e verificabile che dimostri il problema sulla baseline difettosa;
+- **Violated authority** — la regola, invariante, contract, API guarantee, persistence guarantee o altra authority già consegnata che il comportamento viola;
+- **Analysis** — la classificazione e la causa del problema per quanto necessarie a progettare la correzione;
+- **Correction design** — il comportamento corretto atteso e, quando necessario, le decisioni architetturali o tecniche che lo garantiscono;
+- **Regression evidence** — la verifica permanente o durevole che deve dimostrare che il defect non è più presente dopo il fix.
+
+La descrizione può evolvere durante la fase di analisi: inizialmente un defect può contenere soltanto identità, descrizione e prova di riproducibilità; prima del freeze devono però risultare chiari authority violata, classificazione e correction design.
+
+### Reproduction-first
+
+Nessun defect può essere considerato pronto per l'implementazione finché il problema non è stato riprodotto in modo sufficientemente deterministico e verificabile.
+
+La prova di riproducibilità deve fallire o dimostrare il comportamento errato sulla baseline difettosa. Quando tecnicamente appropriato, la stessa evidence deve essere trasformata nella regression verification permanente che passerà dopo la correzione.
+
+La reproduction evidence non deve essere necessariamente fin dall'inizio il test definitivo: defect complessi possono richiedere harness, diagnostica o una procedura controllata. Deve però essere abbastanza concreta da distinguere un difetto reale da un'ipotesi o da un comportamento soltanto sospetto.
+
+### Classificazione del defect
+
+L'analisi deve distinguere almeno:
+
+```text
+implementation defect
+    = docs/architecture e le altre authority consegnate definiscono già
+      correttamente e univocamente il comportamento atteso;
+      è l'implementazione a non rispettarlo
+
+architecture defect / missing decision
+    = la baseline documentale consegnata è contraddittoria, incompleta,
+      errata o non permette di determinare un comportamento corretto univoco
+```
+
+Per un **implementation defect** il fix non deve reinventare il design: la correzione deve riportare il codice all'AS-IS già autorevole e aggiungere o rafforzare la regression evidence necessaria.
+
+Per un **architecture defect / missing decision** il comportamento interessato entra in STOP fino a quando la correzione architetturale non è stata progettata nel ciclo di fix. Le authority AS-IS coinvolte devono essere rilette, la decisione deve essere esplicita, le conseguenze devono essere propagate nei documenti del fix e il correction design deve essere congelato prima di implementare.
+
+Il codice e la Git history possono aiutare la diagnosi, ma non diventano authority sostitutive.
+
+### Freeze del ciclo di fix
+
+`defects.md` deve raggiungere uno stato esplicitamente frozen prima dell'implementazione. Il freeze chiude il perimetro del ciclo: il ciclo corregge tutti e soli i defect presenti nel documento congelato, salvo dipendenze strettamente necessarie a correggerli correttamente.
+
+La sequenza prima del freeze è:
+
+```text
+raccolta defect
+    -> reproduction di ogni defect
+    -> identificazione delle authority violate
+    -> analysis e classificazione
+    -> correction design
+    -> propagation documentale necessaria
+    -> freeze di defects.md e dell'eventuale architecture/ del fix
+```
+
+Un nuovo defect scoperto dopo il freeze non viene aggiunto automaticamente al ciclo corrente. Normalmente viene registrato per un ciclo successivo, ad esempio `F1-2` dopo `F1-1`.
+
+Se un nuovo finding è inseparabile dalla correzione corretta di un defect già frozen, il perimetro interessato deve essere riaperto esplicitamente, il finding deve essere documentato e propagato, e `defects.md` deve essere nuovamente congelato prima di riprendere l'implementazione. Il freeze non deve essere aggirato facendo crescere implicitamente il bug train.
+
+### `steps.md`, `status.md` e slice del fix
+
+Dopo il freeze dei defect viene definito e congelato `steps.md`, decomponendo il ciclo in slice verticali e verificabili. `status.md` mantiene lo stato operativo corrente con la stessa separazione fra authority normativa e avanzamento utilizzata nelle milestone.
+
+Le slice del fix usano gli stessi identificativi locali zero-padded:
+
+```text
+S01
+S02
+...
+Snn
+```
+
+La forma completa include il ciclo di fix:
+
+```text
+F1-1-S01
+F1-1-S02
+F2-1-S01
+```
+
+Nei prompt, commit, report e riferimenti cross-document deve essere preferita la forma completa `Fx-y-Snn`.
+
+Ogni slice deve indicare chiaramente:
+
+- quali defect frozen corregge o fa avanzare;
+- quali authority e componenti sono coinvolti;
+- quale correction design realizza;
+- quali regression verification devono passare;
+- quali verifiche integrate sono richieste;
+- quali condizioni consentono al reviewer di marcarla `COMPLETED`.
+
+### Implementazione e review del fix
+
+Dopo il freeze, il ciclo di fix segue la stessa disciplina di implementazione e review delle milestone:
+
+```text
+prompt della slice
+    -> implementation candidate
+    -> push del delta
+    -> report dell'implementatore
+    -> review del delta reale
+    -> eventuale review-fix nella stessa slice
+    -> reviewer approval
+    -> slice COMPLETED
+```
+
+Il report dell'implementatore non costituisce completion evidence autonoma e gli stati `COMPLETED`, `ACCEPTED` e `DELIVERED` restano reviewer-owned.
+
+Ogni slice deve lasciare il repository in stato coerente e deve dimostrare, tramite le regression evidence previste, che i defect interessati non sono stati soltanto mascherati ma corretti secondo le authority applicabili.
+
+### Final regression gate del fix
+
+Il completamento delle singole slice non è sufficiente a chiudere un ciclo di fix. Quando tutte le slice sono `COMPLETED`, deve essere eseguito un final regression gate integrato.
+
+Il gate finale deve verificare almeno:
+
+- tutti i defect frozen risultano corretti e verificati;
+- tutte le reproduction evidence originarie sono ora soddisfatte come regression evidence o sono state sostituite da verifiche permanenti equivalenti e più forti;
+- la suite di regressione integrata applicabile rimane verde;
+- non sono state introdotte nuove capability o modifiche intenzionali del public contract;
+- eventuali correzioni di persistence, schema, concurrency, API o failure semantics sono coerenti con il correction design frozen;
+- non rimangono architecture/documentation drift o finding aperti incompatibili con la consegna;
+- static analysis, build/reproducibility e quality gate ratificati applicabili risultano soddisfatti.
+
+L'evidence finale deve essere verificabile e durevole in misura proporzionata al rischio del ciclo. Come per le milestone, l'implementatore può preparare il candidate e i risultati, ma l'approvazione del final regression gate è reviewer-owned.
+
+### Chiusura del ciclo di fix
+
+Dopo l'approvazione del final regression gate:
+
+1. le eventuali correzioni architetturali introdotte dal fix vengono consolidate e armonizzate in `docs/architecture/`, che torna a rappresentare l'AS-IS autorevole corretto;
+2. `docs/fixes/<Fx-y>/` rimane come record storico del ciclo, con `defects.md`, `steps.md`, `status.md` e l'eventuale `architecture/`;
+3. `status.md` viene aggiornato a `DELIVERED` dal reviewer;
+4. il merge del branch del ciclo viene eseguito dall'essere umano e **MAI** dall'agente.
+
+Un ciclo di fix terminato deve quindi lasciare sia il software sia `docs/architecture/` coerenti con il comportamento corretto già dovuto, senza trasformare il fix in un canale implicito di evoluzione funzionale.
