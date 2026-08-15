@@ -361,6 +361,49 @@ async def test_row_13_attach_then_schema_change_observes_edge(
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
+async def test_row_13_schema_change_then_attach_observes_removed_slot(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ROW-13-SCHEMA-ATTACH") as actors:
+        template_id = await _ownership_template(actors, "row13_reverse")
+        reader = _object_reader(actors)
+        parent = await reader.create(template_id, 2, "parent", {})
+        child = await reader.create(template_id, 2, "child", {})
+        first, second = _object_services(actors)
+        cut = _object_owner_cut(monkeypatch)
+        migrated, attached = await blocked_race(
+            actors,
+            cut,
+            lambda: first.schema_change(parent.id, 3),
+            lambda: second.attach(parent.id, "children", child.id),
+        )
+        assert isinstance(migrated, Object)
+        assert migrated.template_version == 3
+        assert _failure_code(attached) == "ownership_slot_unavailable"
+        assert await reader.get_owner(child.id) is None
+        events = (
+            await reader.list_events(
+                kind=None,
+                object_id=None,
+                destination_object_id=parent.id,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=None,
+                cursor=None,
+                limit=100,
+            )
+        ).items
+        assert not any(item.kind.value == "ATTACH_TO" for item in events)
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
 async def test_gate_01_opposite_attach_uses_fresh_protected_graph(
     migrated_database_engine: Engine,
     test_database_url: str,
@@ -384,6 +427,104 @@ async def test_gate_01_opposite_attach_uses_fresh_protected_graph(
         assert _failure_code(reverse) == "ownership_cycle"
         assert (await reader.get_owner(second_node.id)) is not None
         assert await reader.get_owner(first_node.id) is None
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_gate_02a_rejects_longer_cycle_without_mutating_graph(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "GATE-02A-LONG-CYCLE") as actors:
+        template_id = await _ownership_template(actors, "gate02a")
+        reader = _object_reader(actors)
+        first_node = await reader.create(template_id, 2, "a", {})
+        second_node = await reader.create(template_id, 2, "b", {})
+        third_node = await reader.create(template_id, 2, "c", {})
+        await reader.attach(first_node.id, "children", second_node.id)
+        await reader.attach(second_node.id, "children", third_node.id)
+
+        with pytest.raises(ApplicationFailure) as caught:
+            await reader.attach(third_node.id, "children", first_node.id)
+
+        assert caught.value.code == "ownership_cycle"
+        assert await reader.get_owner(first_node.id) is None
+        second_owner = await reader.get_owner(second_node.id)
+        assert second_owner is not None
+        assert second_owner.parent_object_id == first_node.id
+        third_owner = await reader.get_owner(third_node.id)
+        assert third_owner is not None
+        assert third_owner.parent_object_id == second_node.id
+        events = (
+            await reader.list_events(
+                kind=None,
+                object_id=None,
+                destination_object_id=None,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=None,
+                cursor=None,
+                limit=100,
+            )
+        ).items
+        assert sum(item.kind.value == "ATTACH_TO" for item in events) == 2
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_gate_02b_attach_sees_concurrent_detach_before_cycle_check(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "GATE-02B-DETACH-PATH") as actors:
+        template_id = await _ownership_template(actors, "gate02b")
+        reader = _object_reader(actors)
+        first_node = await reader.create(template_id, 2, "a", {})
+        second_node = await reader.create(template_id, 2, "b", {})
+        third_node = await reader.create(template_id, 2, "c", {})
+        await reader.attach(first_node.id, "children", second_node.id)
+        await reader.attach(second_node.id, "children", third_node.id)
+        first, second = _object_services(actors)
+        cut = _ownership_gate_cut(monkeypatch)
+
+        attached, detached = await progress_race(
+            cut,
+            lambda: first.attach(third_node.id, "children", first_node.id),
+            lambda: second.detach(second_node.id, "children", third_node.id),
+        )
+
+        assert getattr(attached, "child_object_id", None) == first_node.id
+        assert detached is None
+        first_owner = await reader.get_owner(first_node.id)
+        assert first_owner is not None
+        assert first_owner.parent_object_id == third_node.id
+        second_owner = await reader.get_owner(second_node.id)
+        assert second_owner is not None
+        assert second_owner.parent_object_id == first_node.id
+        assert await reader.get_owner(third_node.id) is None
+        events = (
+            await reader.list_events(
+                kind=None,
+                object_id=None,
+                destination_object_id=None,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=None,
+                cursor=None,
+                limit=100,
+            )
+        ).items
+        assert sum(item.kind.value == "ATTACH_TO" for item in events) == 3
+        assert sum(item.kind.value == "DETACH_FROM" for item in events) == 1
 
 
 @pytest.mark.postgresql
@@ -437,6 +578,51 @@ async def test_row_14_detach_then_schema_change_observes_removal(
         assert isinstance(migrated, Object)
         assert migrated.template_version == 3
         assert await reader.get_owner(child.id) is None
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_row_14_schema_change_then_detach_removes_exact_edge(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ROW-14-SCHEMA-DETACH") as actors:
+        template_id = await _ownership_template(actors, "row14_reverse")
+        reader = _object_reader(actors)
+        parent = await reader.create(template_id, 2, "parent", {})
+        child = await reader.create(template_id, 2, "child", {})
+        await reader.attach(parent.id, "children", child.id)
+        first, second = _object_services(actors)
+        cut = _object_owner_cut(monkeypatch)
+        migrated, detached = await blocked_race(
+            actors,
+            cut,
+            lambda: first.schema_change(parent.id, 3),
+            lambda: second.detach(parent.id, "children", child.id),
+        )
+        assert _failure_code(migrated) == "schema_change_blocked"
+        assert detached is None
+        assert (await reader.get(parent.id)).template_version == 2
+        assert await reader.get_owner(child.id) is None
+        events = (
+            await reader.list_events(
+                kind=None,
+                object_id=None,
+                destination_object_id=None,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=child.id,
+                cursor=None,
+                limit=100,
+            )
+        ).items
+        assert sum(item.kind.value == "ATTACH_TO" for item in events) == 1
+        assert sum(item.kind.value == "DETACH_FROM" for item in events) == 1
 
 
 @pytest.mark.postgresql
@@ -583,6 +769,110 @@ async def test_arb_03_identical_attach_converges_with_one_event(
             )
         ).items
         assert sum(item.kind.value == "ATTACH_TO" for item in events) == 1
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_arb_03b_identical_detach_converges_with_one_event(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ARB-03B-IDENTICAL-DETACH") as actors:
+        template_id = await _ownership_template(actors, "arb03b")
+        reader = _object_reader(actors)
+        parent = await reader.create(template_id, 2, "parent", {})
+        child = await reader.create(template_id, 2, "child", {})
+        await reader.attach(parent.id, "children", child.id)
+        first, second = _object_services(actors)
+        cut = _object_owner_cut(monkeypatch)
+        outcomes = await blocked_race(
+            actors,
+            cut,
+            lambda: first.detach(parent.id, "children", child.id),
+            lambda: second.detach(parent.id, "children", child.id),
+        )
+        assert all(outcome is None for outcome in outcomes)
+        assert await reader.get_owner(child.id) is None
+        events = (
+            await reader.list_events(
+                kind=None,
+                object_id=None,
+                destination_object_id=None,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=child.id,
+                cursor=None,
+                limit=100,
+            )
+        ).items
+        assert sum(item.kind.value == "ATTACH_TO" for item in events) == 1
+        assert sum(item.kind.value == "DETACH_FROM" for item in events) == 1
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_idempotent_conflict_and_detach_paths_skip_ownership_gate(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "GATE-SKIP-OWNERSHIP") as actors:
+        template_id = await _ownership_template(actors, "gate_skip")
+        reader = _object_reader(actors)
+        first_parent = await reader.create(template_id, 2, "p1", {})
+        second_parent = await reader.create(template_id, 2, "p2", {})
+        first_child = await reader.create(template_id, 2, "c1", {})
+        second_child = await reader.create(template_id, 2, "c2", {})
+        await reader.attach(first_parent.id, "children", first_child.id)
+        await reader.attach(second_parent.id, "children", second_child.id)
+
+        calls = 0
+
+        async def forbidden_gate(
+            connection: AsyncConnection, gate: AdvisoryGate
+        ) -> None:
+            del connection, gate
+            nonlocal calls
+            calls += 1
+            raise AssertionError("ownership graph gate must not be acquired")
+
+        monkeypatch.setattr(object_application, "acquire_advisory_gate", forbidden_gate)
+
+        projection = await reader.attach(first_parent.id, "children", first_child.id)
+        assert projection.child_object_id == first_child.id
+        with pytest.raises(ApplicationFailure) as caught:
+            await reader.attach(first_parent.id, "children", second_child.id)
+        assert caught.value.code == "ownership_conflict"
+        assert await reader.detach(first_parent.id, "children", first_child.id) is None
+        assert await reader.detach(first_parent.id, "children", first_child.id) is None
+        assert calls == 0
+        assert await reader.get_owner(first_child.id) is None
+        second_owner = await reader.get_owner(second_child.id)
+        assert second_owner is not None
+        assert second_owner.parent_object_id == second_parent.id
+        events = (
+            await reader.list_events(
+                kind=None,
+                object_id=None,
+                destination_object_id=None,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=first_child.id,
+                cursor=None,
+                limit=100,
+            )
+        ).items
+        assert sum(item.kind.value == "ATTACH_TO" for item in events) == 1
+        assert sum(item.kind.value == "DETACH_FROM" for item in events) == 1
 
 
 @pytest.mark.postgresql
