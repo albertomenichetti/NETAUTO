@@ -379,11 +379,55 @@ La documentazione deve permettere, per ogni comportamento importante, di rispond
 
 ### Chiusura formale della milestone
 
-La chiusura formale della milestone prevede 3 azioni distinte che devono essere **SEMPRE** svolte:
-- Il consolidamento della componente architetturale/documentale presente in `docs/milestones/<Mx>/` verso quanto già presente in `docs/architecture`; questo perchè la documentazione architetturale di milestone è valida all'interno dello sviluppo della milestone. Terminata la milestone deve essere integrata ed armonizzata all'interno dell'unica sorgente di documentazione architetturale del progetto presente in `docs/architecture`
-- L'aggiornamento del file di `status.md`, in modo che riporti chiaramente che lo stato attuale della milestone è DELIVERED.
-- Il merge del branch di milestone su master; questa attività non viene **MAI** fatta dall'agente ma è a carico dell'essere umano.
+La chiusura formale della milestone deve distinguere nettamente tra **record storico del ciclo** e **documentazione architetturale corrente del sistema**.
 
+`docs/milestones/<Mx>/` rimane il record completo e permanente della milestone Mx: documenta cosa si voleva ottenere, come è stato progettato il cambiamento, come è stato decomposto e verificato e quale stato operativo ha raggiunto il ciclo. La chiusura della milestone non comporta quindi lo spostamento, la fusione o la cancellazione dei suoi documenti per trasferirli in `docs/architecture/`.
+
+In particolare, restano sotto `docs/milestones/<Mx>/` come record del ciclo:
+
+```text
+contract.md
+steps.md
+status.md
+acceptance.md, quando presente
+architecture/
+```
+
+L'eventuale materiale `wip/` segue la specifica disciplina prevista per il materiale temporaneo del ciclo, ma non diventa automaticamente architettura corrente.
+
+`docs/architecture/` ha una responsabilità diversa: deve descrivere esclusivamente l'**AS-IS architetturale autorevole risultante dopo la milestone**. A chiusura di Mx si devono quindi derivare dalle decisioni approvate della milestone soltanto le informazioni necessarie a descrivere correttamente il sistema ormai consegnato, integrandole e armonizzandole con la baseline AS-IS precedente.
+
+Il consolidamento non è un copy/paste dei documenti della milestone. Deve produrre una documentazione corrente coerente e autosufficiente, dalla quale sia possibile comprendere l'architettura del sistema senza dover ricostruire la sequenza storica M1, M2, ... Mn.
+
+Nel nuovo AS-IS devono essere rimossi o riformulati i riferimenti che hanno senso soltanto nel contesto temporale della milestone, per esempio formulazioni come:
+
+```text
+target della milestone
+durante Mx
+da implementare
+candidate
+stato futuro
+```
+
+quando tali formulazioni non descrivono più il sistema consegnato.
+
+Devono invece essere preservati nei documenti di milestone tutti gli elementi necessari a ricostruire **perché** e **attraverso quale ciclo** una determinata decisione è stata introdotta. La Git history e i documenti di milestone costituiscono quindi la memoria storica dell'evoluzione; `docs/architecture/` costituisce la fotografia autorevole dello stato corrente.
+
+La relazione finale è:
+
+```text
+docs/milestones/<Mx>/
+    = memoria normativa e storica del ciclo Mx
+
+docs/architecture/
+    = AS-IS architetturale corrente dopo Mx
+```
+
+La chiusura formale della milestone prevede quindi 3 azioni distinte che devono essere **SEMPRE** svolte:
+
+1. consolidare in `docs/architecture/` il nuovo AS-IS risultante dalla milestone, armonizzando le decisioni architetturali approvate con la baseline precedente senza copiare indiscriminatamente la documentazione del ciclo;
+2. aggiornare `docs/milestones/<Mx>/status.md` in modo che riporti chiaramente che lo stato della milestone è `DELIVERED`;
+3. eseguire il merge del branch di milestone su master; questa attività non viene **MAI** fatta dall'agente ma è a carico dell'essere umano.
 
 
 ## Funzionamento di un ciclo di fix (F)
