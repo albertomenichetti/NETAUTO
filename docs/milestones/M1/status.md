@@ -8,7 +8,7 @@
 M1-S04 — Object intrinsic state and intrinsic lifecycle vertical slice
 ```
 
-**Step status:** READY TO START
+**Step status:** IN PROGRESS
 
 M1-S00, M1-S01, M1-S02 and M1-S03 have completed implementation review.
 
@@ -33,6 +33,20 @@ The S03 review-fix delta closed the completion findings by:
 - mapping DB-valid but semantically corrupt persisted effective-schema state to `500 internal_error` rather than caller `422 semantic_validation_failed`.
 
 Final reported S03 gates passed with 74 non-PostgreSQL tests and 55 PostgreSQL tests on PostgreSQL 16.14, plus `uv lock`, `uv sync --locked`, build, Ruff and strict Pyright. No suppressions, retries, sleeps, production test hooks, architecture contradictions or S04+ behavior were introduced.
+
+M1-S04 pre-flight has been revalidated against the frozen Object, runtime-state, lifecycle, ObjectTemplate effective-schema, persistence/UoW, concurrency/PGTEST and API authorities. No architecture/documentation contradiction is currently known.
+
+S04 now owns the intrinsic Object vertical slice only: kernel UUID identity, exact published OTV admission, definitive exact schema interpretation, canonical runtime properties, CREATE/RENAME/DATA_CHANGE, atomic intrinsic lifecycle events, Object GET/list and intrinsic lifecycle read/list machinery.
+
+`SCHEMA_CHANGE`, ownership ATTACH/DETACH, Object DELETE, ownership projections and Relationship behavior remain explicitly deferred to later steps.
+
+The non-normative Codex execution prompt for the current step is:
+
+```text
+docs/milestones/M1/wip/M1-S04-codex-prompt.md
+```
+
+The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
 
 With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
@@ -66,7 +80,7 @@ M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
 M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
 M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
 M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
-M1-S04  READY TO START   Object intrinsic state and intrinsic lifecycle vertical slice
+M1-S04  IN PROGRESS      Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  NOT STARTED      Ownership and Object schema-change vertical slice
 M1-S06  NOT STARTED      RelationshipDefinition model-plane and capability vertical slice
 M1-S07  NOT STARTED      Runtime Relationship and relationship lifecycle vertical slice
@@ -76,9 +90,9 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-None known for starting M1-S04.
+None known for implementing M1-S04.
 
-PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
 A newly discovered contradiction or missing decision in frozen architecture is not an implementation blocker to work around: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
