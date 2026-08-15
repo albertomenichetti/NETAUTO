@@ -269,6 +269,59 @@ Nuove capability, miglioramenti opportunistici o funzionalità non necessarie al
 
 Il freeze viene gestito pragmaticamente tramite Git e accordo esplicito sullo stato dei documenti, senza introdurre in questa fase workflow formali aggiuntivi di governance.
 
+### Finding durante implementazione e review
+
+Il freeze del design vincola anche le fasi di implementazione e review. Un problema emerso durante lo sviluppo, nei test o nella revisione non autorizza mai l'implementatore a reinterpretare implicitamente il design, modificare una semantica congelata o indebolire una verifica per ottenere un risultato funzionante.
+
+Ogni finding deve essere prima classificato distinguendo almeno tra:
+
+```text
+implementation defect
+    = il codice non realizza correttamente una semantica già definita in modo
+      univoco dalle authority congelate
+
+architecture defect / missing decision
+    = le authority congelate sono contraddittorie, incomplete, non allineate
+      oppure non permettono di determinare un comportamento univoco
+```
+
+Nel caso di **implementation defect**, il design rimane valido. Si corregge l'implementazione nel rispetto delle authority esistenti e, quando il difetto è riproducibile o riguarda un contratto rilevante, si aggiunge o rafforza una regression verification adeguata. Non si riapre l'architettura soltanto perché il codice contiene un bug.
+
+Nel caso di **architecture defect / missing decision**, il comportamento interessato entra immediatamente in stato di **STOP**. Non è ammesso scegliere in codice una delle interpretazioni possibili, assumere che il test sia troppo restrittivo, usare il comportamento corrente dell'implementazione come nuova authority o proseguire sulla base della soluzione tecnicamente più conveniente.
+
+La sequenza obbligatoria è:
+
+```text
+finding durante implementation / test / review
+    -> classificazione come architecture defect o missing decision
+    -> STOP del comportamento interessato
+    -> identificazione dello scope di riapertura
+    -> re-read delle authority documentali pertinenti
+    -> decisione / correzione architetturale esplicita
+    -> propagation nello stesso ciclo a tutti i documenti normativi impattati
+    -> verifica di coerenza della baseline riallineata
+    -> re-freeze esplicito del design interessato
+    -> solo dopo ripresa dell'implementazione
+```
+
+La riapertura deve essere proporzionata al finding: non è necessario riaprire l'intera milestone quando il problema è circoscritto, ma devono essere riesaminate tutte le authority da cui la decisione dipende e tutti i documenti che ne rappresentano le conseguenze. Una correzione cross-cutting richiede quindi una propagation cross-cutting.
+
+Il codice, i risultati dei test, i report dell'implementatore e la Git history possono fornire evidence utile a diagnosticare il problema, ma **non sostituiscono mai la decisione documentale** quando il finding riguarda una semantica o un meccanismo congelato.
+
+In sintesi:
+
+```text
+semantica frozen chiara + codice errato
+    -> implementation defect
+    -> fix del codice + regression verification
+
+semantica frozen contraddittoria / incompleta / non deterministica
+    -> architecture defect / missing decision
+    -> STOP
+    -> reopen -> revalidate -> decide -> propagate -> re-freeze
+    -> resume
+```
+
 ### Acceptance criteria
 
 Ogni milestone deve definire acceptance criteria espliciti e verificabili all'interno di `contract.md`.
