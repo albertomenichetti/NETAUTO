@@ -21,6 +21,22 @@ RuntimeRelationshipResolution
 
 A complete RelationshipDefinition is an aggregate composed of its header plus the complete Resolution set. A complete factual Relationship is an aggregate composed of its header plus the complete runtime-resolution closure.
 
+## Identity generation
+
+Current domain identities are opaque kernel/application-generated UUIDv4 values:
+
+```text
+RelationshipDefinition.id
+RelationshipResolution.id
+Relationship.id
+```
+
+They are not caller-supplied and are immutable after creation.
+
+`RelationshipResolution.id` remains stable across Definition rename. `Relationship.id` identifies the factual association, not one resolved view.
+
+RuntimeRelationshipResolution has no surrogate identity; its exact resolved-view tuple is authoritative.
+
 ## Resolved-graph principle
 
 Interpretation complexity is paid on the model plane.
@@ -70,23 +86,26 @@ Definition mutation operates on the complete aggregate; Resolution child state i
 
 ### Non-symmetric shape
 
-`symmetric=false` requires exactly two reciprocal semantic perspectives with distinct names.
-
-Conceptually:
+`symmetric=false` requires exactly two reciprocal perspectives:
 
 ```text
-A -> B / name_1
-B -> A / name_2
+R1.from_template_id == R2.to_template_id
+R1.to_template_id   == R2.from_template_id
+R1.name             != R2.name
 ```
+
+The rule also applies when both endpoint lineages are the same.
 
 ### Symmetric shape
 
 `symmetric=true` has one semantic name.
 
 - same-template endpoints -> one Resolution;
-- different-template endpoints -> two reciprocal Resolutions with the same semantic name.
+- different-template endpoints -> two reciprocal Resolutions with the same name.
 
-Endpoint template references are stable ObjectTemplate lineages, never exact ObjectTemplateVersions.
+Endpoint references are stable ObjectTemplate lineages, never exact ObjectTemplateVersions.
+
+Changing symmetry, endpoint lineage, Resolution membership or cardinality defines a different relationship type and therefore requires a new Definition.
 
 ## RelationshipResolution
 
@@ -101,11 +120,55 @@ to_template_id
 
 and mutable non-key `name` metadata.
 
-`RelationshipResolution.id` is kernel-generated and remains the stable child identity independently of rename.
+Name grammar:
 
-`name` must not become a key-changing persistence identity. In particular the current architecture does not make `(definition, from_template, to_template, name)` a business/FK-referencable key.
+```text
+[a-z][a-z0-9_]*
+maximum length = 64
+```
 
-The complete Definition candidate must remain free of duplicate semantic child tuples and satisfy symmetry rules.
+No automatic normalization is applied.
+
+`name` is not identity. A rename preserves `RelationshipResolution.id`.
+
+`name` must not become a key-changing persistence identity. In particular, the current architecture does not make this tuple a business/FK-referencable key:
+
+```text
+(relationship_definition_id, from_template_id, to_template_id, name)
+```
+
+The complete Definition candidate must remain free of duplicate semantic child tuples and satisfy the symmetry rules.
+
+## Capability applicability
+
+A Resolution `R` is applicable as a from-perspective to a stable ObjectTemplate lineage `T` iff:
+
+```text
+T == R.from_template_id
+OR
+T is descendant of R.from_template_id
+```
+
+The expected related endpoint compatibility space is `R.to_template_id`, also lineage-polymorphic.
+
+Capability applicability depends on stable lineage ancestry only. It does not depend on:
+
+- exact ObjectTemplateVersions;
+- ObjectTemplate default state;
+- availability of a current PUBLISHED version;
+- Object exact schema version or property state.
+
+The ObjectTemplate relationship-capability projection exposes:
+
+```text
+resolution_id
+relationship_definition_id
+name
+from_template_id
+to_template_id
+```
+
+`from_template_id` remains explicit because the applicable capability may be declared on an ancestor space.
 
 ## Definition equivalence and conflict freedom
 
@@ -117,11 +180,23 @@ Two Definitions with the same `symmetric + complete semantic Resolution set` can
 
 ### Cross-Definition conflict freedom
 
-Resolution perspectives from distinct Definitions cannot expose the same semantic name where their from-lineage spaces and to-lineage spaces both overlap.
+Resolution perspectives from distinct Definitions conflict when:
 
-Definition CREATE and RENAME therefore operate against a globally certified set and are serialized through the concurrency mechanism described in `concurrency.md`.
+```text
+same name
+AND
+from-lineage spaces overlap
+AND
+to-lineage spaces overlap
+```
 
-Definition DELETE only removes a member of that certified set; it cannot introduce a new equivalence/conflict by itself.
+With single stable ObjectTemplate inheritance, spaces overlap when lineages are equal or one is an ancestor/descendant of the other.
+
+Resolutions inside the same Definition are not evaluated as cross-Definition conflicts; their overlap may be intentional and is handled by runtime closure semantics.
+
+Definition CREATE and RENAME operate against a globally certified set and are serialized through the concurrency contract.
+
+Definition DELETE removes a member of that set and cannot introduce a new equivalence/conflict by itself.
 
 ## Factual Relationship
 
@@ -131,33 +206,11 @@ A factual Relationship has authoritative stable identity:
 relationship_id
 ```
 
-and a stable binding to one `relationship_definition_id`.
+and stable binding to one `relationship_definition_id`.
 
-A factual association is not identified publicly by an endpoint tuple. Successful CREATE either creates a new factual identity or converges on an already-current factual Relationship representing the same semantic fact.
+A factual association is not publicly identified by an endpoint tuple. Successful CREATE either creates a new factual identity or converges on an already-current factual Relationship representing the same semantic fact.
 
-## Runtime resolved closure
-
-For every factual Relationship, the committed runtime-resolution set is the deterministic **complete closure** of the factual Object pair under its Definition.
-
-Every runtime row must satisfy:
-
-- referenced Resolution belongs to the same Definition as the Relationship header;
-- all rows represent one factual Object pair, including supported self-pairs;
-- from/to Objects satisfy stable-lineage compatibility for the selected Resolution;
-- the closure is complete, not a partial set of access paths;
-- an exact resolved view is globally unique.
-
-Exact resolved-view identity/uniqueness is:
-
-```text
-(resolution_id, from_object_id, to_object_id)
-```
-
-There is no surrogate runtime-resolution row identity.
-
-## Runtime CREATE semantics
-
-Public Relationship CREATE is expressed by:
+Public CREATE is expressed by:
 
 ```text
 resolution_id
@@ -167,33 +220,135 @@ to_object_id
 
 The selected Resolution determines the requested semantic perspective.
 
-Endpoint admission depends only on stable `Object.template_id` lineage compatibility. Exact ObjectTemplateVersion, Object property state, template default state and OTV lifecycle do not determine current runtime Relationship validity.
+Endpoint admission depends only on stable `Object.template_id` lineage compatibility. Exact ObjectTemplateVersion, Object property state, canonical name, ownership, template default state and OTV lifecycle do not determine runtime Relationship validity.
 
-### Symmetric semantics
+## Factual endpoint semantics
 
-For symmetric Definitions the endpoint assignment is semantically interchangeable according to the certified Definition shape.
+### Non-symmetric
 
-### Non-symmetric semantics
+The selected Resolution determines endpoint roles and the assignment is not interchangeable.
 
-For non-symmetric Definitions the endpoint role expressed by the selected Resolution is preserved and is not interchangeable.
+For reciprocal perspectives `R1` and `R2`:
+
+```text
+R1 / A -> B
+```
+
+represents the same fact as:
+
+```text
+R2 / B -> A
+```
+
+but is a different fact from:
+
+```text
+R1 / B -> A
+```
+
+unless the actual endpoint assignment is the same self-pair and the Definition semantics make it so.
+
+### Symmetric
+
+The factual pair is unordered semantically. Any applicable Resolution/assignment expressing the same unordered pair converges on the same factual Relationship.
 
 ### Self-loop
 
-A factual pair `(A, A)` is allowed when the Definition/Resolution lineage admission permits it. Self-loop is not structurally forbidden by the current model.
+A factual pair `(A, A)` is allowed when lineage admission permits it. Self-loop is not structurally forbidden.
 
-### Idempotent convergence
+## Deterministic complete runtime closure
 
-If CREATE discovers that the requested exact/semantic factual view already exists, it returns the current factual Relationship and performs no duplicate mutation or lifecycle-event set.
+Every factual Relationship materializes the deterministic **complete set** of exact object-relative resolved views required by its Definition.
 
-Concurrent equivalent CREATE operations may race on exact-view uniqueness. One candidate wins; a colliding candidate rolls back its entire Unit of Work and re-evaluates in a fresh transaction. It then either converges on the winner if still current or creates a new factual identity if the previous fact has already been deleted.
+Every runtime row must satisfy:
+
+- its Resolution belongs to the same Definition as the Relationship header;
+- it uses only the one factual Object pair;
+- from/to Objects satisfy stable-lineage compatibility for the selected Resolution;
+- the complete required closure is present, not a subset;
+- each exact resolved view is globally unique.
+
+Exact resolved-view identity:
+
+```text
+(resolution_id, from_object_id, to_object_id)
+```
+
+There is no surrogate runtime-resolution row identity.
+
+### Non-symmetric closure
+
+Given selected perspective `R1` and input `A -> B`, with reciprocal `R2`, the complete closure is:
+
+```text
+R1 / A -> B
+R2 / B -> A
+```
+
+If `A == B`, two rows remain when `R1 != R2`.
+
+No additional inverse assignments are added merely because inheritance overlap makes them type-compatible; those would represent the opposite factual relationship.
+
+### Symmetric closure
+
+For unordered pair `{A, B}`, the closure is the set of all distinct tuples:
+
+```text
+(resolution_id, from_object_id, to_object_id)
+```
+
+obtained from every model Resolution and both assignments `(A,B)` / `(B,A)` that satisfy the respective lineage predicates.
+
+Consequences:
+
+- same-template, `A != B`: two runtime rows using the same Resolution ID;
+- same-template self-loop: one runtime row;
+- different-template disjoint spaces: normally two reciprocal rows;
+- different-template overlapping spaces: up to four rows;
+- current closure remains bounded because a Definition owns at most two model Resolutions.
+
+## Runtime CREATE semantics
+
+Conceptual pipeline:
+
+```text
+load selected Resolution
+load endpoint Objects
+validate selected perspective admission
+lookup exact current resolved view
+
+if present:
+    return current factual Relationship
+    no mutation
+    no lifecycle event set
+
+if absent:
+    load the complete certified Definition Resolution set
+    derive deterministic complete closure
+    validate complete candidate
+    ensure no exact view belongs to another factual Relationship
+    insert Relationship header
+    insert complete closure
+    insert complete required lifecycle event set
+    commit atomically
+```
+
+Concurrent equivalent CREATE candidates may collide on exact-view uniqueness. A colliding candidate rolls back the entire Unit of Work and restarts the semantic operation in a fresh Unit of Work.
+
+Fresh re-evaluation either:
+
+- converges on the current winner; or
+- creates a new factual identity if the previous fact has already been deleted.
+
+No row-by-row partial `ON CONFLICT DO NOTHING` creates a partial aggregate.
 
 ## Runtime DELETE semantics
 
 Relationship DELETE targets exact `relationship_id`.
 
-Deletion is idempotent on absence for this specific domain operation.
+Deletion is idempotent on absence for this specific operation.
 
-A late `DELETE(X)` never deletes a semantically equivalent Relationship `Y` that may have been recreated after X was removed. This preserves exact-ID ABA safety.
+A late `DELETE(X)` never deletes a semantically equivalent Relationship `Y` recreated after X was removed. This preserves exact-ID ABA safety.
 
 A real deletion atomically removes:
 
@@ -205,15 +360,13 @@ complete runtime-resolution child closure
 complete required lifecycle event set
 ```
 
-## RelationshipDefinition delete safety
+## RelationshipDefinition and Object delete safety
 
 A RelationshipDefinition cannot be deleted while any current factual Relationship references it.
 
-Current runtime references use non-cascading lifetime protection. Definition deletion never implicitly removes factual Relationships.
-
-## Object delete interaction
-
 An Object cannot be deleted while any current factual Relationship includes it.
+
+Current runtime references use non-cascading lifetime protection. Definition/Object deletion never implicitly removes factual Relationships.
 
 Relationship is not ownership:
 
@@ -224,17 +377,15 @@ Relationship is not ownership:
 
 ## Lifecycle events
 
-A real factual Relationship transition produces one lifecycle event for every distinct object-relative **semantic view**, not mechanically one event for each raw runtime-resolution row.
+A real factual transition produces one lifecycle event for every distinct object-relative **semantic view**, not mechanically one event for each raw runtime row.
 
-The complete event set is atomic with the factual mutation and runtime-closure change.
+The complete event set is atomic with the factual mutation and runtime closure change.
 
-Relationship names and Object display names captured in lifecycle history are historical metadata, not live referential dependencies.
+Relationship names and Object display names captured in history are historical metadata, not live referential dependencies.
 
-When a Relationship transition races with mutable Definition/Object naming metadata, the complete event set must be derived from coherent committed metadata observations. It must not mix half-old and half-new Definition naming state.
+When a transition races with mutable Definition/Object naming metadata, the complete event set is derived from coherent committed metadata observations. It must not mix half-old and half-new Definition naming state.
 
 ## Read projections
-
-Current public reads expose semantic aggregate/projection state:
 
 ```text
 RelationshipDefinition GET
@@ -256,7 +407,7 @@ Inheritance overlap must not create duplicate public semantic views.
 
 ## Modelling guideline
 
-A relationship capability should be declared on the most general template space for which the semantics is correct for all descendants:
+A capability should be declared on the most general template space for which the semantics is correct for all descendants:
 
 ```text
 highest semantically correct,
@@ -276,13 +427,16 @@ exact DefinitionVersion pin on factual Relationship
 parallel multi-edge factual instances distinguished by properties
 ```
 
-A future typed-property evolution may introduce a versioned property schema, but it must not silently reinterpret the stable topology/navigation contract (`symmetric`, Resolution set, endpoint lineage spaces) without an explicit architectural change.
+A future typed-property evolution may introduce a versioned property schema, but it must not silently reinterpret the stable topology/navigation contract (`symmetric`, Resolution set, endpoint lineage spaces) without explicit architecture change.
 
 ## Key invariants
 
-- Definition identity is stable and symmetry is immutable;
-- Resolution identity is stable independently of mutable `name`;
+- Definition, Resolution and factual Relationship identities are kernel-generated UUIDv4 and stable;
+- Definition symmetry is immutable;
+- Resolution identity remains stable independently of mutable `name`;
+- Resolution names follow the frozen lowercase grammar and are non-key metadata;
 - Resolution endpoints are stable ObjectTemplate lineages;
+- capability applicability is lineage-polymorphic and independent of exact OTV lifecycle/default state;
 - symmetric/non-symmetric aggregate shape is complete and valid;
 - the committed Definition set is semantically non-duplicated and cross-definition conflict-free;
 - runtime mutation consumes certified model semantics rather than reinterpreting them;
