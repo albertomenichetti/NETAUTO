@@ -4,17 +4,17 @@ NETAUTO is a REST-API-first dynamic infrastructure modeling kernel.
 This README is a navigator and operational status projection, not a semantic authority. If this section disagrees with the current Git branch or an active cycle's authoritative `status.md`, stop immediately and ask for confirmation.
 
 
-## Currently active developement phase
-None started
+## Currently in progress developement phase
+None
 
 
 ## At Now delivered
 
 This section is the repository-level current-state projection. It must be updated whenever the active baseline, cycle, branch, phase, slice, execution aid or immediate next action changes.
 
-| Phase | Short Description | Status | Document Repository | Branch |
+| Phase | Short Description | Status | Document Repository | Closed Developement Branch |
 |---|---| --- | --- | --- |
-| M1 | kernel data-modeling framework: DataType, ObejctTemplate, Object, Relationship | COMPLETED & MERGED | docs/milestones/M1 | core_review |
+| M1 | kernel data-modeling framework: DataType, ObejctTemplate, Object, Relationship | DELIVERED & MERGED | docs/milestones/M1 | core_review |
 
 The detailed delivered <Mx/Fx> state remains authoritative in `docs/milestones/<Mx/Fx>/status.md`.
 

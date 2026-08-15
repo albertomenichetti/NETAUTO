@@ -16,7 +16,7 @@ It must not duplicate, reinterpret or silently override the owning normative doc
 
 ## 1. Start from the repository README
 
-Before any repository work, read the root `README.md`.
+Before any repository work, after having read `AGENTS.md`, **always** read the root `README.md`.
 
 The README is the mandatory **operational entry point**. It must identify, directly or through explicit links:
 
@@ -407,3 +407,85 @@ candidate implemented and ready for reviewer inspection
 Do not state that a slice is `COMPLETED` or a cycle is `DELIVERED` unless reporting a reviewer-owned state that was already authoritatively recorded before the agent's work.
 
 Never claim a test, migration, clean working tree, push or remote synchronization that was not actually verified.
+
+
+
+
+
+
+## 10. Tech Specs
+
+### Requirements
+
+- CPython 3.14;
+- [uv](https://docs.astral.sh/uv/);
+- an externally provisioned PostgreSQL database.
+
+PostgreSQL URLs must use SQLAlchemy's Psycopg driver form:
+
+```text
+postgresql+psycopg://user:password@host/database
+```
+
+Runtime and test databases are configured separately. The application and Alembic read `NETAUTO_DATABASE_URL`; the test suite reads only `TEST_DATABASE_URL`. Neither path provisions PostgreSQL, and application startup never runs migrations.
+
+### Setup and build
+
+Reproduce the locked development environment and build both distribution artifacts:
+
+```bash
+uv sync --locked
+uv build
+```
+
+### Database migration
+
+Set the explicit administrative/runtime target, then migrate it to Alembic head:
+
+```bash
+export NETAUTO_DATABASE_URL='postgresql+psycopg://user:password@host/runtime_database'
+uv run alembic upgrade head
+```
+
+Migrations are an explicit administrative operation.
+
+### Run the API
+
+After migrating the runtime database, start the Uvicorn application factory:
+
+```bash
+export NETAUTO_DATABASE_URL='postgresql+psycopg://user:password@host/runtime_database'
+uv run uvicorn netauto.entrypoints.http:create_app --factory
+```
+
+The kernel API is served below `/api/v1/core`.
+
+### Verification
+
+Cheap verification does not require a database:
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+uv run pyright
+uv run pytest -q -m 'not postgresql'
+uv run pytest -q tests/test_m1_traceability.py
+```
+
+The complete suite requires a dedicated, externally supplied real PostgreSQL test database:
+
+```bash
+export TEST_DATABASE_URL='postgresql+psycopg://user:password@host/test_database'
+uv run pytest -q
+```
+
+Run PostgreSQL tests serially when only one test database is available. Do not add `-n`/xdist unless each worker has an externally managed isolated database target.
+
+Focused verification is available through the registered markers:
+
+```bash
+uv run pytest -q -m 'postgresql and concurrency'
+uv run pytest -q -m 'postgresql and api'
+uv run pytest -q -m 'postgresql and migration'
+uv run pytest -q -m property
+```
