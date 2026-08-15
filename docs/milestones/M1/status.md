@@ -8,7 +8,7 @@
 M1-S08 — Cross-domain integrity, destructive-operation and API/read closure
 ```
 
-**Step status:** READY TO START
+**Step status:** IN PROGRESS
 
 M1-S00 through M1-S07 have completed implementation review.
 
@@ -23,70 +23,21 @@ a625cf08572ad0a448cdc9e3e631c2d48878dea7
     verification-closure review fix
 ```
 
-The accepted S07 capability includes:
+The accepted S07 capability includes complete factual Relationship semantics, deterministic runtime closure, exact-view PostgreSQL arbitration/convergence, exact-ID DELETE/ABA safety, factual/Object-relative reads, Relationship lifecycle events with one-statement metadata observation, and the final S07 REALIZE-15/API/atomic verification closure.
 
-- complete factual Relationship domain/application/persistence/API behavior;
-- deterministic non-symmetric and symmetric runtime Resolution closure;
-- stable-lineage endpoint admission with no exact-OTV dependency;
-- exact-view PostgreSQL PK arbitration, complete-UoW rollback and fresh-semantic-UoW convergence;
-- exact-ID idempotent/ABA-safe Relationship DELETE;
-- factual Relationship GET and Object-relative semantic navigation with deduplication/keyset pagination;
-- typed Relationship lifecycle events integrated into global/Object-specific lifecycle reads;
-- exactly one READ COMMITTED metadata-observation statement per real Relationship transition;
-- complete semantic-view event dedup and state/event atomicity;
-- Definition/Object FK lifetime behavior and strengthened RelationshipDefinition DELETE regression coverage;
-- no runtime global Relationship gate, source/target semantics, Relationship properties/versioning, Object.DELETE or other S08 behavior.
-
-## S07 PAR-02 architecture correction
-
-During S07, deterministic `PAR-02 REL.CREATE × RD.RENAME` exposed a real physical-schema contradiction. The architecture was explicitly reopened, corrected, propagated and re-frozen without changing Relationship domain/API semantics.
-
-Re-frozen rule:
+The S07 PAR-02 architecture correction remains part of the frozen physical baseline:
 
 ```text
-RelationshipResolution.name
-    = mutable non-key metadata
+RelationshipResolution.name = mutable non-key metadata
 
-no baseline FK-referenziable UNIQUE/index key
-may include relationship_resolutions.name
-```
-
-The obsolete constraint:
-
-```text
-uq_relationship_resolutions_semantic_child
-UNIQUE(
-    relationship_definition_id,
-    from_template_id,
-    to_template_id,
-    name
-)
-```
-
-is no longer part of the head schema.
-
-Accepted physical correction:
-
-```text
 0002_resolution_name_nonkey
-    upgrade   -> drops exactly uq_relationship_resolutions_semantic_child
+    upgrade   -> drops uq_relationship_resolutions_semantic_child
     downgrade -> restores exactly that constraint
 ```
 
-Committed `0001` was not rewritten. No table, column, PK, FK, unrelated index or advisory gate changed. SQLAlchemy MetaData and migrated-schema drift are aligned to the corrected head.
+No table/column/PK/FK/gate was added by that correction; committed `0001` remains unchanged.
 
-Normative propagation commits:
-
-```text
-d1e8c1bf3007416afe9622df88a85970def5cda8  PERSIST-07 correction
-8e96cda02722469e844170c66760118668a5f810  REALIZE-15 / PAR-02 correction
-26ce0ec4b0780e2be05e5f219113327d61c06879  freeze-record revalidation
-6d06ab507ce4afbd8e886ff010e7149ab68d17a5  architecture-index re-freeze
-```
-
-## Final S07 verification
-
-Reported on PostgreSQL 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1):
+Final accepted S07 verification on PostgreSQL 16.14:
 
 ```text
 uv lock --check / sync / build          PASS
@@ -98,43 +49,113 @@ S07 deterministic concurrency          19 passed
 migration / schema / drift              3 passed
 ```
 
-Canonical S07 coverage includes:
+## M1-S08 pre-flight outcome
+
+The mandatory S08 pre-flight re-read the frozen domain, persistence, concurrency/PGTEST and API authorities together with the accepted S07 implementation seams.
+
+Confirmed:
 
 ```text
-ARB-05A/B/C
-ARB-06
-ARB-07A/B
-REF-04
-SNAP-01/02/03
-ATOMIC-02
-ATOMIC-03
-PAR-01
-PAR-02
-PAR-05
+M1 contract      FINAL / FROZEN
+M1 architecture  FROZEN as a set, including PAR-02 correction
+M1 steps         FINAL / FROZEN
+M1-S00..S07      COMPLETED
+STACK-01..09     RATIFIED
 ```
 
-Additional accepted REALIZE-15/atomic/API regressions prove:
+No new architecture contradiction is known.
 
-- REL.CREATE progresses while OBJ.DATA_CHANGE remains open after its non-key UPDATE;
-- REL.CREATE progresses while OBJ.SCHEMA_CHANGE remains open after its non-key UPDATE;
-- REL.CREATE progresses while RD.RENAME remains open after Resolution-name UPDATE (PAR-02);
-- forced `RELATIONSHIP_CREATED` event failure after complete closure insertion rolls back header + all runtime rows + event set;
-- real Relationship lifecycle filtering by relationship id, Definition id and relationship name;
-- Object-specific lifecycle involvement through `object_id = X OR destination_object_id = X`;
-- strict null/non-string UUID operands map to `400 invalid_request`.
-
-No S07 completion blocker or known architecture contradiction remains.
-
-## S07/S08 boundary
-
-Semantic scenarios requiring final `Object.DELETE` remain intentionally deferred to S08:
+S08 is a closure step, not feature expansion. The only final public mutation capability newly delivered here is:
 
 ```text
-REF-03   REL.CREATE × OBJ.DELETE(endpoint)
-REF-05B  REL.DELETE × OBJ.DELETE
+OBJ.DELETE
+DELETE /api/v1/core/objects/{object_id}
 ```
 
-S07 did not introduce a fake/private Object DELETE.
+Frozen Object DELETE boundary:
+
+```text
+Object owner                  = objects(O) FOR UPDATE
+incoming ownership            = 0
+outgoing ownership            = 0
+current factual Relationships = 0
+no implicit detach/delete/cascade/remediation
+real delete + DELETED event   = one atomic UoW
+```
+
+The semantic blocker detail types are already fixed by API-03.11:
+
+```text
+ownership
+relationship
+```
+
+Relationship blocker counts are factual Relationship counts, not raw RuntimeRelationshipResolution-row counts.
+
+Immediate PostgreSQL FK `RESTRICT` remains final race authority against ownership and Relationship references created concurrently after a semantic pre-check.
+
+### Whole-lineage delete closure
+
+Existing delete semantics remain authoritative:
+
+```text
+DataType DELETE_LINEAGE
+    -> external ObjectTemplate property exact-DTV references
+
+ObjectTemplate DELETE_LINEAGE
+    -> child ObjectTemplate dependency
+    -> external component target
+    -> current Object exact OTV pin
+    -> RelationshipResolution endpoint lineage
+
+RelationshipDefinition DELETE
+    -> current factual Relationship blockers
+```
+
+S08 must make every `delete_blocked` path, including bounded FK-race loser translation, conform to API-03.11 `details.blockers`; a known FK race must not fall back to bare `{resource_type,id}` details or leak persistence constraint names.
+
+### Canonical PostgreSQL reference closure
+
+S08 closes/audits the full canonical T-REF family:
+
+```text
+REF-01  model reference creation × target lineage delete
+REF-02  ATTACH × OBJ.DELETE (parent and child)
+REF-03  REL.CREATE × OBJ.DELETE(endpoint)
+REF-04  REL.CREATE × RD.DELETE (accepted S07 regression retained)
+REF-05  DETACH/REL.DELETE × OBJ.DELETE
+REF-06  aggregate CASCADE × external RESTRICT
+```
+
+The S07-deferred semantic Object-delete scenarios are now executable; no fake/private delete is needed.
+
+### Lifecycle/API closure
+
+The global lifecycle route remains the historical authority. After Object deletion:
+
+```text
+GET /objects/{id}                    -> 404
+GET /objects/{id}/lifecycle-events   -> 404 current path target absent
+GET /lifecycle-events?object_id={id} -> historical events remain queryable
+```
+
+S08 also audits the frozen 32-mutation method/path census, all read/list routes, forbidden PUT/PATCH/autonomous-child surfaces, lifecycle filters/indices and the finite API-03.11 error catalog.
+
+## S08 execution aid
+
+The non-normative Codex prompt is:
+
+```text
+docs/milestones/M1/wip/M1-S08-codex-prompt.md
+```
+
+Prompt creation commit:
+
+```text
+5e4357eff6dce8ee6cee4632d25ed7377103e073
+```
+
+The prompt does not override the frozen architecture or ratified technology baseline.
 
 ## Authoritative baseline
 
@@ -166,13 +187,13 @@ M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical
 M1-S05  COMPLETED        Ownership and Object schema-change vertical slice
 M1-S06  COMPLETED        RelationshipDefinition model-plane and capability vertical slice
 M1-S07  COMPLETED        Runtime Relationship and relationship lifecycle vertical slice
-M1-S08  READY TO START   Cross-domain integrity, destructive-operation and API/read closure
+M1-S08  IN PROGRESS      Cross-domain integrity, destructive-operation and API/read closure
 M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 ```
 
 ## Current blockers
 
-None known for starting M1-S08.
+None known for implementing M1-S08.
 
 PostgreSQL-dependent verification requires the externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
