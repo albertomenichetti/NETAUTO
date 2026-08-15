@@ -1,6 +1,6 @@
 # M1 Architecture — Coding Baseline Index
 
-**Status:** FROZEN — global M1 architecture baseline ratified on 2026-08-14 after final consistency review. No M1 feature/design decision remains open to implementation choice.
+**Status:** FROZEN — global M1 architecture baseline ratified on 2026-08-14 after final consistency review and revalidated on 2026-08-15 after the ownership current-edge authority clarification. No M1 feature/design decision remains open to implementation choice.
 
 ## 1. Purpose
 
@@ -64,7 +64,8 @@ concurrency-postgresql-test-matrix.md
 
 m1-final-consistency-review.md
     Final cross-domain/API/persistence/concurrency/test review and
-    ratified FREEZE-01 architecture-freeze record.
+    ratified FREEZE-01 architecture-freeze record, including the
+    2026-08-15 ownership current-edge authority clarification.
 ```
 
 ### Public/application API
@@ -147,6 +148,9 @@ The following are not implementation-choice TODOs anymore:
 - exact DTV/OTV identities and stable-lineage/exact-pin representation;
 - Object canonical JSONB state and `canonical_name` bound `1..255`;
 - ownership persistence, child PK single-owner authority, FK `RESTRICT` lifetime;
+- current ownership edge authority is `(parent_object_id, slot_name, child_object_id)` interpreted against the parent Object's current exact effective schema; `slot_declaring_template_id` is derived from that schema and is not duplicated in `object_components`;
+- `SCHEMA_CHANGE` cannot commit a target pin that would leave an outgoing ownership edge without the same current `SlotSemanticKey` and compatible child; unresolvable persisted edges are internal invariant corruption, not supported legacy ownership state;
+- DETACH removes an exact current edge without repeating ATTACH-style compatibility admission, but still resolves that current edge's `SlotSemanticKey` from the stabilized current parent schema for semantic projection/lifecycle purposes;
 - Relationship R2 physical authority, exact runtime-view PK and Definition/Resolution same-definition constraints;
 - typed lifecycle-event persistence, historical non-FK identities and `transaction_timestamp()` semantics;
 - primitive persistence codec including exact-decimal JSON string, datetime UTC `Z`, integer byte-size;
@@ -172,7 +176,7 @@ The following are not implementation-choice TODOs anymore:
 - API-03.3 type-specific exact/implicit selector contract: omission resolves a default only for Object CREATE OTV selection, ObjectTemplate parent-version selection and property DTV binding/rebinding; CREATE_NEXT, SET_DEFAULT and Object SCHEMA_CHANGE remain exact-only; no generic default/latest/highest selector token;
 - API-03.4 DataType command DTO contract: CREATE builds lineage + v1 DRAFT, optional `constraints` defaults to `{}`, REVISE requires complete `constraints`, command-specific DTOs never expose caller-controlled id/version/revision/status/default state;
 - API-03.5 ObjectTemplate command DTO contract: CREATE requires explicit `abstract`, optional declaration collections default to `[]`, property/component declaration DTOs are strict, `position` is the ordering authority, and REVISE requires complete local property/component arrays;
-- API-03.6 Object command DTO contract: CREATE properties omission means zero supplied values, DATA_CHANGE is a non-empty unordered per-property `SET|REMOVE` operation set with no duplicate property operations, SCHEMA_CHANGE has exact target only, ATTACH/DETACH use strict slot+child bodies, DELETE has no cascade/force options;
+- API-03.6 Object command DTO contract: CREATE properties omission means zero supplied values, DATA_CHANGE is a non-empty unordered per-property `SET|REMOVE` operation set with no duplicate property operations, SCHEMA_CHANGE has exact target only, ATTACH/DETACH use strict slot+child bodies with distinct admission/removal semantics, DELETE has no cascade/force options;
 - API-03.7 RelationshipDefinition/Relationship command DTO contract: symmetric/non-symmetric Definition CREATE/RENAME shapes follow the resolved aggregate semantics, Definition/Resolution/Relationship create-time IDs are kernel-generated, runtime Relationship CREATE accepts exactly resolution/from/to Object IDs, self-loop is not structurally forbidden, and deletes expose no cascade/semantic-tuple alternatives;
 - API-03.8 PrimitiveType public lexical contract: one parser/canonicalizer per primitive across Object values, constraints/enums and migration defaults; exact-decimal `core.number` is string-only without exponent; date/datetime/IP/prefix carrier grammars and canonicalization are fixed;
 - `core.byte_size` public input accepts exact integer bytes or strict SI/IEC quantity strings, with canonical response/persistence always exact integer bytes;
@@ -204,9 +208,9 @@ M1 ARCHITECTURE FROZEN
 
 No feature/design area is open in the M1 architecture baseline.
 
-The final architecture consistency review is recorded in `m1-final-consistency-review.md`; it found and corrected stale documentation markers and identified no blocking semantic or technical contradiction after alignment.
+The final architecture consistency review is recorded in `m1-final-consistency-review.md`; it includes the 2026-08-15 ownership current-edge authority clarification and confirms that the reopen/propagate/re-freeze cycle completed without changing milestone scope or physical schema.
 
-Implementation planning may now proceed to `docs/milestones/M1/steps.md`.
+Implementation planning may proceed to `docs/milestones/M1/steps.md`.
 
 A later contradiction or genuine architecture gap is not an implementation choice. It requires:
 
