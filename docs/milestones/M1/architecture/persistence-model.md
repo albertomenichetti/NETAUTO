@@ -285,7 +285,11 @@ Indice di navigazione/parent lookup:
 
 Non esiste `ownership_edge_id`.
 
-Il runtime edge persiste `slot_name`, non una FK verso una exact slot declaration: l'edge è interpretato contro la current exact effective schema closure del parent. Un FK verso una exact declaration version-pin-nerebbe impropriamente l'edge.
+Il runtime edge persiste `slot_name`, non una FK verso una exact slot declaration: l'edge è interpretato contro la **current exact effective schema closure del parent**. Un FK verso una exact declaration version-pin-nerebbe impropriamente l'edge.
+
+`slot_declaring_template_id` non viene duplicato in `object_components`. La current `SlotSemanticKey = (declaring_template_id, slot_name)` è derivata dalla current exact effective closure del parent ed è l'unica semantic authority del current edge. Persistirla anche nella runtime row introdurrebbe una seconda authority da mantenere coerente senza aggiungere informazione necessaria al current ownership fact.
+
+Conseguenza normativa: ogni current `object_components` row deve risolvere esattamente uno slot nella current exact schema del parent e il child deve restare lineage-compatible con quel current slot. `SCHEMA_CHANGE` è tenuto a preservare questa proprietà e non può lasciare legacy edge non rappresentati dal target schema. Una persisted ownership row non risolvibile contro il current parent schema è invariant corruption, non uno stato supportato da DETACH o da una historical fallback lookup.
 
 Slot validity, child lineage compatibility e acyclicity sono UoW/concurrency invariants.
 
