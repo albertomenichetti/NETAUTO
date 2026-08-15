@@ -212,6 +212,12 @@ slot_name
     = historical SlotSemanticKey
 ```
 
+`slot_declaring_template_id + slot_name` viene osservato al momento della transition risolvendo il `slot_name` del current ownership fact nella **current exact effective schema del parent stabilizzato**. La runtime row `object_components` non persiste `slot_declaring_template_id` e non costituisce una seconda historical slot-identity authority.
+
+Per ATTACH la stessa resolution partecipa alla current slot admission. Per DETACH non rappresenta una nuova admission: serve soltanto a interpretare l'exact current edge che viene rimosso e a materializzare la sua `SlotSemanticKey` nell'event. Se un persisted current edge non è risolvibile nella current parent schema, il current dataset viola le ownership invariants e la mutation incontra internal invariant failure; non viene cercata una old/last-known declaration e il changelog non viene usato come current-state authority.
+
+Dopo il commit, `slot_declaring_template_id` e `slot_name` nell'event sono historical metadata della transition e non dipendono più dalla futura evoluzione o cancellazione delle current model rows.
+
 `canonical_name` e `destination_canonical_name` sono historical display metadata osservati dalla mutation; non fanno parte della ownership fact identity.
 
 REALIZE-15 fissa il concrete observation contract:
