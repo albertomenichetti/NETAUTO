@@ -1,1 +1,1 @@
-"""Persistence adapters for NETAUTO."""
+"""PostgreSQL persistence boundary."""

@@ -1,0 +1,525 @@
+"""Plain-Python Relationship model-plane and factual runtime semantics."""
+
+import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from uuid import UUID, uuid4
+
+_IDENTIFIER = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+
+type ResolutionSemanticKey = tuple[UUID, UUID, str]
+type DefinitionSemanticSignature = tuple[bool, frozenset[ResolutionSemanticKey]]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipResolution:
+    id: UUID
+    relationship_definition_id: UUID
+    from_template_id: UUID
+    to_template_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipDefinition:
+    id: UUID
+    symmetric: bool
+    resolutions: tuple[RelationshipResolution, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipPerspective:
+    template_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResolutionRename:
+    resolution_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipCapability:
+    resolution_id: UUID
+    relationship_definition_id: UUID
+    name: str
+    from_template_id: UUID
+    to_template_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeRelationshipResolution:
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    resolution_id: UUID
+    from_object_id: UUID
+    to_object_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class Relationship:
+    id: UUID
+    relationship_definition_id: UUID
+    resolutions: tuple[RuntimeRelationshipResolution, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipView:
+    object_id: UUID
+    destination_object_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectRelationshipView:
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    object_id: UUID
+    destination_object_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipLifecycleView:
+    object_id: UUID
+    canonical_name: str
+    destination_object_id: UUID
+    destination_canonical_name: str
+    relationship_name: str
+
+
+class RelationshipDefinitionValidationError(ValueError):
+    def __init__(self, path: str, rule: str) -> None:
+        self.path = path
+        self.rule = rule
+        super().__init__(f"{path}: {rule}")
+
+
+class RelationshipValidationError(ValueError):
+    def __init__(self, path: str, rule: str) -> None:
+        self.path = path
+        self.rule = rule
+        super().__init__(f"{path}: {rule}")
+
+
+def validate_relationship_name(name: str, path: str = "name") -> None:
+    if _IDENTIFIER.fullmatch(name) is None:
+        raise RelationshipDefinitionValidationError(path, "invalid_identifier")
+
+
+def validate_definition(value: RelationshipDefinition) -> None:
+    resolutions = value.resolutions
+    if len({item.id for item in resolutions}) != len(resolutions):
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "duplicate_resolution_id"
+        )
+    if any(item.relationship_definition_id != value.id for item in resolutions):
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "definition_membership_mismatch"
+        )
+    for item in resolutions:
+        validate_relationship_name(item.name, f"resolutions.{item.id}.name")
+
+    if not value.symmetric:
+        if len(resolutions) != 2:
+            raise RelationshipDefinitionValidationError(
+                "resolutions", "non_symmetric_requires_two_resolutions"
+            )
+        first, second = resolutions
+        if (
+            first.from_template_id != second.to_template_id
+            or first.to_template_id != second.from_template_id
+        ):
+            raise RelationshipDefinitionValidationError(
+                "resolutions", "non_symmetric_resolutions_must_be_reciprocal"
+            )
+        if first.name == second.name:
+            raise RelationshipDefinitionValidationError(
+                "resolutions", "non_symmetric_names_must_be_distinct"
+            )
+        return
+
+    if len(resolutions) == 1:
+        only = resolutions[0]
+        if only.from_template_id != only.to_template_id:
+            raise RelationshipDefinitionValidationError(
+                "resolutions", "single_symmetric_resolution_requires_same_template"
+            )
+        return
+    if len(resolutions) != 2:
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "symmetric_requires_one_or_two_resolutions"
+        )
+    first, second = resolutions
+    if (
+        first.from_template_id == first.to_template_id
+        or first.from_template_id != second.to_template_id
+        or first.to_template_id != second.from_template_id
+    ):
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "symmetric_resolutions_must_be_distinct_reciprocals"
+        )
+    if first.name != second.name:
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "symmetric_names_must_match"
+        )
+
+
+def new_non_symmetric_definition(
+    perspectives: tuple[RelationshipPerspective, RelationshipPerspective],
+) -> RelationshipDefinition:
+    for index, perspective in enumerate(perspectives):
+        validate_relationship_name(perspective.name, f"perspectives.{index}.name")
+    if perspectives[0].name == perspectives[1].name:
+        raise RelationshipDefinitionValidationError(
+            "perspectives", "non_symmetric_names_must_be_distinct"
+        )
+    first, second = sorted(
+        perspectives, key=lambda item: (item.template_id.int, item.name)
+    )
+    definition_id = uuid4()
+    value = RelationshipDefinition(
+        definition_id,
+        False,
+        (
+            RelationshipResolution(
+                uuid4(),
+                definition_id,
+                first.template_id,
+                second.template_id,
+                first.name,
+            ),
+            RelationshipResolution(
+                uuid4(),
+                definition_id,
+                second.template_id,
+                first.template_id,
+                second.name,
+            ),
+        ),
+    )
+    validate_definition(value)
+    return value
+
+
+def new_symmetric_definition(
+    endpoint_template_ids: tuple[UUID, UUID], name: str
+) -> RelationshipDefinition:
+    validate_relationship_name(name)
+    first, second = sorted(endpoint_template_ids, key=lambda item: item.int)
+    definition_id = uuid4()
+    resolutions = [RelationshipResolution(uuid4(), definition_id, first, second, name)]
+    if first != second:
+        resolutions.append(
+            RelationshipResolution(uuid4(), definition_id, second, first, name)
+        )
+    value = RelationshipDefinition(definition_id, True, tuple(resolutions))
+    validate_definition(value)
+    return value
+
+
+def rename_non_symmetric(
+    value: RelationshipDefinition,
+    updates: tuple[ResolutionRename, ResolutionRename],
+) -> RelationshipDefinition:
+    validate_definition(value)
+    if value.symmetric:
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "rename_shape_does_not_match_symmetric_definition"
+        )
+    update_ids = {item.resolution_id for item in updates}
+    current_ids = {item.id for item in value.resolutions}
+    if len(update_ids) != 2 or update_ids != current_ids:
+        raise RelationshipDefinitionValidationError(
+            "resolutions", "rename_must_cover_complete_resolution_set"
+        )
+    names = {item.resolution_id: item.name for item in updates}
+    renamed = RelationshipDefinition(
+        value.id,
+        value.symmetric,
+        tuple(
+            RelationshipResolution(
+                item.id,
+                item.relationship_definition_id,
+                item.from_template_id,
+                item.to_template_id,
+                names[item.id],
+            )
+            for item in value.resolutions
+        ),
+    )
+    validate_definition(renamed)
+    return renamed
+
+
+def rename_symmetric(
+    value: RelationshipDefinition, name: str
+) -> RelationshipDefinition:
+    validate_definition(value)
+    if not value.symmetric:
+        raise RelationshipDefinitionValidationError(
+            "name", "rename_shape_does_not_match_non_symmetric_definition"
+        )
+    renamed = RelationshipDefinition(
+        value.id,
+        value.symmetric,
+        tuple(
+            RelationshipResolution(
+                item.id,
+                item.relationship_definition_id,
+                item.from_template_id,
+                item.to_template_id,
+                name,
+            )
+            for item in value.resolutions
+        ),
+    )
+    validate_definition(renamed)
+    return renamed
+
+
+def semantic_signature(value: RelationshipDefinition) -> DefinitionSemanticSignature:
+    validate_definition(value)
+    return (
+        value.symmetric,
+        frozenset(
+            (item.from_template_id, item.to_template_id, item.name)
+            for item in value.resolutions
+        ),
+    )
+
+
+def lineage_is_ancestor(
+    parent_by_id: Mapping[UUID, UUID | None], ancestor_id: UUID, descendant_id: UUID
+) -> bool:
+    current: UUID | None = descendant_id
+    seen: set[UUID] = set()
+    while current is not None:
+        if current in seen:
+            raise RelationshipDefinitionValidationError(
+                "lineage", "persisted_inheritance_cycle"
+            )
+        seen.add(current)
+        if current == ancestor_id:
+            return True
+        if current not in parent_by_id:
+            raise RelationshipDefinitionValidationError(
+                "lineage", "persisted_lineage_dependency_missing"
+            )
+        current = parent_by_id[current]
+    return False
+
+
+def validate_lineage_graph(parent_by_id: Mapping[UUID, UUID | None]) -> None:
+    for lineage_id in parent_by_id:
+        current: UUID | None = lineage_id
+        seen: set[UUID] = set()
+        while current is not None:
+            if current in seen:
+                raise RelationshipDefinitionValidationError(
+                    "lineage", "persisted_inheritance_cycle"
+                )
+            seen.add(current)
+            if current not in parent_by_id:
+                raise RelationshipDefinitionValidationError(
+                    "lineage", "persisted_lineage_dependency_missing"
+                )
+            current = parent_by_id[current]
+
+
+def lineage_spaces_overlap(
+    parent_by_id: Mapping[UUID, UUID | None], first_id: UUID, second_id: UUID
+) -> bool:
+    return lineage_is_ancestor(
+        parent_by_id, first_id, second_id
+    ) or lineage_is_ancestor(parent_by_id, second_id, first_id)
+
+
+def first_conflict(
+    candidate: RelationshipDefinition,
+    existing: RelationshipDefinition,
+    parent_by_id: Mapping[UUID, UUID | None],
+) -> tuple[RelationshipResolution, RelationshipResolution] | None:
+    validate_definition(candidate)
+    validate_definition(existing)
+    if candidate.id == existing.id:
+        return None
+    for candidate_resolution in candidate.resolutions:
+        for existing_resolution in existing.resolutions:
+            if candidate_resolution.name != existing_resolution.name:
+                continue
+            if not lineage_spaces_overlap(
+                parent_by_id,
+                candidate_resolution.from_template_id,
+                existing_resolution.from_template_id,
+            ):
+                continue
+            if lineage_spaces_overlap(
+                parent_by_id,
+                candidate_resolution.to_template_id,
+                existing_resolution.to_template_id,
+            ):
+                return candidate_resolution, existing_resolution
+    return None
+
+
+def derive_runtime_closure(
+    definition: RelationshipDefinition,
+    *,
+    selected_resolution_id: UUID,
+    from_object_id: UUID,
+    from_template_id: UUID,
+    to_object_id: UUID,
+    to_template_id: UUID,
+    parent_by_id: Mapping[UUID, UUID | None],
+    relationship_id: UUID | None = None,
+) -> tuple[RuntimeRelationshipResolution, ...]:
+    """Derive the complete exact runtime closure from one factual selector."""
+    validate_definition(definition)
+    by_id = {item.id: item for item in definition.resolutions}
+    selected = by_id.get(selected_resolution_id)
+    if selected is None:
+        raise RelationshipValidationError(
+            "resolution_id", "resolution_not_in_definition"
+        )
+
+    def admits(resolution: RelationshipResolution, first: UUID, second: UUID) -> bool:
+        return lineage_is_ancestor(
+            parent_by_id, resolution.from_template_id, first
+        ) and lineage_is_ancestor(parent_by_id, resolution.to_template_id, second)
+
+    if not admits(selected, from_template_id, to_template_id):
+        if not lineage_is_ancestor(
+            parent_by_id, selected.from_template_id, from_template_id
+        ):
+            raise RelationshipValidationError(
+                "from_object_id", "incompatible_template_lineage"
+            )
+        raise RelationshipValidationError(
+            "to_object_id", "incompatible_template_lineage"
+        )
+
+    factual_id = relationship_id or uuid4()
+    exact: set[tuple[UUID, UUID, UUID]] = set()
+    if not definition.symmetric:
+        exact.add((selected.id, from_object_id, to_object_id))
+        reciprocal = next(
+            (
+                item
+                for item in definition.resolutions
+                if item.id != selected.id
+                and item.from_template_id == selected.to_template_id
+                and item.to_template_id == selected.from_template_id
+            ),
+            None,
+        )
+        if reciprocal is None:
+            raise RelationshipDefinitionValidationError(
+                "resolutions", "non_symmetric_resolutions_must_be_reciprocal"
+            )
+        exact.add((reciprocal.id, to_object_id, from_object_id))
+    else:
+        assignments = (
+            (from_object_id, from_template_id, to_object_id, to_template_id),
+            (to_object_id, to_template_id, from_object_id, from_template_id),
+        )
+        for resolution in definition.resolutions:
+            for first_id, first_template, second_id, second_template in assignments:
+                if admits(resolution, first_template, second_template):
+                    exact.add((resolution.id, first_id, second_id))
+
+    return tuple(
+        RuntimeRelationshipResolution(
+            relationship_id=factual_id,
+            relationship_definition_id=definition.id,
+            resolution_id=resolution_id,
+            from_object_id=first_id,
+            to_object_id=second_id,
+        )
+        for resolution_id, first_id, second_id in sorted(
+            exact, key=lambda item: (item[0].int, item[1].int, item[2].int)
+        )
+    )
+
+
+def validate_relationship(
+    value: Relationship,
+    definition: RelationshipDefinition,
+    *,
+    parent_by_id: Mapping[UUID, UUID | None],
+    template_by_object_id: Mapping[UUID, UUID],
+) -> None:
+    """Validate that persisted runtime rows are exactly one factual closure."""
+    if value.relationship_definition_id != definition.id or not value.resolutions:
+        raise RelationshipValidationError("relationship", "incomplete_closure")
+    if any(
+        item.relationship_id != value.id
+        or item.relationship_definition_id != value.relationship_definition_id
+        for item in value.resolutions
+    ):
+        raise RelationshipValidationError("relationship", "aggregate_mismatch")
+    selector = min(
+        value.resolutions,
+        key=lambda item: (
+            item.resolution_id.int,
+            item.from_object_id.int,
+            item.to_object_id.int,
+        ),
+    )
+    try:
+        from_template_id = template_by_object_id[selector.from_object_id]
+        to_template_id = template_by_object_id[selector.to_object_id]
+    except KeyError as error:
+        raise RelationshipValidationError(
+            "relationship", "missing_endpoint_object"
+        ) from error
+    expected = derive_runtime_closure(
+        definition,
+        selected_resolution_id=selector.resolution_id,
+        from_object_id=selector.from_object_id,
+        from_template_id=from_template_id,
+        to_object_id=selector.to_object_id,
+        to_template_id=to_template_id,
+        parent_by_id=parent_by_id,
+        relationship_id=value.id,
+    )
+    actual_keys = {
+        (item.resolution_id, item.from_object_id, item.to_object_id)
+        for item in value.resolutions
+    }
+    expected_keys = {
+        (item.resolution_id, item.from_object_id, item.to_object_id)
+        for item in expected
+    }
+    if actual_keys != expected_keys or len(actual_keys) != len(value.resolutions):
+        raise RelationshipValidationError("relationship", "incomplete_closure")
+
+
+def relationship_views(
+    value: Relationship, definition: RelationshipDefinition
+) -> tuple[RelationshipView, ...]:
+    names = {item.id: item.name for item in definition.resolutions}
+    try:
+        views = {
+            RelationshipView(
+                object_id=item.from_object_id,
+                destination_object_id=item.to_object_id,
+                name=names[item.resolution_id],
+            )
+            for item in value.resolutions
+        }
+    except KeyError as error:
+        raise RelationshipValidationError(
+            "relationship", "resolution_not_in_definition"
+        ) from error
+    return tuple(
+        sorted(
+            views,
+            key=lambda item: (
+                item.object_id.int,
+                item.destination_object_id.int,
+                item.name,
+            ),
+        )
+    )

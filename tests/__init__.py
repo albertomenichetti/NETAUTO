@@ -1,1 +1,1 @@
-"""Test package bootstrap."""
+"""NETAUTO test suite."""

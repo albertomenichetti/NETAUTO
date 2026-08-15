@@ -1,1 +1,1 @@
-"""Shared test helpers."""
+"""Shared test-support boundaries."""

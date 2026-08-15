@@ -1,1 +1,1 @@
-"""Application-layer orchestration."""
+"""NETAUTO application operations."""

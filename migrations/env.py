@@ -1,56 +1,40 @@
-from __future__ import annotations
-
-import os
-from logging.config import fileConfig
+"""Alembic environment for explicit PostgreSQL migration commands."""
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
-from sqlalchemy.engine import Connection, make_url
+from sqlalchemy import Connection, engine_from_config, pool
 
-import netauto.persistence.sqlalchemy.models  # noqa: F401
-from netauto.persistence.sqlalchemy.base import Base
+from netauto.persistence.metadata import metadata
+from netauto.settings import Settings
 
 config = context.config
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-target_metadata = Base.metadata
+target_metadata = metadata
 
 
-def _validated_database_url() -> str:
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is required for Alembic migrations")
-
-    url = make_url(database_url)
-    if url.get_backend_name() != "postgresql" or url.get_driver_name() != "psycopg":
-        raise RuntimeError("DATABASE_URL must use the postgresql+psycopg dialect")
-    return database_url
-
-
-def _configure_context(connection: Connection) -> None:
-    version_table_schema = config.attributes.get("version_table_schema")
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        compare_type=True,
-        compare_server_default=False,
-        version_table_schema=version_table_schema,
-    )
+def get_database_url() -> str:
+    """Load the migration target from explicit NETAUTO process settings."""
+    return Settings().database_url
 
 
 def run_migrations_offline() -> None:
-    url = _validated_database_url()
-    version_table_schema = config.attributes.get("version_table_schema")
+    """Run migrations without creating an Engine."""
     context.configure(
-        url=url,
+        url=get_database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
-        compare_server_default=False,
-        version_table_schema=version_table_schema,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations(connection: Connection) -> None:
+    """Run migrations on an already established administrative connection."""
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -58,25 +42,23 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """Use an injected test connection or the explicit administrative target."""
     injected_connection = config.attributes.get("connection")
-    if injected_connection is not None:
-        _configure_context(injected_connection)
-        with context.begin_transaction():
-            context.run_migrations()
+    if isinstance(injected_connection, Connection):
+        run_migrations(injected_connection)
         return
 
-    section = config.get_section(config.config_ini_section, {})
-    section["sqlalchemy.url"] = _validated_database_url()
+    configuration = config.get_section(config.config_ini_section) or {}
+    configuration["sqlalchemy.url"] = get_database_url()
     connectable = engine_from_config(
-        section,
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        future=True,
     )
 
     with connectable.connect() as connection:
-        _configure_context(connection)
-        with context.begin_transaction():
-            context.run_migrations()
+        run_migrations(connection)
 
 
 if context.is_offline_mode():

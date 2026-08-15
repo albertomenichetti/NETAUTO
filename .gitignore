@@ -1,11 +1,13 @@
 .pytest_cache/
 .ruff_cache/
 .pyright/
+.hypothesis/
 .venv/
 __pycache__/
 *.pyc
+.coverage
+.coverage.*
+htmlcov/
+.env
 dist/
 build/
-.local/
-*.sqlite3
-myscripts/

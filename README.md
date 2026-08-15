@@ -1,49 +1,59 @@
 # NETAUTO
+NETAUTO is a REST-API-first dynamic infrastructure modeling kernel.
 
-NETAUTO is a REST-API-first dynamic infrastructure modeling framework.
+This README is a navigator and operational status projection, not a semantic authority. If this section disagrees with the current Git branch or an active cycle's authoritative `status.md`, stop immediately and ask for confirmation.
 
-Development is currently focused on the schema and object engine that will
-support dynamic infrastructure modeling through the API.
 
-## Development Database
+## Currently in progress developement phase
+None
 
-PostgreSQL with `psycopg` is the only supported SQL backend.
 
-- `DATABASE_URL` overrides the runtime database URL
-- when `DATABASE_URL` is absent, the runtime default is
-  `postgresql+psycopg://localhost/netauto`
-- PostgreSQL runtime/schema setup is Alembic-managed; migrate the configured
-  database before starting the application
-- `DATABASE_URL` must use the `postgresql+psycopg` dialect
-- authoritative integration and full-suite validation require
-  `TEST_DATABASE_URL`
-- PostgreSQL integration tests run in ordinary `uv run pytest`; the old
-  `--run-postgresql` opt-in is gone
-- there is no SQLite compatibility backend
+## At Now delivered
 
-Example URLs:
+This section is the repository-level current-state projection. It must be updated whenever the active baseline, cycle, branch, phase, slice, execution aid or immediate next action changes.
 
-```bash
-DATABASE_URL=postgresql+psycopg://localhost/netauto
-TEST_DATABASE_URL=postgresql+psycopg://localhost/netauto_test
+| Phase | Short Description | Status | Document Repository | Closed Developement Branch |
+|---|---| --- | --- | --- |
+| M1 | kernel data-modeling framework: DataType, ObejctTemplate, Object, Relationship | DELIVERED & MERGED | docs/milestones/M1 | core_review |
+
+The detailed delivered <Mx/Fx> state remains authoritative in `docs/milestones/<Mx/Fx>/status.md`.
+
+
+## Documentation map
+
+| Source | Responsibility |
+|---|---|
+| [`README.md`](README.md) | Operational entry point: current baseline, active cycle, phase, branch. |
+| [`AGENTS.md`](AGENTS.md) | Repository operating contract for coding agents. It governs how agents work, not what the system means. |
+| [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md) | General governance for milestone and fix cycles, documentation roles, freeze/reopen, reviewer ownership, final gates and closure. |
+| [`docs/architecture/README.md`](docs/architecture/README.md) | Entry point and authority map for the current delivered AS-IS: current semantic, persistence, concurrency, API and verification architecture. |
+| [`docs/general/technology_baseline.md`](docs/general/technology_baseline.md) | Project-wide implementation technologies and tooling; only ratified `STACK-*` decisions are authoritative while the document remains DRAFT. |
+
+
+## Repository layout
+
+```text
+src/netauto/
+    implementation
+
+migrations/
+    explicit Alembic schema history
+
+tests/
+    domain, application, real-PostgreSQL, concurrency,
+    API, migration and property verification
+
+docs/architecture/
+    current delivered AS-IS
+
+docs/general/
+    project governance and technology baseline
+
+docs/milestones/*
+    milestone developement (either currently active or historical records)
+
+docs/fixes/*
+    fix-cycle developement (either currently active or historical records)
 ```
 
-## CLI
 
-The CLI is an HTTP client for the REST API.
-
-Examples:
-
-```bash
-NETAUTO_API_URL=http://127.0.0.1:8000 uv run netauto datatype list
-uv run netauto --api-url http://127.0.0.1:8000 --output json datatype list
-uv run netauto datatype create \
-  --namespace network \
-  --name vlan_id \
-  --description "VLAN identifier" \
-  --base-type core.integer \
-  --constraint minimum=1 \
-  --constraint maximum=4094
-uv run netauto datatype version publish <DATATYPE_ID> 1
-uv run netauto datatype create --file models/datatypes/vlan_id.json
-```
