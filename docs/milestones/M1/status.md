@@ -8,7 +8,7 @@
 M1-S07 — Runtime Relationship and relationship lifecycle vertical slice
 ```
 
-**Step status:** IN PROGRESS
+**Step status:** IN PROGRESS — ARCHITECTURE REALIGNED / RESUME READY
 
 M1-S00 through M1-S06 have completed implementation review.
 
@@ -23,61 +23,11 @@ e4fd891a9ef606ea43eaf4aa38029d33619ddbf8
     API error-detail review fix
 ```
 
-The reviewed S06 capability includes:
+The accepted S06 model-plane remains authoritative: complete RelationshipDefinition/RelationshipResolution aggregates, global certification/conflict gate, coherent capability reads and stable lineage FK lifetime semantics. The S07 architecture correction below does not change S06 domain semantics or public API behavior.
 
-- complete `RelationshipDefinition` + authoritative `RelationshipResolution` aggregate semantics;
-- deterministic symmetric/non-symmetric Resolution-set derivation with kernel-generated stable identities;
-- semantic equivalence and cross-Definition conflict certification over ObjectTemplate lineage-overlap spaces;
-- `RELATIONSHIP_DEFINITION_CONFLICT_GATE` for CREATE/RENAME only, with mandatory separate fresh post-gate certified-set read;
-- coherent one-statement certified Definition+Resolution set decoding;
-- Definition RENAME `FOR NO KEY UPDATE`, DELETE `FOR UPDATE`, and DELETE without conflict gate;
-- stable ObjectTemplate lineage FK `RESTRICT` lifetime semantics without exact-OTV admission or generic lifecycle locking;
-- atomic complete Resolution-name RENAME;
-- RelationshipDefinition CREATE/RENAME/DELETE/GET/list public API;
-- ObjectTemplate `relationship-capabilities` projection/list with inherited applicability, exact name filtering and `resolution_id ASC` keyset pagination;
-- no standalone RelationshipResolution API, runtime Relationship capability, Relationship lifecycle event variant, migration or new advisory gate.
+## M1-S07 pre-flight and decomposition
 
-The final review-fix aligned API-03.11 error details by:
-
-- returning bounded factual Relationship blocker type/count information for `RD.DELETE -> delete_blocked`;
-- preserving the failed ObjectTemplate endpoint UUID through the bounded FK-race persistence error so `referenced_resource_not_found.details.id` remains the semantic missing lineage selector.
-
-### Final S06 deterministic PostgreSQL coverage
-
-The accepted suite includes:
-
-```text
-ROW-17      RD.RENAME × RD.DELETE, both serial orders
-REF-01      RD.CREATE × ObjectTemplate whole-lineage DELETE, both directions
-GATE-04 A/B equivalent and non-equivalent conflicting concurrent CREATE
-GATE-05 A/B CREATE × RENAME; RENAME(D1) × RENAME(D2)
-GATE-06 A/B fresh post-gate visibility; blocker DELETE concurrent with candidate
-ATOMIC-04C  complete Resolution-name mutation rollback/atomicity
-```
-
-Additional REALIZE-12 mechanism coverage proves same-Definition rename ownership before the gate, intentional global gate over-serialization, transaction-level gate lifetime/release on rollback, coherent protected certified-set reads and absence of fan-out Definition row locking.
-
-### Final S06 quality gates
-
-Reported on PostgreSQL 16.14:
-
-```text
-uv lock --check                         PASS
-uv sync --locked                        PASS
-uv build                                PASS
-Ruff format/check                       PASS
-Pyright strict                          PASS
-non-PostgreSQL                          101 passed
-PostgreSQL                              106 passed
-```
-
-No S06 completion blocker remains.
-
-## M1-S07 pre-flight outcome
-
-The mandatory S07 pre-flight re-read the current frozen runtime Relationship, RelationshipResolution, lifecycle, persistence/UoW, REALIZE-13/14/15, PGTEST and API-03 authorities together with the accepted S06 implementation seams.
-
-Confirmed:
+The mandatory S07 pre-flight confirmed:
 
 ```text
 M1 contract      FINAL / FROZEN
@@ -87,71 +37,155 @@ M1-S00..S06      COMPLETED
 STACK-01..09     RATIFIED
 ```
 
-The initial S07 pre-flight found one verification-decomposition drift, not a domain/architecture semantic gap: `REF-03` (`REL.CREATE × OBJ.DELETE`) and the Relationship `REF-05` variant (`REL.DELETE × OBJ.DELETE`) require final `Object.DELETE`, which is deliberately delivered only in M1-S08. `steps.md` already states globally that spanning scenarios are executed only when both operations exist.
+The earlier verification-decomposition drift remains resolved: semantic `REF-03` (`REL.CREATE × OBJ.DELETE`) and Relationship `REF-05` (`REL.DELETE × OBJ.DELETE`) require final `Object.DELETE`, which is delivered in M1-S08. S07 must not introduce a fake/private Object DELETE; it still proves RuntimeRelationshipResolution -> Object FK `RESTRICT` mechanics directly at persistence level.
 
-The S07/S08 allocation was therefore realigned without changing any frozen Relationship semantics:
+## S07 PAR-02 architecture correction — 2026-08-15
 
-```text
-9cda795b523cbf525beb19ed620678db152490a1
-    docs: align M1-S07 Object delete race allocation
-```
+During implementation, deterministic `PAR-02 REL.CREATE × RD.RENAME` exposed a real frozen architecture/schema contradiction. The affected work correctly stopped without commit/push.
 
-S07 now implements/tests all runtime Relationship behavior and all canonical scenarios whose semantic operations are available in S07, including `ARB-05..07`, `REF-04`, `SNAP-01..03`, `ATOMIC-02`, `ATOMIC-03`, `PAR-01`, `PAR-02` and `PAR-05`. It must still prove current RuntimeRelationshipResolution -> Object FK `RESTRICT` mechanics directly at persistence level. Semantic `REF-03` and Relationship `REF-05` are completed in S08 together with final `Object.DELETE`; no fake/private Object.DELETE is introduced.
-
-The mandatory re-pre-flight against the corrected decomposition is clean. No architecture/documentation contradiction is currently known for S07.
-
-Frozen S07 implementation boundaries include:
-
-- Relationship CREATE from exact `resolution_id + from_object_id + to_object_id`;
-- stable-lineage endpoint admission, no exact OTV dependency;
-- non-symmetric selected-perspective semantics and symmetric unordered-pair semantics;
-- deterministic complete runtime Resolution closure;
-- exact-view PK arbitration, whole-UoW rollback and fresh semantic-UoW restart/convergence;
-- distinct `relationship_fact_conflict` boundary for a candidate closure colliding with a distinct current fact rather than selected-view convergence;
-- exact-ID DELETE with `FOR UPDATE`, idempotent absence and ABA safety;
-- one-statement READ COMMITTED lifecycle metadata observation for each real Relationship transition;
-- semantic-view event dedup and atomic complete event sets;
-- factual Relationship GET and Object-relative semantic reads;
-- lifecycle response union extension through Relationship events;
-- Definition/Object FK lifetime semantics with no global runtime Relationship gate;
-- no migration, S08 Object.DELETE, Relationship versioning/properties or source/target semantics.
-
-The non-normative Codex execution prompt is:
+The contradiction was:
 
 ```text
-docs/milestones/M1/wip/M1-S07-codex-prompt.md
+RelationshipResolution.name
+    = mutable non-key metadata
+
+REALIZE-15 / PAR-02
+    = REL.CREATE must not serialize solely on RD.RENAME
+
+former PERSIST-07 physical schema
+    = UNIQUE(
+        relationship_definition_id,
+        from_template_id,
+        to_template_id,
+        name
+      )
 ```
 
-Prompt creation commit:
+Because `name` participated in the defensive FK-eligible UNIQUE, PostgreSQL treated Resolution-name RENAME as key-changing and the resulting stronger row lock blocked the runtime composite-FK insertion path. This violated the already-ratified PAR-02/REALIZE-15 non-serialization contract.
+
+The architecture was explicitly reopened, re-read, corrected, propagated and re-frozen. PAR-02 was preserved; the defensive UNIQUE was removed from the frozen PERSIST-07 authority.
+
+Re-frozen rule:
 
 ```text
-e9c5b52d3b20ac6ee42570274ef8cd80743f6bf9
+RelationshipResolution.name
+    = mutable non-key metadata
+
+no baseline FK-referenziable UNIQUE/index key
+may include relationship_resolutions.name
 ```
 
-The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+Unchanged physical/domain authorities:
+
+```text
+relationship_resolutions PRIMARY KEY (id)
+UNIQUE (id, relationship_definition_id)
+Definition -> Resolution owned-child FK
+from_template_id / to_template_id FK RESTRICT
+runtime same-Definition composite FK
+runtime exact-view PK arbitration
+complete Definition shape / duplicate semantic-child rejection in domain/UoW
+```
+
+### Authorized physical correction
+
+S07 is explicitly authorized to add one forward Alembic revision after current `0001` that drops only:
+
+```text
+uq_relationship_resolutions_semantic_child
+```
+
+The downgrade restores exactly that constraint. Do not rewrite committed `0001`. No table, column, PK, FK, unrelated index or advisory gate changes are authorized.
+
+SQLAlchemy MetaData and migration/schema drift tests must be aligned to the corrected head.
+
+Normative propagation commits:
+
+```text
+d1e8c1bf3007416afe9622df88a85970def5cda8  PERSIST-07 correction
+8e96cda02722469e844170c66760118668a5f810  REALIZE-15 / PAR-02 correction
+26ce0ec4b0780e2be05e5f219113327d61c06879  freeze-record revalidation
+6d06ab507ce4afbd8e886ff010e7149ab68d17a5  architecture-index re-freeze
+```
+
+No Relationship domain, API, lifecycle, factual identity, convergence or conflict semantics changed.
+
+## S07 resume boundary
+
+The already-implemented local S07 working tree must be preserved rather than discarded. After integrating the remote architecture correction, implementation resumes with:
+
+- removal of `uq_relationship_resolutions_semantic_child` from SQLAlchemy MetaData;
+- exactly one `0002` Alembic correction migration;
+- schema/migration drift verification;
+- deterministic PAR-02 rerun without weakening the test;
+- completion of the remaining S07 verification and quality gates.
+
+The current non-normative execution aid is:
+
+```text
+docs/milestones/M1/wip/M1-S07-codex-resume-prompt.md
+```
+
+The original S07 prompt was superseded and removed so only one operative WIP prompt remains.
+
+Prompt commits:
+
+```text
+59c8e41cfe72c79e47220798a0d0be6cb68180fc  add resume prompt
+1c92e6076ad656cfc8d9027234d17d76bab58af8  remove superseded prompt
+```
+
+## S07 verification still required
+
+S07 must finish and pass the applicable runtime Relationship gate, including:
+
+```text
+ARB-05..07
+REF-04
+SNAP-01..03
+ATOMIC-02
+ATOMIC-03
+PAR-01
+PAR-02
+PAR-05
+```
+
+`REF-03` and Relationship `REF-05` remain deferred to S08 with final Object.DELETE.
+
+Required quality/migration verification includes:
+
+```text
+uv lock --check
+uv sync --locked
+uv build
+Ruff format/check
+Pyright strict
+non-PostgreSQL suite
+real-PostgreSQL suite via TEST_DATABASE_URL
+clean DB -> alembic upgrade head
+metadata/migrated-schema drift verification
+```
 
 ## Authoritative baseline
 
-M1 implementation proceeds from the frozen/ratified authorities:
+M1 implementation proceeds from:
 
 ```text
 docs/milestones/M1/contract.md
     FINAL / FROZEN
 
 docs/milestones/M1/architecture/README.md
-    FROZEN global architecture baseline
+    FROZEN after PAR-02 correction
 
 docs/milestones/M1/steps.md
-    FINAL / FROZEN implementation decomposition
+    FINAL / FROZEN
 
 docs/general/technology_baseline.md
-    STACK-01..STACK-09 ratified
+    STACK-01..STACK-09 RATIFIED
 
 AGENTS.md
     repository-level operating contract
 ```
-
-Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`, `docs/general/linee_guida_progetto.md` and the step itself must be executed against the current normative repository documents.
 
 ## Step registry
 
@@ -170,11 +204,11 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-None known for implementing M1-S07.
+None known after the PAR-02 architecture correction. S07 is authorized to resume from the preserved local implementation using `M1-S07-codex-resume-prompt.md`.
 
-PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification requires the externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
-A newly discovered contradiction or missing decision in frozen architecture is not an implementation choice: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
+A newly discovered contradiction or missing decision in frozen architecture is not an implementation choice: affected work stops and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
 ## Operational rule
 
