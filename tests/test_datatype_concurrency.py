@@ -109,9 +109,9 @@ async def _assert_progress(
 async def test_canonical_s02_row_arbitration_and_progress_scenarios(
     migrated_database_engine: Engine, test_database_url: str
 ) -> None:
-    """Cover ROW-01..06, ROW-15/16, ARB-01, PAR-06 and PAR-07A/B."""
+    """Probe ROW-01..08, ROW-15/16, ARB-01, PAR-06 and PAR-07A/B mechanisms."""
     del migrated_database_engine
-    ids = await _seed_lineages(test_database_url, 10)
+    ids = await _seed_lineages(test_database_url, 13)
 
     async def lineage_no_key(identifier: UUID, worker: PgWorker) -> object:
         return await DataTypeStore(worker.connection).lock_lineage_no_key(identifier)
@@ -178,7 +178,7 @@ async def test_canonical_s02_row_arbitration_and_progress_scenarios(
             .values(description=str(worker.role))
         )
 
-    # ROW-15 / PAR-07A: same header value is atomic writer-LWW.
+    # ROW-15: same header value is atomic writer-LWW.
     await _assert_blocked(
         test_database_url,
         "ROW-15",
@@ -189,7 +189,7 @@ async def test_canonical_s02_row_arbitration_and_progress_scenarios(
         test_database_url,
         "PAR-07A",
         lambda worker: update_description(ids[7], worker),
-        lambda worker: update_description(ids[7], worker),
+        lambda worker: lineage_no_key(ids[7], worker),
     )
 
     # ROW-16: aggregate cascade waits for an exact child writer.
@@ -224,6 +224,48 @@ async def test_canonical_s02_row_arbitration_and_progress_scenarios(
         "PAR-07B",
         lambda worker: version_no_key(ids[7], 1, worker),
         lambda worker: update_description(ids[7], worker),
+    )
+
+    # ROW-07/08 DataType-side admission locks remain held by the caller UoW.
+    controller = await PgWorker.open(test_database_url, "ROW-07-08", WorkerRole.CTL)
+    try:
+        await controller.connection.execute(
+            datatype_versions.update()
+            .where(datatype_versions.c.datatype_id.in_(ids[10:13]))
+            .values(status="PUBLISHED")
+        )
+        await controller.connection.execute(
+            datatypes.update()
+            .where(datatypes.c.id.in_(ids[11:13]))
+            .values(default_version=1)
+        )
+        await controller.commit()
+    finally:
+        await controller.close()
+
+    async def admit_exact(identifier: UUID, worker: PgWorker) -> object:
+        return await DataTypeStore(worker.connection).admit_exact(identifier, 1)
+
+    async def admit_default(identifier: UUID, worker: PgWorker) -> object:
+        return await DataTypeStore(worker.connection).admit_default(identifier)
+
+    await _assert_blocked(
+        test_database_url,
+        "ROW-07",
+        lambda worker: admit_exact(ids[10], worker),
+        lambda worker: version_no_key(ids[10], 1, worker),
+    )
+    await _assert_blocked(
+        test_database_url,
+        "ROW-08A",
+        lambda worker: admit_default(ids[11], worker),
+        lambda worker: lineage_no_key(ids[11], worker),
+    )
+    await _assert_blocked(
+        test_database_url,
+        "ROW-08B",
+        lambda worker: admit_default(ids[12], worker),
+        lambda worker: lineage_no_key(ids[12], worker),
     )
 
     # ARB-01: the database UNIQUE authority arbitrates an identical qualified name.

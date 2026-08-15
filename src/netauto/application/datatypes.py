@@ -406,43 +406,6 @@ class DataTypeService:
             )
         return Page(items, next_cursor)
 
-    async def admit_exact_binding(
-        self, datatype_id: UUID, version: int
-    ) -> DataTypeVersion:
-        async with self._uow_factory() as uow:
-            current = await DataTypeStore(uow.connection).admit_exact(
-                datatype_id, version
-            )
-            if current is None:
-                raise _referenced_version_not_found(datatype_id, version)
-            if current.status is not VersionStatus.PUBLISHED:
-                raise _state(
-                    "dependency_not_admissible",
-                    "The exact dependency is not PUBLISHED.",
-                    {"id": str(datatype_id), "version": version},
-                )
-            return current
-
-    async def admit_default_binding(self, datatype_id: UUID) -> DataTypeVersion:
-        async with self._uow_factory() as uow:
-            result = await DataTypeStore(uow.connection).admit_default(datatype_id)
-            if result is None:
-                raise _referenced_version_not_found(datatype_id, 0)
-            lineage, current = result
-            if lineage.default_version is None:
-                raise _state(
-                    "default_version_unavailable",
-                    "The DataType has no current default version.",
-                    {"id": str(datatype_id)},
-                )
-            if current is None or current.status is not VersionStatus.PUBLISHED:
-                raise _state(
-                    "dependency_not_admissible",
-                    "The default dependency is not PUBLISHED.",
-                    {"id": str(datatype_id), "version": lineage.default_version},
-                )
-            return current
-
     @staticmethod
     def _require_draft(current: DataTypeVersion, expected_revision: int) -> None:
         if current.status is not VersionStatus.DRAFT:
