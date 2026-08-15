@@ -1,6 +1,6 @@
 # M1 — Final Architecture Consistency Review
 
-**Status:** FROZEN — final consistency review complete; global M1 architecture freeze ratified on 2026-08-14.
+**Status:** FROZEN — final consistency review complete; global M1 architecture freeze ratified on 2026-08-14 and revalidated on 2026-08-15 after the ownership current-edge authority clarification below.
 
 ## 1. Purpose
 
@@ -34,7 +34,7 @@ The review also checked the architecture-index and owner-document status/open-wo
 
 ## 3. Findings corrected during the review
 
-The following were documentation alignment defects, not new design decisions.
+The following were documentation alignment defects, not new feature additions.
 
 ### 3.1 JSON Schema compiler/projection
 
@@ -98,6 +98,57 @@ internal cache or precomputed execution structure
 
 and explicitly separated from JSON Schema/public schema language/validation authority.
 
+### 3.6 Ownership current-edge slot authority — 2026-08-15 pre-flight clarification
+
+The M1-S05 implementation pre-flight exposed a documentation contradiction between:
+
+```text
+current ownership invariant
+    -> every committed edge is valid in the parent's current exact schema
+
+PERSIST-06
+    -> object_components persists parent/child/slot_name only
+
+lifecycle/API projection
+    -> structural events/projections require SlotSemanticKey
+       including slot_declaring_template_id
+
+stale DETACH wording
+    -> suggested that an exact edge could be normally removed
+       even when its slot no longer existed in the current parent schema
+```
+
+The stale wording would require inventing a historical slot-identity authority that does not exist in PERSIST-06.
+
+The clarified and re-frozen rule is:
+
+```text
+current ownership fact
+    = (parent_object_id, slot_name, child_object_id)
+
+current semantic interpretation
+    = resolve slot_name in the parent's current exact effective schema
+
+SlotSemanticKey
+    = (declaring_template_id, slot_name)
+      derived from that current exact schema
+```
+
+`slot_declaring_template_id` is intentionally **not** duplicated in `object_components`. The runtime edge is a current fact, not a historical pin to the declaration that existed when ATTACH happened.
+
+Consequences:
+
+- ATTACH performs current slot/compatibility admission;
+- DETACH removes the exact current edge and does not repeat ATTACH-style compatibility admission;
+- nevertheless an existing current edge must remain semantically resolvable in the current exact schema of the parent;
+- SCHEMA_CHANGE must fail before repinning if any outgoing edge would lose its `SlotSemanticKey` or child compatibility in the target schema;
+- an `object_components` row that cannot be resolved in the current parent schema is persisted invariant corruption and maps to internal failure; no old-version, "last known slot" or lifecycle-history fallback becomes current-state authority;
+- ATTACH_TO / DETACH_FROM materialize the resolved current `SlotSemanticKey` into historical lifecycle metadata at transition time.
+
+The clarification was propagated in the same cycle to `object-ownership.md`, `object-schema-change.md`, `persistence-model.md`, `concurrency-postgresql-realization-object-ownership.md`, `object-lifecycle-changelog.md` and API-03.6 in `api-wire-contract.md`.
+
+This correction does not add a table/column, does not change the 13-table persistence authority, does not add a concurrency predicate/gate and does not require a new PGTEST scenario ID. It closes an authority ambiguity while preserving the already-ratified ownership invariants and PERSIST-06 shape.
+
 ## 4. Domain consistency outcome
 
 ### DataType
@@ -131,6 +182,8 @@ Confirmed aligned:
 - operation-specific mutation semantics;
 - forward same-lineage SCHEMA_CHANGE with no implicit remediation;
 - single-owner acyclic ownership forest;
+- current ownership edges interpreted only against the parent's current exact effective schema;
+- SlotSemanticKey derived from current schema, not duplicated as a runtime edge authority;
 - exact attach/detach idempotency semantics;
 - typed append-only lifecycle semantic-view projection;
 - API read/list/error/success semantics match the domain operations.
@@ -160,13 +213,14 @@ REALIZE-01..15
 READ COMMITTED mutation baseline
 owner lock-strength refinement
 FK RESTRICT lifetime authority
+ownership current-edge authority = parent current exact schema
 ownership graph gate
 RelationshipDefinition conflict gate
 Relationship exact-view arbitration + fresh-UoW convergence
 one-statement Relationship lifecycle metadata observation
 ```
 
-No stale persistence/concurrency design item was identified.
+No stale persistence/concurrency design item remains after the ownership clarification.
 
 ## 6. Real PostgreSQL test consistency outcome
 
@@ -181,6 +235,8 @@ PGTEST-04 reusable execution recipes
 
 A PGTEST-05 is not planned for fixture/helper/file-layout decomposition. A new PGTEST architecture point is opened only by a genuine architecture-level testing gap.
 
+The ownership current-edge clarification requires targeted S05 invariant regression coverage but no new canonical concurrency scenario ID: existing ROW-13/14, ownership arbitration/gate scenarios and S05 domain/persistence tests remain the appropriate authorities.
+
 ## 7. Public API consistency outcome
 
 Confirmed aligned:
@@ -193,6 +249,8 @@ API-03.9 canonical read projections
 API-03.10 keyset list/pagination/filter contract
 API-03.11 finite failure codes + success HTTP policy
 ```
+
+API-03.6 now explicitly distinguishes DETACH removal semantics from ATTACH admission while retaining current-schema interpretability as a persisted invariant.
 
 No public HTTP/JSON design point remains open.
 
@@ -210,7 +268,7 @@ No blocking contradiction or unowned M1 architecture decision remains after the 
 
 The M1 milestone contract has also completed its final review and is `FINAL / FROZEN`.
 
-Therefore the architecture baseline state is ratified as:
+Therefore the architecture baseline state remains ratified as:
 
 ```text
 M1 ARCHITECTURE FROZEN
@@ -224,4 +282,4 @@ Consequences:
 - `docs.old/` remains historical/read-only and has no authority over the frozen baseline;
 - any later contradiction or genuine architecture gap requires explicit architecture reopening and same-cycle propagation to every affected normative document.
 
-With FREEZE-01 ratified, architecture design is complete and the project may proceed to the milestone implementation decomposition (`steps.md`) required by the project guidelines.
+The 2026-08-15 ownership authority clarification completed that reopen/propagate/re-freeze cycle without changing milestone scope or physical schema.
