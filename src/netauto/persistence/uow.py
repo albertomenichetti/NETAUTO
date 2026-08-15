@@ -2,6 +2,7 @@
 
 from types import TracebackType
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncTransaction
 
 
@@ -57,6 +58,21 @@ class UnitOfWork:
             self._connection = None
 
 
+class CoherentReadUnitOfWork(UnitOfWork):
+    """Own a REPEATABLE READ READ ONLY transaction for a composite read."""
+
+    async def __aenter__(self) -> UnitOfWork:
+        entered = await super().__aenter__()
+        try:
+            await self.connection.execute(
+                text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            )
+        except BaseException as error:
+            await super().__aexit__(type(error), error, error.__traceback__)
+            raise
+        return entered
+
+
 class UnitOfWorkFactory:
     """Create independent UoWs backed by the process AsyncEngine."""
 
@@ -65,3 +81,7 @@ class UnitOfWorkFactory:
 
     def __call__(self) -> UnitOfWork:
         return UnitOfWork(self._engine)
+
+    def coherent_read(self) -> UnitOfWork:
+        """Create a read-only UoW with one repeatable PostgreSQL snapshot."""
+        return CoherentReadUnitOfWork(self._engine)

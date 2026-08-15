@@ -18,6 +18,7 @@ from netauto.domain.objecttemplates import (
     CreateObjectTemplateResult,
     LocalComponent,
     LocalProperty,
+    ObjectTemplate,
     ObjectTemplateVersion,
     ValueMode,
 )
@@ -242,6 +243,58 @@ def _reference_precheck_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
         return result
 
     monkeypatch.setattr(ObjectTemplateStore, "external_reference_counts", intercepted)
+    return cut
+
+
+def _aggregate_created_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    cut = PhaseCut()
+    original = ObjectTemplateStore.create
+
+    async def intercepted(
+        store: ObjectTemplateStore,
+        lineage: ObjectTemplate,
+        version: ObjectTemplateVersion,
+    ) -> None:
+        await original(store, lineage, version)
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            cut.reached.set()
+            await cut.release.wait()
+
+    monkeypatch.setattr(ObjectTemplateStore, "create", intercepted)
+    return cut
+
+
+def _lineage_deleted_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    cut = PhaseCut()
+    original = ObjectTemplateStore.delete_lineage
+
+    async def intercepted(store: ObjectTemplateStore, template_id: UUID) -> None:
+        await original(store, template_id)
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            cut.reached.set()
+            await cut.release.wait()
+
+    monkeypatch.setattr(ObjectTemplateStore, "delete_lineage", intercepted)
+    return cut
+
+
+def _version_header_read_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    cut = PhaseCut()
+    original = ObjectTemplateStore.get_header
+
+    async def intercepted(
+        store: ObjectTemplateStore, template_id: UUID, version: int
+    ) -> ObjectTemplateVersion | None:
+        result = await original(store, template_id, version)
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            cut.reached.set()
+            await cut.release.wait()
+        return result
+
+    monkeypatch.setattr(ObjectTemplateStore, "get_header", intercepted)
     return cut
 
 
@@ -730,7 +783,7 @@ async def test_ref_01_component_reference_creation_blocks_target_delete(
     async with semantic_actors(test_database_url, "REF-01-OT") as actors:
         first, second = _services(actors)
         target_id = await _root(first, "ref_target")
-        cut = _template_share_cut(monkeypatch)
+        cut = _aggregate_created_cut(monkeypatch)
         created, deleted = await blocked_race(
             actors,
             cut,
@@ -749,6 +802,118 @@ async def test_ref_01_component_reference_creation_blocks_target_delete(
         assert not isinstance(created, ApplicationFailure)
         assert _failure_code(deleted) == "delete_blocked"
         assert (await first.get_lineage(target_id)).id == target_id
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_01_target_delete_winner_rejects_component_reference(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REF-01-OT-DELETE-FIRST") as actors:
+        first, second = _services(actors)
+        target_id = await _root(first, "ref_delete_first_target")
+        cut = _lineage_deleted_cut(monkeypatch)
+        deleted, created = await blocked_race(
+            actors,
+            cut,
+            lambda: first.delete_lineage(target_id),
+            lambda: second.create(
+                "ot_concurrency",
+                "ref_delete_first_consumer",
+                False,
+                None,
+                None,
+                None,
+                (),
+                (ComponentCandidate("slot", 1, target_id),),
+            ),
+        )
+        assert deleted is None
+        assert _failure_code(created) == "referenced_resource_not_found"
+        consumers = await second.list_lineages(
+            namespace="ot_concurrency",
+            name="ref_delete_first_consumer",
+            abstract=None,
+            parent_template_id=None,
+            parent_filter_set=False,
+            cursor=None,
+            limit=10,
+        )
+        assert consumers.items == []
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_component_self_reference_does_not_contend_with_description(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "PAR-REF-OT") as actors:
+        first, second = _services(actors)
+        template_id = await _root(first, "self_component")
+        cut = _description_cut(monkeypatch)
+        description, revised = await progress_race(
+            cut,
+            lambda: first.set_description(template_id, "metadata"),
+            lambda: second.revise(
+                template_id,
+                1,
+                1,
+                None,
+                (),
+                (ComponentCandidate("self_slot", 1, template_id),),
+            ),
+        )
+        assert not isinstance(description, ApplicationFailure)
+        assert isinstance(revised, ObjectTemplateVersion)
+        assert revised.components[0].target_template_id == template_id
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_composite_exact_read_never_mixes_candidate_generations(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "SNAP-OTV") as actors:
+        first, second = _services(actors)
+        datatype_id = await _published_datatype(actors, "snapshot_value")
+        template_id = await _root(
+            first,
+            "snapshot_consumer",
+            properties=(
+                PropertyCandidate("before", 1, datatype_id, 1, ValueMode.SCALAR, False),
+            ),
+        )
+        cut = _version_header_read_cut(monkeypatch)
+        read_task = asyncio.create_task(
+            _reader(actors).get_version(template_id, 1), name="T1"
+        )
+        await cut.reached.wait()
+        revised = await second.revise(
+            template_id,
+            1,
+            1,
+            None,
+            (PropertyCandidate("after", 1, datatype_id, 1, ValueMode.SCALAR, False),),
+            (),
+        )
+        assert revised.revision == 2
+        cut.release.set()
+        async with asyncio.timeout(5):
+            observed = await read_task
+        assert observed.revision == 1
+        assert [item.name for item in observed.properties] == ["before"]
+        current = await _reader(actors).get_version(template_id, 1)
+        assert current.revision == 2
+        assert [item.name for item in current.properties] == ["after"]
 
 
 @pytest.mark.postgresql

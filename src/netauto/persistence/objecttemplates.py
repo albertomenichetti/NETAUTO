@@ -37,6 +37,12 @@ class ObjectTemplateDeleteReferenceError(Exception):
     pass
 
 
+class ObjectTemplateComponentTargetReferenceError(Exception):
+    def __init__(self, target_template_id: UUID) -> None:
+        self.target_template_id = target_template_id
+        super().__init__("ObjectTemplate component target disappeared")
+
+
 def _lineage(row: RowMapping) -> ObjectTemplate:
     return ObjectTemplate(
         id=cast(UUID, row["id"]),
@@ -122,20 +128,26 @@ class ObjectTemplateStore:
             await self.connection.execute(
                 object_template_properties.insert().values(**values)
             )
-        if components:
-            await self.connection.execute(
-                object_template_components.insert(),
-                [
-                    {
-                        "template_id": template_id,
-                        "template_version": version,
-                        "name": item.name,
-                        "position": item.position,
-                        "target_template_id": item.target_template_id,
-                    }
-                    for item in components
-                ],
-            )
+        for item in components:
+            try:
+                await self.connection.execute(
+                    object_template_components.insert().values(
+                        template_id=template_id,
+                        template_version=version,
+                        name=item.name,
+                        position=item.position,
+                        target_template_id=item.target_template_id,
+                    )
+                )
+            except IntegrityError as error:
+                diagnostic = getattr(getattr(error, "orig", None), "diag", None)
+                if getattr(diagnostic, "constraint_name", None) == (
+                    "fk_object_template_components_target"
+                ):
+                    raise ObjectTemplateComponentTargetReferenceError(
+                        item.target_template_id
+                    ) from error
+                raise
 
     async def create(
         self, lineage: ObjectTemplate, version: ObjectTemplateVersion

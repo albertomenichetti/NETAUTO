@@ -2,12 +2,14 @@
 
 from collections.abc import AsyncIterator
 from typing import cast
+from uuid import UUID
 
 import httpx
 import pytest
 from sqlalchemy import Engine
 
 from netauto.entrypoints.http import build_app
+from netauto.persistence.metadata import object_template_properties
 from netauto.settings import Settings
 
 
@@ -607,3 +609,75 @@ async def test_objecttemplate_defaults_collisions_and_parent_admission(
         params={"namespace": "validation", "name": "duplicate_position"},
     )
     assert absent.json()["items"] == []
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_persisted_effective_schema_corruption_is_internal_failure(
+    objecttemplate_client: httpx.AsyncClient,
+    migrated_database_engine: Engine,
+) -> None:
+    datatype_id = await _published_datatype(
+        objecttemplate_client, "corrupt_schema_value"
+    )
+    parent = await objecttemplate_client.post(
+        "/api/v1/core/object-templates",
+        json={
+            "namespace": "corruption",
+            "name": "parent",
+            "abstract": True,
+            "properties": [
+                {
+                    "name": "collision",
+                    "position": 1,
+                    "datatype_id": datatype_id,
+                    "datatype_version": 1,
+                    "value_mode": "SCALAR",
+                    "required": False,
+                }
+            ],
+        },
+    )
+    assert parent.status_code == 201, parent.text
+    parent_id = parent.json()["object_template"]["id"]
+    published = await objecttemplate_client.post(
+        f"/api/v1/core/object-templates/{parent_id}/versions/1/publish",
+        params={"expected_revision": 1},
+    )
+    assert published.status_code == 200, published.text
+    child = await objecttemplate_client.post(
+        "/api/v1/core/object-templates",
+        json={
+            "namespace": "corruption",
+            "name": "child",
+            "abstract": False,
+            "parent_template_id": parent_id,
+            "parent_version": 1,
+        },
+    )
+    assert child.status_code == 201, child.text
+    child_id = child.json()["object_template"]["id"]
+
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            object_template_properties.insert().values(
+                template_id=UUID(child_id),
+                template_version=1,
+                name="collision",
+                position=1,
+                datatype_id=UUID(datatype_id),
+                datatype_version=1,
+                value_mode="SCALAR",
+                required=False,
+            )
+        )
+
+    response = await objecttemplate_client.get(
+        f"/api/v1/core/object-templates/{child_id}/versions/1/effective-schema"
+    )
+    assert response.status_code == 500
+    assert response.json() == {
+        "code": "internal_error",
+        "message": "The persisted ObjectTemplate effective schema is invalid.",
+        "details": {},
+    }

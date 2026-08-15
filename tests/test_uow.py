@@ -31,6 +31,12 @@ async def test_uow_commit_rollback_isolation_and_independent_connections(
             )
             await uow.commit()
 
+        async with factory.coherent_read() as uow:
+            isolation = await uow.connection.scalar(text("SHOW transaction_isolation"))
+            read_only = await uow.connection.scalar(text("SHOW transaction_read_only"))
+            assert isolation == "repeatable read"
+            assert read_only == "on"
+
         async with factory() as uow:
             await uow.connection.execute(
                 datatypes.insert().values(

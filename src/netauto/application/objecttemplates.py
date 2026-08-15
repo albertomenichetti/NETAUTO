@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from typing import Final, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import text
-
 from netauto.application.cursors import Page, decode_cursor, encode_cursor
 from netauto.domain.datatypes import (
     DataTypeVersion,
@@ -33,6 +31,7 @@ from netauto.domain.primitives import (
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.datatypes import DataTypeStore
 from netauto.persistence.objecttemplates import (
+    ObjectTemplateComponentTargetReferenceError,
     ObjectTemplateDeleteReferenceError,
     ObjectTemplateQualifiedNameError,
     ObjectTemplateStore,
@@ -334,7 +333,7 @@ class ObjectTemplateService:
         for target_id in sorted(
             {item.target_template_id for item in candidates}, key=str
         ):
-            if not await store.lock_lineage_share(target_id):
+            if await store.get_lineage(target_id) is None:
                 raise _referenced("object_template", target_id)
         return tuple(
             sorted(
@@ -518,6 +517,8 @@ class ObjectTemplateService:
                 "The qualified ObjectTemplate name is already in use.",
                 {"namespace": namespace, "name": name},
             ) from error
+        except ObjectTemplateComponentTargetReferenceError as error:
+            raise _referenced("object_template", error.target_template_id) from error
 
     async def create_next(
         self, template_id: UUID, source_version: int
@@ -586,7 +587,12 @@ class ObjectTemplateService:
                 local_components,
             )
             await self._validate_candidate(store, candidate, history=True)
-            await store.replace_candidate(candidate)
+            try:
+                await store.replace_candidate(candidate)
+            except ObjectTemplateComponentTargetReferenceError as error:
+                raise _referenced(
+                    "object_template", error.target_template_id
+                ) from error
             revised = await store.get_version(template_id, version)
             if revised is None:
                 raise _internal("The revised ObjectTemplateVersion disappeared.")
@@ -772,10 +778,7 @@ class ObjectTemplateService:
     async def get_version(
         self, template_id: UUID, version: int
     ) -> ObjectTemplateVersion:
-        async with self._uow_factory() as uow:
-            await uow.connection.execute(
-                text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            )
+        async with self._uow_factory.coherent_read() as uow:
             current = await ObjectTemplateStore(uow.connection).get_version(
                 template_id, version
             )
@@ -786,15 +789,24 @@ class ObjectTemplateService:
     async def get_effective_schema(
         self, template_id: UUID, version: int
     ) -> EffectiveSchema:
-        async with self._uow_factory() as uow:
-            await uow.connection.execute(
-                text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            )
+        async with self._uow_factory.coherent_read() as uow:
             store = ObjectTemplateStore(uow.connection)
             current = await store.get_version(template_id, version)
             if current is None:
                 raise _not_found(template_id, version)
-            return await self._validate_candidate(store, current, history=False)
+            try:
+                validate_local_declarations(current.properties, current.components)
+                return resolve_effective_schema(
+                    current.template_id,
+                    current.version,
+                    await self._effective_chain(store, current),
+                )
+            except ObjectTemplateValidationError as error:
+                raise _internal(
+                    "The persisted ObjectTemplate effective schema is invalid."
+                ) from error
+            except RuntimeError as error:
+                raise _internal(str(error)) from error
 
     async def list_lineages(
         self,
