@@ -8,7 +8,7 @@
 M1-S03 — ObjectTemplate and active model graph vertical slice
 ```
 
-**Step status:** READY TO START
+**Step status:** IN PROGRESS
 
 M1-S00, M1-S01 and M1-S02 have completed implementation review.
 
@@ -31,6 +31,20 @@ The review-fix delta closed the S02 completion findings by:
 - completing required active-consumer, whole-lineage-delete/FK, cursor/filter, PrimitiveType and property-based verification breadth.
 
 Final reported S02 gates passed with 71 non-PostgreSQL tests and 26 PostgreSQL tests on PostgreSQL 16.14, plus build, Ruff and strict Pyright.
+
+M1-S03 pre-flight has been revalidated against the frozen ObjectTemplate, DataType, persistence/concurrency, PGTEST and API authorities. No architecture/documentation contradiction is currently known.
+
+S03 now owns the complete ObjectTemplate model-plane vertical slice: stable lineage/versioning, exact parent pins, local property/component declarations, historical evolution, derived effective schema, caller-owned-UoW DataType/parent admission, active-model-graph publication/deprecation consistency, public ObjectTemplate API and the S03-realizable deterministic PGTEST closure.
+
+In particular, S03 must complete the actual ObjectTemplate-consumer semantics for `ROW-07` / `ROW-08A/B` and active graph scenarios `ROW-09` / `ROW-10`; short-lived application-owned dependency-admission transactions remain forbidden.
+
+The non-normative Codex execution prompt for the current step is:
+
+```text
+docs/milestones/M1/wip/M1-S03-codex-prompt.md
+```
+
+The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
 
 With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
@@ -63,7 +77,7 @@ Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`
 M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
 M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
 M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
-M1-S03  READY TO START   ObjectTemplate and active model graph vertical slice
+M1-S03  IN PROGRESS      ObjectTemplate and active model graph vertical slice
 M1-S04  NOT STARTED      Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  NOT STARTED      Ownership and Object schema-change vertical slice
 M1-S06  NOT STARTED      RelationshipDefinition model-plane and capability vertical slice
@@ -74,11 +88,9 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-None known for starting M1-S03.
+None known for implementing M1-S03.
 
-The DataType-side binding-admission primitives required by S03 operate on the caller-owned semantic UoW connection. S03 must complete the cross-domain committed-consumer semantics and applicable PGTEST scenarios without reintroducing short-lived application-owned admission transactions.
-
-PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
 A newly discovered contradiction or missing decision in frozen architecture is not an implementation blocker to work around: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
