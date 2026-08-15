@@ -1,10 +1,9 @@
 """Complete M1 DataType semantic application capability."""
 
-from dataclasses import dataclass
 from typing import cast
 from uuid import UUID, uuid4
 
-from netauto.application.cursors import decode_cursor, encode_cursor
+from netauto.application.cursors import Page, decode_cursor, encode_cursor
 from netauto.domain.datatypes import (
     CreateDataTypeResult,
     DataType,
@@ -26,12 +25,6 @@ from netauto.persistence.datatypes import (
     QualifiedNameArbitrationError,
 )
 from netauto.persistence.uow import UnitOfWorkFactory
-
-
-@dataclass(frozen=True, slots=True)
-class Page[T]:
-    items: list[T]
-    next_cursor: str | None
 
 
 def _not_found(datatype_id: UUID, version: int | None = None) -> ApplicationFailure:

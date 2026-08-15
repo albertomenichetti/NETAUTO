@@ -2,10 +2,17 @@
 
 import base64
 import json
+from dataclasses import dataclass
 from typing import cast
 
 from netauto.domain.primitives import JsonValue
 from netauto.failures import ApplicationFailure, FailureClass
+
+
+@dataclass(frozen=True, slots=True)
+class Page[T]:
+    items: list[T]
+    next_cursor: str | None
 
 
 def encode_cursor(

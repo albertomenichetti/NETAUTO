@@ -1,14 +1,13 @@
 """Strict public HTTP adapter for the M1 DataType capability."""
 
-import re
-from collections.abc import Collection
 from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from fastapi import APIRouter, Query, Request, Response, status
+from pydantic import BaseModel, ConfigDict, Field
 
-from netauto.application.datatypes import DataTypeService, Page
+from netauto.application.cursors import Page
+from netauto.application.datatypes import DataTypeService
 from netauto.domain.datatypes import (
     CreateDataTypeResult,
     DataType,
@@ -17,30 +16,18 @@ from netauto.domain.datatypes import (
     VersionStatus,
 )
 from netauto.domain.primitives import JsonValue, PrimitiveType
-from netauto.failures import ApplicationFailure, FailureClass
+from netauto.entrypoints.api.common import (
+    NoBody,
+    PageLimit,
+    PathPositiveInteger,
+    PositiveInteger,
+    QueryPositiveInteger,
+    StrictBody,
+    validate_query,
+)
 from netauto.persistence.engine import RuntimeContext
 
 router = APIRouter(prefix="/api/v1/core", tags=["datatypes"])
-PositiveInteger = Annotated[int, Field(strict=True, gt=0)]
-
-
-def _positive_decimal_integer(value: object) -> int:
-    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-        return value
-    if not isinstance(value, str) or re.fullmatch(r"[1-9][0-9]*", value) is None:
-        raise ValueError("positive_decimal_integer_required")
-    return int(value)
-
-
-PathPositiveInteger = Annotated[int, BeforeValidator(_positive_decimal_integer), Path()]
-QueryPositiveInteger = Annotated[
-    int, BeforeValidator(_positive_decimal_integer), Query()
-]
-PageLimit = Annotated[int, BeforeValidator(_positive_decimal_integer), Query(le=500)]
-
-
-class StrictBody(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
 
 
 class DataTypeCreateBody(StrictBody):
@@ -118,30 +105,6 @@ def _service(request: Request) -> DataTypeService:
     return DataTypeService(runtime.uow_factory)
 
 
-async def _no_body(request: Request) -> None:
-    if await request.body():
-        raise ApplicationFailure(
-            FailureClass.INVALID_REQUEST,
-            "invalid_request",
-            "This command does not accept a request body.",
-        )
-
-
-def _validate_query(request: Request, allowed: Collection[str]) -> None:
-    keys = set(request.query_params)
-    if keys - set(allowed) or any(
-        len(request.query_params.getlist(key)) != 1 for key in keys
-    ):
-        raise ApplicationFailure(
-            FailureClass.INVALID_REQUEST,
-            "invalid_request",
-            "The request contains unknown or repeated query parameters.",
-        )
-
-
-NoBody = Annotated[None, Depends(_no_body)]
-
-
 def _lineage(value: DataType) -> DataTypeDto:
     return DataTypeDto.model_validate(value)
 
@@ -184,7 +147,7 @@ def _version_page(
 async def create_datatype(
     body: DataTypeCreateBody, request: Request, response: Response
 ) -> DataTypeCreateResultDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     created = await _service(request).create(
         body.namespace,
         body.name,
@@ -204,7 +167,7 @@ async def list_datatypes(
     cursor: str | None = None,
     limit: PageLimit = 100,
 ) -> DataTypePageDto:
-    _validate_query(request, ("namespace", "name", "cursor", "limit"))
+    validate_query(request, ("namespace", "name", "cursor", "limit"))
     page = await _service(request).list_lineages(
         namespace=namespace, name=name, cursor=cursor, limit=limit
     )
@@ -222,7 +185,7 @@ async def create_next_datatype_version(
     request: Request,
     response: Response,
 ) -> DataTypeVersionDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     created = await _service(request).create_next(datatype_id, body.source_version)
     response.headers["Location"] = (
         f"/api/v1/core/datatypes/{datatype_id}/versions/{created.version}"
@@ -232,13 +195,13 @@ async def create_next_datatype_version(
 
 @router.get("/datatypes/{datatype_id}", response_model=DataTypeDto)
 async def get_datatype(datatype_id: UUID, request: Request) -> DataTypeDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     return _lineage(await _service(request).get_lineage(datatype_id))
 
 
 @router.delete("/datatypes/{datatype_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_datatype(datatype_id: UUID, request: Request, _: NoBody) -> None:
-    _validate_query(request, ())
+    validate_query(request, ())
     await _service(request).delete_lineage(datatype_id)
 
 
@@ -246,7 +209,7 @@ async def delete_datatype(datatype_id: UUID, request: Request, _: NoBody) -> Non
 async def set_datatype_default(
     datatype_id: UUID, body: SetDefaultBody, request: Request
 ) -> DataTypeDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     return _lineage(await _service(request).set_default(datatype_id, body.version))
 
 
@@ -254,7 +217,7 @@ async def set_datatype_default(
 async def clear_datatype_default(
     datatype_id: UUID, request: Request, _: NoBody
 ) -> DataTypeDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     return _lineage(await _service(request).clear_default(datatype_id))
 
 
@@ -262,7 +225,7 @@ async def clear_datatype_default(
 async def set_datatype_description(
     datatype_id: UUID, body: SetDescriptionBody, request: Request
 ) -> DataTypeDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     return _lineage(
         await _service(request).set_description(datatype_id, body.description)
     )
@@ -276,7 +239,7 @@ async def list_datatype_versions(
     cursor: str | None = None,
     limit: PageLimit = 100,
 ) -> DataTypeVersionPageDto:
-    _validate_query(request, ("status", "cursor", "limit"))
+    validate_query(request, ("status", "cursor", "limit"))
     page = await _service(request).list_versions(
         datatype_id, status=version_status, cursor=cursor, limit=limit
     )
@@ -290,7 +253,7 @@ async def list_datatype_versions(
 async def get_datatype_version(
     datatype_id: UUID, version: PathPositiveInteger, request: Request
 ) -> DataTypeVersionDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     return _version(await _service(request).get_version(datatype_id, version))
 
 
@@ -305,7 +268,7 @@ async def revise_datatype_version(
     request: Request,
     expected_revision: QueryPositiveInteger,
 ) -> DataTypeVersionDto:
-    _validate_query(request, ("expected_revision",))
+    validate_query(request, ("expected_revision",))
     revised = await _service(request).revise(
         datatype_id, version, expected_revision, body.constraints
     )
@@ -323,7 +286,7 @@ async def publish_datatype_version(
     expected_revision: QueryPositiveInteger,
     _: NoBody,
 ) -> DataTypeVersionDto:
-    _validate_query(request, ("expected_revision",))
+    validate_query(request, ("expected_revision",))
     published = await _service(request).publish(datatype_id, version, expected_revision)
     return _version(published)
 
@@ -338,7 +301,7 @@ async def deprecate_datatype_version(
     request: Request,
     _: NoBody,
 ) -> DataTypeVersionDto:
-    _validate_query(request, ())
+    validate_query(request, ())
     return _version(await _service(request).deprecate(datatype_id, version))
 
 
@@ -353,5 +316,5 @@ async def delete_datatype_version(
     expected_revision: QueryPositiveInteger,
     _: NoBody,
 ) -> None:
-    _validate_query(request, ("expected_revision",))
+    validate_query(request, ("expected_revision",))
     await _service(request).delete_draft(datatype_id, version, expected_revision)
