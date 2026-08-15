@@ -8,7 +8,7 @@
 M1-S06 — RelationshipDefinition model-plane and capability vertical slice
 ```
 
-**Step status:** READY TO START
+**Step status:** IN PROGRESS
 
 M1-S00 through M1-S05 have completed implementation review.
 
@@ -23,18 +23,9 @@ Accepted implementation:
     deterministic verification closure
 ```
 
-The reviewed S05 capability includes:
+The reviewed S05 capability includes ATTACH/DETACH ownership, current SlotSemanticKey interpretation, acyclic single-owner graph enforcement, forward same-lineage Object SCHEMA_CHANGE, structural ownership lifecycle events, coherent components/owner projections and complete S05 deterministic PostgreSQL coverage. Final reported gates passed with 86 non-PostgreSQL and 86 PostgreSQL tests on PostgreSQL 16.14, plus lock/sync/build, Ruff and strict Pyright.
 
-- ATTACH/DETACH current ownership semantics with single-owner authority and acyclic graph enforcement;
-- current `SlotSemanticKey` interpretation from the parent current exact effective schema, with no historical fallback or duplicated current-edge declaring lineage;
-- `OWNERSHIP_GRAPH_WRITE_GATE` only for real edge-add candidates, with mandatory fresh post-gate child-ownership and graph reads;
-- forward same-lineage Object `SCHEMA_CHANGE` with exact target admission, semantic-key property migration and outgoing attachment preservation;
-- typed ATTACH_TO/DETACH_FROM lifecycle events committed atomically with the ownership transition;
-- coherent Object components/owner projections and lifecycle response union extended through ownership events;
-- strict S05 public routes and finite error mapping;
-- no migration, final Object.DELETE, S06+ Relationship behavior, JSON Schema, ORM or new advisory gate.
-
-The S05 architecture pre-flight had previously found and resolved the current-edge/DETACH documentation contradiction before coding. The frozen authority remains:
+The frozen ownership authority remains:
 
 ```text
 object_components(child_object_id, parent_object_id, slot_name)
@@ -42,47 +33,66 @@ object_components(child_object_id, parent_object_id, slot_name)
     -> SlotSemanticKey(declaring_template_id, slot_name)
 ```
 
-An unresolvable current edge is invariant corruption (`internal_error`), not a supported legacy edge. `SCHEMA_CHANGE` must prevent a committed repin that would make a retained edge uninterpretable or incompatible.
+Semantic ownership REF-02 / REF-05 remain assigned to M1-S08 together with final Object.DELETE.
 
-The verification decomposition was also aligned so semantic ownership `REF-02` / `REF-05` remain deferred to M1-S08 together with final `Object.DELETE`; S05 proves the current ownership PK/FK mechanics directly without introducing a private delete capability.
+## M1-S06 pre-flight outcome
 
-### Final S05 deterministic PostgreSQL coverage
+The mandatory S06 pre-flight re-read the current repository authorities for RelationshipDefinition/RelationshipResolution, ObjectTemplate lineage references/capabilities, persistence/UoW, REALIZE-12/15, canonical PGTEST and API-03.
 
-The accepted suite includes the S05-realizable canonical scenarios and mechanism regressions:
-
-```text
-ROW-12 A/B  DATA_CHANGE × SCHEMA_CHANGE; SCHEMA_CHANGE × SCHEMA_CHANGE
-ROW-13      ATTACH × SCHEMA_CHANGE(parent), both serial orders
-ROW-14      DETACH × SCHEMA_CHANGE(parent), both serial orders
-ARB-02      different ATTACH, same child + raw PK authority
-ARB-03 A/B  identical ATTACH / identical DETACH convergence
-ARB-04      ATTACH × DETACH exact fact
-GATE-01     opposite edge-add / fresh committed graph visibility
-GATE-02 A/B longer cycle; cycle candidate × concurrent path-removing DETACH
-GATE-03 A/B fresh post-gate graph visibility; post-gate child-ownership reread
-SNAP-04     ownership structural-event child display metadata
-ATOMIC-04B  ownership edge/event all-or-nothing
-PAR-03      intentional parent-owner serialization
-PAR-04      intentional global ownership-gate serialization
-```
-
-Additional regression evidence proves exact no-op ATTACH, ownership-conflict ATTACH and DETACH do not acquire `OWNERSHIP_GRAPH_WRITE_GATE`.
-
-### Final S05 quality gates
-
-Reported on PostgreSQL 16.14:
+Confirmed:
 
 ```text
-uv lock --check                         PASS
-uv sync --locked                        PASS
-uv build                                PASS
-Ruff format/check                       PASS
-Pyright strict                          PASS
-non-PostgreSQL                          86 passed
-PostgreSQL                              86 passed
+M1 contract      FINAL / FROZEN
+M1 architecture  FROZEN as a set
+M1 steps         FINAL / FROZEN
+M1-S00..S05      COMPLETED
+STACK-01..09     RATIFIED
 ```
 
-No S05 completion blocker remains.
+No architecture/documentation contradiction is currently known for S06.
+
+Frozen S06 implementation boundaries include:
+
+- complete RelationshipDefinition + RelationshipResolution aggregate;
+- deterministic symmetric/non-symmetric Resolution-set derivation;
+- semantic equivalence and cross-Definition conflict freedom over lineage-overlap spaces;
+- `RELATIONSHIP_DEFINITION_CONFLICT_GATE` for CREATE/RENAME only;
+- gate acquisition and authoritative certified-set read as separate statements with a fresh READ COMMITTED snapshot;
+- Definition RENAME owner `FOR NO KEY UPDATE`, DELETE owner `FOR UPDATE`;
+- endpoint ObjectTemplate lineage references as stable FK `RESTRICT` references, with no exact-OTV admission or generic lifecycle lock;
+- coherent Definition aggregate reads and ObjectTemplate relationship-capability projection;
+- no standalone RelationshipResolution API;
+- no S07 factual Relationship behavior or Relationship lifecycle event variants;
+- no migration or new advisory gate.
+
+Because RD.DELETE intentionally does not take the conflict gate, the implementation prompt requires the post-gate certified-set read to observe complete Definition+Resolution aggregates from one coherent committed snapshot rather than mixing header/child generations across multiple READ COMMITTED statement snapshots.
+
+Canonical deterministic PostgreSQL coverage owned by S06 includes:
+
+```text
+ROW-17
+REF-01  RD.CREATE -> ObjectTemplate stable-lineage reference
+GATE-04 A/B
+GATE-05 A/B
+GATE-06 A/B
+ATOMIC-04C
+```
+
+plus the required REALIZE-12 mechanism regressions for global gate over-serialization, fresh post-wait visibility, no-gate DELETE, same-Definition rename ownership, gate lifetime/rollback and no fan-out row locking.
+
+The non-normative Codex implementation prompt is:
+
+```text
+docs/milestones/M1/wip/M1-S06-codex-prompt.md
+```
+
+Prompt creation commit:
+
+```text
+cb568fef6c3e9ee6238542adc7844e76782e576e
+```
+
+The prompt is an execution aid only; `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
 
 ## Authoritative baseline
 
@@ -116,7 +126,7 @@ M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
 M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
 M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  COMPLETED        Ownership and Object schema-change vertical slice
-M1-S06  READY TO START   RelationshipDefinition model-plane and capability vertical slice
+M1-S06  IN PROGRESS      RelationshipDefinition model-plane and capability vertical slice
 M1-S07  NOT STARTED      Runtime Relationship and relationship lifecycle vertical slice
 M1-S08  NOT STARTED      Cross-domain integrity, destructive-operation and API/read closure
 M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
@@ -124,9 +134,9 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-None known for starting M1-S06.
+None known for implementing M1-S06.
 
-PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
 A newly discovered contradiction or missing decision in frozen architecture is not an implementation choice: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
