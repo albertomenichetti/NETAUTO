@@ -230,8 +230,11 @@ def _status_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     return cut
 
 
-def _reference_precheck_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+def _reference_precheck_cut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[PhaseCut, list[dict[str, int]]]:
     cut = PhaseCut()
+    observations: list[dict[str, int]] = []
     original = ObjectTemplateStore.external_reference_counts
 
     async def intercepted(
@@ -240,12 +243,13 @@ def _reference_precheck_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
         result = await original(store, template_id)
         task = asyncio.current_task()
         if task is not None and task.get_name() == "T1":
+            observations.append(result)
             cut.reached.set()
             await cut.release.wait()
         return result
 
     monkeypatch.setattr(ObjectTemplateStore, "external_reference_counts", intercepted)
-    return cut
+    return cut, observations
 
 
 def _aggregate_created_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -764,7 +768,7 @@ async def test_row_10_active_removal_is_conservative_during_dependency_deprecate
         )
         await first.publish(consumer_id, 1, 1)
         await actors.t1.clear_default(datatype_id)
-        cut = _reference_precheck_cut(monkeypatch)
+        cut, _ = _reference_precheck_cut(monkeypatch)
         removed, dependency = await progress_race(
             cut,
             lambda: first.delete_lineage(consumer_id),
@@ -776,23 +780,40 @@ async def test_row_10_active_removal_is_conservative_during_dependency_deprecate
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_object_template_delete_fk_race_loser_keeps_semantic_blocker_details(
+async def test_ref_06b_object_template_cascade_loses_to_object_restrict(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "OT-DELETE-FK-OBJECT") as actors:
+    async with semantic_actors(test_database_url, "REF-06B-OT-CASCADE") as actors:
         first, _ = _services(actors)
-        template_id = await _root(first, "delete_fk_object")
+        datatype_id = await _published_datatype(actors, "ref_06b_value")
+        template_id = await _root(
+            first,
+            "ref_06b",
+            properties=(
+                PropertyCandidate("value", 1, datatype_id, 1, ValueMode.SCALAR, False),
+            ),
+        )
         await first.publish(template_id, 1, 1)
-        cut = _reference_precheck_cut(monkeypatch)
+        second_version = await first.create_next(template_id, 1)
+        assert second_version.version == 2
+        cut, precheck_counts = _reference_precheck_cut(monkeypatch)
         object_service = ObjectService(UnitOfWorkFactory(actors.t2_engine))
         deleted, created = await progress_race(
             cut,
             lambda: first.delete_lineage(template_id),
             lambda: object_service.create(template_id, 1, "concurrent-reference", {}),
         )
+        assert precheck_counts == [
+            {
+                "child_object_template": 0,
+                "object_template_component": 0,
+                "object": 0,
+                "relationship_resolution": 0,
+            }
+        ]
         assert isinstance(created, Object)
         assert isinstance(deleted, ApplicationFailure)
         assert deleted.code == "delete_blocked"
@@ -802,7 +823,15 @@ async def test_object_template_delete_fk_race_loser_keeps_semantic_blocker_detai
             "blockers": [{"type": "object", "count": 1}],
         }
         assert (await first.get_lineage(template_id)).id == template_id
-        assert (await first.get_version(template_id, 1)).version == 1
+        versions = await first.list_versions(
+            template_id, status=None, cursor=None, limit=10
+        )
+        assert [item.version for item in versions.items] == [1, 2]
+        persisted_v1 = await first.get_version(template_id, 1)
+        assert [(item.name, item.datatype_id) for item in persisted_v1.properties] == [
+            ("value", datatype_id)
+        ]
+        assert await object_service.get(created.id) == created
 
 
 @pytest.mark.postgresql

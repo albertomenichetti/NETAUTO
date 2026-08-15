@@ -11,16 +11,12 @@ from sqlalchemy import Engine, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from netauto.application.datatypes import DataTypeService
+from netauto.application.objecttemplates import ObjectTemplateService, PropertyCandidate
 from netauto.domain.datatypes import DataTypeVersion, VersionStatus
+from netauto.domain.objecttemplates import CreateObjectTemplateResult, ValueMode
 from netauto.failures import ApplicationFailure
 from netauto.persistence.datatypes import DataTypeStore
-from netauto.persistence.metadata import (
-    datatype_versions,
-    datatypes,
-    object_template_properties,
-    object_template_versions,
-    object_templates,
-)
+from netauto.persistence.metadata import datatype_versions, datatypes
 from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
 
@@ -228,20 +224,24 @@ def _install_description_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     return cut
 
 
-def _install_reference_precheck_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+def _install_reference_precheck_cut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[PhaseCut, list[int]]:
     cut = PhaseCut()
+    observations: list[int] = []
     original = DataTypeStore.external_reference_count
 
     async def intercepted(store: DataTypeStore, datatype_id: UUID) -> int:
         result = await original(store, datatype_id)
         task = asyncio.current_task()
         if task is not None and task.get_name() == "T1":
+            observations.append(result)
             cut.reached.set()
             await cut.release.wait()
         return result
 
     monkeypatch.setattr(DataTypeStore, "external_reference_count", intercepted)
-    return cut
+    return cut, observations
 
 
 async def _create(
@@ -652,71 +652,58 @@ async def test_par_07b_description_and_revise_make_independent_progress(
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_concurrent_external_reference_is_stopped_by_fk_final_authority(
+async def test_ref_06a_datatype_cascade_loses_to_external_property_restrict(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with _actors(test_database_url, "DT-DELETE-FK") as actors:
-        datatype_id = await _create(actors.t1, "delete_fk")
-        template_id = uuid4()
-        seed_engine = create_async_engine(
-            test_database_url, isolation_level="READ COMMITTED"
+    async with _actors(test_database_url, "REF-06A-DT-CASCADE") as actors:
+        datatype_id = await _published_v1(actors.t1, "ref_06a")
+        second_version = await actors.t1.create_next(datatype_id, 1)
+        assert second_version.version == 2
+
+        cut, precheck_counts = _install_reference_precheck_cut(monkeypatch)
+        consumer = ObjectTemplateService(UnitOfWorkFactory(actors.t2_engine))
+        deleted, created = await _progress_race(
+            cut,
+            lambda: actors.t1.delete_lineage(datatype_id),
+            lambda: consumer.create(
+                "semantic_concurrency",
+                "ref_06a_consumer",
+                False,
+                None,
+                None,
+                None,
+                (
+                    PropertyCandidate(
+                        "value",
+                        1,
+                        datatype_id,
+                        1,
+                        ValueMode.SCALAR,
+                        False,
+                    ),
+                ),
+                (),
+            ),
         )
-        try:
-            async with seed_engine.begin() as connection:
-                await connection.execute(
-                    object_templates.insert().values(
-                        id=template_id,
-                        namespace="semantic_concurrency",
-                        name="delete_fk_consumer",
-                        description=None,
-                        abstract=False,
-                        default_version=None,
-                        parent_template_id=None,
-                    )
-                )
-                await connection.execute(
-                    object_template_versions.insert().values(
-                        template_id=template_id,
-                        version=1,
-                        revision=1,
-                        status="DRAFT",
-                        parent_template_id=None,
-                        parent_version=None,
-                    )
-                )
-
-            cut = _install_reference_precheck_cut(monkeypatch)
-            delete_task = asyncio.create_task(
-                _capture(lambda: actors.t1.delete_lineage(datatype_id)), name="T1"
-            )
-            await cut.reached.wait()
-            async with seed_engine.begin() as connection:
-                await connection.execute(
-                    object_template_properties.insert().values(
-                        template_id=template_id,
-                        template_version=1,
-                        name="value",
-                        position=1,
-                        datatype_id=datatype_id,
-                        datatype_version=1,
-                        value_mode="SCALAR",
-                        required=False,
-                    )
-                )
-            cut.release.set()
-            async with asyncio.timeout(5):
-                outcome = await delete_task
-        finally:
-            await seed_engine.dispose()
-
-        assert _failure_code(outcome) == "delete_blocked"
-        assert isinstance(outcome, ApplicationFailure)
-        assert outcome.details == {
+        assert precheck_counts == [0]
+        assert isinstance(created, CreateObjectTemplateResult)
+        assert isinstance(deleted, ApplicationFailure)
+        assert deleted.code == "delete_blocked"
+        assert deleted.details == {
             "resource_type": "datatype",
             "id": str(datatype_id),
             "blockers": [{"type": "object_template_property", "count": 1}],
         }
         assert (await actors.t1.get_lineage(datatype_id)).id == datatype_id
+        versions = await actors.t1.list_versions(
+            datatype_id, status=None, cursor=None, limit=10
+        )
+        assert [item.version for item in versions.items] == [1, 2]
+        persisted_consumer = await consumer.get_version(created.object_template.id, 1)
+        assert [
+            (item.datatype_id, item.datatype_version)
+            for item in persisted_consumer.properties
+        ] == [(datatype_id, 1)]

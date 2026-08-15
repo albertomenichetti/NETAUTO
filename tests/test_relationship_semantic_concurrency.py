@@ -34,6 +34,7 @@ from netauto.persistence.metadata import (
 )
 from netauto.persistence.objects import ObjectStore
 from netauto.persistence.relationships import (
+    RelationshipDefinitionDeleteReferenceError,
     RelationshipDefinitionStore,
     RuntimeRelationshipStore,
 )
@@ -774,6 +775,68 @@ async def test_ref_03_and_ref_05_relationship_object_lifetime_arbitration(
         assert created.details == {
             "resource_type": "object",
             "id": str(seed.first_object.id),
+        }
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_06c_definition_cascade_loses_to_relationship_restrict(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REF-06C-RD-CASCADE") as actors:
+        seed = await _seed(actors, "ref06c")
+        cut = PhaseCut()
+        precheck_counts: list[int] = []
+
+        async def physical_delete_attempt() -> object:
+            async with UnitOfWorkFactory(actors.t1_engine)() as uow:
+                store = RelationshipDefinitionStore(uow.connection)
+                precheck_counts.append(
+                    await store.current_relationship_count(seed.definition.id)
+                )
+                cut.reached.set()
+                await cut.release.wait()
+                try:
+                    await store.delete(seed.definition.id)
+                except RelationshipDefinitionDeleteReferenceError as error:
+                    return error
+                raise AssertionError("external RESTRICT did not stop physical delete")
+
+        relationship_service = RelationshipService(UnitOfWorkFactory(actors.t2_engine))
+        physical_error, created = await progress_race(
+            cut,
+            physical_delete_attempt,
+            lambda: relationship_service.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+        )
+        assert precheck_counts == [0]
+        assert isinstance(created, RelationshipCreateResult)
+        assert isinstance(physical_error, RelationshipDefinitionDeleteReferenceError)
+
+        definition_service = RelationshipDefinitionService(
+            UnitOfWorkFactory(actors.t1_engine)
+        )
+        persisted_definition = await definition_service.get(seed.definition.id)
+        assert persisted_definition.id == seed.definition.id
+        assert persisted_definition.symmetric == seed.definition.symmetric
+        assert set(persisted_definition.resolutions) == set(seed.definition.resolutions)
+        assert len(persisted_definition.resolutions) == 2
+        assert (
+            await relationship_service.get(created.relationship.id)
+        ).id == created.relationship.id
+
+        with pytest.raises(ApplicationFailure) as blocked:
+            await definition_service.delete(seed.definition.id)
+        assert blocked.value.code == "delete_blocked"
+        assert blocked.value.details == {
+            "resource_type": "relationship_definition",
+            "id": str(seed.definition.id),
+            "blockers": [{"type": "relationship", "count": 1}],
         }
 
 
