@@ -122,6 +122,63 @@ def _internal(message: str) -> ApplicationFailure:
     )
 
 
+async def load_exact_effective_chain(
+    store: ObjectTemplateStore,
+    leaf: ObjectTemplateVersion,
+    leaf_lineage: ObjectTemplate | None = None,
+) -> tuple[ObjectTemplateVersion, ...]:
+    """Load one definitive exact parent chain on the caller-owned connection."""
+    chain = [leaf]
+    current = leaf
+    seen = {leaf.template_id}
+    while current.parent_template_id is not None:
+        parent_id = current.parent_template_id
+        parent_version = current.parent_version
+        if parent_version is None or parent_id in seen:
+            raise RuntimeError("persisted ObjectTemplate inheritance graph is invalid")
+        lineage = (
+            leaf_lineage
+            if leaf_lineage is not None and current.template_id == leaf.template_id
+            else await store.get_lineage(current.template_id)
+        )
+        if lineage is None or lineage.parent_template_id != parent_id:
+            raise RuntimeError(
+                "persisted exact parent pin contradicts its stable lineage"
+            )
+        parent = await store.get_version(parent_id, parent_version)
+        if parent is None:
+            raise RuntimeError("persisted exact parent version is missing")
+        seen.add(parent_id)
+        chain.append(parent)
+        current = parent
+    root_lineage = (
+        leaf_lineage
+        if leaf_lineage is not None and current.template_id == leaf.template_id
+        else await store.get_lineage(current.template_id)
+    )
+    if (
+        root_lineage is None
+        or root_lineage.parent_template_id is not None
+        or current.parent_version is not None
+    ):
+        raise RuntimeError("persisted ObjectTemplate root is invalid")
+    return tuple(reversed(chain))
+
+
+async def resolve_exact_effective_schema(
+    store: ObjectTemplateStore,
+    leaf: ObjectTemplateVersion,
+    leaf_lineage: ObjectTemplate | None = None,
+) -> EffectiveSchema:
+    """Resolve effective schema without opening or committing another UoW."""
+    validate_local_declarations(leaf.properties, leaf.components)
+    return resolve_effective_schema(
+        leaf.template_id,
+        leaf.version,
+        await load_exact_effective_chain(store, leaf, leaf_lineage),
+    )
+
+
 class ObjectTemplateService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
@@ -351,43 +408,10 @@ class ObjectTemplateService:
         leaf: ObjectTemplateVersion,
         leaf_lineage: ObjectTemplate | None = None,
     ) -> tuple[ObjectTemplateVersion, ...]:
-        chain = [leaf]
-        current = leaf
-        seen = {leaf.template_id}
-        while current.parent_template_id is not None:
-            parent_id = current.parent_template_id
-            parent_version = current.parent_version
-            if parent_version is None or parent_id in seen:
-                raise _internal(
-                    "The persisted ObjectTemplate inheritance graph is invalid."
-                )
-            lineage = (
-                leaf_lineage
-                if leaf_lineage is not None and current.template_id == leaf.template_id
-                else await store.get_lineage(current.template_id)
-            )
-            if lineage is None or lineage.parent_template_id != parent_id:
-                raise _internal(
-                    "A persisted exact parent pin contradicts its stable lineage."
-                )
-            parent = await store.get_version(parent_id, parent_version)
-            if parent is None:
-                raise _internal("A persisted exact parent version is missing.")
-            seen.add(parent_id)
-            chain.append(parent)
-            current = parent
-        root_lineage = (
-            leaf_lineage
-            if leaf_lineage is not None and current.template_id == leaf.template_id
-            else await store.get_lineage(current.template_id)
-        )
-        if (
-            root_lineage is None
-            or root_lineage.parent_template_id is not None
-            or current.parent_version is not None
-        ):
-            raise _internal("The persisted ObjectTemplate root is invalid.")
-        return tuple(reversed(chain))
+        try:
+            return await load_exact_effective_chain(store, leaf, leaf_lineage)
+        except RuntimeError as error:
+            raise _internal(str(error)) from error
 
     async def _validate_candidate(
         self,
@@ -795,12 +819,7 @@ class ObjectTemplateService:
             if current is None:
                 raise _not_found(template_id, version)
             try:
-                validate_local_declarations(current.properties, current.components)
-                return resolve_effective_schema(
-                    current.template_id,
-                    current.version,
-                    await self._effective_chain(store, current),
-                )
+                return await resolve_exact_effective_schema(store, current)
             except ObjectTemplateValidationError as error:
                 raise _internal(
                     "The persisted ObjectTemplate effective schema is invalid."
