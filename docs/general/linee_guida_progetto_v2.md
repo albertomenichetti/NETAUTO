@@ -34,10 +34,44 @@ Nei documenti interni alla stessa milestone è ammesso usare la forma locale `Sn
 
 Per ogni slice:
 
-1. viene prodotto un prompt implementativo coerente con il design congelato;
-2. Codex realizza lo sviluppo e pubblica il relativo delta sul repository GitHub;
-3. il delta viene revisionato rispetto ai contratti, alle invarianti e alla documentazione della milestone;
-4. lo step viene considerato completato soltanto se repository, comportamento e documentazione risultano ancora coerenti.
+1. viene eseguito un pre-flight implementativo sulle authority rilevanti per la slice;
+2. viene prodotto un prompt implementativo coerente con il design congelato;
+3. Codex realizza lo sviluppo e pubblica il relativo delta sul repository GitHub;
+4. il delta viene revisionato rispetto ai contratti, alle invarianti e alla documentazione della milestone;
+5. lo step viene considerato completato soltanto se repository, comportamento e documentazione risultano ancora coerenti.
+
+### Pre-flight implementativo della slice
+
+Prima di predisporre o eseguire il prompt di una slice `Mx-Snn` deve essere eseguita una re-validation pre-flight delle authority da cui quella slice dipende.
+
+Il pre-flight implementativo è distinto dal pre-flight dei design point: non serve a prendere nuove decisioni architetturali, ma a verificare che la baseline congelata da cui la slice sta per derivare codice sia ancora corrente, coerente e sufficiente.
+
+La verifica deve essere dependency-driven e comprendere, per quanto applicabile:
+
+```text
+contract.md della milestone ancora FINAL / FROZEN
+architecture set ancora FROZEN
+architecture/README.md corrente e coerente con il set
+owning domain / cross-domain authority della slice
+persistence / Unit of Work / concurrency / API authority coinvolte
+invarianti e verification richieste dalla slice
+assenza di contradiction, architecture gap o reopen pendenti sul comportamento interessato
+```
+
+La sequenza è:
+
+```text
+identify slice scope and assumptions
+    -> re-read relevant frozen authorities
+    -> verify contract and architecture-set freeze
+    -> verify owning contracts / invariants / verification are identified
+    -> verify no affected point is reopened or contradictory
+    -> if any check fails: STOP before prompt execution
+    -> resolve the documentation/design problem through the applicable reopen process
+    -> only then create/execute the implementation prompt
+```
+
+Il pre-flight non può essere sostituito dalla memoria della conversazione, dal report della slice precedente o dal comportamento corrente del codice. La profondità della rilettura deve essere proporzionata alle dipendenze reali della slice, ma tutte le authority da cui la slice assume una semantica o una garanzia devono essere verificate.
 
 ### Ownership della review e stato delle slice
 
@@ -56,7 +90,8 @@ Il report dell'implementatore è un ausilio alla review, non una prova autonoma 
 La sequenza ordinaria di una slice è quindi:
 
 ```text
-Codex completa il candidate
+pre-flight implementativo
+    -> Codex completa il candidate
     -> push del delta sul branch del ciclo
     -> report di esecuzione
     -> review del delta reale rispetto alle authority congelate
@@ -155,9 +190,12 @@ I documenti normativi relativi alla specifica milestone sono così organizzati:
 docs/milestones/<Mx>/
 ├── wip/
 ├── contract.md
+├── architecture/
+│   ├── README.md
+│   └── ...
 ├── steps.md
 ├── status.md
-└── architecture/
+└── acceptance.md        # quando previsto o utile
 ```
 
 #### `wip/`
@@ -204,7 +242,83 @@ Qui vengono definiti in dettaglio, tra gli altri:
 
 I documenti in `architecture/` definiscono **come deve funzionare semanticamente e tecnicamente** quanto stabilito in `contract.md`.
 
-Lo sviluppo non può iniziare finché la documentazione architetturale necessaria alla milestone non è stata finalizzata e congelata.
+Lo sviluppo non può iniziare finché la documentazione architetturale necessaria alla milestone non è stata finalizzata e congelata come insieme.
+
+##### `architecture/README.md` — architecture-set control/index
+
+Ogni milestone deve avere obbligatoriamente `docs/milestones/<Mx>/architecture/README.md`.
+
+Il README non è un semplice indice di file e non deve diventare una seconda copia delle decisioni contenute nei documenti owning. È il documento di controllo e di ingresso dell'**architecture set** della milestone: dichiara quali documenti compongono il set normativo, quali aree possiedono, quale sia lo stato complessivo del design e se esistano punti ancora aperti o esplicitamente riaperti.
+
+Il contenuto minimo deve includere:
+
+- **purpose e authority boundary** — chiarire che `contract.md` possiede il perimetro, `architecture/README.md` possiede composizione/stato del set e i singoli documenti indicizzati possiedono le decisioni di dettaglio;
+- **architecture-set status** — almeno uno stato inequivocabile come `DESIGN IN PROGRESS`, `FROZEN` oppure `PARTIALLY REOPENED` quando necessario;
+- **normative document map** — elenco dei documenti che compongono il set e dell'area/domain/cross-cutting concern di cui ciascuno è authority;
+- **coverage / ownership map** — permettere di determinare quali aree necessarie al contract sono chiuse, quali documenti le possiedono e se esistono gap;
+- **open design points** — durante il design elencare i punti ancora aperti; al freeze deve risultare esplicitamente che non rimangono open point necessari all'implementazione;
+- **freeze / reopen state** — registrare lo stato corrente del set e, in caso di riapertura, lo scope interessato fino al successivo re-freeze.
+
+Il README può contenere brevi summary utili alla navigazione, ma deve evitare di duplicare sistematicamente semantica, invarianti e meccanismi già posseduti dagli owning document. La regola preferita è:
+
+```text
+architecture/README.md
+    = map + ownership + status + closure del set
+
+owning architecture documents
+    = contenuto semantico e tecnico autorevole
+```
+
+In caso di conflitto, lo stato complessivo del set è dichiarato dal README, mentre il contenuto di una decisione appartiene al relativo owning document. Prima del freeze gli header/status dei documenti individuali devono essere sottoposti a consistency sweep e resi coerenti con lo stato del set; eventuali eccezioni intenzionali devono essere dichiarate esplicitamente nel README, non lasciate all'interpretazione di chi legge.
+
+##### Freeze dell'architettura come set
+
+La milestone può entrare in implementazione soltanto quando l'architettura è stata congelata **come insieme**, non semplicemente quando i singoli file risultano scritti o localmente approvati.
+
+`architecture/README.md` è l'authority per lo stato complessivo del set. La dichiarazione:
+
+```text
+ARCHITECTURE SET = FROZEN
+```
+
+significa che:
+
+- il normative document map è completo per il perimetro della milestone;
+- ogni area necessaria al contract ha un owning document identificato;
+- non rimangono open design point che lascino libertà semantica all'implementazione;
+- le decisioni cross-cutting sono state propagate nei documenti impattati;
+- il corpus è stato sottoposto a consistency sweep sufficiente a verificare la mutua coerenza;
+- le verification authority necessarie a dimostrare le garanzie congelate sono definite o almeno contrattualmente determinate in modo sufficiente per la successiva decomposition.
+
+Un documento locale non può creare implicitamente una libertà di design in contrasto con il set-level freeze. Allo stesso tempo, le milestone future devono evitare deliberatamente stale header come `DRAFT` sotto un set frozen: la regola di prevalenza del set è una protezione contro il drift, non un sostituto della pulizia documentale.
+
+Se un punto viene riaperto dopo il freeze, il README deve rendere visibile lo scope riaperto e lo stato del set finché la decisione non è stata revalidata, propagata e nuovamente congelata.
+
+##### Confine fra architettura e decomposizione implementativa
+
+Il freeze architetturale deve chiudere tutte le decisioni necessarie a determinare in modo univoco:
+
+- semantica del dominio e stati validi;
+- invarianti e failure semantics;
+- boundary applicativi e pubblici;
+- garanzie di persistenza, atomicità e concorrenza quando rilevanti;
+- rappresentazioni o meccanismi tecnici quando fanno parte della correttezza richiesta;
+- verification contract necessario a dimostrare le garanzie.
+
+Non deve invece trasformarsi in micro-governance dell'implementazione. Dettagli locali come struttura dei moduli, helper, fixture, naming interno, disposizione dei test o decomposition tecnica restano libertà implementative quando non modificano una semantica, una garanzia, un boundary o una verification authority congelata.
+
+In sintesi:
+
+```text
+semantic / correctness choice
+    -> deve essere chiusa nell'architecture set prima del coding
+
+local implementation decomposition
+    -> può essere scelta durante implementation
+       se preserva integralmente le authority frozen
+```
+
+Un dubbio su un dettaglio implementativo non giustifica di per sé la riapertura dell'architettura; una scelta che cambierebbe il significato o la garanzia del sistema invece sì.
 
 #### `steps.md`
 
@@ -244,10 +358,10 @@ Non deve duplicare il contenuto di `contract.md`, `steps.md` o della documentazi
 Ogni milestone segue il seguente ordine vincolante:
 
 1. definizione e finalizzazione di `contract.md`;
-2. definizione e finalizzazione dei documenti in `architecture/`;
+2. definizione, consistency review e freeze dell'architecture set, dichiarato da `architecture/README.md`;
 3. definizione e finalizzazione di `steps.md`;
 4. definizione iniziale di `status.md`;
-5. avvio della fase di sviluppo.
+5. avvio della fase di sviluppo, con pre-flight obbligatorio prima di ogni slice.
 
 Ogni fase dipende semanticamente dalla precedente.
 
@@ -605,12 +719,16 @@ La documentazione di un ciclo di fix risiede sotto:
 docs/fixes/<Fx-y>/
 ├── wip/
 ├── defects.md
+├── architecture/          # opzionale: solo quando serve correction design architetturale
+│   ├── README.md          # obbligatorio se architecture/ è utilizzata
+│   └── ...
 ├── steps.md
-├── status.md
-└── architecture/
+└── status.md
 ```
 
-`architecture/` è utilizzata quando almeno un defect richiede una correzione o una chiarificazione architetturale; può rimanere minimale quando tutti i defect sono puramente implementativi e l'AS-IS esistente è già univoco e corretto.
+`architecture/` viene utilizzata quando almeno un defect richiede una correzione o una chiarificazione architetturale; può essere omessa quando tutti i defect sono puramente implementativi e l'AS-IS esistente è già univoco e corretto.
+
+Quando `architecture/` è presente, `architecture/README.md` è obbligatorio e svolge lo stesso ruolo di architecture-set control/index definito per le milestone, adattato al correction-design set del fix: dichiara composizione, ownership, open point, stato di freeze/reopen e confine con l'AS-IS corrente. Prima di implementare un architecture defect, il correction-design set interessato deve risultare congelato come insieme.
 
 `wip/` segue la stessa disciplina degli execution aid delle milestone: contiene soltanto materiale operativo ancora attivo; prompt conclusi o superseded rimangono recuperabili dalla Git history e vengono rimossi dal working tree.
 
@@ -679,7 +797,8 @@ raccolta defect
     -> analysis e classificazione
     -> correction design
     -> propagation documentale necessaria
-    -> freeze di defects.md e dell'eventuale architecture/ del fix
+    -> freeze di defects.md
+    -> se architecture/ è presente: architecture/README.md dichiara il correction-design set FROZEN
 ```
 
 Un nuovo defect scoperto dopo il freeze non viene aggiunto automaticamente al ciclo corrente. Normalmente viene registrato per un ciclo successivo, ad esempio `F1-2` dopo `F1-1`.
@@ -720,10 +839,11 @@ Ogni slice deve indicare chiaramente:
 
 ### Implementazione e review del fix
 
-Dopo il freeze, il ciclo di fix segue la stessa disciplina di implementazione e review delle milestone:
+Dopo il freeze, il ciclo di fix segue la stessa disciplina di implementazione e review delle milestone, incluso un pre-flight obbligatorio prima di ogni slice. Nel fix il pre-flight deve verificare almeno `defects.md` frozen, l'eventuale correction-design set frozen, le authority AS-IS violate/interessate, le regression evidence richieste e l'assenza di reopen pendenti sul defect coinvolto.
 
 ```text
-prompt della slice
+pre-flight della slice
+    -> prompt della slice
     -> implementation candidate
     -> push del delta
     -> report dell'implementatore
