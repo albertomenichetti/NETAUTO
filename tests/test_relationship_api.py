@@ -177,6 +177,64 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
         for item in events
     )
 
+    relationship_id_mismatch = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"relationship_id": str(uuid4())},
+    )
+    assert relationship_id_mismatch.status_code == 200
+    assert relationship_id_mismatch.json()["items"] == []
+
+    definition_events = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={
+            "relationship_definition_id": cast(str, definition["id"]),
+            "kind": "RELATIONSHIP_CREATED",
+        },
+    )
+    assert definition_events.status_code == 200
+    assert len(definition_events.json()["items"]) == 2
+    definition_mismatch = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"relationship_definition_id": str(uuid4())},
+    )
+    assert definition_mismatch.status_code == 200
+    assert definition_mismatch.json()["items"] == []
+
+    name_events = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"relationship_name": first_resolution["name"]},
+    )
+    assert name_events.status_code == 200
+    assert [item["relationship_name"] for item in name_events.json()["items"]] == [
+        first_resolution["name"]
+    ]
+    name_mismatch = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"relationship_name": "relationship_name_mismatch"},
+    )
+    assert name_mismatch.status_code == 200
+    assert name_mismatch.json()["items"] == []
+
+    for endpoint_id in (first_object, second_object):
+        endpoint_timeline = await client.get(
+            f"/api/v1/core/objects/{endpoint_id}/lifecycle-events",
+            params={
+                "relationship_id": relationship_id,
+                "kind": "RELATIONSHIP_CREATED",
+            },
+        )
+        assert endpoint_timeline.status_code == 200
+        timeline_items = endpoint_timeline.json()["items"]
+        assert len(timeline_items) == 2
+        assert all(
+            endpoint_id in {item["object_id"], item["destination_object_id"]}
+            for item in timeline_items
+        )
+        assert {item["object_id"] for item in timeline_items} == {
+            first_object,
+            second_object,
+        }
+
     blocked = await client.delete(
         f"/api/v1/core/relationship-definitions/{definition['id']}"
     )
@@ -240,6 +298,24 @@ async def test_strict_operands_missing_resources_incompatibility_and_self_loop(
         },
     )
     assert unknown.status_code == 400
+    assert unknown.json()["code"] == "invalid_request"
+    for invalid_body in (
+        {
+            "resolution_id": None,
+            "from_object_id": object_id,
+            "to_object_id": object_id,
+        },
+        {
+            "resolution_id": 7,
+            "from_object_id": object_id,
+            "to_object_id": object_id,
+        },
+    ):
+        invalid_carrier = await client.post(
+            "/api/v1/core/relationships", json=invalid_body
+        )
+        assert invalid_carrier.status_code == 400
+        assert invalid_carrier.json()["code"] == "invalid_request"
     missing_resolution = await client.post(
         "/api/v1/core/relationships",
         json={

@@ -9,13 +9,15 @@ import pytest
 from sqlalchemy import Engine, func, select
 
 from netauto.application.objects import ObjectService
-from netauto.application.objecttemplates import ObjectTemplateService
+from netauto.application.objecttemplates import ObjectTemplateService, PropertyCandidate
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.application.relationships import (
     RelationshipCreateResult,
     RelationshipService,
 )
-from netauto.domain.objects import Object
+from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
+from netauto.domain.objecttemplates import ValueMode
+from netauto.domain.primitives import JsonValue
 from netauto.domain.relationships import (
     Relationship,
     RelationshipDefinition,
@@ -185,6 +187,69 @@ async def _symmetric_seed(
     return RelationshipSeed(definition, first_object, second_object)
 
 
+async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> RelationshipSeed:
+    factory = UnitOfWorkFactory(actors.t1_engine)
+    datatype = await actors.t1.create(
+        "relationship_concurrency", f"{prefix}_value", "core.integer", None, {}
+    )
+    await actors.t1.publish(datatype.datatype.id, 1, 1)
+    templates = ObjectTemplateService(factory)
+    value_property = PropertyCandidate(
+        "value", 1, datatype.datatype.id, 1, ValueMode.SCALAR, False
+    )
+    first_template = await templates.create(
+        "relationship_concurrency",
+        f"{prefix}_mutable",
+        False,
+        None,
+        None,
+        None,
+        (value_property,),
+        (),
+    )
+    await templates.publish(first_template.object_template.id, 1, 1)
+    await templates.create_next(first_template.object_template.id, 1)
+    added_property = PropertyCandidate(
+        "added", 2, datatype.datatype.id, 1, ValueMode.SCALAR, False
+    )
+    await templates.revise(
+        first_template.object_template.id,
+        2,
+        1,
+        None,
+        (value_property, added_property),
+        (),
+    )
+    await templates.publish(first_template.object_template.id, 2, 2)
+    second_template = await templates.create(
+        "relationship_concurrency",
+        f"{prefix}_peer",
+        False,
+        None,
+        None,
+        None,
+        (),
+        (),
+    )
+    await templates.publish(second_template.object_template.id, 1, 1)
+    objects = ObjectService(factory)
+    first_object = await objects.create(
+        first_template.object_template.id, 1, f"{prefix}-mutable", {"value": 0}
+    )
+    second_object = await objects.create(
+        second_template.object_template.id, 1, f"{prefix}-peer", {}
+    )
+    definition = await RelationshipDefinitionService(factory).create_non_symmetric(
+        (
+            RelationshipPerspective(
+                first_template.object_template.id, "contains_mutable"
+            ),
+            RelationshipPerspective(second_template.object_template.id, "in_mutable"),
+        )
+    )
+    return RelationshipSeed(definition, first_object, second_object)
+
+
 def _insert_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[Relationship]]:
     cut = PhaseCut()
     candidates: list[Relationship] = []
@@ -200,6 +265,42 @@ def _insert_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[Relatio
 
     monkeypatch.setattr(RuntimeRelationshipStore, "insert", intercepted)
     return cut, candidates
+
+
+def _object_update_cut(
+    monkeypatch: pytest.MonkeyPatch, *, schema_change: bool
+) -> PhaseCut:
+    cut = PhaseCut()
+    if schema_change:
+        original_schema = ObjectStore.update_schema
+
+        async def intercepted_schema(
+            store: ObjectStore,
+            object_id: UUID,
+            template_version: int,
+            properties: dict[str, JsonValue],
+        ) -> None:
+            await original_schema(store, object_id, template_version, properties)
+            task = asyncio.current_task()
+            if task is not None and task.get_name() == "T1":
+                cut.reached.set()
+                await cut.release.wait()
+
+        monkeypatch.setattr(ObjectStore, "update_schema", intercepted_schema)
+    else:
+        original_properties = ObjectStore.update_properties
+
+        async def intercepted_properties(
+            store: ObjectStore, object_id: UUID, properties: dict[str, JsonValue]
+        ) -> None:
+            await original_properties(store, object_id, properties)
+            task = asyncio.current_task()
+            if task is not None and task.get_name() == "T1":
+                cut.reached.set()
+                await cut.release.wait()
+
+        monkeypatch.setattr(ObjectStore, "update_properties", intercepted_properties)
+    return cut
 
 
 def _delete_owner_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -893,6 +994,101 @@ async def test_atomic_02_later_closure_pk_collision_rolls_back_candidate(
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
+async def test_create_event_failure_rolls_back_header_and_complete_closure(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(
+        test_database_url, "REL-CREATE-EVENT-ROLLBACK"
+    ) as actors:
+        seed = await _seed(actors, "create_event_rollback")
+        service = _reader(actors)
+        original = RuntimeRelationshipStore.insert_lifecycle_events
+        candidate_ids: list[UUID] = []
+
+        async def failed_creation_events(
+            store: RuntimeRelationshipStore,
+            *,
+            kind: str,
+            relationship: Relationship,
+            views: Sequence[RelationshipLifecycleView],
+        ) -> None:
+            if kind == "RELATIONSHIP_CREATED":
+                candidate_ids.append(relationship.id)
+                assert (
+                    await store.connection.scalar(
+                        select(func.count())
+                        .select_from(relationships)
+                        .where(relationships.c.id == relationship.id)
+                    )
+                    == 1
+                )
+                assert await store.connection.scalar(
+                    select(func.count())
+                    .select_from(runtime_relationship_resolutions)
+                    .where(
+                        runtime_relationship_resolutions.c.relationship_id
+                        == relationship.id
+                    )
+                ) == len(relationship.resolutions)
+                raise ApplicationFailure(
+                    FailureClass.INTERNAL_FAILURE,
+                    "internal_error",
+                    "forced creation event failure",
+                )
+            await original(store, kind=kind, relationship=relationship, views=views)
+
+        monkeypatch.setattr(
+            RuntimeRelationshipStore,
+            "insert_lifecycle_events",
+            failed_creation_events,
+        )
+        with pytest.raises(ApplicationFailure) as caught:
+            await service.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            )
+        assert caught.value.code == "internal_error"
+        assert len(candidate_ids) == 1
+        candidate_id = candidate_ids[0]
+        async with actors.t1_engine.connect() as connection:
+            assert (
+                await connection.scalar(
+                    select(func.count())
+                    .select_from(relationships)
+                    .where(relationships.c.id == candidate_id)
+                )
+                == 0
+            )
+            assert (
+                await connection.scalar(
+                    select(func.count())
+                    .select_from(runtime_relationship_resolutions)
+                    .where(
+                        runtime_relationship_resolutions.c.relationship_id
+                        == candidate_id
+                    )
+                )
+                == 0
+            )
+            assert (
+                await connection.scalar(
+                    select(func.count())
+                    .select_from(object_lifecycle_events)
+                    .where(
+                        object_lifecycle_events.c.relationship_id == candidate_id,
+                        object_lifecycle_events.c.kind == "RELATIONSHIP_CREATED",
+                    )
+                )
+                == 0
+            )
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
 async def test_atomic_03_delete_event_failure_rolls_back_complete_fact(
     migrated_database_engine: Engine,
     test_database_url: str,
@@ -1002,6 +1198,73 @@ async def test_par_01_and_snap_02_create_progresses_during_object_rename(
             seed.first_object.canonical_name,
             seed.second_object.canonical_name,
         }
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_realize_15_relationship_create_progresses_after_object_data_update(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REALIZE-15-REL-DATA") as actors:
+        seed = await _mutable_object_seed(actors, "realize15_data")
+        cut = _object_update_cut(monkeypatch, schema_change=False)
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        relationship = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        changed, created = await progress_race(
+            cut,
+            lambda: objects.data_change(
+                seed.first_object.id,
+                (DataChangeOperation(DataChangeKind.SET, "value", 1),),
+            ),
+            lambda: relationship.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+        )
+        assert isinstance(changed, Object)
+        assert changed.properties == {"value": 1}
+        assert isinstance(created, RelationshipCreateResult)
+        assert created.created is True
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_realize_15_relationship_create_progresses_after_object_schema_update(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REALIZE-15-REL-SCHEMA") as actors:
+        seed = await _mutable_object_seed(actors, "realize15_schema")
+        cut = _object_update_cut(monkeypatch, schema_change=True)
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        relationship = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        migrated, created = await progress_race(
+            cut,
+            lambda: objects.schema_change(seed.first_object.id, 2),
+            lambda: relationship.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+        )
+        assert isinstance(migrated, Object)
+        assert migrated.template_version == 2
+        assert isinstance(created, RelationshipCreateResult)
+        assert created.created is True
 
 
 @pytest.mark.postgresql
