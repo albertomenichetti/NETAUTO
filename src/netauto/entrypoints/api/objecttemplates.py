@@ -13,6 +13,7 @@ from netauto.application.objecttemplates import (
     ObjectTemplateService,
     PropertyCandidate,
 )
+from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.domain.datatypes import VersionStatus
 from netauto.domain.objecttemplates import (
     CreateObjectTemplateResult,
@@ -27,6 +28,7 @@ from netauto.domain.objecttemplates import (
     ValueMode,
 )
 from netauto.domain.primitives import JsonValue
+from netauto.domain.relationships import RelationshipCapability
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
@@ -275,9 +277,29 @@ class ObjectTemplateVersionPageDto(BaseModel):
     next_cursor: str | None
 
 
+class RelationshipCapabilityDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    resolution_id: UUID
+    relationship_definition_id: UUID
+    name: str
+    from_template_id: UUID
+    to_template_id: UUID
+
+
+class RelationshipCapabilityPageDto(BaseModel):
+    items: list[RelationshipCapabilityDto]
+    next_cursor: str | None
+
+
 def _service(request: Request) -> ObjectTemplateService:
     runtime = cast(RuntimeContext, request.app.state.runtime)
     return ObjectTemplateService(runtime.uow_factory)
+
+
+def _relationship_service(request: Request) -> RelationshipDefinitionService:
+    runtime = cast(RuntimeContext, request.app.state.runtime)
+    return RelationshipDefinitionService(runtime.uow_factory)
 
 
 def _property_candidate(value: PropertyBody) -> PropertyCandidate:
@@ -358,6 +380,19 @@ def _version_page(
     )
 
 
+def _capability(value: RelationshipCapability) -> RelationshipCapabilityDto:
+    return RelationshipCapabilityDto.model_validate(value)
+
+
+def _capability_page(
+    value: Page[RelationshipCapability],
+) -> RelationshipCapabilityPageDto:
+    return RelationshipCapabilityPageDto(
+        items=[_capability(item) for item in value.items],
+        next_cursor=value.next_cursor,
+    )
+
+
 @router.post(
     "/object-templates",
     response_model=ObjectTemplateCreateResultDto,
@@ -433,6 +468,25 @@ async def create_next_object_template_version(
 async def get_object_template(template_id: UUID, request: Request) -> ObjectTemplateDto:
     validate_query(request, ())
     return _lineage(await _service(request).get_lineage(template_id))
+
+
+@router.get(
+    "/object-templates/{template_id}/relationship-capabilities",
+    response_model=RelationshipCapabilityPageDto,
+)
+async def list_relationship_capabilities(
+    template_id: UUID,
+    request: Request,
+    name: str | None = None,
+    cursor: str | None = None,
+    limit: PageLimit = 100,
+) -> RelationshipCapabilityPageDto:
+    validate_query(request, ("name", "cursor", "limit"))
+    return _capability_page(
+        await _relationship_service(request).list_capabilities(
+            template_id, name=name, cursor=cursor, limit=limit
+        )
+    )
 
 
 @router.delete(

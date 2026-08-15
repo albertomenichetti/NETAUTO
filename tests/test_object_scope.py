@@ -42,7 +42,7 @@ def test_object_domain_and_application_preserve_layer_boundaries() -> None:
         assert "JSON Schema" not in source
 
 
-def test_s05_registers_only_ownership_and_schema_change_capabilities() -> None:
+def test_s06_preserves_object_scope_while_adding_template_capabilities() -> None:
     app = build_app(Settings(database_url="postgresql+psycopg://u:p@localhost/db"))
     schema = cast(dict[str, object], app.openapi())
     paths = cast(dict[str, object], schema["paths"])
@@ -60,11 +60,10 @@ def test_s05_registers_only_ownership_and_schema_change_capabilities() -> None:
         "/api/v1/core/objects/{child_object_id}/owner",
     }
     assert expected <= set(paths)
-    for suffix in (
-        "/relationships",
-        "/relationship-capabilities",
-    ):
-        assert not any(path.endswith(suffix) for path in paths)
+    assert (
+        "/api/v1/core/object-templates/{template_id}/relationship-capabilities" in paths
+    )
+    assert not any(path.endswith("/relationships") for path in paths)
     object_methods = cast(dict[str, object], paths["/api/v1/core/objects/{object_id}"])
     assert "delete" not in object_methods
 
