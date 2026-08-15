@@ -13,7 +13,7 @@ This directory is intentionally history-light and state-heavy:
 - it does not require the reader to reconstruct M1, M2, ... history to understand current behavior;
 - historical rationale, acceptance evidence, implementation prompts and cycle-specific wording remain in `docs/milestones/`, `docs/fixes/` and Git history.
 
-When a future cycle declares a behavior unchanged, that behavior must be verifiable here. A missing or contradictory starting assumption is a design STOP condition under `docs/general/linee_guida_progetto_v2.md`.
+When a future cycle declares a behavior unchanged, that behavior must be verifiable here. A missing or contradictory starting assumption is a design STOP condition under `docs/general/linee_guida_progetto.md`.
 
 Technology choices that are project-wide rather than semantic architecture are owned by `docs/general/technology_baseline.md` and are not duplicated here unless they directly define an architectural guarantee.
 
