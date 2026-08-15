@@ -35,6 +35,66 @@ Per ogni step implementativo, che prende il nome di slice, ed ha identificativo 
 3. il delta viene revisionato rispetto ai contratti, alle invarianti e alla documentazione della milestone;
 4. lo step viene considerato completato soltanto se repository, comportamento e documentazione risultano ancora coerenti.
 
+### Ownership della review e stato delle slice
+
+Implementazione e review hanno responsabilità distinte:
+
+```text
+implementer / Codex
+    = produce un candidate implementativo e il relativo report di esecuzione
+
+reviewer
+    = verifica il delta realmente pubblicato nel repository e decide se accettarlo
+```
+
+Il report dell'implementatore è un ausilio alla review, non una prova autonoma di completamento. Dichiarazioni come test eseguiti, working tree pulito, commit pubblicato o comportamento implementato devono essere verificate, per quanto necessario, contro il repository e l'evidence effettivamente disponibile.
+
+La sequenza ordinaria di una slice è quindi:
+
+```text
+Codex completa il candidate
+    -> push del delta sul branch del ciclo
+    -> report di esecuzione
+    -> review del delta reale rispetto alle authority congelate
+    -> eventuali review-fix
+    -> nuova review
+    -> solo il reviewer può marcare la slice COMPLETED
+```
+
+Lo stesso principio vale per la chiusura della milestone: l'implementatore può produrre un acceptance candidate e la relativa evidence, ma non può dichiarare autonomamente la milestone `DELIVERED`. Gli stati di accettazione finale sono reviewer-owned.
+
+Sono quindi reviewer-owned almeno le transizioni:
+
+```text
+slice -> COMPLETED
+milestone -> DELIVERED
+review outcome -> ACCEPTED / REVIEW CHANGES REQUIRED
+```
+
+Quando la review individua un implementation defect o una verification gap appartenente alla slice corrente, la slice **non** viene chiusa e non si crea artificiosamente una nuova slice per correggerla. Il lavoro rimane parte della stessa slice e lo stato operativo deve rendere visibile il finding, per esempio:
+
+```text
+IN PROGRESS — REVIEW CHANGES REQUIRED
+```
+
+Il reviewer può predisporre un prompt di review-fix mirato esclusivamente ai finding emersi. Codex applica il fix, pubblica un nuovo delta e il risultato torna in review. La slice diventa `COMPLETED` soltanto dopo l'accettazione del candidate complessivo.
+
+### Disciplina degli execution aid in `wip/`
+
+`docs/milestones/<Mx>/wip/` deve rendere evidente quale lavoro operativo è ancora attivo. I prompt implementativi e di review-fix sono execution aid non normativi e non devono accumularsi fino a rendere ambiguo quale sia l'istruzione corrente.
+
+La regola operativa è:
+
+```text
+docs/milestones/<Mx>/wip/
+    = execution aid ancora attivi
+
+Git history
+    = memoria dei prompt e degli aid già eseguiti o superseded
+```
+
+Quando un prompt è stato eseguito e viene sostituito da un review-fix, oppure quando la slice è stata definitivamente accettata, il prompt operativo ormai concluso viene rimosso da `wip/`. La sua storia rimane recuperabile da Git e non deve essere conservata nel working tree soltanto come memoria.
+
 Il codice non costituisce **MAI** una fonte autonoma di decisioni architetturali: eventuali ambiguità devono essere risolte nel design.
 
 ### Struttura documentale
