@@ -389,7 +389,7 @@ slot_name
 child_object_id
 ```
 
-`parent_object_id` resta path target. Shared DTO non implica shared admission semantics: ATTACH valida current slot/compatibility, DETACH rimuove exact edge anche se slot non esiste più nello current schema.
+`parent_object_id` resta path target. Shared DTO non implica shared admission semantics: ATTACH valida current slot e child compatibility; DETACH rimuove soltanto l'exact current edge richiesto e non esegue una nuova slot/compatibility admission. Un current edge, tuttavia, deve restare semanticamente risolvibile nella current exact effective schema del parent; un persisted edge non interpretabile è invariant corruption, non una supported legacy-detach condition.
 
 ### DELETE
 
@@ -407,7 +407,7 @@ A3.56 Empty DATA_CHANGE operations is malformed; a non-empty request may converg
 A3.57 SET [] remains valid for an optional LIST and canonicalizes to absence; SET null is invalid.
 A3.58 SCHEMA_CHANGE body contains exactly mandatory target_version; no remediation, override, detach or cross-lineage fields exist.
 A3.59 ATTACH and DETACH bodies contain exactly slot_name and child_object_id; parent_object_id remains the path command target.
-A3.60 Shared ATTACH/DETACH DTO does not imply shared admission semantics: ATTACH validates current slot/compatibility, DETACH may remove an exact runtime edge even when the slot is absent from the current schema.
+A3.60 Shared ATTACH/DETACH DTO does not imply shared admission semantics: ATTACH validates current slot/compatibility; DETACH removes the exact current edge without re-admitting child compatibility, while the edge itself must still resolve one current SlotSemanticKey in the parent's current exact effective schema. An unresolvable persisted edge is internal invariant corruption, not a supported DETACH state.
 A3.61 Object DELETE has no body and exposes no cascade/force/recursive options.
 A3.62 Object command DTOs never expose caller-controlled Object id, template_id mutation, state revision, ownership edge id or lifecycle data.
 ```
