@@ -1,6 +1,6 @@
 # NETAUTO Architecture — Current AS-IS
 
-**Status:** CURRENT AS-IS — consolidated on 2026-08-15 from the accepted M1 delivery baseline.
+**Status:** CURRENT AS-IS — consolidated on 2026-08-15 from the accepted M1 delivery baseline and subsequently reviewed for lossless authority coverage.
 
 ## Purpose and authority
 
@@ -33,14 +33,36 @@ No fix cycle has been delivered after M1 at this snapshot. Future delivered `Mx`
 |---|---|---|
 | DataType | `datatype.md` | Primitive scalar type system, versioning, lifecycle, canonicalization, constraints, default/pinning and active dependency rules. |
 | ObjectTemplate | `objecttemplate.md` | Versioned entity schemas, inheritance, properties, ownership slots, effective schema and model lifecycle. |
-| Object | `object.md` | Runtime entity state, schema migration, ownership, lifecycle events and deletion semantics. |
+| Object | `object.md` | Runtime entity admission/state, schema migration, ownership, lifecycle events and deletion semantics. |
 | Relationship | `relationship.md` | RelationshipDefinition/Resolution model-plane semantics, factual Relationship runtime closure and graph navigation. |
 | Persistence | `persistence.md` | PostgreSQL authority, relational model, FK/delete boundary, canonical persistence representations and denormalizations. |
-| Concurrency / Unit of Work | `concurrency.md` | Semantic transaction boundaries, isolation, locks/gates, convergence and concurrency safety guarantees. |
-| Public API | `api.md` | HTTP/JSON adapter boundary, route inventory, command/read/list semantics, errors and success mapping. |
-| Verification | `verification.md` | Required verification layers, real-PostgreSQL evidence model, traceability and concurrency verification baseline. |
+| Semantic concurrency matrix | `concurrency-matrix.md` | Canonical mutation census, sparse pairwise rules, 19 safety predicates, allowed outcomes and future-mutation analysis discipline. |
+| Concurrency / Unit of Work | `concurrency.md` | Transaction boundaries, isolation, locks/gates, convergence and PostgreSQL realization of the semantic predicates. |
+| Public API | `api.md` | HTTP/JSON adapter boundary, exact route/DTO/selector/list/error/success contracts and forbidden surface. |
+| Verification | `verification.md` | Required verification layers, real-PostgreSQL evidence model, migration/API/reproducibility obligations and traceability baseline. |
+| Canonical concurrency verification | `verification-concurrency-registry.md` | Stable 51-scenario registry, 19-predicate coverage, deterministic harness constraints and eight orchestration recipes. |
 
 A semantic decision belongs in its owning document. Cross-cutting documents may state realization consequences but must not redefine the owning domain semantics.
+
+The two concurrency companion documents are intentionally distinct:
+
+```text
+concurrency-matrix.md
+    -> what must remain true under each scoped mutation interaction
+
+concurrency.md
+    -> how the current PostgreSQL/UoW architecture realizes those guarantees
+```
+
+Likewise:
+
+```text
+verification.md
+    -> durable verification policy and layers
+
+verification-concurrency-registry.md
+    -> exact stable concurrency scenario and recipe identities
+```
 
 ## System scope
 
@@ -117,12 +139,12 @@ The following principles are cross-cutting and are elaborated in the owning docu
 - lifecycle of versioned model snapshots is monotonic `DRAFT -> PUBLISHED -> DEPRECATED`;
 - PUBLISHED/DEPRECATED model snapshots are immutable;
 - exact-DRAFT semantic mutation uses `expected_revision` freshness;
-- active PUBLISHED model dependencies must point to PUBLISHED exact dependencies;
+- active PUBLISHED model dependencies point to PUBLISHED exact dependencies;
 - current cross-aggregate references use non-cascading lifetime semantics unless they are owned child state of the same aggregate;
 - Object runtime state uses canonical values and an exact schema pin;
 - ownership is single-owner and acyclic;
 - factual Relationship identity is stable and its runtime resolved closure is complete and exact;
-- lifecycle events are append-only application/kernel history and are committed atomically with the mutation that produces them;
+- lifecycle events are append-only application/kernel history and commit atomically with the mutation that produces them;
 - public API DTOs are semantic command/projection contracts, not persistence-row mirrors;
 - public errors are transport-neutral semantic failures mapped at the HTTP adapter boundary.
 
@@ -151,7 +173,7 @@ The application command/query contract is authoritative; FastAPI/Pydantic/OpenAP
 
 The API exposes explicit semantic commands rather than generic PATCH/PUT mutation. Read surfaces expose canonical semantic projections. Paginated collections use opaque keyset cursors and fixed route-specific ordering.
 
-See `api.md` for the canonical route and error contract.
+See `api.md` for the canonical route, DTO, filter, error and success contract.
 
 ## AS-IS update discipline
 
@@ -162,7 +184,8 @@ After a delivered milestone or fix:
 3. harmonize cross-cutting consequences in persistence/concurrency/API/verification documents as applicable;
 4. update the delivery-provenance table above;
 5. remove cycle-temporal language such as `target`, `candidate`, `during Mx`, `to be implemented` when it no longer describes the delivered system;
-6. preserve the cycle documents separately as historical records.
+6. preserve the cycle documents separately as historical records;
+7. verify that any durable identifier registry needed to evolve the system safely remains explicitly enumerated here rather than only in code/tests.
 
 Consolidation into `docs/architecture/` is never an indiscriminate copy of milestone/fix documentation.
 
