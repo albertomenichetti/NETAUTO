@@ -8,7 +8,7 @@
 M1-S07 — Runtime Relationship and relationship lifecycle vertical slice
 ```
 
-**Step status:** READY TO START
+**Step status:** IN PROGRESS
 
 M1-S00 through M1-S06 have completed implementation review.
 
@@ -73,6 +73,63 @@ PostgreSQL                              106 passed
 
 No S06 completion blocker remains.
 
+## M1-S07 pre-flight outcome
+
+The mandatory S07 pre-flight re-read the current frozen runtime Relationship, RelationshipResolution, lifecycle, persistence/UoW, REALIZE-13/14/15, PGTEST and API-03 authorities together with the accepted S06 implementation seams.
+
+Confirmed:
+
+```text
+M1 contract      FINAL / FROZEN
+M1 architecture  FROZEN as a set
+M1 steps         FINAL / FROZEN
+M1-S00..S06      COMPLETED
+STACK-01..09     RATIFIED
+```
+
+The initial S07 pre-flight found one verification-decomposition drift, not a domain/architecture semantic gap: `REF-03` (`REL.CREATE × OBJ.DELETE`) and the Relationship `REF-05` variant (`REL.DELETE × OBJ.DELETE`) require final `Object.DELETE`, which is deliberately delivered only in M1-S08. `steps.md` already states globally that spanning scenarios are executed only when both operations exist.
+
+The S07/S08 allocation was therefore realigned without changing any frozen Relationship semantics:
+
+```text
+9cda795b523cbf525beb19ed620678db152490a1
+    docs: align M1-S07 Object delete race allocation
+```
+
+S07 now implements/tests all runtime Relationship behavior and all canonical scenarios whose semantic operations are available in S07, including `ARB-05..07`, `REF-04`, `SNAP-01..03`, `ATOMIC-02`, `ATOMIC-03`, `PAR-01`, `PAR-02` and `PAR-05`. It must still prove current RuntimeRelationshipResolution -> Object FK `RESTRICT` mechanics directly at persistence level. Semantic `REF-03` and Relationship `REF-05` are completed in S08 together with final `Object.DELETE`; no fake/private Object.DELETE is introduced.
+
+The mandatory re-pre-flight against the corrected decomposition is clean. No architecture/documentation contradiction is currently known for S07.
+
+Frozen S07 implementation boundaries include:
+
+- Relationship CREATE from exact `resolution_id + from_object_id + to_object_id`;
+- stable-lineage endpoint admission, no exact OTV dependency;
+- non-symmetric selected-perspective semantics and symmetric unordered-pair semantics;
+- deterministic complete runtime Resolution closure;
+- exact-view PK arbitration, whole-UoW rollback and fresh semantic-UoW restart/convergence;
+- distinct `relationship_fact_conflict` boundary for a candidate closure colliding with a distinct current fact rather than selected-view convergence;
+- exact-ID DELETE with `FOR UPDATE`, idempotent absence and ABA safety;
+- one-statement READ COMMITTED lifecycle metadata observation for each real Relationship transition;
+- semantic-view event dedup and atomic complete event sets;
+- factual Relationship GET and Object-relative semantic reads;
+- lifecycle response union extension through Relationship events;
+- Definition/Object FK lifetime semantics with no global runtime Relationship gate;
+- no migration, S08 Object.DELETE, Relationship versioning/properties or source/target semantics.
+
+The non-normative Codex execution prompt is:
+
+```text
+docs/milestones/M1/wip/M1-S07-codex-prompt.md
+```
+
+Prompt creation commit:
+
+```text
+e9c5b52d3b20ac6ee42570274ef8cd80743f6bf9
+```
+
+The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+
 ## Authoritative baseline
 
 M1 implementation proceeds from the frozen/ratified authorities:
@@ -106,16 +163,16 @@ M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
 M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  COMPLETED        Ownership and Object schema-change vertical slice
 M1-S06  COMPLETED        RelationshipDefinition model-plane and capability vertical slice
-M1-S07  READY TO START   Runtime Relationship and relationship lifecycle vertical slice
+M1-S07  IN PROGRESS      Runtime Relationship and relationship lifecycle vertical slice
 M1-S08  NOT STARTED      Cross-domain integrity, destructive-operation and API/read closure
 M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 ```
 
 ## Current blockers
 
-None known for starting M1-S07.
+None known for implementing M1-S07.
 
-PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
 A newly discovered contradiction or missing decision in frozen architecture is not an implementation choice: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
