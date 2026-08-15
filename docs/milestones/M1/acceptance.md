@@ -1,37 +1,42 @@
-# M1 — Acceptance Candidate Evidence
+# M1 — Final Acceptance Record
 
-**Record status:** S09 ACCEPTANCE CANDIDATE — verification record, not semantic
-authority and not a declaration that M1 is delivered.
+**Record status:** FINAL — reviewer accepted on 2026-08-15. This is a verification/delivery record, not semantic architecture authority.
 
-This document records bounded evidence produced from the integrated M1-S09 candidate.
-It does not amend the frozen contract, architecture, API, persistence, concurrency or
-technology decisions. Reviewer-owned delivery state remains in `status.md`; M1-S09 is
-still `IN PROGRESS` until review completes.
+This document records bounded evidence produced from the integrated M1-S09 candidate and accepted by final review. It does not amend the frozen contract, architecture, API, persistence, concurrency or technology decisions. Reviewer-owned delivery state is recorded in `status.md`.
 
-## Authority and candidate boundary
+Accepted S09 evidence candidate:
 
-The pre-flight confirmed:
+```text
+b7c3722ba7964841d28fb8eb63e1bf828f078ff8  Complete M1 acceptance evidence
+40e5c5946ebf38a93de4e4c683ca567694acfd58  Correct final Ruff evidence count
+```
+
+## Authority and final boundary
+
+The S09 pre-flight confirmed:
 
 ```text
 docs/milestones/M1/contract.md                FINAL / FROZEN
 docs/milestones/M1/architecture/README.md     FROZEN as a set
 docs/milestones/M1/steps.md                   FINAL / FROZEN
 docs/general/technology_baseline.md            STACK-01..STACK-09 RATIFIED
-docs/milestones/M1/status.md                  S00..S08 completed; S09 in progress
 ```
 
-The owning architecture was re-read through the architecture index, semantic and
-PostgreSQL realization/test matrices, persistence model/UoW contracts, API contract,
-wire/read/list/error contracts and applicable domain contracts. No contradiction or
-reopened design point was found. S09 adds traceability and delivery documentation; it
-does not add or alter a kernel capability.
+The owning architecture was re-read through the architecture index, semantic and PostgreSQL realization/test matrices, persistence model/UoW contracts, API contract, wire/read/list/error contracts and applicable domain contracts. No contradiction or reopened design point was found. S09 added traceability and delivery documentation only; it did not add or alter a kernel capability.
+
+Final reviewer outcome:
+
+```text
+M1-S09  COMPLETED
+M1      DELIVERED
+```
 
 ## Acceptance criteria
 
 | Criterion | Result | Bounded implementation and verification evidence |
 | --- | --- | --- |
 | AC-01 PostgreSQL authority | PASS | `src/netauto/persistence/`, `Settings` Psycopg URL validation, the PostgreSQL-only dependency audit, `test_postgresql_support.py`, and 143 real-PostgreSQL tests. |
-| AC-02 valid domain states | PASS | Domain and API suites for DataType, ObjectTemplate, Object and Relationship; targeted primitive properties; persistence metadata and constraint checks. |
+| AC-02 valid domain states | PASS | Domain/application/API suites for DataType, ObjectTemplate, Object and Relationship; targeted primitive properties; persistence metadata and constraint checks. |
 | AC-03 cross-domain consistency | PASS | Canonical ROW-07..14 and REF-01..06 nodes in `test_m1_traceability.py`; ObjectTemplate/Object/Relationship API integration suites. |
 | AC-04 transactional atomicity | PASS | ATOMIC-01..04 registry targets, `test_uow.py`, rollback paths in Object and Relationship API/semantic concurrency tests. |
 | AC-05 concurrent correctness | PASS | Exact 51-ID PGTEST registry, exact 19-predicate map, 106 deterministic real-PostgreSQL concurrency tests, and 79 passing unique registry target nodes. |
@@ -46,18 +51,17 @@ does not add or alter a kernel capability.
 | Layer | Result | Evidence |
 | --- | --- | --- |
 | T0 pure domain | PASS | `test_primitives.py`, `test_object_domain.py`, `test_objecttemplate_domain.py`, `test_relationship_domain.py`, `test_relationshipdefinition_domain.py`. |
-| T1 application/orchestration | PASS | Direct service orchestration in the four `test_*_semantic_concurrency.py` suites plus explicit UoW tests. |
+| T1 application/orchestration | PASS | Direct service orchestration across the five semantic-concurrency suites (DataType, ObjectTemplate, Object, RelationshipDefinition, Relationship) plus explicit UoW tests. |
 | T2 real-PostgreSQL persistence | PASS | API integration, persistence constraint, schema metadata, UoW and PostgreSQL support tests. |
 | T3 deterministic real-PostgreSQL concurrency | PASS | 106 `postgresql and concurrency` tests; independent sessions, observed blockers/gates/constraints and no correctness `sleep()`. |
 | T4 API contract/integration | PASS | 30 `postgresql and api` tests plus the cheap exact OpenAPI/error-catalog scope test. |
 | T5 migration/schema | PASS | Clean base→head, 0001→0002, downgrade/upgrade, schema structure and empty metadata-drift checks. |
 | T6 targeted properties | PASS | 4 Hypothesis tests for exact number, byte-size and primitive canonicalization properties. |
-| T7 randomized/stress | Supplementary only | Not required or used as a substitute for T3; no T7 result is claimed by this acceptance candidate. |
+| T7 randomized/stress | Supplementary only | Not required or used as a substitute for T3; no T7 result is claimed by M1 acceptance. |
 
 ## PGTEST and safety-predicate closure
 
-`tests/test_m1_traceability.py` holds the durable registry. Its keys are mechanically
-checked against this exact census:
+`tests/test_m1_traceability.py` holds the durable registry. Its keys are mechanically checked against this exact census:
 
 ```text
 ROW     17 / 17
@@ -70,22 +74,16 @@ PAR      7 / 7
 total   51 / 51
 ```
 
-Variants are values under their canonical parent IDs; they do not inflate the census.
-The registry currently resolves to 79 unique concrete pytest functions. Every target
-exists and carries the real-PostgreSQL marker; the direct target selection passed all
-79 nodes.
+Variants are values under their canonical parent IDs; they do not inflate the census. The registry resolves to 79 unique concrete pytest functions. Every target exists and carries the real-PostgreSQL marker; the direct target selection passed all 79 nodes.
 
-The same file checks this exact non-`I` predicate set and requires every mapping to be
-non-empty and refer only to canonical scenario IDs:
+The same file checks this exact non-`I` predicate set and requires every mapping to be non-empty and refer only to canonical scenario IDs:
 
 ```text
 NU VS DG LS DV BA AM RL AL ML OS PO OF SO OC RC RF RA ES
 = 19 / 19
 ```
 
-The mapping is identical to PGTEST-02: `RL` spans REF-01..06, while composed ATOMIC
-and PAR evidence remains beneath canonical parent IDs. No missing canonical scenario
-or predicate required a production change.
+The mapping is identical to PGTEST-02: `RL` spans REF-01..06, while composed ATOMIC and PAR evidence remains beneath canonical parent IDs. No missing canonical scenario or predicate required a production change.
 
 ## API closure
 
@@ -98,37 +96,27 @@ public error codes  23 / 23
 namespace           /api/v1/core
 ```
 
-`test_object_scope.py::test_s08_public_route_and_error_catalog_closure` also rejects
-PUT/PATCH, action DSLs, autonomous RelationshipResolution/ObjectComponent mutation
-routes and JSON Schema endpoints. Domain API suites verify strict bodies, unknown-field
-and coercion rejection, omission versus explicit null, positive exact `expected_revision`,
-selector rules, PrimitiveType lexical/canonical forms, success bodies/status/`Location`,
-bounded error details and the frozen list/cursor/filter behavior.
+`test_object_scope.py::test_s08_public_route_and_error_catalog_closure` also rejects PUT/PATCH, action DSLs, autonomous RelationshipResolution/ObjectComponent mutation routes and JSON Schema endpoints. Domain API suites verify strict bodies, unknown-field and coercion rejection, omission versus explicit null, positive exact `expected_revision`, selector rules, PrimitiveType lexical/canonical forms, success bodies/status/`Location`, bounded error details and the frozen list/cursor/filter behavior.
 
 ## Database and migration closure
 
-Verification used externally supplied PostgreSQL
-`16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)` through `TEST_DATABASE_URL`; no credential or
-database URL is recorded here.
+Verification used externally supplied PostgreSQL `16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)` through `TEST_DATABASE_URL`; no credential or database URL is recorded here.
 
 `test_initial_revision_structure_drift_and_owned_downgrade` proved:
 
 - clean Alembic `base` → `head` succeeds;
 - committed `0001_m1_schema` and `0002_relationship_resolution_name_nonkey` compose;
-- the 0002 downgrade restores exactly the prior semantic-child UNIQUE and re-upgrade
-  removes it;
+- the 0002 downgrade restores exactly the prior semantic-child UNIQUE and re-upgrade removes it;
 - migrated schema versus authoritative metadata has no differences;
 - the 13 tables, keys, FKs, constraints and PERSIST-15 indices have the frozen shapes;
-- Alembic downgrade removes only NETAUTO-owned objects and preserves an external
-  sentinel;
+- Alembic downgrade removes only NETAUTO-owned objects and preserves an external sentinel;
 - application lifespan does not invoke Alembic or otherwise migrate implicitly.
 
 The focused migration/schema/persistence/composition/surface group passed 15 tests.
 
 ## Reproducibility and final command ledger
 
-Commands were run from the repository root with one externally managed PostgreSQL
-test target, serially and without xdist:
+Commands were run from the repository root with one externally managed PostgreSQL test target, serially and without xdist:
 
 | Command | Result |
 | --- | --- |
@@ -153,12 +141,12 @@ test target, serially and without xdist:
 | `uv run coverage run -m pytest -q` | PASS — 268 passed |
 | `uv run coverage report` | PASS — 3,749 statements, 87% branch-aware aggregate |
 
-The coverage missing-branch report was inspected. Remaining uncovered lines are
-predominantly defensive validation/error branches and do not expose a missing frozen
-acceptance behavior; coverage is supplementary evidence and no threshold was invented.
+The coverage missing-branch report was inspected. Remaining uncovered lines are predominantly defensive validation/error branches and do not expose a missing frozen acceptance behavior; coverage is supplementary evidence and no threshold was invented.
 
-The documentation stale-marker sweep found only normative workflow text and the
-reviewer-owned `IN PROGRESS` state. No frozen semantic document was edited to match an
-implementation accident. The root README now records the verified CPython/uv setup,
-explicit Alembic administration, Uvicorn factory, runtime/test database separation and
-serial real-PostgreSQL verification commands.
+The documentation stale-marker sweep found no unresolved semantic implementation marker. Individual architecture-document `DRAFT` headers remain historical authoring labels beneath the set-level FREEZE-01 authority and were not mass-edited. The root README records the verified CPython/uv setup, explicit Alembic administration, Uvicorn factory, runtime/test database separation and serial real-PostgreSQL verification commands.
+
+## Reviewer closure
+
+Final review confirmed that the S09 delta is limited to delivery documentation and machine-checkable verification traceability; no production code, migration, normative architecture document, schema, gate or capability changed. No architecture contradiction remains known.
+
+M1 therefore satisfies `AC-01..AC-10` and is accepted as delivered.
