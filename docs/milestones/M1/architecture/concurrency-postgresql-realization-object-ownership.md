@@ -88,7 +88,9 @@ DETACH(parent,...)
 SCHEMA_CHANGE(parent)
 ```
 
-acquisiscono `objects(parent) FOR NO KEY UPDATE` prima delle rispettive state-dependent decisioni. ATTACH valida slot e child compatibility contro il parent schema ricaricato post-lock. SCHEMA_CHANGE, dopo il lock, valida il target schema contro l'outgoing set current. DETACH può rimuovere un blocker e quindi non rivalida lo slot per poter cancellare un existing current fact.
+acquisiscono `objects(parent) FOR NO KEY UPDATE` prima delle rispettive state-dependent decisioni. ATTACH valida slot e child compatibility contro il parent schema ricaricato post-lock. SCHEMA_CHANGE, dopo il lock, valida il target schema contro l'outgoing set current.
+
+DETACH non esegue una nuova slot/compatibility admission: la removal authority resta l'exact current ownership fact. Tuttavia, quando un exact edge esiste, il suo `slot_name` deve risolvere una current `SlotSemanticKey` nella exact effective schema del parent stabilizzato, perché il current parent schema è l'autorità semantica del fact e fornisce anche `slot_declaring_template_id` alla projection/event. Un persisted edge non risolvibile non viene reinterpretato tramite historical lookup: è invariant corruption/internal failure.
 
 ### 3.2 `S-OWNERSHIP-FACT` (`OF`)
 
@@ -100,7 +102,7 @@ oppure
 (parent=P, slot=S)
 ```
 
-persistito in `object_components` senza stable edge identity.
+persistito in `object_components` senza stable edge identity e senza persisted `slot_declaring_template_id`. La semantic identity corrente dello slot viene derivata dal current exact schema del parent.
 
 ATTACH decision table sul current fact:
 
@@ -113,10 +115,12 @@ different P/S     -> ownership conflict
 DETACH decision table:
 
 ```text
-exact requested   -> real delete + one DETACH_FROM event
+exact requested   -> resolve current SlotSemanticKey -> real delete + one DETACH_FROM event
 detached          -> idempotent success/no-op/no event
 different P/S     -> ownership mismatch; never remove that other edge
 ```
+
+Se il current exact edge esiste ma il current parent schema non contiene esattamente lo slot richiesto, la row contraddice l'invariant secondo cui ogni committed edge è valido nel current schema: nessuna "last known declaration" o lifecycle-history fallback è ammessa.
 
 Cross-parent DETACH/ATTACH può produrre conservative ATTACH failure se la concurrent detach non è ancora committed; oppure detach-first e successivo attach. Entrambi sono serialmente validi.
 
@@ -140,7 +144,7 @@ Identical ATTACH/DETACH converge sul current fact; una real transition produce e
 
 Il graph gate può fisicamente serializzare molte ATTACH, ma **non** è l'authority di `S-SINGLE-OWNER`.
 
-Required PG tests: ATTACH/SCHEMA_CHANGE(parent), DETACH/SCHEMA_CHANGE(parent), identical ATTACH one edge/event, different-parent same-child at most one owner, ATTACH/DETACH exact, cross-parent detach/attach, identical DETACH one removal/event, wrong-owner DETACH safety, child intrinsic operations not lock requirements, direct PK tests, absent-state races, rollback behavior, parent over-serialization, no-op event absence, explicit ABA behavior.
+Required PG tests: ATTACH/SCHEMA_CHANGE(parent), DETACH/SCHEMA_CHANGE(parent), identical ATTACH one edge/event, different-parent same-child at most one owner, ATTACH/DETACH exact, cross-parent detach/attach, identical DETACH one removal/event, wrong-owner DETACH safety, child intrinsic operations not lock requirements, direct PK tests, absent-state races, rollback behavior, parent over-serialization, no-op event absence, explicit ABA behavior, e persisted-edge/current-slot inconsistency come internal invariant failure.
 
 ---
 
@@ -250,6 +254,8 @@ RD.RENAME                               -> Definition FOR NO KEY UPDATE
 `ATTACH_TO`/`DETACH_FROM` persistono `canonical_name` del child e `destination_canonical_name` del parent come historical display metadata.
 
 Il parent canonical name proviene dallo state della parent row già stabilizzata dal parent-owner lock. Il child canonical name viene letto come committed display metadata dopo la parent stabilization, senza introdurre un child lock soltanto per l'evento.
+
+La structural event `SlotSemanticKey` (`slot_declaring_template_id`, `slot_name`) viene risolta dalla current exact effective schema del parent stabilizzato. `object_components` persiste soltanto `slot_name`: non esiste una seconda current slot-identity authority nella runtime row. Per `DETACH_FROM`, la risoluzione serve a interpretare l'exact fact che si sta rimuovendo, non a ripetere ATTACH admission; se il fact non è interpretabile nel current schema, la mutation incontra persisted invariant corruption.
 
 Ownership produce un singolo structural event, quindi non necessita del multi-event `S-REL-EVENT-SNAPSHOT` machinery. Edge mutation ed event restano nella stessa UoW; una concurrent child rename può produrre old o new committed display name secondo l'observation point, ma non modifica la ownership fact semantics.
 
