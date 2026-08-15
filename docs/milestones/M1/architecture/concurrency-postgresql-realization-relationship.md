@@ -319,6 +319,23 @@ Definition header FOR NO KEY UPDATE
 
 This distinction preserves same-Definition writer serialization while avoiding a lock strength that would unnecessarily conflict with pure referential key-share protection from concurrent runtime Relationship creation.
 
+The physical `relationship_resolutions` schema must preserve the same distinction. In PostgreSQL, an UPDATE of a column participating in a UNIQUE/index key that is eligible to back a foreign key is treated as key-changing and therefore takes the stronger row-lock mode. Consequently `RelationshipResolution.name` MUST NOT participate in any baseline FK-referenziable UNIQUE/index key.
+
+In particular, M1 does not retain the former defensive:
+
+```text
+UNIQUE (
+    relationship_definition_id,
+    from_template_id,
+    to_template_id,
+    name
+)
+```
+
+The complete Definition shape and same-aggregate duplicate-child rejection remain domain/UoW invariants. PK `resolution.id` and the technical `UNIQUE(id, relationship_definition_id)` required by the runtime composite FK remain unchanged.
+
+This physical rule is part of PAR-02 correctness: `REL.CREATE × RD.RENAME` must not become serialized merely because mutable Resolution display metadata was accidentally represented as a referenced-key candidate.
+
 ### 4.2 Runtime Relationship vs Object metadata/state mutation
 
 Object `RENAME`, `DATA_CHANGE` and `SCHEMA_CHANGE` similarly use their Object row as `FOR NO KEY UPDATE` owner; Object DELETE remains `FOR UPDATE`.
