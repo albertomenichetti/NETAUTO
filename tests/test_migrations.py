@@ -53,6 +53,23 @@ def test_initial_revision_structure_drift_and_owned_downgrade(
                 "constrained_columns"
             ] == ["resolution_id", "from_object_id", "to_object_id"]
 
+            resolution_unique_constraints = {
+                constraint["name"]: constraint["column_names"]
+                for constraint in inspector.get_unique_constraints(
+                    "relationship_resolutions"
+                )
+            }
+            assert resolution_unique_constraints == {
+                "uq_relationship_resolutions_id_definition": [
+                    "id",
+                    "relationship_definition_id",
+                ]
+            }
+            assert all(
+                not index["unique"] or "name" not in index["column_names"]
+                for index in inspector.get_indexes("relationship_resolutions")
+            )
+
             datatype_fks = {
                 foreign_key["name"]
                 for foreign_key in inspector.get_foreign_keys("datatypes")
@@ -101,6 +118,29 @@ def test_initial_revision_structure_drift_and_owned_downgrade(
                 metadata,
             )
             assert differences == []
+
+            config.attributes["connection"] = connection
+            command.downgrade(config, "0001_m1_schema")
+            restored = {
+                constraint["name"]: constraint["column_names"]
+                for constraint in inspect(connection).get_unique_constraints(
+                    "relationship_resolutions"
+                )
+            }
+            assert restored["uq_relationship_resolutions_semantic_child"] == [
+                "relationship_definition_id",
+                "from_template_id",
+                "to_template_id",
+                "name",
+            ]
+            command.upgrade(config, "head")
+            upgraded = {
+                constraint["name"]
+                for constraint in inspect(connection).get_unique_constraints(
+                    "relationship_resolutions"
+                )
+            }
+            assert "uq_relationship_resolutions_semantic_child" not in upgraded
 
         with engine.connect() as connection:
             config.attributes["connection"] = connection

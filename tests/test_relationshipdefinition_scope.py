@@ -46,7 +46,7 @@ def test_relationship_domain_and_application_preserve_layer_boundaries() -> None
         assert "reverse_name" not in source
 
 
-def test_s06_registers_only_definition_and_capability_public_routes() -> None:
+def test_s07_registers_runtime_routes_without_resolution_crud() -> None:
     app = build_app(Settings(database_url="postgresql+psycopg://u:p@localhost/db"))
     schema = cast(dict[str, object], app.openapi())
     paths = cast(dict[str, object], schema["paths"])
@@ -56,20 +56,25 @@ def test_s06_registers_only_definition_and_capability_public_routes() -> None:
         "/api/v1/core/relationship-definitions/{relationship_definition_id}/rename",
         "/api/v1/core/object-templates/{template_id}/relationship-capabilities",
     } <= set(paths)
-    forbidden = {
+    assert {
         "/api/v1/core/relationships",
         "/api/v1/core/relationships/{relationship_id}",
         "/api/v1/core/objects/{object_id}/relationships",
+    } <= set(paths)
+    forbidden = {
         "/api/v1/core/relationship-resolutions",
         "/api/v1/core/relationship-resolutions/{resolution_id}",
     }
     assert forbidden.isdisjoint(paths)
 
 
-def test_s06_keeps_only_two_frozen_gates_and_one_initial_migration() -> None:
+def test_s07_keeps_only_two_frozen_gates_and_authorized_migrations() -> None:
     assert list(AdvisoryGate) == [
         AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE,
         AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
     ]
     migrations = sorted((ROOT / "migrations" / "versions").glob("*.py"))
-    assert [item.name for item in migrations] == ["0001_m1_schema_initial_m1_schema.py"]
+    assert [item.name for item in migrations] == [
+        "0001_m1_schema_initial_m1_schema.py",
+        "0002_relationship_resolution_name_nonkey.py",
+    ]

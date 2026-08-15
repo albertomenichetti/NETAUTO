@@ -301,13 +301,6 @@ relationship_resolutions = Table(
     Column("name", Text, nullable=False),
     _identifier_check("name", "ck_relationship_resolutions_name"),
     UniqueConstraint(
-        "relationship_definition_id",
-        "from_template_id",
-        "to_template_id",
-        "name",
-        name="uq_relationship_resolutions_semantic_child",
-    ),
-    UniqueConstraint(
         "id",
         "relationship_definition_id",
         name="uq_relationship_resolutions_id_definition",

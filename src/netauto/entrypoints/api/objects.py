@@ -38,6 +38,7 @@ from netauto.persistence.objects import (
     EventKind,
     LifecycleEvent,
     OwnershipLifecycleEvent,
+    RelationshipLifecycleEvent,
 )
 
 router = APIRouter(prefix="/api/v1/core", tags=["objects"])
@@ -206,11 +207,21 @@ class OwnershipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
     slot_name: str
 
 
+class RelationshipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
+    kind: Literal["RELATIONSHIP_CREATED", "RELATIONSHIP_DELETED"]
+    destination_object_id: UUID
+    destination_canonical_name: str
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    relationship_name: str
+
+
 type LifecycleEventDto = Annotated[
     CreatedLifecycleEventDto
     | ChangedLifecycleEventDto
     | DeletedLifecycleEventDto
-    | OwnershipLifecycleEventDto,
+    | OwnershipLifecycleEventDto
+    | RelationshipLifecycleEventDto,
     Field(discriminator="kind"),
 ]
 
@@ -234,6 +245,23 @@ def _summary(value: ObjectSummary) -> ObjectSummaryDto:
 
 
 def _event(value: LifecycleEvent) -> LifecycleEventDto:
+    if isinstance(value, RelationshipLifecycleEvent):
+        relationship_kind = cast(
+            Literal["RELATIONSHIP_CREATED", "RELATIONSHIP_DELETED"],
+            value.kind.value,
+        )
+        return RelationshipLifecycleEventDto(
+            id=value.id,
+            occurred_at=value.occurred_at,
+            kind=relationship_kind,
+            object_id=value.object_id,
+            canonical_name=value.canonical_name,
+            destination_object_id=value.destination_object_id,
+            destination_canonical_name=value.destination_canonical_name,
+            relationship_id=value.relationship_id,
+            relationship_definition_id=value.relationship_definition_id,
+            relationship_name=value.relationship_name,
+        )
     if isinstance(value, OwnershipLifecycleEvent):
         ownership_kind = cast(Literal["ATTACH_TO", "DETACH_FROM"], value.kind.value)
         return OwnershipLifecycleEventDto(

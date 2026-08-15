@@ -1,4 +1,4 @@
-"""Plain-Python RelationshipDefinition aggregate semantics."""
+"""Plain-Python Relationship model-plane and factual runtime semantics."""
 
 import re
 from collections.abc import Mapping
@@ -48,7 +48,55 @@ class RelationshipCapability:
     to_template_id: UUID
 
 
+@dataclass(frozen=True, slots=True)
+class RuntimeRelationshipResolution:
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    resolution_id: UUID
+    from_object_id: UUID
+    to_object_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class Relationship:
+    id: UUID
+    relationship_definition_id: UUID
+    resolutions: tuple[RuntimeRelationshipResolution, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipView:
+    object_id: UUID
+    destination_object_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectRelationshipView:
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    object_id: UUID
+    destination_object_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipLifecycleView:
+    object_id: UUID
+    canonical_name: str
+    destination_object_id: UUID
+    destination_canonical_name: str
+    relationship_name: str
+
+
 class RelationshipDefinitionValidationError(ValueError):
+    def __init__(self, path: str, rule: str) -> None:
+        self.path = path
+        self.rule = rule
+        super().__init__(f"{path}: {rule}")
+
+
+class RelationshipValidationError(ValueError):
     def __init__(self, path: str, rule: str) -> None:
         self.path = path
         self.rule = rule
@@ -314,3 +362,164 @@ def first_conflict(
             ):
                 return candidate_resolution, existing_resolution
     return None
+
+
+def derive_runtime_closure(
+    definition: RelationshipDefinition,
+    *,
+    selected_resolution_id: UUID,
+    from_object_id: UUID,
+    from_template_id: UUID,
+    to_object_id: UUID,
+    to_template_id: UUID,
+    parent_by_id: Mapping[UUID, UUID | None],
+    relationship_id: UUID | None = None,
+) -> tuple[RuntimeRelationshipResolution, ...]:
+    """Derive the complete exact runtime closure from one factual selector."""
+    validate_definition(definition)
+    by_id = {item.id: item for item in definition.resolutions}
+    selected = by_id.get(selected_resolution_id)
+    if selected is None:
+        raise RelationshipValidationError(
+            "resolution_id", "resolution_not_in_definition"
+        )
+
+    def admits(resolution: RelationshipResolution, first: UUID, second: UUID) -> bool:
+        return lineage_is_ancestor(
+            parent_by_id, resolution.from_template_id, first
+        ) and lineage_is_ancestor(parent_by_id, resolution.to_template_id, second)
+
+    if not admits(selected, from_template_id, to_template_id):
+        if not lineage_is_ancestor(
+            parent_by_id, selected.from_template_id, from_template_id
+        ):
+            raise RelationshipValidationError(
+                "from_object_id", "incompatible_template_lineage"
+            )
+        raise RelationshipValidationError(
+            "to_object_id", "incompatible_template_lineage"
+        )
+
+    factual_id = relationship_id or uuid4()
+    exact: set[tuple[UUID, UUID, UUID]] = set()
+    if not definition.symmetric:
+        exact.add((selected.id, from_object_id, to_object_id))
+        reciprocal = next(
+            (
+                item
+                for item in definition.resolutions
+                if item.id != selected.id
+                and item.from_template_id == selected.to_template_id
+                and item.to_template_id == selected.from_template_id
+            ),
+            None,
+        )
+        if reciprocal is None:
+            raise RelationshipDefinitionValidationError(
+                "resolutions", "non_symmetric_resolutions_must_be_reciprocal"
+            )
+        exact.add((reciprocal.id, to_object_id, from_object_id))
+    else:
+        assignments = (
+            (from_object_id, from_template_id, to_object_id, to_template_id),
+            (to_object_id, to_template_id, from_object_id, from_template_id),
+        )
+        for resolution in definition.resolutions:
+            for first_id, first_template, second_id, second_template in assignments:
+                if admits(resolution, first_template, second_template):
+                    exact.add((resolution.id, first_id, second_id))
+
+    return tuple(
+        RuntimeRelationshipResolution(
+            relationship_id=factual_id,
+            relationship_definition_id=definition.id,
+            resolution_id=resolution_id,
+            from_object_id=first_id,
+            to_object_id=second_id,
+        )
+        for resolution_id, first_id, second_id in sorted(
+            exact, key=lambda item: (item[0].int, item[1].int, item[2].int)
+        )
+    )
+
+
+def validate_relationship(
+    value: Relationship,
+    definition: RelationshipDefinition,
+    *,
+    parent_by_id: Mapping[UUID, UUID | None],
+    template_by_object_id: Mapping[UUID, UUID],
+) -> None:
+    """Validate that persisted runtime rows are exactly one factual closure."""
+    if value.relationship_definition_id != definition.id or not value.resolutions:
+        raise RelationshipValidationError("relationship", "incomplete_closure")
+    if any(
+        item.relationship_id != value.id
+        or item.relationship_definition_id != value.relationship_definition_id
+        for item in value.resolutions
+    ):
+        raise RelationshipValidationError("relationship", "aggregate_mismatch")
+    selector = min(
+        value.resolutions,
+        key=lambda item: (
+            item.resolution_id.int,
+            item.from_object_id.int,
+            item.to_object_id.int,
+        ),
+    )
+    try:
+        from_template_id = template_by_object_id[selector.from_object_id]
+        to_template_id = template_by_object_id[selector.to_object_id]
+    except KeyError as error:
+        raise RelationshipValidationError(
+            "relationship", "missing_endpoint_object"
+        ) from error
+    expected = derive_runtime_closure(
+        definition,
+        selected_resolution_id=selector.resolution_id,
+        from_object_id=selector.from_object_id,
+        from_template_id=from_template_id,
+        to_object_id=selector.to_object_id,
+        to_template_id=to_template_id,
+        parent_by_id=parent_by_id,
+        relationship_id=value.id,
+    )
+    actual_keys = {
+        (item.resolution_id, item.from_object_id, item.to_object_id)
+        for item in value.resolutions
+    }
+    expected_keys = {
+        (item.resolution_id, item.from_object_id, item.to_object_id)
+        for item in expected
+    }
+    if actual_keys != expected_keys or len(actual_keys) != len(value.resolutions):
+        raise RelationshipValidationError("relationship", "incomplete_closure")
+
+
+def relationship_views(
+    value: Relationship, definition: RelationshipDefinition
+) -> tuple[RelationshipView, ...]:
+    names = {item.id: item.name for item in definition.resolutions}
+    try:
+        views = {
+            RelationshipView(
+                object_id=item.from_object_id,
+                destination_object_id=item.to_object_id,
+                name=names[item.resolution_id],
+            )
+            for item in value.resolutions
+        }
+    except KeyError as error:
+        raise RelationshipValidationError(
+            "relationship", "resolution_not_in_definition"
+        ) from error
+    return tuple(
+        sorted(
+            views,
+            key=lambda item: (
+                item.object_id.int,
+                item.destination_object_id.int,
+                item.name,
+            ),
+        )
+    )

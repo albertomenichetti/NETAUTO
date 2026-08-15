@@ -68,7 +68,25 @@ class OwnershipLifecycleEvent:
     after: None = None
 
 
-type LifecycleEvent = IntrinsicLifecycleEvent | OwnershipLifecycleEvent
+@dataclass(frozen=True, slots=True)
+class RelationshipLifecycleEvent:
+    id: UUID
+    occurred_at: datetime
+    kind: EventKind
+    object_id: UUID
+    canonical_name: str
+    destination_object_id: UUID
+    destination_canonical_name: str
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    relationship_name: str
+    before: None = None
+    after: None = None
+
+
+type LifecycleEvent = (
+    IntrinsicLifecycleEvent | OwnershipLifecycleEvent | RelationshipLifecycleEvent
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +195,36 @@ def _event(row: RowMapping) -> LifecycleEvent:
         kind = EventKind(cast(str, row["kind"]))
     except ValueError as error:
         raise RuntimeError("persisted lifecycle kind is invalid") from error
+    if kind in {EventKind.RELATIONSHIP_CREATED, EventKind.RELATIONSHIP_DELETED}:
+        destination_id = cast(UUID | None, row["destination_object_id"])
+        destination_name = cast(str | None, row["destination_canonical_name"])
+        relationship_id = cast(UUID | None, row["relationship_id"])
+        definition_id = cast(UUID | None, row["relationship_definition_id"])
+        relationship_name = cast(str | None, row["relationship_name"])
+        if (
+            destination_id is None
+            or destination_name is None
+            or relationship_id is None
+            or definition_id is None
+            or relationship_name is None
+            or row["slot_declaring_template_id"] is not None
+            or row["slot_name"] is not None
+            or row["before_state"] is not None
+            or row["after_state"] is not None
+        ):
+            raise RuntimeError("persisted Relationship lifecycle event is incoherent")
+        return RelationshipLifecycleEvent(
+            id=cast(UUID, row["id"]),
+            occurred_at=cast(datetime, row["occurred_at"]),
+            kind=kind,
+            object_id=cast(UUID, row["object_id"]),
+            canonical_name=cast(str, row["canonical_name"]),
+            destination_object_id=destination_id,
+            destination_canonical_name=destination_name,
+            relationship_id=relationship_id,
+            relationship_definition_id=definition_id,
+            relationship_name=relationship_name,
+        )
     if kind in {EventKind.ATTACH_TO, EventKind.DETACH_FROM}:
         destination_id = cast(UUID | None, row["destination_object_id"])
         destination_name = cast(str | None, row["destination_canonical_name"])

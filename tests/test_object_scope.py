@@ -42,7 +42,7 @@ def test_object_domain_and_application_preserve_layer_boundaries() -> None:
         assert "JSON Schema" not in source
 
 
-def test_s06_preserves_object_scope_while_adding_template_capabilities() -> None:
+def test_s07_adds_only_semantic_relationship_navigation_to_object_scope() -> None:
     app = build_app(Settings(database_url="postgresql+psycopg://u:p@localhost/db"))
     schema = cast(dict[str, object], app.openapi())
     paths = cast(dict[str, object], schema["paths"])
@@ -63,12 +63,12 @@ def test_s06_preserves_object_scope_while_adding_template_capabilities() -> None
     assert (
         "/api/v1/core/object-templates/{template_id}/relationship-capabilities" in paths
     )
-    assert not any(path.endswith("/relationships") for path in paths)
+    assert "/api/v1/core/objects/{object_id}/relationships" in paths
     object_methods = cast(dict[str, object], paths["/api/v1/core/objects/{object_id}"])
     assert "delete" not in object_methods
 
 
-def test_lifecycle_response_schema_is_s05_discriminated_union() -> None:
+def test_lifecycle_response_schema_is_s07_discriminated_union() -> None:
     app = build_app(Settings(database_url="postgresql+psycopg://u:p@localhost/db"))
     schema = _mapping(app.openapi())
     paths = _mapping(schema["paths"])
@@ -101,6 +101,12 @@ def test_lifecycle_response_schema_is_s05_discriminated_union() -> None:
             "SCHEMA_CHANGE": "#/components/schemas/ChangedLifecycleEventDto",
             "ATTACH_TO": "#/components/schemas/OwnershipLifecycleEventDto",
             "DETACH_FROM": "#/components/schemas/OwnershipLifecycleEventDto",
+            "RELATIONSHIP_CREATED": (
+                "#/components/schemas/RelationshipLifecycleEventDto"
+            ),
+            "RELATIONSHIP_DELETED": (
+                "#/components/schemas/RelationshipLifecycleEventDto"
+            ),
         },
     }
     assert event_union["oneOf"] == [
@@ -108,6 +114,7 @@ def test_lifecycle_response_schema_is_s05_discriminated_union() -> None:
         {"$ref": "#/components/schemas/ChangedLifecycleEventDto"},
         {"$ref": "#/components/schemas/DeletedLifecycleEventDto"},
         {"$ref": "#/components/schemas/OwnershipLifecycleEventDto"},
+        {"$ref": "#/components/schemas/RelationshipLifecycleEventDto"},
     ]
 
     intrinsic_schema_text = repr(

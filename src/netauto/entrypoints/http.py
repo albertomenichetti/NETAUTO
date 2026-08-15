@@ -13,6 +13,7 @@ from netauto.entrypoints.api.objecttemplates import router as object_template_ro
 from netauto.entrypoints.api.relationshipdefinitions import (
     router as relationship_definition_router,
 )
+from netauto.entrypoints.api.relationships import router as relationship_router
 from netauto.logging import configure_logging
 from netauto.persistence.engine import build_runtime_context
 from netauto.settings import Settings
@@ -41,6 +42,7 @@ def build_app(settings: Settings) -> FastAPI:
     app.include_router(object_template_router)
     app.include_router(object_router)
     app.include_router(relationship_definition_router)
+    app.include_router(relationship_router)
     install_error_handlers(app)
     return app
 
