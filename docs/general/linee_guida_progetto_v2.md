@@ -40,7 +40,49 @@ Il codice non costituisce **MAI** una fonte autonoma di decisioni architetturali
 ### Struttura documentale
 
 Tutta la documentazione relativa alla specifica milesone Mx viene sviluppata sotto `docs/milestones/<Mx>/`.
-Tale documentazione ha precedenza assoluta ed è l'unica base documentale autorevole per la specifica milestone; quanto contenuto in tale folder deve essere **SOVRAPPONIBILE** a quanto contenuto in `docs/architecture`: se  `docs/milestones/<Mx>/` rappresenta il **TO-BE** della milestone in corso, `docs/architecture/` rappresenta lo stato attuale del sistema quindi tutti gli assunti e le condizioni iniziali presenti nei documenti di milestone devono essere verificati e verificabili in `docs/architecture/`.
+
+Durante il ciclo di milestone devono essere mantenuti distinti due livelli documentali con ruoli diversi:
+
+```text
+docs/architecture/
+    = AS-IS architetturale autorevole del sistema già consolidato e consegnato
+
+docs/milestones/<Mx>/
+    = TO-BE normativo della milestone Mx, limitatamente al perimetro e alle modifiche
+      che la milestone intende introdurre
+```
+
+`docs/architecture/` rappresenta quindi la baseline architetturale corrente da cui ogni nuova milestone parte. Tutti gli assunti iniziali della milestone, le condizioni ereditate dal sistema corrente e i comportamenti che la milestone dichiara di non modificare devono essere verificabili e coerenti con quanto documentato in `docs/architecture/`.
+
+Questa verifica è un gate obbligatorio del design. Se `docs/milestones/<Mx>/` assume come punto di partenza una proprietà, una semantica, una struttura o un comportamento che non è verificabile in `docs/architecture/`, oppure che risulta in contraddizione con essa, il design del punto interessato deve fermarsi. Prima di procedere deve essere chiarito esplicitamente se:
+
+- `docs/architecture/` è incompleta o non allineata allo stato corrente realmente consolidato;
+- l'assunto iniziale della milestone è errato;
+- la milestone sta in realtà introducendo una modifica architetturale che deve essere dichiarata e progettata come parte del proprio TO-BE.
+
+La discrepanza deve essere risolta documentalmente prima di continuare il design o trasformare quell'assunto in codice. Non è ammesso scegliere implicitamente la versione più conveniente, affidarsi alla memoria, al codice esistente o alla Git history come sostituti dell'autorità documentale corrente.
+
+Una milestone può e normalmente deve divergere da `docs/architecture/` nei punti che intende evolvere: tale divergenza non è un conflitto quando è **esplicitamente identificata come modifica TO-BE**, deriva dal `contract.md` della milestone ed è consolidata nella relativa documentazione architetturale. Una differenza non dichiarata o non tracciabile è invece drift documentale e deve essere trattata come un problema da risolvere.
+
+In sintesi:
+
+```text
+assunto ereditato / comportamento invariato
+    -> deve essere verificabile in docs/architecture/
+
+modifica introdotta da Mx
+    -> deve essere esplicita in docs/milestones/<Mx>/
+       e tracciabile dal contract al design
+
+punto di partenza non verificabile o contraddittorio
+    -> STOP del design interessato
+    -> analisi della discrepanza
+    -> riallineamento / correzione / esplicitazione della modifica
+    -> solo dopo si riprende
+```
+
+Al termine della milestone, il nuovo stato architetturale risultante dalle modifiche approvate viene consolidato e armonizzato in `docs/architecture/`, che diventa così la nuova baseline AS-IS per i cicli successivi.
+
 Il materiale storico eventualmente necessario è sempre recuperabile dalla Git history e dalle fasi di milestone o fix precedenti, non costituisce autorità per il design o l'implementazione corrente; eventuali conflitti in tal senso devono essere risolti in modo esplicito. Directory o file storici rimossi dal working tree non devono essere ripristinati come baseline implicita.
 
 I documenti normativi relativi alla specifica milestone sono così organizzati:
