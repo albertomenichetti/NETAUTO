@@ -1,60 +1,86 @@
 # M1 — Implementation Status
 
-**Milestone status:** IMPLEMENTATION IN PROGRESS
+**Milestone status:** DELIVERED
 
-## Current step
+## Final step
 
 ```text
 M1-S09 — Full M1 acceptance, regression and delivery gate
 ```
 
-**Step status:** IN PROGRESS
+**Step status:** COMPLETED
 
-M1-S00 through M1-S08 have completed implementation review.
+All M1 implementation and acceptance steps have completed review.
 
-## M1-S08 accepted baseline
-
-Accepted implementation:
+## Accepted S09 evidence baseline
 
 ```text
-678da20904bec7eb16a6baff45f26a80890dbcae
-+
-30fa3be16bef705c1e7df1d4c4e66679badf8c72
-    REF-06 verification-closure review fix
+b7c3722ba7964841d28fb8eb63e1bf828f078ff8  Complete M1 acceptance evidence
+40e5c5946ebf38a93de4e4c683ca567694acfd58  Correct final Ruff evidence count
 ```
 
-The accepted S08 capability includes:
-
-- final race-safe `Object.DELETE` using `objects(O) FOR UPDATE`;
-- zero incoming/outgoing ownership and zero factual-Relationship delete admission;
-- semantic blocker counts with factual Relationship de-duplication;
-- immediate PostgreSQL FK `RESTRICT` as final cross-domain lifetime authority;
-- atomic `DELETED` lifecycle event and historical retention with no implicit cleanup;
-- bounded DataType/ObjectTemplate/Object FK race-loser translation;
-- full cross-domain DT/OT/RD/Object blocker matrix;
-- complete canonical `REF-01..06` closure including explicit REF-06 aggregate-CASCADE vs external-RESTRICT evidence;
-- lifecycle filter/cursor/index closure;
-- exact public inventory of 32 mutation routes, 20 read routes and 23 public error codes.
-
-Final accepted S08 verification on PostgreSQL 16.14:
+S09 introduced no production capability. Its accepted repository delta is limited to:
 
 ```text
-full suite                              265 passed
-non-PostgreSQL                          122 passed
-real PostgreSQL                         143 passed
-canonical REF selection                 16 passed
-explicit REF-06 selection               3 passed
-migration selection                     1 passed
-schema metadata                         3 passed
-persistence constraints / drift         2 passed
-Ruff / Pyright strict / lock / sync / build  PASS
+README.md
+    reproducible setup / migration / Uvicorn / verification commands
+
+docs/milestones/M1/acceptance.md
+    final AC-01..AC-10 and verification evidence record
+
+tests/test_m1_traceability.py
+    machine-checkable canonical PGTEST / safety-predicate registry
 ```
 
-No production, migration, schema, gate, capability or normative architecture change was required by the S08 review fix.
+Final reviewer-only closure then aligned README/acceptance wording with the delivered state and corrected one editorial T1 suite-count description. No production code, migration or normative architecture semantics changed during closure.
 
-## Frozen S07 physical correction carried forward
+## Final acceptance outcome
 
-The accepted M1 head includes the explicitly re-frozen S07 correction:
+Accepted verification on CPython 3.14.7 and PostgreSQL 16.14:
+
+```text
+AC-01..AC-10                           PASS
+STACK-07 T0..T6                        PASS
+canonical PGTEST                       51 / 51
+non-I safety predicates                19 / 19
+unique registry target nodes           79 passed
+API census                             32 mutation / 20 read / 23 error codes
+full suite                             268 passed
+non-PostgreSQL                         125 passed
+real PostgreSQL                        143 passed
+deterministic concurrency              106 passed
+API                                    30 passed
+migration                              1 passed
+Hypothesis properties                  4 passed
+Ruff format/check                      PASS
+Pyright strict                         PASS — 0 errors / 0 warnings
+uv lock / locked sync / build          PASS
+base -> head / 0001+0002 / drift       PASS
+branch-aware coverage                  87% over 3,749 statements
+```
+
+Coverage remains diagnostic evidence; no arbitrary percentage threshold is part of the M1 contract.
+
+The durable final acceptance record is:
+
+```text
+docs/milestones/M1/acceptance.md
+```
+
+## Delivered M1 capability
+
+The delivered M1 kernel provides the frozen PostgreSQL-backed baseline for:
+
+- `DataType` / `PrimitiveType`;
+- `ObjectTemplate` model graph and effective schema;
+- `Object` intrinsic state, ownership, schema change and lifecycle;
+- `RelationshipDefinition` / `RelationshipResolution` model plane;
+- factual runtime `Relationship` and semantic lifecycle/navigation;
+- cross-domain deletion/reference integrity;
+- strict `/api/v1/core` HTTP/JSON contract;
+- deterministic PostgreSQL concurrency verification.
+
+The accepted physical baseline includes the explicitly re-frozen S07 correction:
 
 ```text
 RelationshipResolution.name = mutable non-key metadata
@@ -66,88 +92,6 @@ RelationshipResolution.name = mutable non-key metadata
 
 Committed `0001` remains unchanged.
 
-## M1-S09 pre-flight outcome
-
-The mandatory S09 pre-flight re-read the final milestone contract, global architecture freeze/index, final consistency review, canonical PGTEST matrix, API contracts, technology baseline and accepted repository seams.
-
-Confirmed:
-
-```text
-M1 contract      FINAL / FROZEN
-M1 architecture  FROZEN as a set, including ownership + PAR-02 corrections
-M1 steps         FINAL / FROZEN
-M1-S00..S08      COMPLETED
-STACK-01..09     RATIFIED
-```
-
-No architecture contradiction is currently known.
-
-S09 introduces no new kernel capability. It is the final acceptance/evidence/delivery closure.
-
-### Required final acceptance closure
-
-S09 must prove, not merely report:
-
-```text
-AC-01..AC-10            all explicitly traceable and PASS
-T0..T6                  complete STACK-07 layer evidence
-canonical PGTEST        51 / 51 IDs traceable and passing
-non-I safety predicates 19 / 19 traceable
-API surface             32 mutation / 20 read / 23 error codes
-migrations              clean/base -> head + metadata drift closure
-runtime/test DB          explicit separation retained
-PostgreSQL-only          no alternative backend burden returned
-```
-
-The canonical PGTEST census is:
-
-```text
-17 ROW
-7  ARB
-6  REF
-6  GATE
-4  SNAP
-4  ATOMIC
-7  PAR
-= 51 canonical IDs
-```
-
-S09 must add durable machine-checkable traceability from those IDs to real current tests rather than relying on a prose claim.
-
-### Delivery/documentation closure
-
-The root README is still the earlier clean-slate implementation-state document and must be updated with verified current commands for:
-
-```text
-CPython 3.14 / uv setup
-explicit NETAUTO_DATABASE_URL migration
-Uvicorn application factory run
-TEST_DATABASE_URL test execution
-Ruff / Pyright / build / focused verification
-```
-
-Application startup remains migration-free; PostgreSQL provisioning remains external.
-
-S09 must also create a bounded M1 acceptance evidence record (`docs/milestones/M1/acceptance.md`) covering AC-01..10, T0..T6, PGTEST/predicate closure, API census, migration/static/reproducibility results and exact final verification counts.
-
-The final documentation sweep may correct only demonstrably stale implementation-era wording. Individual architecture documents may retain older authoring labels such as `DRAFT`; global FREEZE-01 in `architecture/README.md` is the authority and those labels must not be misread as open design.
-
-## S09 execution aid
-
-The only current non-normative execution prompt is:
-
-```text
-docs/milestones/M1/wip/M1-S09-codex-prompt.md
-```
-
-Prompt creation commit:
-
-```text
-d29b7d2a9d6553ddde2d7269fdb9f20765bcc6c8
-```
-
-Codex must not mark M1-S09 COMPLETED or M1 DELIVERED. Final status transition is reviewer-owned after the acceptance candidate is reviewed.
-
 ## Authoritative baseline
 
 ```text
@@ -155,7 +99,7 @@ docs/milestones/M1/contract.md
     FINAL / FROZEN
 
 docs/milestones/M1/architecture/README.md
-    FROZEN including the 2026-08-15 corrections
+    FROZEN as a set, including the 2026-08-15 ownership and PAR-02 corrections
 
 docs/milestones/M1/steps.md
     FINAL / FROZEN
@@ -167,31 +111,25 @@ AGENTS.md
     repository-level operating contract
 ```
 
+Individual architecture documents may retain older authoring labels such as `DRAFT`; the set-level FREEZE-01 authority remains controlling.
+
 ## Step registry
 
 ```text
-M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
-M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
-M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
-M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
-M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical slice
-M1-S05  COMPLETED        Ownership and Object schema-change vertical slice
-M1-S06  COMPLETED        RelationshipDefinition model-plane and capability vertical slice
-M1-S07  COMPLETED        Runtime Relationship and relationship lifecycle vertical slice
-M1-S08  COMPLETED        Cross-domain integrity, destructive-operation and API/read closure
-M1-S09  IN PROGRESS      Full M1 acceptance, regression and delivery gate
+M1-S00  COMPLETED  Clean-slate project bootstrap and quality/test runtime
+M1-S01  COMPLETED  PostgreSQL schema, migration, UoW and deterministic-test foundation
+M1-S02  COMPLETED  PrimitiveType and DataType vertical slice
+M1-S03  COMPLETED  ObjectTemplate and active model graph vertical slice
+M1-S04  COMPLETED  Object intrinsic state and intrinsic lifecycle vertical slice
+M1-S05  COMPLETED  Ownership and Object schema-change vertical slice
+M1-S06  COMPLETED  RelationshipDefinition model-plane and capability vertical slice
+M1-S07  COMPLETED  Runtime Relationship and relationship lifecycle vertical slice
+M1-S08  COMPLETED  Cross-domain integrity, destructive-operation and API/read closure
+M1-S09  COMPLETED  Full M1 acceptance, regression and delivery gate
 ```
 
 ## Current blockers
 
-None known at S09 start.
+None. No architecture contradiction remains known at M1 delivery.
 
-PostgreSQL-dependent verification requires the externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
-
-If the final gate discovers an implementation defect, fix it with the smallest deterministic regression-backed change. A genuine frozen architecture contradiction instead blocks the affected work and follows the explicit reopen/revalidate/propagate/re-freeze process.
-
-## Operational rule
-
-This file records operational progress only. It does not redefine milestone scope, architecture, technology choices or step semantics.
-
-M1-S09 and M1 move to completed/delivered state only after the final GitHub delta and acceptance evidence have been reviewed.
+Any future change to frozen M1 semantics follows the explicit reopen/revalidate/propagate/re-freeze process. New capability belongs to a subsequent milestone unless a formally reopened M1 contract says otherwise.
