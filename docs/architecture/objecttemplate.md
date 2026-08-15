@@ -6,15 +6,15 @@ An `ObjectTemplate` lineage is the stable identity of an entity type. An `Object
 
 ObjectTemplate defines:
 
-- inheritance between template lineages;
-- exact parent-version pinning;
+- stable inheritance between template lineages;
+- exact parent-version pinning per version snapshot;
 - typed properties;
 - ownership/component slots;
-- effective schema derivation;
+- effective-schema derivation;
 - lifecycle/default policy;
 - model-plane dependency certification.
 
-ObjectTemplate properties describe values. ObjectTemplate components describe ownership/composition of child Objects that retain their own identity. Relationships are a separate association model and are not ownership slots.
+ObjectTemplate properties describe values. Components describe ownership/composition of child Objects that retain their own identity. Relationships are a separate association model and are not ownership slots.
 
 ## Stable lineage identity
 
@@ -36,6 +36,8 @@ The parent **lineage** is stable for the lifetime of the ObjectTemplate. Current
 
 Inheritance is acyclic.
 
+`abstract=true` prevents direct Object instantiation but does not prevent the lineage from being used as an inheritance, component-target or Relationship compatibility contract.
+
 ## Exact version identity and parent pinning
 
 An exact ObjectTemplateVersion identity is:
@@ -54,9 +56,9 @@ The stable parent lineage belongs to the ObjectTemplate header; the exact parent
 
 Every version-sensitive dependency is exact. No persisted floating parent/default/latest reference is allowed.
 
-Version allocation follows the same `max(existing)+1` policy as DataType, with gaps allowed and reuse of a deleted highest DRAFT version number possible.
+Version allocation uses `max(existing)+1`; gaps are allowed and a deleted highest DRAFT version number may be reused.
 
-`create-next` creates a new DRAFT revision 1 by cloning an eligible exact PUBLISHED/DEPRECATED source snapshot. Multiple DRAFT versions may coexist.
+`create-next` creates a new DRAFT revision 1 by cloning an eligible exact PUBLISHED/DEPRECATED source snapshot. The source need not be the current maximum. Multiple DRAFT versions may coexist.
 
 ## Lifecycle and freshness
 
@@ -76,20 +78,14 @@ DRAFT:
 PUBLISHED and DEPRECATED:
 
 - are immutable snapshots;
-- PUBLISHED may be selected for new bindings and may be default;
+- PUBLISHED may receive new bindings and may be default;
 - DEPRECATED remains valid for historical exact bindings but cannot receive new direct lifecycle-sensitive bindings.
 
 The lineage default is NULL or an exact PUBLISHED version of the same lineage. First publish may auto-establish a missing default; later publications do not replace it automatically.
 
 ## Properties
 
-A property declaration belongs to one exact ObjectTemplateVersion and has semantic identity derived from:
-
-```text
-PropertySemanticKey = (declaring_template_id, name)
-```
-
-A local declaration contains, at minimum:
+A local property declaration belongs to one exact ObjectTemplateVersion and contains:
 
 ```text
 name
@@ -101,7 +97,7 @@ required
 migration_default
 ```
 
-Each property materializes an exact DataTypeVersion pin.
+Every property materializes an exact DataTypeVersion pin.
 
 Current value modes:
 
@@ -110,29 +106,62 @@ SCALAR
 LIST
 ```
 
-Property presence/cardinality is part of the property contract rather than the DataType contract.
+Property presence/cardinality belongs to the property contract, not the DataType contract.
 
-`required=false` implies no `migration_default`. A required property that is introduced into a schema migration path requires a valid `migration_default` when absence must be filled.
+```text
+SCALAR + required=false -> 0..1
+SCALAR + required=true  -> 1
+LIST   + required=false -> 0..N
+LIST   + required=true  -> 1..N
+```
 
-`migration_default`:
+The `migration_default` rule is exact and unconditional for current property declarations:
 
-- uses the same PrimitiveType parsing/canonicalization as runtime values;
-- fills absence during controlled Object schema migration;
-- never silently overwrites an existing incompatible source value.
+```text
+required = false
+    -> migration_default is absent / SQL NULL
+
+required = true + SCALAR
+    -> migration_default contains exactly one concrete valid value
+
+required = true + LIST
+    -> migration_default contains a non-empty ordered list of valid values
+```
+
+Every migration-default value is parsed, canonicalized and validated against the exact pinned DataTypeVersion.
+
+`migration_default` fills absence during controlled Object schema migration. It is not an Object CREATE default and never overwrites an existing incompatible source value.
 
 Property and component names share one effective member namespace; shadow/override ambiguity is not allowed.
 
-After first publication, property semantic identity is stable. Normal evolution does not rename a historical property identity or move it across DataType lineages.
+### Property semantic identity and history
 
-Current normal value-mode evolution is monotonic `SCALAR -> LIST`; narrowing back to SCALAR requires a future explicit controlled migration capability.
+Property continuity uses:
+
+```text
+PropertySemanticKey = (declaring_template_id, name)
+```
+
+The declaring lineage is the lineage that locally owns the declaration.
+
+A property introduced only in DRAFT and never published remains editorial. Before first publication its declaration may be revised, provided the DRAFT remains well-formed.
+
+After first publication, normal evolution preserves historical property identity:
+
+- `name` and `datatype_id` are stable;
+- exact `datatype_version`, `required`, `migration_default` and `position` may evolve subject to validation;
+- current normal value-mode evolution is monotonic `SCALAR -> LIST`;
+- `LIST -> SCALAR` or cross-DataType-lineage migration requires a future explicit controlled migration capability.
+
+A published property may be removed in a later version. If the **same declaring lineage** later reintroduces the same name, it retains the same historical semantic identity and all evolution constraints continue across the gap. Remove/re-add cannot reset stable `name`, `datatype_id`, value-mode direction or other historical rules.
+
+A property with the same effective name but a different declaring lineage is a different semantic property.
 
 `position` is explicit declaration state and is the ordering authority. Request-array order is not a second ordering authority.
 
 ## Components / ownership slots
 
-A component declaration is a named `0..N` ownership slot.
-
-A local slot contains:
+A component declaration is a named `0..N` ownership slot containing:
 
 ```text
 name
@@ -142,17 +171,34 @@ target_template_id
 
 The target is a stable ObjectTemplate lineage, not an exact version.
 
+Slot declaration admission requires only that the target lineage exist. The target:
+
+- may be abstract;
+- need not have a default version;
+- need not currently have a PUBLISHED exact version;
+- is not exact-version pinned by the slot.
+
 A child Object is compatible when its stable template lineage is the target lineage or a descendant lineage.
 
-Normal slot evolution may widen a target toward an ancestor; narrowing or unrelated target migration requires an explicit future workflow because it can invalidate current ownership state.
+Normal slot evolution may widen the target toward an ancestor. Narrowing or migration to an unrelated target requires a future explicit workflow because it can invalidate current ownership state.
 
-Slot semantic identity is:
+### Slot semantic identity and history
+
+Slot continuity uses:
 
 ```text
 SlotSemanticKey = (declaring_template_id, name)
 ```
 
+A slot introduced only in DRAFT and never published remains editorial.
+
+After first publication the slot name is stable under normal evolution. A published slot may be removed in a later version. If the **same declaring lineage** later reintroduces the same name, historical semantic identity and target-evolution constraints continue across the gap. Remove/re-add cannot be used to bypass target-widening rules.
+
+A same-name slot declared by a different lineage is a different semantic slot.
+
 Ownership runtime edges are interpreted against the parent Object's **current exact effective schema**, not against a version-pinned slot row.
+
+`position` is positive, unique within the local component set and presentation/order metadata only; gaps are allowed.
 
 ## Effective schema
 
@@ -166,7 +212,7 @@ local property declarations
 local component declarations
 ```
 
-It is a derived semantic projection, not a separately authoritative materialized schema.
+It is a semantic projection, not a separately authoritative materialized schema.
 
 No authoritative effective-schema cache, generic compiled schema representation or JSON Schema artifact exists in the current architecture.
 
@@ -175,12 +221,14 @@ A DRAFT must remain well-formed. Publication performs the stronger certification
 The effective schema must preserve:
 
 - acyclic exact inheritance;
-- unique effective property/slot names;
+- unique effective property/slot names across one shared member namespace;
 - exact DataType property pins;
-- valid property defaults/cardinality;
-- valid component targets;
+- valid property cardinality and migration defaults;
+- existing stable component-target lineages;
 - stable semantic identity of inherited/local members;
 - lifecycle-admissible direct exact dependencies.
+
+A child lineage cannot override, hide or remove an inherited property or slot.
 
 ## Active model graph
 
@@ -195,15 +243,19 @@ A dependency cannot be deprecated while a direct active PUBLISHED consumer remai
 
 Publication of a consumer and deprecation of a dependency are strongly consistent and cannot both commit if the resulting graph would contain an active edge to a non-PUBLISHED exact dependency.
 
-The invariant is enforced on direct dependencies; recursive validity follows because every active PUBLISHED consumer satisfies the same rule.
+The invariant is enforced on direct dependencies. Recursive validity follows because each PUBLISHED dependency-owning model is itself certified.
+
+Component target lineages and Relationship endpoint lineages are stable-lineage references, not active exact-version dependencies.
 
 ## Create/revise/publication model
 
 ObjectTemplate CREATE establishes a stable lineage and an initial DRAFT v1.
 
-REVISE is a complete replacement of the **local** candidate declarations for the exact DRAFT. It does not represent a generic partial PATCH of the effective schema.
+REVISE is complete replacement of the **local** candidate declarations for the exact DRAFT. It is not generic partial PATCH of the effective schema.
 
-The current public command contract requires explicit local property/component arrays on REVISE, including `[]` when the local set is empty.
+The public command requires explicit local property/component arrays on REVISE, including `[]` for an empty local set.
+
+For non-root lineages, REVISE may explicitly select an exact parent version or omit it to intentionally resolve/rebind through the current parent default. Root lineages forbid parent-version input.
 
 Publication validates and certifies the complete effective result after exact parent/dependency stabilization.
 
@@ -211,19 +263,28 @@ Publication validates and certifies the complete effective result after exact pa
 
 ObjectTemplate mutation does not silently remediate existing Object data or ownership state.
 
-Model-plane evolution and data-plane migration are distinct concerns:
+Model-plane evolution and data-plane migration are distinct:
 
 - a new exact version may define a different valid schema within allowed evolution rules;
-- existing Objects remain pinned to their current exact version until an explicit `Object.SCHEMA_CHANGE` is requested;
+- existing Objects remain pinned to their current exact version until explicit `Object.SCHEMA_CHANGE`;
+- publishing a version that removes a slot is allowed even when existing Objects on older versions still use that slot;
+- an individual Object migration fails until its current values/attachments can be preserved under the target;
 - model changes do not implicitly detach children, transform values or move Objects between lineages.
 
 ## Delete semantics
 
 Individual version delete is allowed only for DRAFT and requires `expected_revision`.
 
-Whole-lineage delete is allowed only when no external current reference remains, including version pins, parent/component references or runtime dependencies protected by the persistence model.
+Whole-lineage delete is allowed only when no external current reference remains, including:
 
-Owned local declarations are removed with their owning version only after semantic delete admission succeeds.
+- exact parent/version pins;
+- DataType property dependencies where the lineage is the consumer;
+- component target references;
+- RelationshipResolution endpoint references;
+- runtime Object exact version pins;
+- other references protected by the persistence model.
+
+Owned local declarations are removed with their owning version only after semantic root-delete admission succeeds.
 
 ## Read semantics
 
@@ -236,7 +297,7 @@ effective-schema read
 relationship-capability projection
 ```
 
-The exact version read exposes the local snapshot and exact parent pin. Effective schema is a separate derived projection and identifies the declaring lineage of each effective member.
+The exact version read exposes the local snapshot and exact parent pin. Effective schema is a separate derived projection and identifies the declaring lineage of each member.
 
 Ordinary reads are snapshot-consistent for the request but do not promise repeatability across requests.
 
@@ -246,14 +307,17 @@ Ordinary reads are snapshot-consistent for the request but do not promise repeat
 - qualified template name is unique;
 - inheritance is acyclic;
 - every non-root version has an exact parent pin;
-- lifecycle is monotonic and stable snapshots are immutable;
+- lifecycle is monotonic and PUBLISHED/DEPRECATED snapshots are immutable;
 - DRAFT mutation uses `expected_revision` freshness;
 - every persisted DRAFT is well-formed;
 - every property uses an exact DataTypeVersion pin;
+- optional properties have no migration default; required SCALAR/LIST properties always have the corresponding valid migration default;
 - property and slot names are unambiguous in the effective schema;
+- property/slot historical semantic identity survives remove/re-add by the same declaring lineage;
 - effective schema is derived from exact parent chain plus local declarations;
+- component targets are stable lineages and may be abstract/unversioned at declaration time;
 - default is NULL or exact PUBLISHED same-lineage;
-- PUBLISHED active-model direct dependencies remain PUBLISHED;
+- PUBLISHED active-model direct exact dependencies remain PUBLISHED;
 - model mutation performs no implicit runtime remediation;
 - individual delete is DRAFT-only and whole-lineage delete is reference-safe;
 - supported concurrent interleavings preserve all invariants above.
