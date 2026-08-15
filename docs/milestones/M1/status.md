@@ -8,7 +8,7 @@
 M1-S04 — Object intrinsic state and intrinsic lifecycle vertical slice
 ```
 
-**Step status:** IN PROGRESS
+**Step status:** IN PROGRESS — REVIEW CHANGES REQUIRED
 
 M1-S00, M1-S01, M1-S02 and M1-S03 have completed implementation review.
 
@@ -32,21 +32,29 @@ The S03 review-fix delta closed the completion findings by:
 - proving composite exact-version reads cannot mix header and declaration generations across a concurrent revise;
 - mapping DB-valid but semantically corrupt persisted effective-schema state to `500 internal_error` rather than caller `422 semantic_validation_failed`.
 
-Final reported S03 gates passed with 74 non-PostgreSQL tests and 55 PostgreSQL tests on PostgreSQL 16.14, plus `uv lock`, `uv sync --locked`, build, Ruff and strict Pyright. No suppressions, retries, sleeps, production test hooks, architecture contradictions or S04+ behavior were introduced.
+Final reported S03 gates passed with 74 non-PostgreSQL tests and 55 PostgreSQL tests on PostgreSQL 16.14, plus `uv lock`, `uv sync --locked`, build, Ruff and strict Pyright.
 
-M1-S04 pre-flight has been revalidated against the frozen Object, runtime-state, lifecycle, ObjectTemplate effective-schema, persistence/UoW, concurrency/PGTEST and API authorities. No architecture/documentation contradiction is currently known.
+M1-S04 pre-flight was revalidated against the frozen Object, runtime-state, lifecycle, ObjectTemplate effective-schema, persistence/UoW, concurrency/PGTEST and API authorities. No architecture/documentation contradiction is known.
 
-S04 now owns the intrinsic Object vertical slice only: kernel UUID identity, exact published OTV admission, definitive exact schema interpretation, canonical runtime properties, CREATE/RENAME/DATA_CHANGE, atomic intrinsic lifecycle events, Object GET/list and intrinsic lifecycle read/list machinery.
-
-`SCHEMA_CHANGE`, ownership ATTACH/DETACH, Object DELETE, ownership projections and Relationship behavior remain explicitly deferred to later steps.
-
-The non-normative Codex execution prompt for the current step is:
+The initial S04 implementation under review is:
 
 ```text
-docs/milestones/M1/wip/M1-S04-codex-prompt.md
+d7fd864f31aa161962f1c9595c3fdf69228547d7
 ```
 
-The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+The implementation establishes the intended intrinsic Object vertical capability: plain-Python runtime-property semantics, exact published OTV admission, definitive exact effective-schema interpretation on the caller-owned UoW, CREATE/RENAME/DATA_CHANGE, atomic typed intrinsic lifecycle persistence, Object GET/list and lifecycle reads, with deterministic real-PostgreSQL coverage for `ROW-11`, Object target admission/default races, the Object `REF-01` variant and `ATOMIC-04A`.
+
+The completion review found one targeted public API/OpenAPI finding: the S04 intrinsic lifecycle response DTO currently uses the full nine-value persistence `EventKind`, which incorrectly advertises ownership/Relationship event kinds with the intrinsic `{before,after}` response shape. API-03.9 requires a discriminated event-family representation; S04 must expose only the frozen intrinsic family in its response DTO while retaining the full lifecycle `kind` query-filter vocabulary.
+
+The non-normative Codex review-fix prompt is:
+
+```text
+docs/milestones/M1/wip/M1-S04-review-fixes-codex-prompt.md
+```
+
+The original S04 implementation prompt and review-fix prompt are execution aids only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+
+`SCHEMA_CHANGE`, ownership ATTACH/DETACH, Object DELETE, ownership projections and Relationship behavior remain explicitly deferred to later steps.
 
 With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
@@ -80,7 +88,7 @@ M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
 M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
 M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
 M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
-M1-S04  IN PROGRESS      Object intrinsic state and intrinsic lifecycle vertical slice
+M1-S04  IN PROGRESS      Object intrinsic state and intrinsic lifecycle vertical slice — review changes required
 M1-S05  NOT STARTED      Ownership and Object schema-change vertical slice
 M1-S06  NOT STARTED      RelationshipDefinition model-plane and capability vertical slice
 M1-S07  NOT STARTED      Runtime Relationship and relationship lifecycle vertical slice
@@ -90,7 +98,11 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-None known for implementing M1-S04.
+### S04 review finding — intrinsic lifecycle public DTO discrimination
+
+The persistence/internal event vocabulary correctly contains all nine M1 event kinds, and API-03.10 global lifecycle query filtering also owns the full kind vocabulary. The current S04 transport response model nevertheless uses that full enum inside the intrinsic `{before,after}` DTO, making the public/OpenAPI schema claim that ownership and Relationship kinds share intrinsic event fields.
+
+The response boundary must be narrowed to a real discriminated intrinsic family (`CREATED`, `RENAME`, `DATA_CHANGE`, `SCHEMA_CHANGE`, `DELETED`) with kind-appropriate before/after nullability. Structural/Relationship response variants remain deferred to their owning slices. This is an implementation/verification finding only; no frozen architecture contradiction was found.
 
 PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
