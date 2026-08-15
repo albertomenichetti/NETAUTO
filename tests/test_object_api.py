@@ -9,7 +9,11 @@ import pytest
 from sqlalchemy import Engine, select
 
 from netauto.entrypoints.http import build_app
-from netauto.persistence.metadata import object_lifecycle_events, objects
+from netauto.persistence.metadata import (
+    object_components,
+    object_lifecycle_events,
+    objects,
+)
 from netauto.persistence.objects import EventKind, ObjectStore
 from netauto.settings import Settings
 
@@ -61,6 +65,7 @@ async def _template(
     abstract: bool = False,
     parent_template_id: str | None = None,
     properties: list[dict[str, object]] | None = None,
+    components: list[dict[str, object]] | None = None,
     publish: bool = True,
 ) -> str:
     body: dict[str, object] = {
@@ -68,6 +73,7 @@ async def _template(
         "name": name,
         "abstract": abstract,
         "properties": properties or [],
+        "components": components or [],
     }
     if parent_template_id is not None:
         body["parent_template_id"] = parent_template_id
@@ -335,15 +341,378 @@ async def test_object_admission_runtime_failures_and_strict_transport(
         "/api/v1/core/objects", params={"template_version": 1}
     )
     assert dependent.status_code == 400
-    assert (
-        await object_client.post(
-            f"/api/v1/core/objects/{object_id}/schema-change",
-            json={"target_version": 2},
-        )
-    ).status_code == 404
+    missing_schema = await object_client.post(
+        f"/api/v1/core/objects/{object_id}/schema-change",
+        json={"target_version": 2},
+    )
+    assert missing_schema.status_code == 422
+    assert missing_schema.json()["code"] == "referenced_resource_not_found"
     assert (
         await object_client.delete(f"/api/v1/core/objects/{object_id}")
     ).status_code == 405
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_s05_ownership_schema_change_reads_and_lifecycle(
+    object_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    datatype_id = await _datatype(object_client, "schema_metric")
+    target_root = await _template(object_client, "component_base", abstract=True)
+    target_child = await _template(
+        object_client, "component_leaf", parent_template_id=target_root
+    )
+    property_v1: dict[str, object] = {
+        "name": "metric",
+        "position": 1,
+        "datatype_id": datatype_id,
+        "datatype_version": 1,
+        "value_mode": "SCALAR",
+        "required": True,
+        "migration_default": 1,
+    }
+    component: dict[str, object] = {
+        "name": "parts",
+        "position": 1,
+        "target_template_id": target_root,
+    }
+    parent_template = await _template(
+        object_client,
+        "component_owner",
+        properties=[property_v1],
+        components=[component],
+    )
+
+    next_version = await object_client.post(
+        f"/api/v1/core/object-templates/{parent_template}/create-next",
+        json={"source_version": 1},
+    )
+    assert next_version.status_code == 201, next_version.text
+    property_v2 = dict(property_v1)
+    property_v2["value_mode"] = "LIST"
+    property_v2["migration_default"] = [1]
+    property_v2_new: dict[str, object] = {
+        "name": "added",
+        "position": 2,
+        "datatype_id": datatype_id,
+        "datatype_version": 1,
+        "value_mode": "SCALAR",
+        "required": True,
+        "migration_default": 7,
+    }
+    revised_v2 = await object_client.post(
+        f"/api/v1/core/object-templates/{parent_template}/versions/2/revise",
+        params={"expected_revision": 1},
+        json={
+            "properties": [property_v2, property_v2_new],
+            "components": [component],
+        },
+    )
+    assert revised_v2.status_code == 200, revised_v2.text
+    published_v2 = await object_client.post(
+        f"/api/v1/core/object-templates/{parent_template}/versions/2/publish",
+        params={"expected_revision": 2},
+    )
+    assert published_v2.status_code == 200, published_v2.text
+
+    assert (
+        await object_client.post(
+            f"/api/v1/core/object-templates/{parent_template}/create-next",
+            json={"source_version": 2},
+        )
+    ).status_code == 201
+    revised_v3 = await object_client.post(
+        f"/api/v1/core/object-templates/{parent_template}/versions/3/revise",
+        params={"expected_revision": 1},
+        json={"properties": [property_v2, property_v2_new], "components": []},
+    )
+    assert revised_v3.status_code == 200, revised_v3.text
+    assert (
+        await object_client.post(
+            f"/api/v1/core/object-templates/{parent_template}/versions/3/publish",
+            params={"expected_revision": 2},
+        )
+    ).status_code == 200
+
+    parent = await object_client.post(
+        "/api/v1/core/objects",
+        json={"template_id": parent_template, "properties": {"metric": 2}},
+    )
+    other_parent = await object_client.post(
+        "/api/v1/core/objects",
+        json={"template_id": parent_template, "properties": {"metric": 3}},
+    )
+    child = await object_client.post(
+        "/api/v1/core/objects", json={"template_id": target_child}
+    )
+    assert parent.status_code == other_parent.status_code == child.status_code == 201
+    parent_id = parent.json()["id"]
+    other_parent_id = other_parent.json()["id"]
+    child_id = child.json()["id"]
+    body = {"slot_name": "parts", "child_object_id": child_id}
+
+    attached = await object_client.post(
+        f"/api/v1/core/objects/{parent_id}/attach", json=body
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json() == {
+        "slot_declaring_template_id": parent_template,
+        "slot_name": "parts",
+        "child_object_id": child_id,
+    }
+    assert (
+        await object_client.post(f"/api/v1/core/objects/{parent_id}/attach", json=body)
+    ).json() == attached.json()
+    conflict = await object_client.post(
+        f"/api/v1/core/objects/{other_parent_id}/attach", json=body
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["code"] == "ownership_conflict"
+
+    components = await object_client.get(
+        f"/api/v1/core/objects/{parent_id}/components",
+        params={"slot_name": "parts"},
+    )
+    assert components.json() == {"items": [attached.json()], "next_cursor": None}
+    owner = await object_client.get(f"/api/v1/core/objects/{child_id}/owner")
+    assert owner.json() == {
+        "parent_object_id": parent_id,
+        "slot_declaring_template_id": parent_template,
+        "slot_name": "parts",
+    }
+
+    migrated = await object_client.post(
+        f"/api/v1/core/objects/{parent_id}/schema-change",
+        json={"target_version": 2},
+    )
+    assert migrated.status_code == 200, migrated.text
+    assert migrated.json()["template_version"] == 2
+    assert migrated.json()["properties"] == {"metric": [2], "added": 7}
+    blocked = await object_client.post(
+        f"/api/v1/core/objects/{parent_id}/schema-change",
+        json={"target_version": 3},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["code"] == "schema_change_blocked"
+
+    child_timeline = await object_client.get(
+        f"/api/v1/core/objects/{child_id}/lifecycle-events"
+    )
+    attach_events = [
+        item for item in child_timeline.json()["items"] if item["kind"] == "ATTACH_TO"
+    ]
+    assert len(attach_events) == 1
+    assert set(attach_events[0]) == {
+        "id",
+        "occurred_at",
+        "kind",
+        "object_id",
+        "canonical_name",
+        "destination_object_id",
+        "destination_canonical_name",
+        "slot_declaring_template_id",
+        "slot_name",
+    }
+    parent_timeline = await object_client.get(
+        f"/api/v1/core/objects/{parent_id}/lifecycle-events"
+    )
+    assert any(item["kind"] == "ATTACH_TO" for item in parent_timeline.json()["items"])
+
+    detached = await object_client.post(
+        f"/api/v1/core/objects/{parent_id}/detach", json=body
+    )
+    assert detached.status_code == 204 and detached.content == b""
+    assert (
+        await object_client.post(f"/api/v1/core/objects/{parent_id}/detach", json=body)
+    ).status_code == 204
+    assert (
+        await object_client.get(f"/api/v1/core/objects/{child_id}/owner")
+    ).json() is None
+    original_event = ObjectStore.insert_intrinsic_event
+
+    async def fail_schema_event(
+        store: ObjectStore, kind: EventKind, *args: object
+    ) -> object:
+        if kind is EventKind.SCHEMA_CHANGE:
+            raise RuntimeError("forced schema-change event failure")
+        return await cast(Callable[..., Awaitable[object]], original_event)(
+            store, kind, *args
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(ObjectStore, "insert_intrinsic_event", fail_schema_event)
+        failed_schema = await object_client.post(
+            f"/api/v1/core/objects/{parent_id}/schema-change",
+            json={"target_version": 3},
+        )
+    assert failed_schema.status_code == 500
+    still_v2 = await object_client.get(f"/api/v1/core/objects/{parent_id}")
+    assert still_v2.json()["template_version"] == 2
+    final = await object_client.post(
+        f"/api/v1/core/objects/{parent_id}/schema-change",
+        json={"target_version": 3},
+    )
+    assert final.status_code == 200, final.text
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_s05_ownership_failures_cycle_and_atomic_event(
+    object_client: httpx.AsyncClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template_id = await _template(object_client, "cycle_node")
+    assert (
+        await object_client.post(
+            f"/api/v1/core/object-templates/{template_id}/create-next",
+            json={"source_version": 1},
+        )
+    ).status_code == 201
+    component = {
+        "name": "children",
+        "position": 1,
+        "target_template_id": template_id,
+    }
+    revised = await object_client.post(
+        f"/api/v1/core/object-templates/{template_id}/versions/2/revise",
+        params={"expected_revision": 1},
+        json={"properties": [], "components": [component]},
+    )
+    assert revised.status_code == 200, revised.text
+    assert (
+        await object_client.post(
+            f"/api/v1/core/object-templates/{template_id}/versions/2/publish",
+            params={"expected_revision": 2},
+        )
+    ).status_code == 200
+
+    nodes: list[str] = []
+    for name in ("a", "b", "c"):
+        created = await object_client.post(
+            "/api/v1/core/objects",
+            json={
+                "template_id": template_id,
+                "template_version": 2,
+                "canonical_name": name,
+            },
+        )
+        assert created.status_code == 201, created.text
+        nodes.append(cast(str, created.json()["id"]))
+    a, b, c = nodes
+
+    missing_parent = await object_client.post(
+        "/api/v1/core/objects/00000000-0000-0000-0000-000000000001/attach",
+        json={"slot_name": "children", "child_object_id": a},
+    )
+    assert missing_parent.status_code == 404
+    missing_child = await object_client.post(
+        f"/api/v1/core/objects/{a}/attach",
+        json={
+            "slot_name": "children",
+            "child_object_id": "00000000-0000-0000-0000-000000000001",
+        },
+    )
+    assert missing_child.status_code == 422
+    assert missing_child.json()["code"] == "referenced_resource_not_found"
+    unavailable = await object_client.post(
+        f"/api/v1/core/objects/{a}/attach",
+        json={"slot_name": "missing", "child_object_id": b},
+    )
+    assert unavailable.status_code == 409
+    assert unavailable.json()["code"] == "ownership_slot_unavailable"
+    self_attach = await object_client.post(
+        f"/api/v1/core/objects/{a}/attach",
+        json={"slot_name": "children", "child_object_id": a},
+    )
+    assert self_attach.status_code == 422
+
+    assert (
+        await object_client.post(
+            f"/api/v1/core/objects/{a}/attach",
+            json={"slot_name": "children", "child_object_id": b},
+        )
+    ).status_code == 200
+    assert (
+        await object_client.post(
+            f"/api/v1/core/objects/{b}/attach",
+            json={"slot_name": "children", "child_object_id": c},
+        )
+    ).status_code == 200
+    cycle = await object_client.post(
+        f"/api/v1/core/objects/{c}/attach",
+        json={"slot_name": "children", "child_object_id": a},
+    )
+    assert cycle.status_code == 409
+    assert cycle.json()["code"] == "ownership_cycle"
+    mismatch = await object_client.post(
+        f"/api/v1/core/objects/{c}/detach",
+        json={"slot_name": "children", "child_object_id": b},
+    )
+    assert mismatch.status_code == 409
+    assert mismatch.json()["code"] == "ownership_mismatch"
+
+    async def fail_event(store: ObjectStore, *args: object, **kwargs: object) -> object:
+        del store, args, kwargs
+        raise RuntimeError("forced ownership event failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(ObjectStore, "insert_ownership_event", fail_event)
+        failed = await object_client.post(
+            f"/api/v1/core/objects/{a}/attach",
+            json={"slot_name": "children", "child_object_id": c},
+        )
+    assert failed.status_code == 409  # C is still owned; no event hook is reached.
+
+    await object_client.post(
+        f"/api/v1/core/objects/{b}/detach",
+        json={"slot_name": "children", "child_object_id": c},
+    )
+    with monkeypatch.context() as context:
+        context.setattr(ObjectStore, "insert_ownership_event", fail_event)
+        failed = await object_client.post(
+            f"/api/v1/core/objects/{a}/attach",
+            json={"slot_name": "children", "child_object_id": c},
+        )
+    assert failed.status_code == 500
+    with migrated_database_engine.connect() as connection:
+        assert (
+            connection.scalar(
+                select(object_components.c.parent_object_id).where(
+                    object_components.c.child_object_id == UUID(c)
+                )
+            )
+            is None
+        )
+    retry = await object_client.post(
+        f"/api/v1/core/objects/{a}/attach",
+        json={"slot_name": "children", "child_object_id": c},
+    )
+    assert retry.status_code == 200, retry.text
+    assert (
+        await object_client.post(
+            f"/api/v1/core/objects/{a}/detach",
+            json={"slot_name": "children", "child_object_id": c},
+        )
+    ).status_code == 204
+
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            object_components.update()
+            .where(object_components.c.child_object_id == UUID(b))
+            .values(slot_name="ghost")
+        )
+    for response in (
+        await object_client.get(f"/api/v1/core/objects/{a}/components"),
+        await object_client.get(f"/api/v1/core/objects/{b}/owner"),
+        await object_client.post(
+            f"/api/v1/core/objects/{a}/detach",
+            json={"slot_name": "ghost", "child_object_id": b},
+        ),
+    ):
+        assert response.status_code == 500
+        assert response.json()["code"] == "internal_error"
 
 
 @pytest.mark.api

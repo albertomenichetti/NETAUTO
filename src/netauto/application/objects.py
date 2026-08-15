@@ -1,5 +1,6 @@
 """M1 intrinsic Object state and lifecycle application capability."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -11,11 +12,16 @@ from netauto.domain.objects import (
     Object,
     ObjectSummary,
     ObjectValidationError,
+    ResolvedComponentSlot,
     RuntimePropertySpec,
+    SchemaChangeBlocked,
+    SchemaPropertySpec,
     apply_data_change,
     canonicalize_properties,
+    migrate_properties,
     validate_canonical_name,
 )
+from netauto.domain.objecttemplates import EffectiveSchema
 from netauto.domain.primitives import (
     JsonValue,
     PrimitiveType,
@@ -25,14 +31,32 @@ from netauto.domain.primitives import (
 )
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.datatypes import DataTypeStore
+from netauto.persistence.gates import AdvisoryGate, acquire_advisory_gate
 from netauto.persistence.objects import (
     EventKind,
-    IntrinsicLifecycleEvent,
+    LifecycleEvent,
     ObjectStore,
     ObjectTemplateReferenceError,
+    OwnershipConflictError,
+    OwnershipFact,
+    OwnershipReferenceError,
 )
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentProjection:
+    slot_declaring_template_id: UUID
+    slot_name: str
+    child_object_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerProjection:
+    parent_object_id: UUID
+    slot_declaring_template_id: UUID
+    slot_name: str
 
 
 def _not_found(object_id: UUID) -> ApplicationFailure:
@@ -58,6 +82,15 @@ def _referenced(template_id: UUID, version: int | None = None) -> ApplicationFai
         "referenced_resource_not_found",
         "The selected ObjectTemplate resource does not exist.",
         details,
+    )
+
+
+def _referenced_object(object_id: UUID) -> ApplicationFailure:
+    return ApplicationFailure(
+        FailureClass.SEMANTIC_VALIDATION,
+        "referenced_resource_not_found",
+        "The referenced Object does not exist.",
+        {"resource_type": "object", "id": str(object_id)},
     )
 
 
@@ -111,12 +144,12 @@ class ObjectService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
 
-    async def _runtime_specs(
+    async def _schema_specs(
         self,
         template_store: ObjectTemplateStore,
         template_id: UUID,
         template_version: int,
-    ) -> tuple[RuntimePropertySpec, ...]:
+    ) -> tuple[EffectiveSchema, tuple[SchemaPropertySpec, ...]]:
         exact = await template_store.get_version(template_id, template_version)
         if exact is None:
             raise _internal("A persisted exact ObjectTemplateVersion is missing.")
@@ -130,7 +163,7 @@ class ObjectService:
             ) from error
         datatype_store = DataTypeStore(template_store.connection)
         resolved: dict[tuple[UUID, int], DataTypeVersion] = {}
-        specs: list[RuntimePropertySpec] = []
+        specs: list[SchemaPropertySpec] = []
         for effective in schema.properties:
             item = effective.declaration
             key = (item.datatype_id, item.datatype_version)
@@ -158,15 +191,30 @@ class ObjectService:
                 datatype = loaded
                 resolved[key] = loaded
             specs.append(
-                RuntimePropertySpec(
-                    item.name,
-                    item.value_mode,
-                    item.required,
-                    datatype.base_type,
-                    datatype.constraints,
+                SchemaPropertySpec(
+                    effective.declaring_template_id,
+                    RuntimePropertySpec(
+                        item.name,
+                        item.value_mode,
+                        item.required,
+                        datatype.base_type,
+                        datatype.constraints,
+                    ),
+                    item.migration_default,
                 )
             )
-        return tuple(specs)
+        return schema, tuple(specs)
+
+    async def _runtime_specs(
+        self,
+        template_store: ObjectTemplateStore,
+        template_id: UUID,
+        template_version: int,
+    ) -> tuple[RuntimePropertySpec, ...]:
+        _, specs = await self._schema_specs(
+            template_store, template_id, template_version
+        )
+        return tuple(item.runtime for item in specs)
 
     async def _validate_persisted_object(
         self, template_store: ObjectTemplateStore, value: Object
@@ -181,6 +229,24 @@ class ObjectService:
         if canonical != value.properties:
             raise _internal("The persisted Object runtime state is not canonical.")
         return specs
+
+    @staticmethod
+    def _slot(schema: EffectiveSchema, name: str) -> ResolvedComponentSlot | None:
+        matches = [item for item in schema.components if item.declaration.name == name]
+        if len(matches) > 1:
+            raise RuntimeError("effective component schema is ambiguous")
+        if not matches:
+            return None
+        item = matches[0]
+        return ResolvedComponentSlot(
+            item.declaring_template_id,
+            item.declaration.name,
+            item.declaration.target_template_id,
+        )
+
+    @staticmethod
+    def _component(slot: ResolvedComponentSlot, child_id: UUID) -> ComponentProjection:
+        return ComponentProjection(slot.declaring_template_id, slot.name, child_id)
 
     async def create(
         self,
@@ -314,6 +380,345 @@ class ObjectService:
             await uow.commit()
             return after
 
+    async def schema_change(self, object_id: UUID, target_version: int) -> Object:
+        async with self._uow_factory() as uow:
+            store = ObjectStore(uow.connection)
+            before = await store.lock_no_key(object_id)
+            if before is None:
+                raise _not_found(object_id)
+            template_store = ObjectTemplateStore(uow.connection)
+            source_schema, source_specs = await self._schema_specs(
+                template_store,
+                before.template_id,
+                before.template_version,
+            )
+            try:
+                canonical_source = canonicalize_properties(
+                    before.properties, tuple(item.runtime for item in source_specs)
+                )
+            except (ObjectValidationError, PrimitiveValidationError) as error:
+                raise _internal(
+                    "The persisted Object runtime state is invalid."
+                ) from error
+            if canonical_source != before.properties:
+                raise _internal("The persisted Object runtime state is not canonical.")
+            if target_version <= before.template_version:
+                raise _semantic(
+                    ObjectValidationError("target_version", "forward_version_required")
+                )
+            target = await template_store.admit_exact(
+                before.template_id, target_version
+            )
+            if target is None:
+                raise _referenced(before.template_id, target_version)
+            if target.status is not VersionStatus.PUBLISHED:
+                raise _state(
+                    "dependency_not_admissible",
+                    "The target ObjectTemplateVersion is not PUBLISHED.",
+                    {"id": str(before.template_id), "version": target_version},
+                )
+            target_schema, target_specs = await self._schema_specs(
+                template_store, before.template_id, target_version
+            )
+            try:
+                properties = migrate_properties(
+                    before.properties, source_specs, target_specs
+                )
+            except SchemaChangeBlocked as error:
+                raise _state(
+                    "schema_change_blocked",
+                    "A current property value is incompatible with the target schema.",
+                    {
+                        "object_id": str(object_id),
+                        "target_version": target_version,
+                        "blocker_type": "property",
+                        "member_name": error.property_name,
+                    },
+                ) from error
+            except (ObjectValidationError, PrimitiveValidationError) as error:
+                raise _internal(
+                    "The target ObjectTemplate schema is invalid."
+                ) from error
+
+            target_slots = {
+                (item.declaring_template_id, item.declaration.name): item
+                for item in target_schema.components
+            }
+            for fact in await store.list_outgoing(object_id):
+                source_slot = self._slot(source_schema, fact.slot_name)
+                if source_slot is None:
+                    raise _internal(
+                        "A persisted ownership edge has no current semantic slot."
+                    )
+                target_slot = target_slots.get(
+                    (source_slot.declaring_template_id, source_slot.name)
+                )
+                child = await store.get(fact.child_object_id)
+                if child is None:
+                    raise _internal("A persisted ownership child is missing.")
+                compatible = False
+                if target_slot is not None:
+                    try:
+                        compatible = await template_store.is_ancestor(
+                            target_slot.declaration.target_template_id,
+                            child.template_id,
+                        )
+                    except RuntimeError as error:
+                        raise _internal(
+                            "The persisted ObjectTemplate lineage graph is invalid."
+                        ) from error
+                if target_slot is None or not compatible:
+                    raise _state(
+                        "schema_change_blocked",
+                        "A current attachment is incompatible with the target schema.",
+                        {
+                            "object_id": str(object_id),
+                            "target_version": target_version,
+                            "blocker_type": "attachment",
+                            "member_name": fact.slot_name,
+                            "child_object_id": str(fact.child_object_id),
+                        },
+                    )
+            after = Object(
+                before.id,
+                before.canonical_name,
+                before.template_id,
+                target_version,
+                properties,
+            )
+            await store.update_schema(object_id, target_version, properties)
+            await store.insert_intrinsic_event(
+                EventKind.SCHEMA_CHANGE, after, before, after
+            )
+            await uow.commit()
+            return after
+
+    async def attach(
+        self, parent_object_id: UUID, slot_name: str, child_object_id: UUID
+    ) -> ComponentProjection:
+        async with self._uow_factory() as uow:
+            store = ObjectStore(uow.connection)
+            parent = await store.lock_no_key(parent_object_id)
+            if parent is None:
+                raise _not_found(parent_object_id)
+            template_store = ObjectTemplateStore(uow.connection)
+            schema, _ = await self._schema_specs(
+                template_store, parent.template_id, parent.template_version
+            )
+            slot = self._slot(schema, slot_name)
+            if slot is None:
+                raise _state(
+                    "ownership_slot_unavailable",
+                    "The requested ownership slot is unavailable.",
+                    {"parent_object_id": str(parent_object_id), "slot_name": slot_name},
+                )
+            child = await store.get(child_object_id)
+            if child is None:
+                raise _referenced_object(child_object_id)
+            if child.id == parent.id:
+                raise _semantic(
+                    ObjectValidationError("child_object_id", "self_attachment")
+                )
+            try:
+                compatible = await template_store.is_ancestor(
+                    slot.target_template_id, child.template_id
+                )
+            except RuntimeError as error:
+                raise _internal(
+                    "The persisted ObjectTemplate lineage graph is invalid."
+                ) from error
+            if not compatible:
+                raise _semantic(
+                    ObjectValidationError("child_object_id", "incompatible_lineage")
+                )
+            current = await store.get_ownership(child_object_id)
+            if current is not None:
+                if (
+                    current.parent_object_id == parent_object_id
+                    and current.slot_name == slot_name
+                ):
+                    return self._component(slot, child_object_id)
+                raise _state(
+                    "ownership_conflict",
+                    "The child Object already has a different owner.",
+                    {"child_object_id": str(child_object_id)},
+                )
+            await acquire_advisory_gate(
+                uow.connection, AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE
+            )
+            current = await store.get_ownership(child_object_id)
+            if current is not None:
+                if (
+                    current.parent_object_id == parent_object_id
+                    and current.slot_name == slot_name
+                ):
+                    return self._component(slot, child_object_id)
+                raise _state(
+                    "ownership_conflict",
+                    "The child Object already has a different owner.",
+                    {"child_object_id": str(child_object_id)},
+                )
+            if await store.would_create_cycle(parent_object_id, child_object_id):
+                raise _state(
+                    "ownership_cycle",
+                    "The requested ownership edge would introduce a cycle.",
+                    {
+                        "parent_object_id": str(parent_object_id),
+                        "child_object_id": str(child_object_id),
+                    },
+                )
+            fact = OwnershipFact(child_object_id, parent_object_id, slot_name)
+            try:
+                await store.insert_ownership(fact)
+            except OwnershipConflictError as error:
+                raise _state(
+                    "ownership_conflict",
+                    "The child Object already has a different owner.",
+                    {"child_object_id": str(child_object_id)},
+                ) from error
+            except OwnershipReferenceError as error:
+                raise _referenced_object(child_object_id) from error
+            await store.insert_ownership_event(
+                EventKind.ATTACH_TO,
+                child=child,
+                parent=parent,
+                slot_declaring_template_id=slot.declaring_template_id,
+                slot_name=slot.name,
+            )
+            await uow.commit()
+            return self._component(slot, child_object_id)
+
+    async def detach(
+        self, parent_object_id: UUID, slot_name: str, child_object_id: UUID
+    ) -> None:
+        async with self._uow_factory() as uow:
+            store = ObjectStore(uow.connection)
+            parent = await store.lock_no_key(parent_object_id)
+            if parent is None:
+                raise _not_found(parent_object_id)
+            child = await store.get(child_object_id)
+            if child is None:
+                raise _referenced_object(child_object_id)
+            current = await store.get_ownership(child_object_id)
+            if current is None:
+                return
+            if (
+                current.parent_object_id != parent_object_id
+                or current.slot_name != slot_name
+            ):
+                raise _state(
+                    "ownership_mismatch",
+                    "The requested edge is not the child's current ownership fact.",
+                    {"child_object_id": str(child_object_id)},
+                )
+            template_store = ObjectTemplateStore(uow.connection)
+            schema, _ = await self._schema_specs(
+                template_store, parent.template_id, parent.template_version
+            )
+            slot = self._slot(schema, slot_name)
+            if slot is None:
+                raise _internal(
+                    "A persisted ownership edge has no current semantic slot."
+                )
+            if not await store.delete_ownership(current):
+                raise _internal("The current ownership edge disappeared unexpectedly.")
+            await store.insert_ownership_event(
+                EventKind.DETACH_FROM,
+                child=child,
+                parent=parent,
+                slot_declaring_template_id=slot.declaring_template_id,
+                slot_name=slot.name,
+            )
+            await uow.commit()
+
+    async def list_components(
+        self,
+        parent_object_id: UUID,
+        *,
+        slot_name: str | None,
+        cursor: str | None,
+        limit: int,
+    ) -> Page[ComponentProjection]:
+        filters: dict[str, JsonValue] = {"slot_name": slot_name}
+        after: UUID | None = None
+        if cursor is not None:
+            key = decode_cursor(cursor, "object_components", filters)
+            if len(key) != 1 or not isinstance(key[0], str):
+                raise ApplicationFailure(
+                    FailureClass.INVALID_REQUEST,
+                    "invalid_cursor",
+                    "The cursor is malformed or incompatible with this query.",
+                )
+            try:
+                after = UUID(key[0])
+            except ValueError as error:
+                raise ApplicationFailure(
+                    FailureClass.INVALID_REQUEST,
+                    "invalid_cursor",
+                    "The cursor is malformed or incompatible with this query.",
+                ) from error
+        async with self._uow_factory.coherent_read() as uow:
+            store = ObjectStore(uow.connection)
+            parent = await store.get(parent_object_id)
+            if parent is None:
+                raise _not_found(parent_object_id)
+            schema, _ = await self._schema_specs(
+                ObjectTemplateStore(uow.connection),
+                parent.template_id,
+                parent.template_version,
+            )
+            facts = list(
+                await store.list_components(
+                    parent_object_id,
+                    slot_name=slot_name,
+                    after=after,
+                    limit=limit + 1,
+                )
+            )
+            projections: list[ComponentProjection] = []
+            for fact in facts:
+                slot = self._slot(schema, fact.slot_name)
+                if slot is None:
+                    raise _internal(
+                        "A persisted ownership edge has no current semantic slot."
+                    )
+                projections.append(self._component(slot, fact.child_object_id))
+        more = len(projections) > limit
+        items = projections[:limit]
+        next_cursor = (
+            encode_cursor(
+                "object_components", filters, [str(items[-1].child_object_id)]
+            )
+            if more
+            else None
+        )
+        return Page(items, next_cursor)
+
+    async def get_owner(self, child_object_id: UUID) -> OwnerProjection | None:
+        async with self._uow_factory.coherent_read() as uow:
+            store = ObjectStore(uow.connection)
+            if await store.get(child_object_id) is None:
+                raise _not_found(child_object_id)
+            fact = await store.get_ownership(child_object_id)
+            if fact is None:
+                return None
+            parent = await store.get(fact.parent_object_id)
+            if parent is None:
+                raise _internal("A persisted ownership parent is missing.")
+            schema, _ = await self._schema_specs(
+                ObjectTemplateStore(uow.connection),
+                parent.template_id,
+                parent.template_version,
+            )
+            slot = self._slot(schema, fact.slot_name)
+            if slot is None:
+                raise _internal(
+                    "A persisted ownership edge has no current semantic slot."
+                )
+            return OwnerProjection(
+                fact.parent_object_id, slot.declaring_template_id, slot.name
+            )
+
     async def list_objects(
         self,
         *,
@@ -382,7 +787,7 @@ class ObjectService:
         involving_object_id: UUID | None,
         cursor: str | None,
         limit: int,
-    ) -> Page[IntrinsicLifecycleEvent]:
+    ) -> Page[LifecycleEvent]:
         filters: dict[str, JsonValue] = {
             "kind": None if kind is None else kind.value,
             "object_id": None if object_id is None else str(object_id),

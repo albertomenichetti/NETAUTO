@@ -36,6 +36,26 @@ class RuntimePropertySpec:
     constraints: dict[str, JsonValue]
 
 
+@dataclass(frozen=True, slots=True)
+class SchemaPropertySpec:
+    declaring_template_id: UUID
+    runtime: RuntimePropertySpec
+    migration_default: JsonValue | None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedComponentSlot:
+    declaring_template_id: UUID
+    name: str
+    target_template_id: UUID
+
+
+class SchemaChangeBlocked(ValueError):
+    def __init__(self, property_name: str) -> None:
+        self.property_name = property_name
+        super().__init__(property_name)
+
+
 class DataChangeKind(StrEnum):
     SET = "SET"
     REMOVE = "REMOVE"
@@ -117,3 +137,46 @@ def apply_data_change(
         else:
             candidate.pop(operation.property, None)
     return canonicalize_properties(candidate, specs)
+
+
+def migrate_properties(
+    current: Mapping[str, object],
+    source: tuple[SchemaPropertySpec, ...],
+    target: tuple[SchemaPropertySpec, ...],
+) -> dict[str, JsonValue]:
+    """Migrate canonical state by frozen property semantic identity."""
+    source_by_key = {
+        (item.declaring_template_id, item.runtime.name): item for item in source
+    }
+    candidate: dict[str, object] = {}
+    carried_names: set[str] = set()
+    for target_item in target:
+        target_spec = target_item.runtime
+        key = (target_item.declaring_template_id, target_spec.name)
+        source_item = source_by_key.get(key)
+        if source_item is not None and source_item.runtime.name in current:
+            value = current[source_item.runtime.name]
+            if (
+                source_item.runtime.value_mode is ValueMode.SCALAR
+                and target_spec.value_mode is ValueMode.LIST
+            ):
+                value = [value]
+            elif source_item.runtime.value_mode is not target_spec.value_mode:
+                raise SchemaChangeBlocked(target_spec.name)
+            candidate[target_spec.name] = value
+            carried_names.add(target_spec.name)
+        elif target_spec.required:
+            if target_item.migration_default is None:
+                raise ObjectValidationError(
+                    f"properties.{target_spec.name}", "missing_migration_default"
+                )
+            candidate[target_spec.name] = target_item.migration_default
+    try:
+        return canonicalize_properties(
+            candidate, tuple(item.runtime for item in target)
+        )
+    except (ObjectValidationError, ValueError) as error:
+        name = getattr(error, "path", "").removeprefix("properties.").split(".")[0]
+        if name in carried_names:
+            raise SchemaChangeBlocked(name) from error
+        raise

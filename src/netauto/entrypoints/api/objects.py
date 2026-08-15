@@ -15,7 +15,11 @@ from pydantic import (
 )
 
 from netauto.application.cursors import Page
-from netauto.application.objects import ObjectService
+from netauto.application.objects import (
+    ComponentProjection,
+    ObjectService,
+    OwnerProjection,
+)
 from netauto.domain.objects import (
     DataChangeKind,
     DataChangeOperation,
@@ -30,7 +34,11 @@ from netauto.entrypoints.api.common import (
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
-from netauto.persistence.objects import EventKind, IntrinsicLifecycleEvent
+from netauto.persistence.objects import (
+    EventKind,
+    LifecycleEvent,
+    OwnershipLifecycleEvent,
+)
 
 router = APIRouter(prefix="/api/v1/core", tags=["objects"])
 
@@ -103,6 +111,15 @@ class DataChangeBody(StrictBody):
         return self
 
 
+class SchemaChangeBody(StrictBody):
+    target_version: PositiveInteger
+
+
+class OwnershipBody(StrictBody):
+    slot_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    child_object_id: BodyUUID
+
+
 class ObjectDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -125,6 +142,27 @@ class ObjectSummaryDto(BaseModel):
 class ObjectPageDto(BaseModel):
     items: list[ObjectSummaryDto]
     next_cursor: str | None
+
+
+class ComponentProjectionDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    slot_declaring_template_id: UUID
+    slot_name: str
+    child_object_id: UUID
+
+
+class ComponentPageDto(BaseModel):
+    items: list[ComponentProjectionDto]
+    next_cursor: str | None
+
+
+class OwnerProjectionDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    parent_object_id: UUID
+    slot_declaring_template_id: UUID
+    slot_name: str
 
 
 class IntrinsicLifecycleEventBaseDto(BaseModel):
@@ -160,14 +198,25 @@ class DeletedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
     after: None
 
 
-type IntrinsicLifecycleEventDto = Annotated[
-    CreatedLifecycleEventDto | ChangedLifecycleEventDto | DeletedLifecycleEventDto,
+class OwnershipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
+    kind: Literal["ATTACH_TO", "DETACH_FROM"]
+    destination_object_id: UUID
+    destination_canonical_name: str
+    slot_declaring_template_id: UUID
+    slot_name: str
+
+
+type LifecycleEventDto = Annotated[
+    CreatedLifecycleEventDto
+    | ChangedLifecycleEventDto
+    | DeletedLifecycleEventDto
+    | OwnershipLifecycleEventDto,
     Field(discriminator="kind"),
 ]
 
 
 class LifecyclePageDto(BaseModel):
-    items: list[IntrinsicLifecycleEventDto]
+    items: list[LifecycleEventDto]
     next_cursor: str | None
 
 
@@ -184,7 +233,20 @@ def _summary(value: ObjectSummary) -> ObjectSummaryDto:
     return ObjectSummaryDto.model_validate(value)
 
 
-def _event(value: IntrinsicLifecycleEvent) -> IntrinsicLifecycleEventDto:
+def _event(value: LifecycleEvent) -> LifecycleEventDto:
+    if isinstance(value, OwnershipLifecycleEvent):
+        ownership_kind = cast(Literal["ATTACH_TO", "DETACH_FROM"], value.kind.value)
+        return OwnershipLifecycleEventDto(
+            id=value.id,
+            occurred_at=value.occurred_at,
+            kind=ownership_kind,
+            object_id=value.object_id,
+            canonical_name=value.canonical_name,
+            destination_object_id=value.destination_object_id,
+            destination_canonical_name=value.destination_canonical_name,
+            slot_declaring_template_id=value.slot_declaring_template_id,
+            slot_name=value.slot_name,
+        )
     if value.kind is EventKind.CREATED and value.after is not None:
         return CreatedLifecycleEventDto(
             id=value.id,
@@ -232,11 +294,26 @@ def _object_page(value: Page[ObjectSummary]) -> ObjectPageDto:
     )
 
 
-def _event_page(value: Page[IntrinsicLifecycleEvent]) -> LifecyclePageDto:
+def _event_page(value: Page[LifecycleEvent]) -> LifecyclePageDto:
     return LifecyclePageDto(
         items=[_event(item) for item in value.items],
         next_cursor=value.next_cursor,
     )
+
+
+def _component(value: ComponentProjection) -> ComponentProjectionDto:
+    return ComponentProjectionDto.model_validate(value)
+
+
+def _component_page(value: Page[ComponentProjection]) -> ComponentPageDto:
+    return ComponentPageDto(
+        items=[_component(item) for item in value.items],
+        next_cursor=value.next_cursor,
+    )
+
+
+def _owner(value: OwnerProjection | None) -> OwnerProjectionDto | None:
+    return None if value is None else OwnerProjectionDto.model_validate(value)
 
 
 def _operation(value: OperationBody) -> DataChangeOperation:
@@ -308,6 +385,72 @@ async def data_change_object(
             object_id, tuple(_operation(item) for item in body.operations)
         )
     )
+
+
+@router.post("/objects/{object_id}/schema-change", response_model=ObjectDto)
+async def schema_change_object(
+    object_id: UUID, body: SchemaChangeBody, request: Request
+) -> ObjectDto:
+    validate_query(request, ())
+    return _object(
+        await _service(request).schema_change(object_id, body.target_version)
+    )
+
+
+@router.post(
+    "/objects/{parent_object_id}/attach", response_model=ComponentProjectionDto
+)
+async def attach_object(
+    parent_object_id: UUID, body: OwnershipBody, request: Request
+) -> ComponentProjectionDto:
+    validate_query(request, ())
+    return _component(
+        await _service(request).attach(
+            parent_object_id, body.slot_name, body.child_object_id
+        )
+    )
+
+
+@router.post(
+    "/objects/{parent_object_id}/detach", status_code=status.HTTP_204_NO_CONTENT
+)
+async def detach_object(
+    parent_object_id: UUID, body: OwnershipBody, request: Request
+) -> Response:
+    validate_query(request, ())
+    await _service(request).detach(
+        parent_object_id, body.slot_name, body.child_object_id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/objects/{parent_object_id}/components", response_model=ComponentPageDto)
+async def list_object_components(
+    parent_object_id: UUID,
+    request: Request,
+    slot_name: Annotated[str | None, Query(pattern=r"^[a-z][a-z0-9_]{0,63}$")] = None,
+    cursor: str | None = None,
+    limit: PageLimit = 100,
+) -> ComponentPageDto:
+    validate_query(request, ("slot_name", "cursor", "limit"))
+    return _component_page(
+        await _service(request).list_components(
+            parent_object_id,
+            slot_name=slot_name,
+            cursor=cursor,
+            limit=limit,
+        )
+    )
+
+
+@router.get(
+    "/objects/{child_object_id}/owner", response_model=OwnerProjectionDto | None
+)
+async def get_object_owner(
+    child_object_id: UUID, request: Request
+) -> OwnerProjectionDto | None:
+    validate_query(request, ())
+    return _owner(await _service(request).get_owner(child_object_id))
 
 
 async def _lifecycle_page(

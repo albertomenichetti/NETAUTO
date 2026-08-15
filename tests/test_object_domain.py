@@ -1,5 +1,7 @@
 """Pure intrinsic Object runtime-state semantics."""
 
+from uuid import UUID
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -9,8 +11,11 @@ from netauto.domain.objects import (
     DataChangeOperation,
     ObjectValidationError,
     RuntimePropertySpec,
+    SchemaChangeBlocked,
+    SchemaPropertySpec,
     apply_data_change,
     canonicalize_properties,
+    migrate_properties,
     validate_canonical_name,
 )
 from netauto.domain.objecttemplates import ValueMode
@@ -26,6 +31,28 @@ def _spec(
     constraints: dict[str, JsonValue] | None = None,
 ) -> RuntimePropertySpec:
     return RuntimePropertySpec(name, mode, required, primitive, constraints or {})
+
+
+def _schema_spec(
+    lineage: UUID,
+    name: str,
+    *,
+    mode: ValueMode = ValueMode.SCALAR,
+    required: bool = False,
+    default: JsonValue | None = None,
+    constraints: dict[str, JsonValue] | None = None,
+) -> SchemaPropertySpec:
+    return SchemaPropertySpec(
+        lineage,
+        _spec(
+            name,
+            PrimitiveType.INTEGER,
+            mode=mode,
+            required=required,
+            constraints=constraints,
+        ),
+        default,
+    )
 
 
 def test_canonical_name_preserves_exact_value_and_rejects_bad_length() -> None:
@@ -128,6 +155,50 @@ def test_data_change_validates_complete_final_state_and_detects_noop() -> None:
             (DataChangeOperation(DataChangeKind.REMOVE, "required"),),
             specs,
         )
+
+
+def test_schema_change_migrates_by_semantic_key_and_fills_only_absence() -> None:
+    parent = UUID("00000000-0000-0000-0000-000000000001")
+    child = UUID("00000000-0000-0000-0000-000000000002")
+    source = (
+        _schema_spec(parent, "kept"),
+        _schema_spec(parent, "widened"),
+        _schema_spec(parent, "removed"),
+        _schema_spec(parent, "same_name"),
+    )
+    target = (
+        _schema_spec(parent, "kept"),
+        _schema_spec(parent, "widened", mode=ValueMode.LIST),
+        _schema_spec(child, "same_name", required=True, default=9),
+        _schema_spec(parent, "new_required", required=True, default=7),
+        _schema_spec(parent, "new_optional"),
+    )
+    assert migrate_properties(
+        {"kept": 1, "widened": 2, "removed": 3, "same_name": 4},
+        source,
+        target,
+    ) == {
+        "kept": 1,
+        "widened": [2],
+        "same_name": 9,
+        "new_required": 7,
+    }
+
+
+def test_schema_change_blocks_incompatible_existing_value_without_default() -> None:
+    lineage = UUID("00000000-0000-0000-0000-000000000001")
+    source = (_schema_spec(lineage, "value"),)
+    target = (
+        _schema_spec(
+            lineage,
+            "value",
+            required=True,
+            default=5,
+            constraints={"maximum": 3},
+        ),
+    )
+    with pytest.raises(SchemaChangeBlocked, match="value"):
+        migrate_properties({"value": 4}, source, target)
 
 
 @pytest.mark.property

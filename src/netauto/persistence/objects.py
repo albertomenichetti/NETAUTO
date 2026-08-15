@@ -7,14 +7,18 @@ from enum import StrEnum
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import null, or_, select, tuple_
+from sqlalchemy import null, or_, select, text, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from netauto.domain.objects import Object, ObjectSummary
 from netauto.domain.primitives import JsonValue
-from netauto.persistence.metadata import object_lifecycle_events, objects
+from netauto.persistence.metadata import (
+    object_components,
+    object_lifecycle_events,
+    objects,
+)
 
 
 class EventKind(StrEnum):
@@ -49,7 +53,40 @@ class IntrinsicLifecycleEvent:
     after: Object | None
 
 
+@dataclass(frozen=True, slots=True)
+class OwnershipLifecycleEvent:
+    id: UUID
+    occurred_at: datetime
+    kind: EventKind
+    object_id: UUID
+    canonical_name: str
+    destination_object_id: UUID
+    destination_canonical_name: str
+    slot_declaring_template_id: UUID
+    slot_name: str
+    before: None = None
+    after: None = None
+
+
+type LifecycleEvent = IntrinsicLifecycleEvent | OwnershipLifecycleEvent
+
+
+@dataclass(frozen=True, slots=True)
+class OwnershipFact:
+    child_object_id: UUID
+    parent_object_id: UUID
+    slot_name: str
+
+
 class ObjectTemplateReferenceError(Exception):
+    pass
+
+
+class OwnershipConflictError(Exception):
+    pass
+
+
+class OwnershipReferenceError(Exception):
     pass
 
 
@@ -135,11 +172,36 @@ def _snapshot(raw: object) -> Object | None:
     )
 
 
-def _event(row: RowMapping) -> IntrinsicLifecycleEvent:
+def _event(row: RowMapping) -> LifecycleEvent:
     try:
         kind = EventKind(cast(str, row["kind"]))
     except ValueError as error:
         raise RuntimeError("persisted lifecycle kind is invalid") from error
+    if kind in {EventKind.ATTACH_TO, EventKind.DETACH_FROM}:
+        destination_id = cast(UUID | None, row["destination_object_id"])
+        destination_name = cast(str | None, row["destination_canonical_name"])
+        declaring_id = cast(UUID | None, row["slot_declaring_template_id"])
+        slot_name = cast(str | None, row["slot_name"])
+        if (
+            destination_id is None
+            or destination_name is None
+            or declaring_id is None
+            or slot_name is None
+            or row["before_state"] is not None
+            or row["after_state"] is not None
+        ):
+            raise RuntimeError("persisted ownership lifecycle event is incoherent")
+        return OwnershipLifecycleEvent(
+            id=cast(UUID, row["id"]),
+            occurred_at=cast(datetime, row["occurred_at"]),
+            kind=kind,
+            object_id=cast(UUID, row["object_id"]),
+            canonical_name=cast(str, row["canonical_name"]),
+            destination_object_id=destination_id,
+            destination_canonical_name=destination_name,
+            slot_declaring_template_id=declaring_id,
+            slot_name=slot_name,
+        )
     if kind not in INTRINSIC_KINDS:
         raise RuntimeError("unsupported persisted lifecycle event family")
     before = _snapshot(row["before_state"])
@@ -259,6 +321,140 @@ class ObjectStore:
             .values(properties=properties)
         )
 
+    async def update_schema(
+        self,
+        object_id: UUID,
+        template_version: int,
+        properties: dict[str, JsonValue],
+    ) -> None:
+        await self.connection.execute(
+            objects.update()
+            .where(objects.c.id == object_id)
+            .values(template_version=template_version, properties=properties)
+        )
+
+    async def get_ownership(self, child_object_id: UUID) -> OwnershipFact | None:
+        row = (
+            (
+                await self.connection.execute(
+                    select(object_components).where(
+                        object_components.c.child_object_id == child_object_id
+                    )
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._ownership_fact(row)
+
+    async def list_outgoing(self, parent_object_id: UUID) -> Sequence[OwnershipFact]:
+        rows = (
+            (
+                await self.connection.execute(
+                    select(object_components)
+                    .where(object_components.c.parent_object_id == parent_object_id)
+                    .order_by(object_components.c.child_object_id)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [self._ownership_fact(row) for row in rows]
+
+    async def list_components(
+        self,
+        parent_object_id: UUID,
+        *,
+        slot_name: str | None,
+        after: UUID | None,
+        limit: int,
+    ) -> Sequence[OwnershipFact]:
+        statement = select(object_components).where(
+            object_components.c.parent_object_id == parent_object_id
+        )
+        if slot_name is not None:
+            statement = statement.where(object_components.c.slot_name == slot_name)
+        if after is not None:
+            statement = statement.where(object_components.c.child_object_id > after)
+        rows = (
+            (
+                await self.connection.execute(
+                    statement.order_by(object_components.c.child_object_id).limit(limit)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [self._ownership_fact(row) for row in rows]
+
+    @staticmethod
+    def _ownership_fact(row: RowMapping) -> OwnershipFact:
+        return OwnershipFact(
+            child_object_id=cast(UUID, row["child_object_id"]),
+            parent_object_id=cast(UUID, row["parent_object_id"]),
+            slot_name=cast(str, row["slot_name"]),
+        )
+
+    async def insert_ownership(self, value: OwnershipFact) -> None:
+        try:
+            await self.connection.execute(
+                object_components.insert().values(
+                    child_object_id=value.child_object_id,
+                    parent_object_id=value.parent_object_id,
+                    slot_name=value.slot_name,
+                )
+            )
+        except IntegrityError as error:
+            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
+            name = getattr(diagnostic, "constraint_name", None)
+            if name == "object_components_pkey":
+                raise OwnershipConflictError from error
+            if name in {
+                "fk_object_components_child",
+                "fk_object_components_parent",
+            }:
+                raise OwnershipReferenceError from error
+            raise
+
+    async def delete_ownership(self, value: OwnershipFact) -> bool:
+        result = await self.connection.execute(
+            object_components.delete().where(
+                object_components.c.child_object_id == value.child_object_id,
+                object_components.c.parent_object_id == value.parent_object_id,
+                object_components.c.slot_name == value.slot_name,
+            )
+        )
+        return result.rowcount == 1
+
+    async def would_create_cycle(
+        self, parent_object_id: UUID, child_object_id: UUID
+    ) -> bool:
+        value = await self.connection.scalar(
+            text(
+                """
+                WITH RECURSIVE descendants(child_object_id) AS (
+                    SELECT child_object_id
+                    FROM object_components
+                    WHERE parent_object_id = :child_object_id
+                    UNION
+                    SELECT edge.child_object_id
+                    FROM object_components AS edge
+                    JOIN descendants AS current
+                      ON edge.parent_object_id = current.child_object_id
+                )
+                SELECT EXISTS (
+                    SELECT 1 FROM descendants
+                    WHERE child_object_id = :parent_object_id
+                )
+                """
+            ),
+            {
+                "parent_object_id": parent_object_id,
+                "child_object_id": child_object_id,
+            },
+        )
+        return bool(value)
+
     async def insert_intrinsic_event(
         self,
         kind: EventKind,
@@ -283,7 +479,45 @@ class ObjectStore:
             .mappings()
             .one()
         )
-        return _event(row)
+        event = _event(row)
+        if not isinstance(event, IntrinsicLifecycleEvent):
+            raise RuntimeError("persisted intrinsic lifecycle event family mismatch")
+        return event
+
+    async def insert_ownership_event(
+        self,
+        kind: EventKind,
+        *,
+        child: Object,
+        parent: Object,
+        slot_declaring_template_id: UUID,
+        slot_name: str,
+    ) -> OwnershipLifecycleEvent:
+        if kind not in {EventKind.ATTACH_TO, EventKind.DETACH_FROM}:
+            raise ValueError("ownership lifecycle kind required")
+        row = (
+            (
+                await self.connection.execute(
+                    object_lifecycle_events.insert()
+                    .values(
+                        kind=kind.value,
+                        object_id=child.id,
+                        canonical_name=child.canonical_name,
+                        destination_object_id=parent.id,
+                        destination_canonical_name=parent.canonical_name,
+                        slot_declaring_template_id=slot_declaring_template_id,
+                        slot_name=slot_name,
+                    )
+                    .returning(object_lifecycle_events)
+                )
+            )
+            .mappings()
+            .one()
+        )
+        event = _event(row)
+        if not isinstance(event, OwnershipLifecycleEvent):
+            raise RuntimeError("persisted ownership lifecycle event family mismatch")
+        return event
 
     async def list_objects(
         self,
@@ -333,7 +567,7 @@ class ObjectStore:
         involving_object_id: UUID | None,
         after: tuple[datetime, UUID] | None,
         limit: int,
-    ) -> Sequence[IntrinsicLifecycleEvent]:
+    ) -> Sequence[LifecycleEvent]:
         statement = select(object_lifecycle_events)
         if kind is not None:
             statement = statement.where(object_lifecycle_events.c.kind == kind.value)

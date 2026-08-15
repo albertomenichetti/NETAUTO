@@ -255,6 +255,14 @@ def test_runtime_authorities_and_historical_lifecycle_defaults(
                 slot_name="children",
             ),
         )
+        _fails_integrity(
+            connection,
+            objects.delete().where(objects.c.id == parent_a),
+        )
+        _fails_integrity(
+            connection,
+            objects.delete().where(objects.c.id == child),
+        )
 
         connection.execute(
             relationship_definitions.insert(),
