@@ -5,25 +5,91 @@
 ## Current step
 
 ```text
-M1-S08 — Cross-domain integrity, destructive-operation and API/read closure
+M1-S09 — Full M1 acceptance, regression and delivery gate
 ```
 
-**Step status:** IN PROGRESS — REVIEW CHANGES REQUIRED
+**Step status:** READY TO START
 
-M1-S00 through M1-S07 have completed implementation review.
+M1-S00 through M1-S08 have completed implementation review.
 
-## M1-S07 accepted baseline
+## M1-S08 accepted baseline
 
 Accepted implementation:
 
 ```text
-27150496d460a5eed0ca025b176ec52324e948a4
+678da20904bec7eb16a6baff45f26a80890dbcae
 +
-a625cf08572ad0a448cdc9e3e631c2d48878dea7
-    verification-closure review fix
+30fa3be16bef705c1e7df1d4c4e66679badf8c72
+    REF-06 verification-closure review fix
 ```
 
-The S07 PAR-02 physical correction remains frozen and accepted:
+The accepted S08 capability includes:
+
+- final race-safe `Object.DELETE` using `objects(O) FOR UPDATE`;
+- zero incoming/outgoing ownership and zero factual-Relationship delete admission;
+- semantic blocker counts with factual Relationship de-duplication;
+- immediate PostgreSQL FK `RESTRICT` as final Object/reference lifetime authority;
+- atomic `DELETED` lifecycle event and historical event retention with no implicit cleanup;
+- bounded DataType/ObjectTemplate/Object FK race-loser translations;
+- full cross-domain DT/OT/RD/Object blocker matrix;
+- complete canonical `REF-01..06` closure;
+- lifecycle filter/cursor/index closure;
+- exact public route inventory: 32 mutation routes and 20 read routes;
+- exact finite API-03.11 public code/status catalog: 23 codes;
+- no new migration, table, column, advisory gate, or S09 capability.
+
+## S08 REF-06 completion
+
+The final review-only patch is test-only and closes the remaining canonical mechanism evidence:
+
+```text
+REF-06A  DataType aggregate CASCADE
+         × external ObjectTemplate property exact-DTV RESTRICT
+
+REF-06B  ObjectTemplate aggregate CASCADE
+         × external current Object -> exact OTV RESTRICT
+
+REF-06C  RelationshipDefinition aggregate CASCADE
+         × factual Relationship RESTRICT
+```
+
+Each variant proves:
+
+```text
+delete pre-check observes zero blockers
+-> concurrent semantic reference commits
+-> physical root DELETE is attempted
+-> PostgreSQL RESTRICT is the loser authority
+-> root aggregate survives
+-> owned child state survives intact
+-> external current reference survives
+```
+
+For REF-06C the isolated physical-delete UoW rolls back automatically on context exit when no commit occurs, so post-race survival assertions observe committed state, not an open aborted transaction.
+
+## Final accepted S08 verification
+
+Reported on PostgreSQL 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1):
+
+```text
+uv lock --check / sync / build          PASS
+Ruff format/check                       PASS
+Pyright strict                          PASS
+full suite                              265 passed
+non-PostgreSQL                          122 passed
+real PostgreSQL                         143 passed
+canonical REF selection                 16 passed
+explicit REF-06 selection               3 passed
+migration selection                     1 passed
+schema metadata                         3 passed
+persistence constraints / drift         2 passed
+```
+
+No production, migration, schema, gate, capability or normative-document change was required by the S08 review fix. No architecture contradiction remains known.
+
+## Frozen physical correction carried from S07
+
+The S07 PAR-02 correction remains part of the accepted M1 baseline:
 
 ```text
 RelationshipResolution.name = mutable non-key metadata
@@ -33,94 +99,7 @@ RelationshipResolution.name = mutable non-key metadata
     downgrade -> restores exactly that constraint
 ```
 
-## M1-S08 implementation candidate under review
-
-Delivered implementation:
-
-```text
-678da20904bec7eb16a6baff45f26a80890dbcae
-```
-
-The reviewed candidate correctly delivers:
-
-- final race-safe `Object.DELETE` using `objects(O) FOR UPDATE`;
-- zero ownership / zero factual-Relationship delete admission with semantic blocker counts;
-- immediate Object ownership/Relationship FK `RESTRICT` as final lifetime race authority;
-- atomic `DELETED` event with historical lifecycle retention and no implicit cleanup;
-- bounded DataType/ObjectTemplate/Object FK race-loser diagnostic translation;
-- full normal blocker matrix for DT/OT/RD/Object deletion;
-- lifecycle filter/cursor/index closure;
-- exact public route inventory: 32 mutations and 20 reads;
-- exact finite API-03.11 public code/status catalog: 23 codes;
-- no new migration, table, column, advisory gate, or S09 capability.
-
-Reported verification on PostgreSQL 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1):
-
-```text
-uv lock --check / sync / build          PASS
-Ruff format/check                       PASS
-Pyright strict                          PASS
-full suite                              264 passed
-non-PostgreSQL                          122 passed
-real PostgreSQL                         142 passed
-canonical REF selection                 13 passed
-migration selection                     1 passed
-```
-
-## S08 review outcome
-
-No production-semantic defect is currently identified.
-
-`Object.DELETE` is consistent with the frozen contract:
-
-```text
-Object FOR UPDATE
--> validate final current intrinsic snapshot
--> count ownership rows
--> count DISTINCT factual Relationship ids
--> fail bounded delete_blocked if current blockers exist
--> attempt physical Object DELETE
--> known concurrent FK loser maps to ownership|relationship blocker count=1
--> append DELETED(before=current, after=null)
--> commit
-```
-
-The bounded race-loser `count=1` behavior is explicitly allowed by the S08 execution contract because the exact current total is not safely available inside the failed/aborted statement path.
-
-### Remaining completion blocker — canonical REF-06 verification
-
-The current deterministic tests explicitly trace `REF-01..05` and exercise the relevant FK lifetime mechanisms. Existing `REF-01`/`REF-04` races also provide partial mechanism evidence for aggregate-root delete vs external references.
-
-However, S08 completion still requires an explicit canonical proof for:
-
-```text
-REF-06  aggregate CASCADE × external RESTRICT
-```
-
-The required mechanism evidence is not merely normal blocker pre-check behavior. For the DataType, ObjectTemplate and RelationshipDefinition aggregate shapes, verification must force the root DELETE path past a pre-check that initially saw no blocker, let an external current reference become committed, then prove the physical root DELETE loses on PostgreSQL `RESTRICT` and that **both the aggregate root and its owned children remain intact**.
-
-Required explicit variants:
-
-```text
-REF-06A  DataType root + owned versions
-         × external ObjectTemplate property exact-DTV reference
-
-REF-06B  ObjectTemplate root + owned version/declaration state
-         × external current Object/other OT reference
-
-REF-06C  RelationshipDefinition root + owned Resolutions
-         × factual Relationship reference
-```
-
-This is a verification/traceability finding, not an architecture or production-code change. Existing working production behavior must remain unchanged unless a new real-PG test proves a defect.
-
-Current non-normative review-fix execution aid:
-
-```text
-docs/milestones/M1/wip/M1-S08-review-fixes-codex-prompt.md
-```
-
-The original S08 implementation prompt is completed/superseded and is removed from WIP.
+Committed `0001` remains unchanged.
 
 ## Authoritative baseline
 
@@ -129,7 +108,7 @@ docs/milestones/M1/contract.md
     FINAL / FROZEN
 
 docs/milestones/M1/architecture/README.md
-    FROZEN after PAR-02 correction
+    FROZEN including the PAR-02 correction
 
 docs/milestones/M1/steps.md
     FINAL / FROZEN
@@ -152,15 +131,17 @@ M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical
 M1-S05  COMPLETED        Ownership and Object schema-change vertical slice
 M1-S06  COMPLETED        RelationshipDefinition model-plane and capability vertical slice
 M1-S07  COMPLETED        Runtime Relationship and relationship lifecycle vertical slice
-M1-S08  IN PROGRESS — REVIEW CHANGES REQUIRED
-M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
+M1-S08  COMPLETED        Cross-domain integrity, destructive-operation and API/read closure
+M1-S09  READY TO START   Full M1 acceptance, regression and delivery gate
 ```
 
 ## Current blockers
 
-Only the explicit `REF-06A/B/C` verification/traceability closure described above. No architecture contradiction is currently known.
+None known for starting M1-S09.
 
 PostgreSQL-dependent verification requires the externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+
+A newly discovered contradiction or missing decision in frozen architecture is not an implementation choice: affected work stops and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
 ## Operational rule
 
