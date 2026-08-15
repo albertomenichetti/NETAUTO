@@ -490,6 +490,50 @@ La documentazione deve permettere, per ogni comportamento importante, di rispond
 - quale step la implementa?
 - quale verifica dimostra che il contratto è rispettato?
 
+### Final acceptance gate della milestone
+
+Il completamento di tutte le slice è una condizione necessaria, ma **non sufficiente**, per dichiarare conclusa una milestone.
+
+Vale la distinzione:
+
+```text
+slice completion
+    !=
+milestone acceptance
+```
+
+Una milestone può entrare nel final acceptance gate soltanto quando tutte le slice previste da `steps.md` risultano `COMPLETED` dopo review. Prima della chiusura formale deve quindi essere eseguita una verification closure integrata dell'intero risultato rispetto al `contract.md` e alle authority congelate della milestone.
+
+La sequenza vincolante è:
+
+```text
+tutte le slice COMPLETED
+    -> final acceptance gate
+    -> verifica integrata contro contract.md e architecture frozen
+    -> tutti gli acceptance criteria applicabili PASS
+    -> reviewer approval
+    -> consolidamento del nuovo AS-IS in docs/architecture/
+    -> status milestone = DELIVERED
+    -> merge umano del branch del ciclo
+```
+
+Il final acceptance gate deve verificare, in misura proporzionata al perimetro e al rischio della milestone, almeno:
+
+- chiusura esplicita di tutti gli acceptance criteria definiti in `contract.md`;
+- regressione integrata del repository, non soltanto test isolati per slice;
+- coerenza finale tra domain model, application contract, persistence, schema/constraint, concurrency semantics, API, failure semantics e verifiche, per quanto applicabili;
+- migration/schema closure quando la milestone modifica la persistenza;
+- traceability sufficiente dal contract e dalle invarianti fino alle verifiche che ne dimostrano il rispetto;
+- static analysis, reproducibility/build e altri quality gate ratificati dal progetto quando applicabili;
+- assenza di architecture/documentation drift noto o di finding aperti incompatibili con la consegna;
+- eventuali deliverable operativi richiesti espressamente dalla milestone.
+
+La forma concreta dell'evidence non è prescritta in modo uniforme per tutte le milestone. Il principio obbligatorio è che la verification closure sia **integrata, verificabile e durevole**, con un livello di rigore adeguato alla complessità e ai rischi del relativo contract. Una milestone semplice può richiedere un acceptance step contenuto; una milestone con forti requisiti di persistenza, concorrenza, compatibilità o API può richiedere registri di traceability, matrici o evidence più estese.
+
+Quando utile, l'evidence finale può essere raccolta in un documento come `acceptance.md`; la presenza di tale file non è di per sé obbligatoria salvo che sia prevista dal contract o dagli step. Ciò che è obbligatorio è che il reviewer possa determinare in modo non ambiguo **quale verifica dimostra ciascun criterio di accettazione rilevante** e che gli esiti dichiarati siano supportati dal repository e dai risultati effettivamente revisionati.
+
+Il final acceptance gate è reviewer-owned: l'implementatore può preparare l'acceptance candidate ed eseguire le verifiche richieste, ma la milestone non può essere marcata `DELIVERED` prima dell'approvazione finale del reviewer.
+
 ### Chiusura formale della milestone
 
 La chiusura formale della milestone deve distinguere nettamente tra **record storico del ciclo** e **documentazione architetturale corrente del sistema**.
