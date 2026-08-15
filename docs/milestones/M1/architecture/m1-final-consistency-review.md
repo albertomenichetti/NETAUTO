@@ -1,6 +1,6 @@
 # M1 — Final Architecture Consistency Review
 
-**Status:** FROZEN — final consistency review complete; global M1 architecture freeze ratified on 2026-08-14 and revalidated on 2026-08-15 after the ownership current-edge authority clarification below.
+**Status:** FROZEN — final consistency review complete; global M1 architecture freeze ratified on 2026-08-14 and revalidated on 2026-08-15 after the ownership current-edge clarification and the S07 RelationshipResolution physical-key correction below.
 
 ## 1. Purpose
 
@@ -149,6 +149,57 @@ The clarification was propagated in the same cycle to `object-ownership.md`, `ob
 
 This correction does not add a table/column, does not change the 13-table persistence authority, does not add a concurrency predicate/gate and does not require a new PGTEST scenario ID. It closes an authority ambiguity while preserving the already-ratified ownership invariants and PERSIST-06 shape.
 
+### 3.7 RelationshipResolution mutable-name physical key — 2026-08-15 S07 correction
+
+The deterministic S07 `PAR-02 REL.CREATE × RD.RENAME` regression exposed a physical-schema contradiction between:
+
+```text
+RelationshipResolution.name
+    -> mutable non-key Definition metadata
+
+REALIZE-15 / PAR-02
+    -> RD.RENAME uses non-key ownership semantics
+    -> runtime Relationship FK insertion must not serialize solely on rename
+
+former PERSIST-07 defensive UNIQUE
+    -> UNIQUE(relationship_definition_id, from_template_id, to_template_id, name)
+```
+
+On PostgreSQL, changing a column that participates in a UNIQUE/index key eligible to back a foreign key can make the UPDATE key-changing. The former defensive UNIQUE therefore caused Resolution-name RENAME to take a stronger row lock that conflicts with the key-share protection acquired by the runtime composite FK insertion path.
+
+That physical behavior contradicted the already-ratified semantic/mechanism contract; PAR-02 was not relaxed.
+
+The re-frozen physical rule is:
+
+```text
+RelationshipResolution.name
+    = mutable non-key metadata
+
+therefore:
+    no baseline FK-referenziable UNIQUE/index key may include name
+```
+
+The former defensive exact-child UNIQUE is removed from PERSIST-07. Complete Definition shape and duplicate semantic-child rejection remain atomic domain/UoW invariants. The following physical authorities are unchanged:
+
+```text
+PRIMARY KEY relationship_resolutions(id)
+UNIQUE relationship_resolutions(id, relationship_definition_id)
+FK endpoint lineage references
+FK owned-child Definition relationship
+runtime composite same-Definition FK
+```
+
+Consequences:
+
+- `RD.RENAME` remains a non-key mutation and retains `FOR NO KEY UPDATE` owner semantics;
+- `REL.CREATE` may acquire its required FK key-share protection without artificial serialization on Resolution-name metadata;
+- REALIZE-14 old/new coherent metadata snapshot semantics remain unchanged;
+- semantic equivalence/conflict and complete Definition-shape validation remain unchanged;
+- no new table, column, concurrency predicate, gate, runtime identity or API behavior is introduced;
+- the physical correction requires metadata/Alembic alignment that drops only the obsolete defensive constraint; existing committed migration history is advanced rather than silently rewritten.
+
+The correction is propagated to PERSIST-07/PERSIST-15 and REALIZE-15. The canonical PAR-02 scenario remains unchanged and is the regression authority proving the correction.
+
 ## 4. Domain consistency outcome
 
 ### DataType
@@ -194,6 +245,7 @@ Confirmed aligned:
 
 - Definition/Resolution/factual Relationship/runtime Resolution separation;
 - no source/target or forward/reverse semantic authority;
+- Resolution name is mutable non-key metadata and is not represented by an FK-referenziable physical UNIQUE;
 - complete model/runtime resolved closure;
 - exact factual-view uniqueness and convergence;
 - exact-ID ABA-safe delete;
@@ -217,10 +269,11 @@ ownership current-edge authority = parent current exact schema
 ownership graph gate
 RelationshipDefinition conflict gate
 Relationship exact-view arbitration + fresh-UoW convergence
+RelationshipResolution mutable name excluded from FK-referenziable physical keys
 one-statement Relationship lifecycle metadata observation
 ```
 
-No stale persistence/concurrency design item remains after the ownership clarification.
+No stale persistence/concurrency design item remains after the ownership clarification and S07 Resolution-name physical-key correction.
 
 ## 6. Real PostgreSQL test consistency outcome
 
@@ -236,6 +289,8 @@ PGTEST-04 reusable execution recipes
 A PGTEST-05 is not planned for fixture/helper/file-layout decomposition. A new PGTEST architecture point is opened only by a genuine architecture-level testing gap.
 
 The ownership current-edge clarification requires targeted S05 invariant regression coverage but no new canonical concurrency scenario ID: existing ROW-13/14, ownership arbitration/gate scenarios and S05 domain/persistence tests remain the appropriate authorities.
+
+The S07 physical-key correction likewise adds no scenario ID. Existing `PAR-02` remains the canonical regression proving that `REL.CREATE × RD.RENAME` is not artificially serialized by mutable Resolution-name storage.
 
 ## 7. Public API consistency outcome
 
@@ -282,4 +337,4 @@ Consequences:
 - `docs.old/` remains historical/read-only and has no authority over the frozen baseline;
 - any later contradiction or genuine architecture gap requires explicit architecture reopening and same-cycle propagation to every affected normative document.
 
-The 2026-08-15 ownership authority clarification completed that reopen/propagate/re-freeze cycle without changing milestone scope or physical schema.
+The 2026-08-15 ownership authority clarification completed its reopen/propagate/re-freeze cycle without changing milestone scope or physical schema. The later S07 PAR-02 correction completed a second same-day reopen/propagate/re-freeze cycle: it preserves Relationship semantics and concurrency contracts while removing one obsolete defensive physical UNIQUE and authorizing the minimal forward schema migration needed to align existing databases.
