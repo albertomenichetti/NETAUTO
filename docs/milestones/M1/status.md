@@ -5,104 +5,96 @@
 ## Current step
 
 ```text
-M1-S06 — RelationshipDefinition model-plane and capability vertical slice
+M1-S07 — Runtime Relationship and relationship lifecycle vertical slice
 ```
 
-**Step status:** IN PROGRESS — REVIEW CHANGES REQUIRED
+**Step status:** READY TO START
 
-M1-S00 through M1-S05 have completed implementation review.
+M1-S00 through M1-S06 have completed implementation review.
 
-## M1-S05 accepted baseline
+## M1-S06 accepted baseline
 
-```text
-62857cc0c32b332a0e916ea83bdb2653f69596ab
-+
-622a46dde54c8f74cb8bc4ae6b7e70ebf140ee6f
-    deterministic verification closure
-```
-
-Final S05 gates passed with 86 non-PostgreSQL and 86 PostgreSQL tests on PostgreSQL 16.14 plus lock/sync/build, Ruff and strict Pyright.
-
-## M1-S06 pre-flight
-
-The mandatory S06 pre-flight revalidated the frozen RelationshipDefinition/RelationshipResolution, ObjectTemplate lineage/capability, persistence/UoW, REALIZE-12/15, PGTEST and API-03 authorities.
-
-Confirmed:
-
-```text
-M1 contract      FINAL / FROZEN
-M1 architecture  FROZEN as a set
-M1 steps         FINAL / FROZEN
-M1-S00..S05      COMPLETED
-STACK-01..09     RATIFIED
-```
-
-No architecture/documentation contradiction is known for S06.
-
-## S06 implementation review
-
-Implementation under review:
+Accepted implementation:
 
 ```text
 1c21ac046505e383b707b3f7e328b82921257673
++
+e4fd891a9ef606ea43eaf4aa38029d33619ddbf8
+    API error-detail review fix
 ```
 
-The reviewed production delta is broadly architecture-compatible and establishes:
+The reviewed S06 capability includes:
 
-- complete RelationshipDefinition + RelationshipResolution aggregate semantics;
-- deterministic symmetric/non-symmetric Resolution derivation;
-- semantic signature/equivalence and lineage-overlap conflict certification;
-- `RELATIONSHIP_DEFINITION_CONFLICT_GATE` for CREATE/RENAME with separate fresh post-gate certified-set read;
+- complete `RelationshipDefinition` + authoritative `RelationshipResolution` aggregate semantics;
+- deterministic symmetric/non-symmetric Resolution-set derivation with kernel-generated stable identities;
+- semantic equivalence and cross-Definition conflict certification over ObjectTemplate lineage-overlap spaces;
+- `RELATIONSHIP_DEFINITION_CONFLICT_GATE` for CREATE/RENAME only, with mandatory separate fresh post-gate certified-set read;
 - coherent one-statement certified Definition+Resolution set decoding;
-- RENAME `FOR NO KEY UPDATE`, DELETE `FOR UPDATE`, DELETE without conflict gate;
-- endpoint ObjectTemplate stable-lineage FK lifetime semantics;
+- Definition RENAME `FOR NO KEY UPDATE`, DELETE `FOR UPDATE`, and DELETE without conflict gate;
+- stable ObjectTemplate lineage FK `RESTRICT` lifetime semantics without exact-OTV admission or generic lifecycle locking;
 - atomic complete Resolution-name RENAME;
-- RelationshipDefinition CREATE/RENAME/DELETE/GET/list API;
-- ObjectTemplate relationship-capability projection/list with inheritance applicability;
-- no standalone RelationshipResolution API, S07 runtime Relationship behavior, Relationship lifecycle event variants, migration or new gate.
+- RelationshipDefinition CREATE/RENAME/DELETE/GET/list public API;
+- ObjectTemplate `relationship-capabilities` projection/list with inherited applicability, exact name filtering and `resolution_id ASC` keyset pagination;
+- no standalone RelationshipResolution API, runtime Relationship capability, Relationship lifecycle event variant, migration or new advisory gate.
 
-Reported gates on PostgreSQL 16.14:
+The final review-fix aligned API-03.11 error details by:
 
-```text
-uv lock --check / uv sync --locked / uv build   PASS
-Ruff format/check                                PASS
-Pyright strict                                   PASS
-non-PostgreSQL                                   101 passed
-PostgreSQL                                       106 passed
-```
+- returning bounded factual Relationship blocker type/count information for `RD.DELETE -> delete_blocked`;
+- preserving the failed ObjectTemplate endpoint UUID through the bounded FK-race persistence error so `referenced_resource_not_found.details.id` remains the semantic missing lineage selector.
 
-Accepted deterministic coverage includes ROW-17, RD/OT-lineage REF-01, GATE-04A/B, GATE-05A/B, GATE-06A/B, ATOMIC-04C, global-gate over-serialization, rollback/gate release, same-Definition owner ordering and no-fan-out certified-set locking.
+### Final S06 deterministic PostgreSQL coverage
 
-### Review findings
-
-No model-plane semantic or concurrency blocker was found. Two bounded API-03.11 error-detail conformance findings remain:
-
-1. `RD.DELETE` `delete_blocked` currently exposes only `{resource_type,id}`. API-03.11 requires bounded blocker type/count information. For current factual Relationship blockers it must include `blockers:[{"type":"relationship","count":N}]` (or equivalent canonical bounded shape).
-2. In the concurrent ObjectTemplate-lineage-delete vs RD.CREATE FK-loss path, `RelationshipEndpointReferenceError` currently discards the failed semantic endpoint UUID, so `referenced_resource_not_found.details` loses `id`. The bounded persistence translation must retain the failed endpoint `template_id` without exposing the SQL constraint name.
-
-These are narrow public error-boundary corrections. They do not require architecture reopening and must not change RelationshipDefinition semantics, gate ordering, lock strength, schema or route surface.
-
-The non-normative review-fix prompt is:
+The accepted suite includes:
 
 ```text
-docs/milestones/M1/wip/M1-S06-review-fixes-codex-prompt.md
+ROW-17      RD.RENAME × RD.DELETE, both serial orders
+REF-01      RD.CREATE × ObjectTemplate whole-lineage DELETE, both directions
+GATE-04 A/B equivalent and non-equivalent conflicting concurrent CREATE
+GATE-05 A/B CREATE × RENAME; RENAME(D1) × RENAME(D2)
+GATE-06 A/B fresh post-gate visibility; blocker DELETE concurrent with candidate
+ATOMIC-04C  complete Resolution-name mutation rollback/atomicity
 ```
 
-Prompt commit:
+Additional REALIZE-12 mechanism coverage proves same-Definition rename ownership before the gate, intentional global gate over-serialization, transaction-level gate lifetime/release on rollback, coherent protected certified-set reads and absence of fan-out Definition row locking.
+
+### Final S06 quality gates
+
+Reported on PostgreSQL 16.14:
 
 ```text
-3513f7a5cecf1fe0d77da79b3afe03bda2262461
+uv lock --check                         PASS
+uv sync --locked                        PASS
+uv build                                PASS
+Ruff format/check                       PASS
+Pyright strict                          PASS
+non-PostgreSQL                          101 passed
+PostgreSQL                              106 passed
 ```
+
+No S06 completion blocker remains.
 
 ## Authoritative baseline
 
+M1 implementation proceeds from the frozen/ratified authorities:
+
 ```text
-docs/milestones/M1/contract.md                FINAL / FROZEN
-docs/milestones/M1/architecture/README.md     FROZEN
-docs/milestones/M1/steps.md                   FINAL / FROZEN
-docs/general/technology_baseline.md            STACK-01..STACK-09 ratified
-AGENTS.md                                      repository operating contract
+docs/milestones/M1/contract.md
+    FINAL / FROZEN
+
+docs/milestones/M1/architecture/README.md
+    FROZEN global architecture baseline
+
+docs/milestones/M1/steps.md
+    FINAL / FROZEN implementation decomposition
+
+docs/general/technology_baseline.md
+    STACK-01..STACK-09 ratified
+
+AGENTS.md
+    repository-level operating contract
 ```
+
+Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`, `docs/general/linee_guida_progetto.md` and the step itself must be executed against the current normative repository documents.
 
 ## Step registry
 
@@ -113,18 +105,22 @@ M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
 M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
 M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  COMPLETED        Ownership and Object schema-change vertical slice
-M1-S06  IN PROGRESS      RelationshipDefinition model-plane and capability vertical slice — review error-detail fixes required
-M1-S07  NOT STARTED      Runtime Relationship and relationship lifecycle vertical slice
+M1-S06  COMPLETED        RelationshipDefinition model-plane and capability vertical slice
+M1-S07  READY TO START   Runtime Relationship and relationship lifecycle vertical slice
 M1-S08  NOT STARTED      Cross-domain integrity, destructive-operation and API/read closure
 M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 ```
 
 ## Current blockers
 
-Close the two targeted API error-detail findings in the S06 review-fix prompt. No architecture reopening is currently required.
+None known for starting M1-S07.
 
-PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+
+A newly discovered contradiction or missing decision in frozen architecture is not an implementation choice: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
 ## Operational rule
 
-This file records operational progress only. A step moves to `COMPLETED` only after implementation review and all applicable quality, API, persistence and deterministic PostgreSQL verification gates satisfy `steps.md`.
+This file records operational progress only. It does not redefine milestone scope, architecture, technology choices or step semantics.
+
+A step moves to `COMPLETED` only after implementation review and all applicable quality, API, persistence and deterministic PostgreSQL verification gates satisfy `steps.md`.
