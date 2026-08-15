@@ -8,7 +8,7 @@
 M1-S05 — Ownership and Object schema-change vertical slice
 ```
 
-**Step status:** BLOCKED — PRE-FLIGHT ARCHITECTURE GAP
+**Step status:** IN PROGRESS
 
 M1-S00 through M1-S04 have completed implementation review.
 
@@ -23,42 +23,75 @@ d7fd864f31aa161962f1c9595c3fdf69228547d7
 
 The reviewed S04 capability includes the complete intrinsic Object vertical slice: kernel-generated UUID identity, exact published OTV admission, definitive exact effective-schema interpretation on the caller-owned UoW, canonical runtime-property state, CREATE/RENAME/DATA_CHANGE, typed atomic intrinsic lifecycle persistence, Object GET/list, intrinsic lifecycle reads and deterministic real-PostgreSQL concurrency verification.
 
-The S04 review-fix delta closed the public lifecycle DTO finding by:
+The S04 review-fix delta closed the public lifecycle DTO finding by replacing the broad lifecycle response DTO with a true discriminated intrinsic union, preserving the full nine-value lifecycle query-filter vocabulary while exposing only intrinsic event-family response variants. Final reported S04 gates passed with 84 non-PostgreSQL tests and 66 PostgreSQL tests on PostgreSQL 16.14, plus `uv lock`, `uv sync --locked`, build, Ruff and strict Pyright.
 
-- replacing the single broad lifecycle response DTO with a true discriminated intrinsic union;
-- exposing only `CREATED`, `RENAME`, `DATA_CHANGE`, `SCHEMA_CHANGE` and `DELETED` in the intrinsic response/OpenAPI contract;
-- enforcing kind-specific `before`/`after` nullability;
-- retaining the full nine-value lifecycle `kind` query-filter vocabulary for forward-compatible filtering;
-- adding runtime serialization and OpenAPI regression coverage, including a structural-kind filter returning an empty page in the S04-only dataset.
+## M1-S05 pre-flight outcome
 
-Final reported S04 gates passed with 84 non-PostgreSQL tests and 66 PostgreSQL tests on PostgreSQL 16.14, plus `uv lock`, `uv sync --locked`, build, Ruff and strict Pyright. No S05+ behavior or normative documentation change was introduced.
+The initial S05 pre-flight found and stopped on a documentation contradiction around current ownership slot identity and `DETACH_FROM`. The affected architecture was explicitly reopened, revalidated, propagated and frozen again before coding.
 
-M1-S05 pre-flight has revalidated the frozen ownership, schema-change, lifecycle, persistence/UoW, PostgreSQL realization/PGTEST and API authorities. One architecture inconsistency was found before implementation started.
-
-The current ownership persistence authority stores:
+The clarified frozen current ownership authority is now:
 
 ```text
-object_components(child_object_id, parent_object_id, slot_name)
+object_components(
+    child_object_id,
+    parent_object_id,
+    slot_name
+)
+
+current semantic interpretation
+    -> parent Object current exact effective schema
+    -> resolve slot_name
+    -> SlotSemanticKey(declaring_template_id, slot_name)
 ```
 
-and interprets the edge against the parent Object's current exact effective schema. Structural lifecycle events and public ownership projections require the semantic slot identity:
+Consequences:
+
+- `slot_declaring_template_id` is intentionally not persisted in `object_components` and no schema migration is required;
+- the runtime edge is a current fact, not a historical pin to the slot declaration that existed when ATTACH occurred;
+- ATTACH performs current slot/compatibility admission;
+- DETACH removes the exact current edge without repeating ATTACH-style child compatibility admission, but an existing edge must still resolve one current `SlotSemanticKey` in the stabilized parent current exact schema;
+- an unresolvable persisted current edge is invariant corruption and maps to `internal_error`; no old-version, last-known-slot or lifecycle-history fallback becomes current-state authority;
+- SCHEMA_CHANGE must fail before repinning if any outgoing edge would lose semantic-slot continuity or child compatibility in the target schema;
+- ATTACH_TO / DETACH_FROM materialize the current resolved `SlotSemanticKey` as historical lifecycle metadata at transition time.
+
+The ownership authority clarification was propagated through the owning domain, schema-change, lifecycle, persistence, PostgreSQL realization and API wire contracts and recorded in the final consistency/freeze authority. The global M1 architecture is again FROZEN.
+
+Relevant architecture-alignment commits:
 
 ```text
-SlotSemanticKey = (slot_declaring_template_id, slot_name)
+01a5cdc4988b89672390c7f3085c52a9d934ab0c  object ownership authority
+d0d7488deffdfdc7b8bb152497a500ce78220adc  API-03.6 DETACH semantics
+196d1170d4910558ac725fce73583a316ff053d0  PERSIST-06 current edge authority
+91a06c235b9a91a80656afa849aa07c9950ca408  REALIZE-10/15 ownership realization
+0107bb5d059f18334cb03803ab11b91c2f4e9452  SCHEMA_CHANGE preservation consequence
+b61a12b81701afe6727e3286a41d8742043b10ad  ownership lifecycle SlotSemanticKey
+21bb8c62464960717144629857536267b9928a0a  consistency review / re-freeze record
+5192c1d4fd40ce1c58b55ae33cfcb8681219845a  architecture index freeze restoration
 ```
 
-At the same time, `object-ownership.md` and API-03.6 currently state that `DETACH(P,S,C)` may remove an exact runtime edge even when the slot is absent from the parent's current schema. In that stated case the persisted edge contains no authoritative `slot_declaring_template_id`, so the required `DETACH_FROM` event cannot be materialized unambiguously without inventing a historical reconstruction authority that is not frozen anywhere.
+A second pre-flight check found verification-decomposition drift: canonical ownership `REF-02` / `REF-05` require final `Object.DELETE`, while that semantic operation is deliberately delivered only in M1-S08. `steps.md` was realigned without changing domain semantics:
 
-This conflicts with the already-frozen parent-schema invariant, under which every committed outgoing edge is valid against the parent's committed current exact schema and `SCHEMA_CHANGE` is forbidden from removing/reinterpreting an attached semantic slot.
+```text
+9aa9dcc60fcb2f06f6a8b6a0346970e211f791e2
+```
 
-The proposed minimal architecture correction is to preserve PERSIST-06 unchanged and clarify DETACH as follows:
+S05 therefore proves current ownership FK/PK `RESTRICT`/single-owner mechanics directly and implements all S05-realizable semantic concurrency scenarios. The semantic `REF-02` / `REF-05` variants are completed in S08 together with `Object.DELETE`; no fake/private delete operation is introduced in S05.
 
-- DETACH does not perform ATTACH-style slot admission or child compatibility validation;
-- a valid current edge is nevertheless interpreted through the parent current exact effective schema to recover its `SlotSemanticKey` for projection/lifecycle semantics;
-- an existing edge whose slot cannot be resolved in the current exact parent schema is persisted invariant corruption and maps to `internal_error`, rather than a supported stale-edge remediation case;
-- no new ownership column/table, migration, edge identity or lifecycle-history reconstruction authority is introduced.
+The mandatory S05 re-pre-flight against the corrected frozen documents is now clean. No architecture/documentation contradiction is currently known.
 
-No S05 Codex implementation prompt is created until this frozen-architecture inconsistency is explicitly resolved, propagated and re-frozen.
+The non-normative Codex execution prompt for the current step is:
+
+```text
+docs/milestones/M1/wip/M1-S05-codex-prompt.md
+```
+
+Prompt creation commit:
+
+```text
+1d5ac060ef79e7604cc29c65aa03d6eded11687e
+```
+
+The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
 
 With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
@@ -93,7 +126,7 @@ M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-tes
 M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
 M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
 M1-S04  COMPLETED        Object intrinsic state and intrinsic lifecycle vertical slice
-M1-S05  BLOCKED          Ownership and Object schema-change vertical slice — pre-flight architecture gap
+M1-S05  IN PROGRESS      Ownership and Object schema-change vertical slice
 M1-S06  NOT STARTED      RelationshipDefinition model-plane and capability vertical slice
 M1-S07  NOT STARTED      Runtime Relationship and relationship lifecycle vertical slice
 M1-S08  NOT STARTED      Cross-domain integrity, destructive-operation and API/read closure
@@ -102,13 +135,11 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-### S05 pre-flight architecture gap — DETACH semantic-key reconstruction
-
-`DETACH_FROM` requires `slot_declaring_template_id`, but PERSIST-06 intentionally stores only `slot_name` on the current ownership edge. The current public/domain wording allowing DETACH when that slot is absent from the parent current schema therefore leaves no frozen authoritative source for the required `SlotSemanticKey`.
-
-Implementation is stopped at pre-flight as required by `AGENTS.md`. The affected frozen authorities must be explicitly realigned before S05 can move to `IN PROGRESS`.
+None known for implementing M1-S05.
 
 PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+
+A newly discovered contradiction or missing decision in frozen architecture is not an implementation blocker to work around: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
 ## Operational rule
 
