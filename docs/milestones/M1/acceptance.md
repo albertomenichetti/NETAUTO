@@ -137,7 +137,7 @@ test target, serially and without xdist:
 | `uv run python --version` | PASS — Python 3.14.7 |
 | `uv build` | PASS — sdist and wheel built |
 | `uv tree --depth 1` | PASS — ratified runtime/dev stack only |
-| `uv run ruff format --check .` | PASS — 114 files formatted |
+| `uv run ruff format --check .` | PASS — 115 files formatted |
 | `uv run ruff check .` | PASS |
 | `uv run pyright` | PASS — 0 errors, 0 warnings |
 | `uv run pytest -q tests/test_m1_traceability.py` | PASS — 3 passed |
