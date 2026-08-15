@@ -478,11 +478,13 @@ Implement:
 
 - ownership semantic/domain tests including polymorphism, single-owner conflicts, no-op attach/detach and cycle rejection;
 - schema migration property/slot continuity tests;
-- real PostgreSQL ownership FK/PK and rollback tests;
+- real PostgreSQL ownership FK/PK and rollback tests, including direct parent/child `RESTRICT` evidence without inventing the later Object.DELETE semantic operation;
 - lifecycle structural-event atomicity and display-metadata tests;
 - API tests for schema-change, attach/detach, components and owner projections;
-- deterministic canonical scenarios including `ROW-12..14`, `ARB-02..04`, ownership variants of `REF-02`/`REF-05`, `GATE-01..03`, `SNAP-04`, `ATOMIC-04B`, `PAR-03` and `PAR-04`;
-- gate fresh-snapshot scenarios must prove the read occurs in a statement subsequent to advisory-gate acquisition.
+- deterministic canonical scenarios whose semantic operations are fully available in S05: `ROW-12..14`, `ARB-02..04`, `GATE-01..03`, `SNAP-04`, `ATOMIC-04B`, `PAR-03` and `PAR-04`;
+- ownership `REF-02` / `REF-05` canonical semantic variants are intentionally completed in M1-S08 together with final `Object.DELETE`; S05 must not add a fake/private Object.DELETE merely to claim those scenario IDs early;
+- gate fresh-snapshot scenarios must prove the read occurs in a statement subsequent to advisory-gate acquisition;
+- add targeted invariant regression coverage that a persisted current ownership edge not resolvable in the parent's current exact schema is internal corruption, not a legacy DETACH fallback case.
 
 ### Exit criteria
 
@@ -637,7 +639,7 @@ m1-final-consistency-review.md
 ### Required verification
 
 - cross-domain deletion/reference matrix tests;
-- `REF-01..06` complete variants, especially `REF-06` aggregate-CASCADE vs external-RESTRICT;
+- `REF-01..06` complete variants, especially `REF-06` aggregate-CASCADE vs external-RESTRICT; this is where the ownership `REF-02` / `REF-05` semantic variants become executable because final `Object.DELETE` is delivered;
 - Object DELETE races against ATTACH/DETACH/Relationship CREATE/DELETE as prescribed by the canonical PGTEST authorities;
 - global/Object lifecycle list/filter/pagination API tests;
 - complete API route inventory and negative-surface tests;
@@ -810,8 +812,8 @@ The prerequisites for implementation are satisfied:
 - the M1 architecture is globally `FROZEN`;
 - the decomposition has been reviewed and explicitly ratified;
 - every technology choice required by `M1-S00` is explicitly ratified in `technology_baseline.md` (`STACK-01..STACK-09`);
-- `docs/milestones/M1/status.md` identifies `M1-S00` as the current operational step.
+- `docs/milestones/M1/status.md` identifies the current operational step.
 
-Implementation may therefore begin with `M1-S00`.
+Implementation may therefore proceed step-by-step according to `status.md`.
 
 After freeze, changing step boundaries or verification decomposition is allowed only when it does not reinterpret scope or frozen semantics. A genuine semantic/technical gap still follows the architecture reopening and re-freeze process before affected implementation continues.
