@@ -194,7 +194,7 @@ class RelationshipDefinitionService:
             try:
                 await store.insert(candidate)
             except RelationshipEndpointReferenceError as error:
-                raise _referenced_template() from error
+                raise _referenced_template(error.template_id) from error
             await uow.commit()
             return candidate
 
@@ -262,13 +262,17 @@ class RelationshipDefinitionService:
                     "A locked RelationshipDefinition aggregate could not be loaded."
                 )
             _validate_persisted(current)
-            if await store.current_relationship_count(definition_id):
+            relationship_count = await store.current_relationship_count(definition_id)
+            if relationship_count:
                 raise _state(
                     "delete_blocked",
                     "Current Relationships prevent RelationshipDefinition deletion.",
                     {
                         "resource_type": "relationship_definition",
                         "id": str(definition_id),
+                        "blockers": [
+                            {"type": "relationship", "count": relationship_count}
+                        ],
                     },
                 )
             try:
@@ -280,6 +284,7 @@ class RelationshipDefinitionService:
                     {
                         "resource_type": "relationship_definition",
                         "id": str(definition_id),
+                        "blockers": [{"type": "relationship", "count": 1}],
                     },
                 ) from error
             await uow.commit()

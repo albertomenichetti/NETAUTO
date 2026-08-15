@@ -335,19 +335,33 @@ async def test_definition_references_block_lineage_and_factual_rows_block_delete
     assert blocked_lineage.status_code == 409
     assert blocked_lineage.json()["code"] == "delete_blocked"
 
-    relationship_id = uuid4()
     with migrated_database_engine.begin() as connection:
         connection.execute(
-            relationships.insert().values(
-                id=relationship_id,
-                relationship_definition_id=definition_id,
-            )
+            relationships.insert(),
+            [
+                {
+                    "id": uuid4(),
+                    "relationship_definition_id": definition_id,
+                },
+                {
+                    "id": uuid4(),
+                    "relationship_definition_id": definition_id,
+                },
+            ],
         )
     blocked_definition = await client.delete(
         f"/api/v1/core/relationship-definitions/{definition_id}"
     )
     assert blocked_definition.status_code == 409
-    assert blocked_definition.json()["code"] == "delete_blocked"
+    assert blocked_definition.json() == {
+        "code": "delete_blocked",
+        "message": "Current Relationships prevent RelationshipDefinition deletion.",
+        "details": {
+            "resource_type": "relationship_definition",
+            "id": str(definition_id),
+            "blockers": [{"type": "relationship", "count": 2}],
+        },
+    }
 
 
 @pytest.mark.api

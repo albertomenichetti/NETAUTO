@@ -23,7 +23,9 @@ from netauto.persistence.metadata import (
 
 
 class RelationshipEndpointReferenceError(Exception):
-    pass
+    def __init__(self, template_id: UUID) -> None:
+        self.template_id = template_id
+        super().__init__("RelationshipDefinition endpoint lineage disappeared")
 
 
 class RelationshipDefinitionDeleteReferenceError(Exception):
@@ -91,33 +93,34 @@ class RelationshipDefinitionStore:
         self.connection = connection
 
     async def insert(self, value: RelationshipDefinition) -> None:
-        try:
-            await self.connection.execute(
-                relationship_definitions.insert().values(
-                    id=value.id, symmetric=value.symmetric
+        await self.connection.execute(
+            relationship_definitions.insert().values(
+                id=value.id, symmetric=value.symmetric
+            )
+        )
+        for item in value.resolutions:
+            try:
+                await self.connection.execute(
+                    relationship_resolutions.insert().values(
+                        id=item.id,
+                        relationship_definition_id=item.relationship_definition_id,
+                        from_template_id=item.from_template_id,
+                        to_template_id=item.to_template_id,
+                        name=item.name,
+                    )
                 )
-            )
-            await self.connection.execute(
-                relationship_resolutions.insert(),
-                [
-                    {
-                        "id": item.id,
-                        "relationship_definition_id": item.relationship_definition_id,
-                        "from_template_id": item.from_template_id,
-                        "to_template_id": item.to_template_id,
-                        "name": item.name,
-                    }
-                    for item in value.resolutions
-                ],
-            )
-        except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) in {
-                "fk_relationship_resolutions_from_template",
-                "fk_relationship_resolutions_to_template",
-            }:
-                raise RelationshipEndpointReferenceError from error
-            raise
+            except IntegrityError as error:
+                diagnostic = getattr(getattr(error, "orig", None), "diag", None)
+                constraint_name = getattr(diagnostic, "constraint_name", None)
+                if constraint_name == "fk_relationship_resolutions_from_template":
+                    raise RelationshipEndpointReferenceError(
+                        item.from_template_id
+                    ) from error
+                if constraint_name == "fk_relationship_resolutions_to_template":
+                    raise RelationshipEndpointReferenceError(
+                        item.to_template_id
+                    ) from error
+                raise
 
     async def get(self, definition_id: UUID) -> RelationshipDefinition | None:
         rows = (

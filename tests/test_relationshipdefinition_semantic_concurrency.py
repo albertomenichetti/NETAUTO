@@ -452,6 +452,11 @@ async def test_ref_01_lineage_delete_then_definition_create_fails_reference(
         )
         assert deleted is None
         assert _failure_code(created) == "referenced_resource_not_found"
+        assert isinstance(created, ApplicationFailure)
+        assert created.details == {
+            "resource_type": "object_template",
+            "id": str(template_id),
+        }
 
 
 @pytest.mark.postgresql
