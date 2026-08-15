@@ -8,7 +8,7 @@
 M1-S03 — ObjectTemplate and active model graph vertical slice
 ```
 
-**Step status:** IN PROGRESS
+**Step status:** IN PROGRESS — REVIEW CHANGES REQUIRED
 
 M1-S00, M1-S01 and M1-S02 have completed implementation review.
 
@@ -32,19 +32,23 @@ The review-fix delta closed the S02 completion findings by:
 
 Final reported S02 gates passed with 71 non-PostgreSQL tests and 26 PostgreSQL tests on PostgreSQL 16.14, plus build, Ruff and strict Pyright.
 
-M1-S03 pre-flight has been revalidated against the frozen ObjectTemplate, DataType, persistence/concurrency, PGTEST and API authorities. No architecture/documentation contradiction is currently known.
+M1-S03 pre-flight was revalidated against the frozen ObjectTemplate, DataType, persistence/concurrency, PGTEST and API authorities. No architecture/documentation contradiction is known.
 
-S03 now owns the complete ObjectTemplate model-plane vertical slice: stable lineage/versioning, exact parent pins, local property/component declarations, historical evolution, derived effective schema, caller-owned-UoW DataType/parent admission, active-model-graph publication/deprecation consistency, public ObjectTemplate API and the S03-realizable deterministic PGTEST closure.
-
-In particular, S03 must complete the actual ObjectTemplate-consumer semantics for `ROW-07` / `ROW-08A/B` and active graph scenarios `ROW-09` / `ROW-10`; short-lived application-owned dependency-admission transactions remain forbidden.
-
-The non-normative Codex execution prompt for the current step is:
+The initial S03 implementation under review is:
 
 ```text
-docs/milestones/M1/wip/M1-S03-codex-prompt.md
+f1fa45aa90a507c4bf07903adec9f51eb1b8e7a5
 ```
 
-The prompt is an implementation aid only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+The implementation establishes the intended ObjectTemplate vertical structure: plain-Python domain/effective-schema semantics, aggregate persistence, exact parent and DataType binding, historical evolution, active-model certification/deprecation, strict public ObjectTemplate API, coherent composite reads and deterministic real-PostgreSQL concurrency coverage. The completion review found three targeted implementation/verification findings that must be corrected before S03 is marked complete.
+
+The non-normative Codex review-fix prompt is:
+
+```text
+docs/milestones/M1/wip/M1-S03-review-fixes-codex-prompt.md
+```
+
+The original S03 implementation prompt and the review-fix prompt are execution aids only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
 
 With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
@@ -77,7 +81,7 @@ Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`
 M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
 M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
 M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
-M1-S03  IN PROGRESS      ObjectTemplate and active model graph vertical slice
+M1-S03  IN PROGRESS      ObjectTemplate and active model graph vertical slice — review changes required
 M1-S04  NOT STARTED      Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  NOT STARTED      Ownership and Object schema-change vertical slice
 M1-S06  NOT STARTED      RelationshipDefinition model-plane and capability vertical slice
@@ -88,7 +92,21 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-None known for implementing M1-S03.
+### S03 review finding — component target lifetime mechanism
+
+Component `target_template_id` is a stable-lineage, pure referential-lifetime dependency. The current implementation acquires an explicit `FOR SHARE` on the target ObjectTemplate lineage while resolving component candidates. This is stronger than REALIZE-15/REALIZE-07: pure referential lifetime must rely on the immediate FK/key-share machinery, with semantic existence precheck allowed but no generic RL-only lifecycle lock.
+
+The component `REF-01` test currently follows the same explicit-share mechanism and must instead prove the real FK lifetime arbitration. A no-artificial-contention regression is also required so component references do not serialize unrelated target non-key metadata mutation.
+
+### S03 review finding — persistence SQL leaked into application
+
+Composite exact/effective-schema reads correctly choose `REPEATABLE READ READ ONLY`, but `src/netauto/application/objecttemplates.py` currently imports SQLAlchemy `text` and constructs the `SET TRANSACTION ...` statement itself. STACK-02 requires SQL/query construction to stay inside persistence/infrastructure. The read-isolation mechanism must move behind a narrow persistence/UoW boundary while preserving snapshot coherence and READ COMMITTED mutation isolation.
+
+### S03 review finding — persisted effective-schema corruption failure class
+
+The public effective-schema GET currently reuses command-candidate validation mapping. A semantically invalid persisted effective schema can therefore be surfaced as `422 semantic_validation_failed`. The frozen API contract requires persisted invariant corruption to map to `500 internal_error`; 422 remains for caller-supplied semantic candidates. The read path and a targeted corruption test must be corrected accordingly.
+
+These findings are implementation/verification findings only. No frozen architecture contradiction was found and the M1 architecture remains FROZEN.
 
 PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
