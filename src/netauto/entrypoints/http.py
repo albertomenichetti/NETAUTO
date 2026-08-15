@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from netauto.entrypoints.api.datatypes import router as datatype_router
+from netauto.entrypoints.api.errors import install_error_handlers
 from netauto.logging import configure_logging
 from netauto.persistence.engine import build_runtime_context
 from netauto.settings import Settings
@@ -30,6 +32,8 @@ def build_app(settings: Settings) -> FastAPI:
 
     app = FastAPI(title="NETAUTO", lifespan=lifespan)
     app.state.settings = settings
+    app.include_router(datatype_router)
+    install_error_handlers(app)
     return app
 
 
