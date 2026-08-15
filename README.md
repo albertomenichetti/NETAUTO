@@ -2,7 +2,7 @@
 
 NETAUTO is a REST-API-first dynamic infrastructure modeling kernel.
 
-The core implementation is being rebuilt from a frozen M1 design baseline. The previous implementation was intentionally removed: current code must derive from the normative repository documentation rather than from historical package structure or behavior.
+The M1 kernel implementation has been rebuilt from a frozen design baseline. The previous implementation was intentionally removed: current code derives from the normative repository documentation rather than from historical package structure or behavior.
 
 ## Current milestone
 
@@ -13,9 +13,9 @@ M1 — **Kernel Consistency Baseline** — consolidates the four core concepts:
 - `Object`;
 - `Relationship`.
 
-M1 is correctness-first and PostgreSQL-only. Domain semantics, persistence, Unit of Work boundaries, concurrency guarantees, HTTP API contracts and verification requirements are designed as one coherent kernel baseline.
+M1 is correctness-first and PostgreSQL-only. Domain semantics, persistence, Unit of Work boundaries, concurrency guarantees, HTTP API contracts and verification requirements form one coherent kernel baseline.
 
-The M1 milestone contract is `FINAL / FROZEN`, the M1 architecture is globally `FROZEN`, and the implementation decomposition in `docs/milestones/M1/steps.md` is `FINAL / FROZEN`.
+**M1 is delivered.** The milestone contract is `FINAL / FROZEN`, the M1 architecture is globally `FROZEN`, the implementation decomposition in `docs/milestones/M1/steps.md` is `FINAL / FROZEN`, and all implementation/acceptance steps `M1-S00..M1-S09` are complete.
 
 ## Documentation authority
 
@@ -29,9 +29,10 @@ Start here:
 - [`docs/milestones/M1/contract.md`](docs/milestones/M1/contract.md) — frozen M1 scope and acceptance criteria;
 - [`docs/milestones/M1/architecture/README.md`](docs/milestones/M1/architecture/README.md) — frozen M1 architecture index and normative document map;
 - [`docs/milestones/M1/steps.md`](docs/milestones/M1/steps.md) — frozen implementation decomposition;
-- [`docs/milestones/M1/status.md`](docs/milestones/M1/status.md) — current operational implementation state.
+- [`docs/milestones/M1/status.md`](docs/milestones/M1/status.md) — final operational milestone state;
+- [`docs/milestones/M1/acceptance.md`](docs/milestones/M1/acceptance.md) — final bounded acceptance and verification record.
 
-If documentation authorities conflict, the conflict is an architecture/documentation defect. It must be resolved in the documentation before the affected behavior is implemented.
+If documentation authorities conflict, the conflict is an architecture/documentation defect. It must be resolved in the documentation before affected behavior is changed.
 
 ## Requirements
 
@@ -45,9 +46,7 @@ PostgreSQL URLs must use SQLAlchemy's Psycopg driver form:
 postgresql+psycopg://user:password@host/database
 ```
 
-Runtime and test databases are configured separately. The application and Alembic
-read `NETAUTO_DATABASE_URL`; the test suite reads only `TEST_DATABASE_URL`. Neither
-path provisions PostgreSQL, and application startup never runs migrations.
+Runtime and test databases are configured separately. The application and Alembic read `NETAUTO_DATABASE_URL`; the test suite reads only `TEST_DATABASE_URL`. Neither path provisions PostgreSQL, and application startup never runs migrations.
 
 ## Setup and build
 
@@ -67,9 +66,7 @@ export NETAUTO_DATABASE_URL='postgresql+psycopg://user:password@host/runtime_dat
 uv run alembic upgrade head
 ```
 
-Migrations are an explicit administrative operation. The committed M1 chain is
-`0001` followed by `0002`; do not point this command at a database whose contents
-may be discarded unless that is intentional.
+Migrations are an explicit administrative operation. The committed M1 chain is `0001` followed by `0002`; do not point this command at a database whose contents may be discarded unless that is intentional.
 
 ## Run the API
 
@@ -94,16 +91,15 @@ uv run pytest -q -m 'not postgresql'
 uv run pytest -q tests/test_m1_traceability.py
 ```
 
-The complete suite requires a dedicated, externally supplied real PostgreSQL test
-database:
+The complete suite requires a dedicated, externally supplied real PostgreSQL test database:
 
 ```bash
 export TEST_DATABASE_URL='postgresql+psycopg://user:password@host/test_database'
 uv run pytest -q
 ```
 
-Run PostgreSQL tests serially when only one test database is available. Do not add
-`-n`/xdist unless each worker has an externally managed isolated database target.
+Run PostgreSQL tests serially when only one test database is available. Do not add `-n`/xdist unless each worker has an externally managed isolated database target.
+
 Focused verification is available through the registered markers:
 
 ```bash
@@ -113,14 +109,11 @@ uv run pytest -q -m 'postgresql and migration'
 uv run pytest -q -m property
 ```
 
+The final M1 acceptance record documents the verified full-suite, PGTEST, API, migration, property, static-analysis and coverage results.
+
 ## Implementation state
 
-M1-S00 through M1-S08 have completed implementation review. M1-S09 is the current
-acceptance and delivery-candidate gate; it introduces no new kernel capability.
-See [`docs/milestones/M1/status.md`](docs/milestones/M1/status.md) for the reviewer-owned
-operational state and [`docs/milestones/M1/acceptance.md`](docs/milestones/M1/acceptance.md)
-for bounded verification evidence. The acceptance candidate must not be read as a
-reviewer declaration that M1 is delivered.
+M1-S00 through M1-S09 are complete and M1 is delivered. Future work must start from the frozen M1 contract/architecture and follow the repository milestone/reopening rules rather than changing M1 semantics implicitly.
 
 ## Historical implementation
 
