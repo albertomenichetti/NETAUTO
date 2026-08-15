@@ -5,50 +5,34 @@
 ## Current step
 
 ```text
-M1-S03 — ObjectTemplate and active model graph vertical slice
+M1-S04 — Object intrinsic state and intrinsic lifecycle vertical slice
 ```
 
-**Step status:** IN PROGRESS — REVIEW CHANGES REQUIRED
+**Step status:** READY TO START
 
-M1-S00, M1-S01 and M1-S02 have completed implementation review.
+M1-S00, M1-S01, M1-S02 and M1-S03 have completed implementation review.
 
-M1-S02 accepted implementation baseline:
-
-```text
-97ab77defc77f6cd51492c6ba209dbfce8dd918f
-+
-57824ca54cbaffafb24b7f8a3b282d9118fb9c6a
-    review-fix delta
-```
-
-The reviewed S02 capability includes the closed PrimitiveType catalog and canonicalization/constraint authority, complete DataType/DataTypeVersion application operations, PostgreSQL-backed locking/UoW realization, public DataType HTTP read/write/list/error contracts, keyset pagination and real-PostgreSQL deterministic concurrency coverage.
-
-The review-fix delta closed the S02 completion findings by:
-
-- adding semantic outcome coverage for the S02-realizable canonical PGTEST scenarios `ROW-01`, `ROW-02`, `ROW-03`, `ROW-04A/B`, `ROW-05`, `ROW-06`, `ROW-15`, `ROW-16`, `ARB-01`, `PAR-06`, `PAR-07A/B`;
-- preserving DataType-side caller-owned-UoW mechanism coverage for `ROW-07` / `ROW-08A/B`, with committed ObjectTemplate-consumer semantics intentionally deferred to M1-S03;
-- removing application-level binding helpers whose private UoW would release dependency locks before a future consumer commit; caller-owned persistence admission remains the strong-consistency seam;
-- completing required active-consumer, whole-lineage-delete/FK, cursor/filter, PrimitiveType and property-based verification breadth.
-
-Final reported S02 gates passed with 71 non-PostgreSQL tests and 26 PostgreSQL tests on PostgreSQL 16.14, plus build, Ruff and strict Pyright.
-
-M1-S03 pre-flight was revalidated against the frozen ObjectTemplate, DataType, persistence/concurrency, PGTEST and API authorities. No architecture/documentation contradiction is known.
-
-The initial S03 implementation under review is:
+M1-S03 accepted implementation baseline:
 
 ```text
 f1fa45aa90a507c4bf07903adec9f51eb1b8e7a5
++
+5519fc9395de6e30e66d228f14fabed5385b41fa
+    review-fix delta
 ```
 
-The implementation establishes the intended ObjectTemplate vertical structure: plain-Python domain/effective-schema semantics, aggregate persistence, exact parent and DataType binding, historical evolution, active-model certification/deprecation, strict public ObjectTemplate API, coherent composite reads and deterministic real-PostgreSQL concurrency coverage. The completion review found three targeted implementation/verification findings that must be corrected before S03 is marked complete.
+The reviewed S03 capability includes the complete ObjectTemplate model-plane vertical slice: stable lineage/version lifecycle, exact parent pins, local property/component declarations, historical evolution, derived effective schema, caller-owned-UoW DataType/parent admission, active-model-graph publication/deprecation consistency, strict public ObjectTemplate API, keyset pagination and deterministic real-PostgreSQL concurrency coverage.
 
-The non-normative Codex review-fix prompt is:
+The S03 review-fix delta closed the completion findings by:
 
-```text
-docs/milestones/M1/wip/M1-S03-review-fixes-codex-prompt.md
-```
+- removing the explicit `FOR SHARE` lock from stable-lineage component-target admission and restoring immediate PostgreSQL FK/key-share authority for pure referential lifetime;
+- translating component-target FK race losses to bounded `referenced_resource_not_found` semantics without SQL/constraint leakage;
+- replacing the component `REF-01` mechanism with deterministic reference-first/delete-first FK arbitration coverage and adding a no-artificial-contention regression against target `SET_DESCRIPTION`;
+- moving `REPEATABLE READ READ ONLY` transaction setup behind the persistence/UoW boundary through `CoherentReadUnitOfWork`, leaving application code free of SQLAlchemy query construction;
+- proving composite exact-version reads cannot mix header and declaration generations across a concurrent revise;
+- mapping DB-valid but semantically corrupt persisted effective-schema state to `500 internal_error` rather than caller `422 semantic_validation_failed`.
 
-The original S03 implementation prompt and the review-fix prompt are execution aids only. `AGENTS.md`, the frozen M1 contract/architecture/steps and ratified STACK decisions remain authoritative.
+Final reported S03 gates passed with 74 non-PostgreSQL tests and 55 PostgreSQL tests on PostgreSQL 16.14, plus `uv lock`, `uv sync --locked`, build, Ruff and strict Pyright. No suppressions, retries, sleeps, production test hooks, architecture contradictions or S04+ behavior were introduced.
 
 With a single externally supplied `TEST_DATABASE_URL`, PostgreSQL-required suites remain serial with respect to pytest-xdist. Cross-worker PostgreSQL parallelism is permitted only when the external environment supplies isolated database targets per worker or equivalent isolation consistent with STACK-07/PGTEST.
 
@@ -81,8 +65,8 @@ Before each implementation step, the mandatory pre-flight defined by `AGENTS.md`
 M1-S00  COMPLETED        Clean-slate project bootstrap and quality/test runtime
 M1-S01  COMPLETED        PostgreSQL schema, migration, UoW and deterministic-test foundation
 M1-S02  COMPLETED        PrimitiveType and DataType vertical slice
-M1-S03  IN PROGRESS      ObjectTemplate and active model graph vertical slice — review changes required
-M1-S04  NOT STARTED      Object intrinsic state and intrinsic lifecycle vertical slice
+M1-S03  COMPLETED        ObjectTemplate and active model graph vertical slice
+M1-S04  READY TO START   Object intrinsic state and intrinsic lifecycle vertical slice
 M1-S05  NOT STARTED      Ownership and Object schema-change vertical slice
 M1-S06  NOT STARTED      RelationshipDefinition model-plane and capability vertical slice
 M1-S07  NOT STARTED      Runtime Relationship and relationship lifecycle vertical slice
@@ -92,23 +76,9 @@ M1-S09  NOT STARTED      Full M1 acceptance, regression and delivery gate
 
 ## Current blockers
 
-### S03 review finding — component target lifetime mechanism
+None known for starting M1-S04.
 
-Component `target_template_id` is a stable-lineage, pure referential-lifetime dependency. The current implementation acquires an explicit `FOR SHARE` on the target ObjectTemplate lineage while resolving component candidates. This is stronger than REALIZE-15/REALIZE-07: pure referential lifetime must rely on the immediate FK/key-share machinery, with semantic existence precheck allowed but no generic RL-only lifecycle lock.
-
-The component `REF-01` test currently follows the same explicit-share mechanism and must instead prove the real FK lifetime arbitration. A no-artificial-contention regression is also required so component references do not serialize unrelated target non-key metadata mutation.
-
-### S03 review finding — persistence SQL leaked into application
-
-Composite exact/effective-schema reads correctly choose `REPEATABLE READ READ ONLY`, but `src/netauto/application/objecttemplates.py` currently imports SQLAlchemy `text` and constructs the `SET TRANSACTION ...` statement itself. STACK-02 requires SQL/query construction to stay inside persistence/infrastructure. The read-isolation mechanism must move behind a narrow persistence/UoW boundary while preserving snapshot coherence and READ COMMITTED mutation isolation.
-
-### S03 review finding — persisted effective-schema corruption failure class
-
-The public effective-schema GET currently reuses command-candidate validation mapping. A semantically invalid persisted effective schema can therefore be surfaced as `422 semantic_validation_failed`. The frozen API contract requires persisted invariant corruption to map to `500 internal_error`; 422 remains for caller-supplied semantic candidates. The read path and a targeted corruption test must be corrected accordingly.
-
-These findings are implementation/verification findings only. No frozen architecture contradiction was found and the M1 architecture remains FROZEN.
-
-PostgreSQL-dependent verification requires an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
+PostgreSQL-dependent verification continues to require an externally supplied dedicated real PostgreSQL target through `TEST_DATABASE_URL`.
 
 A newly discovered contradiction or missing decision in frozen architecture is not an implementation blocker to work around: the affected work stops and follows the explicit architecture reopen/revalidate/propagate/re-freeze process.
 
