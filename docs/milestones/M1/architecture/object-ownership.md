@@ -22,7 +22,9 @@ SlotSemanticKey
 (declaring_template_id, name)
 ```
 
-La runtime row persiste `slot_name`; la declaring lineage viene ricavata dalla exact effective closure del parent quando serve semantic resolution.
+La runtime row persiste `slot_name`; la declaring lineage viene ricavata dalla **current exact effective closure del parent** quando serve semantic resolution.
+
+Il current ownership fact non è un historical pin alla declaration esistente al momento dell'ATTACH. La sua semantica corrente è sempre interpretata contro la current exact OTV del parent. Di conseguenza `slot_declaring_template_id` non viene duplicato nella runtime row: il current parent schema resta l'unica authority semantica della `SlotSemanticKey`.
 
 ## 2. Ownership invariants
 
@@ -33,8 +35,11 @@ M1:
 - self-attachment è vietato;
 - l'ownership graph committed è aciclico;
 - ogni edge usa uno slot effettivo della current exact OTV del parent;
+- ogni current edge risolve esattamente una `SlotSemanticKey` nella current exact effective closure del parent;
 - ogni child è lineage-compatible con lo slot target;
 - single-owner + acyclicity rendono l'ownership graph una foresta.
+
+Un persisted edge che non sia più semanticamente risolvibile contro la current exact schema del parent contraddice le invarianti M1. Non è uno stato legacy supportato o una normale condizione di remediation tramite DETACH: è persisted invariant corruption e deve emergere come internal failure.
 
 ## 3. ATTACH admission
 
@@ -155,11 +160,15 @@ C attached to different P'/S'
 
 DETACH non rimuove mai un edge differente da quello richiesto.
 
-DETACH non richiede che lo slot esista ancora nello current schema del parent: l'autorità della removal è l'edge runtime esistente.
+DETACH **non esegue una nuova slot admission**: non rivalida la compatibilità del child, non richiede che lo slot sia oggi ammissibile per una nuova ATTACH e non tratta la removal come una nuova binding operation.
+
+Tuttavia un exact current edge esistente deve essere semanticamente interpretabile contro la current exact effective schema del parent, perché quella closure è l'autorità della `SlotSemanticKey` usata anche dalla projection e dal lifecycle event `DETACH_FROM`. Sotto il parent owner lock, DETACH risolve quindi il current `slot_name` nella current exact closure esclusivamente per interpretare il fact già esistente e ottenere `slot_declaring_template_id`.
+
+Se la runtime row esiste ma il relativo `slot_name` non risolve esattamente uno slot corrente del parent, il dataset viola l'ownership invariant: la operation non inventa una historical declaration, non cerca una "last known" slot version e non usa il lifecycle changelog come authority. Il caso è persisted invariant corruption e fallisce come internal failure.
 
 DETACH:
 
-- non esegue compatibility validation;
+- non esegue child compatibility validation;
 - non esegue cycle traversal;
 - non può introdurre single-owner violation;
 - non può introdurre cicli.
@@ -303,6 +312,8 @@ destination_canonical_name
 slot_declaring_template_id
 slot_name
 ```
+
+Per `ATTACH_TO` e `DETACH_FROM`, `slot_declaring_template_id + slot_name` è la current `SlotSemanticKey` risolta dalla exact effective schema del parent stabilizzato. L'event preserva historical metadata della transition; la runtime edge row non materializza una seconda semantic authority della slot identity.
 
 REALIZE-15 observation rule:
 
