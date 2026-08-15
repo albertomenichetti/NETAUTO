@@ -177,6 +177,42 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
         for item in events
     )
 
+    destination_events = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"destination_object_id": second_object},
+    )
+    assert destination_events.status_code == 200
+    assert {
+        item["destination_object_id"] for item in destination_events.json()["items"]
+    } == {second_object}
+    destination_mismatch = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"destination_object_id": str(uuid4())},
+    )
+    assert destination_mismatch.json()["items"] == []
+
+    event_timestamp = events[0]["occurred_at"]
+    for key in ("occurred_from", "occurred_to"):
+        inclusive = await client.get(
+            "/api/v1/core/lifecycle-events", params={key: event_timestamp}
+        )
+        assert inclusive.status_code == 200, inclusive.text
+        assert any(
+            item["relationship_id"] == relationship_id
+            for item in inclusive.json()["items"]
+            if "relationship_id" in item
+        )
+    too_late = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"occurred_from": "2999-01-01T00:00:00.000000Z"},
+    )
+    assert too_late.json()["items"] == []
+    too_early = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"occurred_to": "1970-01-01T00:00:00.000000Z"},
+    )
+    assert too_early.json()["items"] == []
+
     relationship_id_mismatch = await client.get(
         "/api/v1/core/lifecycle-events",
         params={"relationship_id": str(uuid4())},
@@ -244,6 +280,18 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
         {"type": "relationship", "count": 1}
     ]
 
+    blocked_endpoint = await client.delete(f"/api/v1/core/objects/{first_object}")
+    assert blocked_endpoint.status_code == 409
+    assert blocked_endpoint.json() == {
+        "code": "delete_blocked",
+        "message": "Current references prevent Object deletion.",
+        "details": {
+            "resource_type": "object",
+            "id": first_object,
+            "blockers": [{"type": "relationship", "count": 1}],
+        },
+    }
+
     deleted = await client.delete(f"/api/v1/core/relationships/{relationship_id}")
     assert deleted.status_code == 204
     repeated = await client.delete(f"/api/v1/core/relationships/{relationship_id}")
@@ -261,6 +309,17 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
         "RELATIONSHIP_CREATED",
         "RELATIONSHIP_DELETED",
     }
+    deleted_endpoint = await client.delete(f"/api/v1/core/objects/{first_object}")
+    assert deleted_endpoint.status_code == 204
+    assert (await client.get(f"/api/v1/core/objects/{first_object}")).status_code == 404
+    assert (
+        await client.get(f"/api/v1/core/objects/{first_object}/lifecycle-events")
+    ).status_code == 404
+    endpoint_history = await client.get(
+        "/api/v1/core/lifecycle-events", params={"object_id": first_object}
+    )
+    assert endpoint_history.status_code == 200
+    assert "DELETED" in {item["kind"] for item in endpoint_history.json()["items"]}
     unblocked = await client.delete(
         f"/api/v1/core/relationship-definitions/{definition['id']}"
     )

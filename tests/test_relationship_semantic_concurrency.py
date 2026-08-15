@@ -338,6 +338,21 @@ def _definition_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     return cut
 
 
+def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    cut = PhaseCut()
+    original = ObjectStore.delete
+
+    async def intercepted(store: ObjectStore, object_id: UUID) -> None:
+        await original(store, object_id)
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            cut.reached.set()
+            await cut.release.wait()
+
+    monkeypatch.setattr(ObjectStore, "delete", intercepted)
+    return cut
+
+
 def _metadata_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[int]]:
     cut = PhaseCut()
     observations: list[int] = []
@@ -689,6 +704,77 @@ async def test_ref_04_definition_delete_first_rejects_relationship_create(
         )
         assert deleted is None
         assert _failure_code(created) == "referenced_resource_not_found"
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_03_and_ref_05_relationship_object_lifetime_arbitration(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REF-03-05-REL-OBJECT") as actors:
+        seed = await _seed(actors, "ref03_reference_first")
+        relationship = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        object_delete = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        with monkeypatch.context() as context:
+            cut, _ = _insert_cut(context)
+            created, deleted = await blocked_race(
+                actors,
+                cut,
+                lambda: relationship.create(
+                    seed.first_resolution_id,
+                    seed.first_object.id,
+                    seed.second_object.id,
+                ),
+                lambda: object_delete.delete(seed.first_object.id),
+            )
+        assert isinstance(created, RelationshipCreateResult)
+        assert isinstance(deleted, ApplicationFailure)
+        assert deleted.code == "delete_blocked"
+        assert deleted.details == {
+            "resource_type": "object",
+            "id": str(seed.first_object.id),
+            "blockers": [{"type": "relationship", "count": 1}],
+        }
+
+        # REF-05: removing the factual reference first admits Object deletion.
+        await _reader(actors).delete(created.relationship.id)
+        await ObjectService(UnitOfWorkFactory(actors.t1_engine)).delete(
+            seed.first_object.id
+        )
+
+        seed = await _seed(actors, "ref03_delete_first")
+        object_delete = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        relationship = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        with monkeypatch.context() as context:
+            cut = _object_delete_cut(context)
+            deleted, created = await blocked_race(
+                actors,
+                cut,
+                lambda: object_delete.delete(seed.first_object.id),
+                lambda: relationship.create(
+                    seed.first_resolution_id,
+                    seed.first_object.id,
+                    seed.second_object.id,
+                ),
+            )
+        assert deleted is None
+        assert _failure_code(created) == "referenced_resource_not_found"
+        assert isinstance(created, ApplicationFailure)
+        assert created.details == {
+            "resource_type": "object",
+            "id": str(seed.first_object.id),
+        }
 
 
 @pytest.mark.postgresql

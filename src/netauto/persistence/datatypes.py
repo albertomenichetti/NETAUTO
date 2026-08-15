@@ -341,7 +341,12 @@ class DataTypeStore:
                 datatypes.delete().where(datatypes.c.id == datatype_id)
             )
         except IntegrityError as error:
-            raise DeleteReferenceError from error
+            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
+            if getattr(diagnostic, "constraint_name", None) == (
+                "fk_object_template_properties_datatype_version"
+            ):
+                raise DeleteReferenceError from error
+            raise
 
     async def list_lineages(
         self,

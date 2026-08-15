@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from netauto.domain.objects import Object
+from netauto.entrypoints.api.errors import PUBLIC_STATUS_BY_CODE
 from netauto.entrypoints.http import build_app
 from netauto.settings import Settings
 
@@ -42,7 +43,7 @@ def test_object_domain_and_application_preserve_layer_boundaries() -> None:
         assert "JSON Schema" not in source
 
 
-def test_s07_adds_only_semantic_relationship_navigation_to_object_scope() -> None:
+def test_s08_closes_object_scope_with_only_object_delete() -> None:
     app = build_app(Settings(database_url="postgresql+psycopg://u:p@localhost/db"))
     schema = cast(dict[str, object], app.openapi())
     paths = cast(dict[str, object], schema["paths"])
@@ -65,7 +66,10 @@ def test_s07_adds_only_semantic_relationship_navigation_to_object_scope() -> Non
     )
     assert "/api/v1/core/objects/{object_id}/relationships" in paths
     object_methods = cast(dict[str, object], paths["/api/v1/core/objects/{object_id}"])
-    assert "delete" not in object_methods
+    assert set(object_methods) == {"get", "delete"}
+    delete = _mapping(object_methods["delete"])
+    assert "requestBody" not in delete
+    assert set(_mapping(delete["responses"])) == {"204", "422"}
 
 
 def test_lifecycle_response_schema_is_s07_discriminated_union() -> None:
@@ -143,3 +147,141 @@ def test_lifecycle_response_schema_is_s07_discriminated_union() -> None:
         "RELATIONSHIP_DELETED",
     ):
         assert excluded_kind not in intrinsic_schema_text
+
+
+def test_s08_public_route_and_error_catalog_closure() -> None:
+    app = build_app(Settings(database_url="postgresql+psycopg://u:p@localhost/db"))
+    paths = _mapping(_mapping(app.openapi())["paths"])
+    actual_mutations = {
+        (method.upper(), path)
+        for path, raw_methods in paths.items()
+        for method in _mapping(raw_methods)
+        if method in {"post", "delete", "put", "patch"}
+    }
+    expected_mutations = {
+        ("POST", "/api/v1/core/datatypes"),
+        ("DELETE", "/api/v1/core/datatypes/{datatype_id}"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/clear-default"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/create-next"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/set-default"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/set-description"),
+        ("DELETE", "/api/v1/core/datatypes/{datatype_id}/versions/{version}"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/versions/{version}/deprecate"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/versions/{version}/publish"),
+        ("POST", "/api/v1/core/datatypes/{datatype_id}/versions/{version}/revise"),
+        ("POST", "/api/v1/core/object-templates"),
+        ("DELETE", "/api/v1/core/object-templates/{template_id}"),
+        ("POST", "/api/v1/core/object-templates/{template_id}/clear-default"),
+        ("POST", "/api/v1/core/object-templates/{template_id}/create-next"),
+        ("POST", "/api/v1/core/object-templates/{template_id}/set-default"),
+        ("POST", "/api/v1/core/object-templates/{template_id}/set-description"),
+        ("DELETE", "/api/v1/core/object-templates/{template_id}/versions/{version}"),
+        (
+            "POST",
+            "/api/v1/core/object-templates/{template_id}/versions/{version}/deprecate",
+        ),
+        (
+            "POST",
+            "/api/v1/core/object-templates/{template_id}/versions/{version}/publish",
+        ),
+        (
+            "POST",
+            "/api/v1/core/object-templates/{template_id}/versions/{version}/revise",
+        ),
+        ("POST", "/api/v1/core/objects"),
+        ("DELETE", "/api/v1/core/objects/{object_id}"),
+        ("POST", "/api/v1/core/objects/{object_id}/data-change"),
+        ("POST", "/api/v1/core/objects/{object_id}/rename"),
+        ("POST", "/api/v1/core/objects/{object_id}/schema-change"),
+        ("POST", "/api/v1/core/objects/{parent_object_id}/attach"),
+        ("POST", "/api/v1/core/objects/{parent_object_id}/detach"),
+        ("POST", "/api/v1/core/relationship-definitions"),
+        (
+            "DELETE",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/rename",
+        ),
+        ("POST", "/api/v1/core/relationships"),
+        ("DELETE", "/api/v1/core/relationships/{relationship_id}"),
+    }
+    assert len(expected_mutations) == 32
+    assert actual_mutations == expected_mutations
+
+    expected_reads = {
+        ("GET", "/api/v1/core/datatypes"),
+        ("GET", "/api/v1/core/datatypes/{datatype_id}"),
+        ("GET", "/api/v1/core/datatypes/{datatype_id}/versions"),
+        ("GET", "/api/v1/core/datatypes/{datatype_id}/versions/{version}"),
+        ("GET", "/api/v1/core/lifecycle-events"),
+        ("GET", "/api/v1/core/object-templates"),
+        ("GET", "/api/v1/core/object-templates/{template_id}"),
+        (
+            "GET",
+            "/api/v1/core/object-templates/{template_id}/relationship-capabilities",
+        ),
+        ("GET", "/api/v1/core/object-templates/{template_id}/versions"),
+        ("GET", "/api/v1/core/object-templates/{template_id}/versions/{version}"),
+        (
+            "GET",
+            "/api/v1/core/object-templates/{template_id}/versions/{version}/effective-schema",
+        ),
+        ("GET", "/api/v1/core/objects"),
+        ("GET", "/api/v1/core/objects/{child_object_id}/owner"),
+        ("GET", "/api/v1/core/objects/{object_id}"),
+        ("GET", "/api/v1/core/objects/{object_id}/lifecycle-events"),
+        ("GET", "/api/v1/core/objects/{object_id}/relationships"),
+        ("GET", "/api/v1/core/objects/{parent_object_id}/components"),
+        ("GET", "/api/v1/core/relationship-definitions"),
+        (
+            "GET",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}",
+        ),
+        ("GET", "/api/v1/core/relationships/{relationship_id}"),
+    }
+    actual_reads = {
+        ("GET", path) for path, methods in paths.items() if "get" in _mapping(methods)
+    }
+    assert actual_reads == expected_reads
+    assert all(
+        method not in {"put", "patch"}
+        for methods in paths.values()
+        for method in _mapping(methods)
+    )
+    forbidden_fragments = {
+        "/actions",
+        "runtime-relationship-resolutions",
+        "object-components",
+        "json-schema",
+    }
+    assert all(
+        fragment not in path for fragment in forbidden_fragments for path in paths
+    )
+
+    assert PUBLIC_STATUS_BY_CODE == {
+        "invalid_request": 400,
+        "invalid_cursor": 400,
+        "resource_not_found": 404,
+        "referenced_resource_not_found": 422,
+        "semantic_validation_failed": 422,
+        "stale_revision": 409,
+        "lifecycle_state_conflict": 409,
+        "version_source_conflict": 409,
+        "default_version_unavailable": 409,
+        "dependency_not_admissible": 409,
+        "qualified_name_conflict": 409,
+        "default_version_conflict": 409,
+        "active_dependency_conflict": 409,
+        "delete_blocked": 409,
+        "ownership_slot_unavailable": 409,
+        "ownership_conflict": 409,
+        "ownership_mismatch": 409,
+        "ownership_cycle": 409,
+        "schema_change_blocked": 409,
+        "relationship_definition_equivalent": 409,
+        "relationship_definition_conflict": 409,
+        "relationship_fact_conflict": 409,
+        "internal_error": 500,
+    }

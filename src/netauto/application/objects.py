@@ -35,6 +35,7 @@ from netauto.persistence.gates import AdvisoryGate, acquire_advisory_gate
 from netauto.persistence.objects import (
     EventKind,
     LifecycleEvent,
+    ObjectDeleteReferenceError,
     ObjectStore,
     ObjectTemplateReferenceError,
     OwnershipConflictError,
@@ -323,6 +324,46 @@ class ObjectService:
                 ObjectTemplateStore(uow.connection), value
             )
             return value
+
+    async def delete(self, object_id: UUID) -> None:
+        async with self._uow_factory() as uow:
+            store = ObjectStore(uow.connection)
+            before = await store.lock_update(object_id)
+            if before is None:
+                raise _not_found(object_id)
+            await self._validate_persisted_object(
+                ObjectTemplateStore(uow.connection), before
+            )
+            counts = await store.delete_blocker_counts(object_id)
+            blockers: list[JsonValue] = [
+                {"type": blocker_type, "count": counts[blocker_type]}
+                for blocker_type in ("ownership", "relationship")
+                if counts[blocker_type]
+            ]
+            if blockers:
+                raise _state(
+                    "delete_blocked",
+                    "Current references prevent Object deletion.",
+                    {
+                        "resource_type": "object",
+                        "id": str(object_id),
+                        "blockers": blockers,
+                    },
+                )
+            try:
+                await store.delete(object_id)
+            except ObjectDeleteReferenceError as error:
+                raise _state(
+                    "delete_blocked",
+                    "A concurrent current reference prevented Object deletion.",
+                    {
+                        "resource_type": "object",
+                        "id": str(object_id),
+                        "blockers": [{"type": error.blocker_type, "count": 1}],
+                    },
+                ) from error
+            await store.insert_intrinsic_event(EventKind.DELETED, before, before, None)
+            await uow.commit()
 
     async def rename(self, object_id: UUID, canonical_name: str) -> Object:
         try:

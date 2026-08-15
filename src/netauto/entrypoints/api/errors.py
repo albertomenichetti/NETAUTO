@@ -18,10 +18,45 @@ _STATUS_BY_CLASS = {
     FailureClass.INTERNAL_FAILURE: 500,
 }
 
+PUBLIC_STATUS_BY_CODE = {
+    "invalid_request": 400,
+    "invalid_cursor": 400,
+    "resource_not_found": 404,
+    "referenced_resource_not_found": 422,
+    "semantic_validation_failed": 422,
+    "stale_revision": 409,
+    "lifecycle_state_conflict": 409,
+    "version_source_conflict": 409,
+    "default_version_unavailable": 409,
+    "dependency_not_admissible": 409,
+    "qualified_name_conflict": 409,
+    "default_version_conflict": 409,
+    "active_dependency_conflict": 409,
+    "delete_blocked": 409,
+    "ownership_slot_unavailable": 409,
+    "ownership_conflict": 409,
+    "ownership_mismatch": 409,
+    "ownership_cycle": 409,
+    "schema_change_blocked": 409,
+    "relationship_definition_equivalent": 409,
+    "relationship_definition_conflict": 409,
+    "relationship_fact_conflict": 409,
+    "internal_error": 500,
+}
+
 
 def _response(failure: ApplicationFailure) -> JSONResponse:
+    status_code = PUBLIC_STATUS_BY_CODE.get(failure.code)
+    if status_code is None or status_code != _STATUS_BY_CLASS[failure.failure_class]:
+        logger.error("Application emitted an invalid public failure code/class pair")
+        failure = ApplicationFailure(
+            FailureClass.INTERNAL_FAILURE,
+            "internal_error",
+            "An unexpected internal failure occurred.",
+        )
+        status_code = 500
     return JSONResponse(
-        status_code=_STATUS_BY_CLASS[failure.failure_class],
+        status_code=status_code,
         content={
             "code": failure.code,
             "message": failure.message,

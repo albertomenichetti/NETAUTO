@@ -8,12 +8,14 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
+from netauto.application.objects import ObjectService
 from netauto.application.objecttemplates import (
     ComponentCandidate,
     ObjectTemplateService,
     PropertyCandidate,
 )
 from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objects import Object
 from netauto.domain.objecttemplates import (
     CreateObjectTemplateResult,
     LocalComponent,
@@ -770,6 +772,37 @@ async def test_row_10_active_removal_is_conservative_during_dependency_deprecate
         )
         assert removed is None
         assert _failure_code(dependency) == "active_dependency_conflict"
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_object_template_delete_fk_race_loser_keeps_semantic_blocker_details(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "OT-DELETE-FK-OBJECT") as actors:
+        first, _ = _services(actors)
+        template_id = await _root(first, "delete_fk_object")
+        await first.publish(template_id, 1, 1)
+        cut = _reference_precheck_cut(monkeypatch)
+        object_service = ObjectService(UnitOfWorkFactory(actors.t2_engine))
+        deleted, created = await progress_race(
+            cut,
+            lambda: first.delete_lineage(template_id),
+            lambda: object_service.create(template_id, 1, "concurrent-reference", {}),
+        )
+        assert isinstance(created, Object)
+        assert isinstance(deleted, ApplicationFailure)
+        assert deleted.code == "delete_blocked"
+        assert deleted.details == {
+            "resource_type": "object_template",
+            "id": str(template_id),
+            "blockers": [{"type": "object", "count": 1}],
+        }
+        assert (await first.get_lineage(template_id)).id == template_id
+        assert (await first.get_version(template_id, 1)).version == 1
 
 
 @pytest.mark.postgresql

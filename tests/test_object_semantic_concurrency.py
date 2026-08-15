@@ -20,7 +20,7 @@ from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.failures import ApplicationFailure
 from netauto.persistence.gates import AdvisoryGate
-from netauto.persistence.objects import ObjectStore, OwnershipLifecycleEvent
+from netauto.persistence.objects import EventKind, ObjectStore, OwnershipLifecycleEvent
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.semantic_concurrency import (
@@ -144,6 +144,21 @@ def _object_owner_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     return cut
 
 
+def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    cut = PhaseCut()
+    original = ObjectStore.delete
+
+    async def intercepted(store: ObjectStore, object_id: UUID) -> None:
+        await original(store, object_id)
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            cut.reached.set()
+            await cut.release.wait()
+
+    monkeypatch.setattr(ObjectStore, "delete", intercepted)
+    return cut
+
+
 def _ownership_gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     cut = PhaseCut()
     original = object_application.acquire_advisory_gate
@@ -205,6 +220,23 @@ def _object_insert_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
             await cut.release.wait()
 
     monkeypatch.setattr(ObjectStore, "insert", intercepted)
+    return cut
+
+
+def _ownership_insert_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    cut = PhaseCut()
+    original = ObjectStore.insert_ownership
+
+    async def intercepted(store: ObjectStore, value: object) -> None:
+        await cast(Callable[[ObjectStore, object], Awaitable[None]], original)(
+            store, value
+        )
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            cut.reached.set()
+            await cut.release.wait()
+
+    monkeypatch.setattr(ObjectStore, "insert_ownership", intercepted)
     return cut
 
 
@@ -1155,3 +1187,182 @@ async def test_ref_01_object_exact_otv_fk_both_directions(
             )
         assert deleted is None
         assert _failure_code(created_after_delete) == "referenced_resource_not_found"
+
+
+@pytest.mark.parametrize("mutation", ["rename", "data_change", "schema_change"])
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_object_delete_serializes_with_intrinsic_writers_in_both_orders(
+    mutation: str,
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(
+        test_database_url, f"OBJECT-DELETE-{mutation}"
+    ) as actors:
+        initial_properties: dict[str, object]
+        if mutation == "schema_change":
+            template_id = await _schema_change_template(actors, f"delete_{mutation}")
+            initial_properties = {"a": 0}
+        elif mutation == "data_change":
+            template_id = await _template(
+                actors, f"delete_{mutation}", two_properties=True
+            )
+            initial_properties = {"a": 0}
+        else:
+            template_id = await _template(actors, f"delete_{mutation}")
+            initial_properties = {}
+        reader = _object_reader(actors)
+
+        async def mutate(service: ObjectService, object_id: UUID) -> object:
+            if mutation == "rename":
+                return await service.rename(object_id, "latest-name")
+            if mutation == "data_change":
+                return await service.data_change(
+                    object_id,
+                    (DataChangeOperation(DataChangeKind.SET, "a", 1),),
+                )
+            return await service.schema_change(object_id, 2)
+
+        writer_first = await reader.create(
+            template_id, 1, "writer-first", initial_properties
+        )
+        first, second = _object_services(actors)
+        with monkeypatch.context() as context:
+            cut = _object_owner_cut(context)
+            written, deleted = await blocked_race(
+                actors,
+                cut,
+                lambda: mutate(first, writer_first.id),
+                lambda: second.delete(writer_first.id),
+            )
+        assert isinstance(written, Object)
+        assert deleted is None
+        with pytest.raises(ApplicationFailure) as missing:
+            await reader.get(writer_first.id)
+        assert missing.value.code == "resource_not_found"
+        events = (
+            await reader.list_events(
+                kind=EventKind.DELETED,
+                object_id=writer_first.id,
+                destination_object_id=None,
+                relationship_id=None,
+                relationship_definition_id=None,
+                relationship_name=None,
+                occurred_from=None,
+                occurred_to=None,
+                involving_object_id=None,
+                cursor=None,
+                limit=10,
+            )
+        ).items
+        assert len(events) == 1
+        deleted_event = events[0]
+        assert deleted_event.before == written
+        assert deleted_event.after is None
+
+        delete_first = await reader.create(
+            template_id, 1, "delete-first", initial_properties
+        )
+        first, second = _object_services(actors)
+        with monkeypatch.context() as context:
+            cut = _object_delete_cut(context)
+            deleted, later_write = await blocked_race(
+                actors,
+                cut,
+                lambda: first.delete(delete_first.id),
+                lambda: mutate(second, delete_first.id),
+            )
+        assert deleted is None
+        assert _failure_code(later_write) == "resource_not_found"
+
+
+@pytest.mark.parametrize("deleted_role", ["parent", "child"])
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_02_attach_and_object_delete_arbitrate_both_lifetime_orders(
+    deleted_role: str,
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, f"REF-02-{deleted_role}") as actors:
+        template_id = await _ownership_template(actors, f"ref02_{deleted_role}")
+        reader = _object_reader(actors)
+
+        async def pair(prefix: str) -> tuple[Object, Object]:
+            return (
+                await reader.create(template_id, 2, f"{prefix}-parent", {}),
+                await reader.create(template_id, 2, f"{prefix}-child", {}),
+            )
+
+        parent, child = await pair("reference-first")
+        target = parent if deleted_role == "parent" else child
+        first, second = _object_services(actors)
+        with monkeypatch.context() as context:
+            cut = _ownership_insert_cut(context)
+            attached, deleted = await blocked_race(
+                actors,
+                cut,
+                lambda: first.attach(parent.id, "children", child.id),
+                lambda: second.delete(target.id),
+            )
+        assert _failure_code(attached) is None
+        assert _failure_code(deleted) == "delete_blocked"
+        assert isinstance(deleted, ApplicationFailure)
+        assert deleted.details == {
+            "resource_type": "object",
+            "id": str(target.id),
+            "blockers": [{"type": "ownership", "count": 1}],
+        }
+        await reader.detach(parent.id, "children", child.id)
+
+        parent, child = await pair("delete-first")
+        target = parent if deleted_role == "parent" else child
+        first, second = _object_services(actors)
+        with monkeypatch.context() as context:
+            cut = _object_delete_cut(context)
+            deleted, attached = await blocked_race(
+                actors,
+                cut,
+                lambda: first.delete(target.id),
+                lambda: second.attach(parent.id, "children", child.id),
+            )
+        assert deleted is None
+        expected = (
+            "resource_not_found"
+            if deleted_role == "parent"
+            else "referenced_resource_not_found"
+        )
+        assert _failure_code(attached) == expected
+
+
+@pytest.mark.parametrize("deleted_role", ["parent", "child"])
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_05_detach_removes_final_object_delete_blocker(
+    deleted_role: str,
+    migrated_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(
+        test_database_url, f"REF-05-DETACH-{deleted_role}"
+    ) as actors:
+        template_id = await _ownership_template(actors, f"ref05_{deleted_role}")
+        reader = _object_reader(actors)
+        parent = await reader.create(template_id, 2, "parent", {})
+        child = await reader.create(template_id, 2, "child", {})
+        await reader.attach(parent.id, "children", child.id)
+        target = parent if deleted_role == "parent" else child
+        with pytest.raises(ApplicationFailure) as conservative:
+            await reader.delete(target.id)
+        assert conservative.value.code == "delete_blocked"
+        await reader.detach(parent.id, "children", child.id)
+        await reader.delete(target.id)
+        with pytest.raises(ApplicationFailure) as missing:
+            await reader.get(target.id)
+        assert missing.value.code == "resource_not_found"

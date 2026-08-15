@@ -28,6 +28,7 @@ from netauto.domain.objects import (
 )
 from netauto.domain.primitives import JsonValue, PrimitiveType, validate_value
 from netauto.entrypoints.api.common import (
+    NoBody,
     PageLimit,
     PositiveInteger,
     StrictBody,
@@ -393,6 +394,12 @@ async def list_objects(
 async def get_object(object_id: UUID, request: Request) -> ObjectDto:
     validate_query(request, ())
     return _object(await _service(request).get(object_id))
+
+
+@router.delete("/objects/{object_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_object(object_id: UUID, request: Request, _: NoBody) -> None:
+    validate_query(request, ())
+    await _service(request).delete(object_id)
 
 
 @router.post("/objects/{object_id}/rename", response_model=ObjectDto)

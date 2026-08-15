@@ -289,7 +289,11 @@ class DataTypeService:
                 raise _state(
                     "delete_blocked",
                     "A concurrent current reference prevented DataType deletion.",
-                    {"resource_type": "datatype", "id": str(datatype_id)},
+                    {
+                        "resource_type": "datatype",
+                        "id": str(datatype_id),
+                        "blockers": [{"type": "object_template_property", "count": 1}],
+                    },
                 ) from error
             await uow.commit()
 

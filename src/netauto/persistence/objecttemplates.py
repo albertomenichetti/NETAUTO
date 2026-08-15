@@ -1,7 +1,7 @@
 """SQLAlchemy Core persistence for the ObjectTemplate aggregate."""
 
 from collections.abc import Sequence
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, null, or_, select, tuple_, update
@@ -33,8 +33,18 @@ class ObjectTemplateQualifiedNameError(Exception):
     pass
 
 
+type ObjectTemplateDeleteBlockerType = Literal[
+    "child_object_template",
+    "object_template_component",
+    "object",
+    "relationship_resolution",
+]
+
+
 class ObjectTemplateDeleteReferenceError(Exception):
-    pass
+    def __init__(self, blocker_type: ObjectTemplateDeleteBlockerType) -> None:
+        self.blocker_type = blocker_type
+        super().__init__("ObjectTemplate deletion is blocked by a current reference")
 
 
 class ObjectTemplateComponentTargetReferenceError(Exception):
@@ -601,7 +611,24 @@ class ObjectTemplateStore:
                 object_templates.delete().where(object_templates.c.id == template_id)
             )
         except IntegrityError as error:
-            raise ObjectTemplateDeleteReferenceError from error
+            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
+            constraint = cast(str | None, getattr(diagnostic, "constraint_name", None))
+            blocker_by_constraint: dict[str, ObjectTemplateDeleteBlockerType] = {
+                "fk_object_templates_parent": "child_object_template",
+                "fk_object_template_versions_parent_version": ("child_object_template"),
+                "fk_object_template_components_target": "object_template_component",
+                "fk_objects_template_version": "object",
+                "fk_relationship_resolutions_from_template": (
+                    "relationship_resolution"
+                ),
+                "fk_relationship_resolutions_to_template": ("relationship_resolution"),
+            }
+            blocker_type = (
+                None if constraint is None else blocker_by_constraint.get(constraint)
+            )
+            if blocker_type is not None:
+                raise ObjectTemplateDeleteReferenceError(blocker_type) from error
+            raise
 
     async def list_lineages(
         self,

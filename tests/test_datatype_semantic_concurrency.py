@@ -713,4 +713,10 @@ async def test_concurrent_external_reference_is_stopped_by_fk_final_authority(
             await seed_engine.dispose()
 
         assert _failure_code(outcome) == "delete_blocked"
+        assert isinstance(outcome, ApplicationFailure)
+        assert outcome.details == {
+            "resource_type": "datatype",
+            "id": str(datatype_id),
+            "blockers": [{"type": "object_template_property", "count": 1}],
+        }
         assert (await actors.t1.get_lineage(datatype_id)).id == datatype_id

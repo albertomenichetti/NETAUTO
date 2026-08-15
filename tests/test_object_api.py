@@ -349,7 +349,7 @@ async def test_object_admission_runtime_failures_and_strict_transport(
     assert missing_schema.json()["code"] == "referenced_resource_not_found"
     assert (
         await object_client.delete(f"/api/v1/core/objects/{object_id}")
-    ).status_code == 405
+    ).status_code == 204
 
 
 @pytest.mark.api
@@ -812,6 +812,158 @@ async def test_intrinsic_state_event_atomic_rollback(
 
 @pytest.mark.api
 @pytest.mark.postgresql
+async def test_object_delete_isolated_historical_and_atomic(
+    object_client: httpx.AsyncClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child_template = await _template(object_client, "delete_child")
+    parent_template = await _template(
+        object_client,
+        "delete_parent",
+        components=[
+            {
+                "name": "children",
+                "position": 1,
+                "target_template_id": child_template,
+            }
+        ],
+    )
+
+    async def create(template_id: str, name: str) -> str:
+        response = await object_client.post(
+            "/api/v1/core/objects",
+            json={"template_id": template_id, "canonical_name": name},
+        )
+        assert response.status_code == 201, response.text
+        return cast(str, response.json()["id"])
+
+    parent_id = await create(parent_template, "delete-parent")
+    child_ids = [
+        await create(child_template, "delete-child-a"),
+        await create(child_template, "delete-child-b"),
+    ]
+    for child_id in child_ids:
+        attached = await object_client.post(
+            f"/api/v1/core/objects/{parent_id}/attach",
+            json={"slot_name": "children", "child_object_id": child_id},
+        )
+        assert attached.status_code == 200, attached.text
+
+    blocked = await object_client.delete(f"/api/v1/core/objects/{parent_id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["details"] == {
+        "resource_type": "object",
+        "id": parent_id,
+        "blockers": [{"type": "ownership", "count": 2}],
+    }
+    assert all(
+        forbidden not in blocked.text
+        for forbidden in (
+            "fk_",
+            "object_components",
+            "runtime_relationship_resolutions",
+            "SELECT ",
+            "Traceback",
+        )
+    )
+    blocked_child = await object_client.delete(f"/api/v1/core/objects/{child_ids[0]}")
+    assert blocked_child.status_code == 409
+    assert blocked_child.json()["details"]["blockers"] == [
+        {"type": "ownership", "count": 1}
+    ]
+
+    for child_id in child_ids:
+        detached = await object_client.post(
+            f"/api/v1/core/objects/{parent_id}/detach",
+            json={"slot_name": "children", "child_object_id": child_id},
+        )
+        assert detached.status_code == 204
+
+    original = ObjectStore.insert_intrinsic_event
+
+    async def fail_deleted(
+        store: ObjectStore, kind: EventKind, *args: object
+    ) -> object:
+        if kind is EventKind.DELETED:
+            raise RuntimeError("forced deleted-event failure")
+        return await cast(Callable[..., Awaitable[object]], original)(
+            store, kind, *args
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(ObjectStore, "insert_intrinsic_event", fail_deleted)
+        failed = await object_client.delete(f"/api/v1/core/objects/{parent_id}")
+    assert failed.status_code == 500
+    assert failed.json()["code"] == "internal_error"
+    with migrated_database_engine.connect() as connection:
+        assert connection.scalar(
+            select(objects.c.id).where(objects.c.id == UUID(parent_id))
+        ) == UUID(parent_id)
+        assert (
+            connection.scalar(
+                select(object_lifecycle_events.c.id).where(
+                    object_lifecycle_events.c.object_id == UUID(parent_id),
+                    object_lifecycle_events.c.kind == EventKind.DELETED.value,
+                )
+            )
+            is None
+        )
+
+    rejected_body = await object_client.request(
+        "DELETE", f"/api/v1/core/objects/{parent_id}", json={}
+    )
+    assert rejected_body.status_code == 400
+    assert rejected_body.json()["code"] == "invalid_request"
+    rejected_query = await object_client.delete(
+        f"/api/v1/core/objects/{parent_id}", params={"force": "true"}
+    )
+    assert rejected_query.status_code == 400
+
+    deleted = await object_client.delete(f"/api/v1/core/objects/{parent_id}")
+    assert deleted.status_code == 204 and deleted.content == b""
+    repeated = await object_client.delete(f"/api/v1/core/objects/{parent_id}")
+    assert repeated.status_code == 404
+    assert repeated.json()["details"] == {
+        "resource_type": "object",
+        "id": parent_id,
+    }
+    nested = await object_client.get(
+        f"/api/v1/core/objects/{parent_id}/lifecycle-events"
+    )
+    assert nested.status_code == 404
+    history = await object_client.get(
+        "/api/v1/core/lifecycle-events", params={"object_id": parent_id}
+    )
+    assert history.status_code == 200
+    deleted_events = [
+        item for item in history.json()["items"] if item["kind"] == "DELETED"
+    ]
+    assert len(deleted_events) == 1
+    deleted_event = deleted_events[0]
+    assert deleted_event["id"]
+    assert deleted_event["occurred_at"].endswith("Z")
+    assert {
+        key: value
+        for key, value in deleted_event.items()
+        if key not in {"id", "occurred_at"}
+    } == {
+        "kind": "DELETED",
+        "object_id": parent_id,
+        "canonical_name": "delete-parent",
+        "before": {
+            "id": parent_id,
+            "canonical_name": "delete-parent",
+            "template_id": parent_template,
+            "template_version": 1,
+            "properties": {},
+        },
+        "after": None,
+    }
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
 async def test_persisted_intrinsic_event_corruption_maps_internal_error(
     object_client: httpx.AsyncClient, migrated_database_engine: Engine
 ) -> None:
@@ -828,6 +980,14 @@ async def test_persisted_intrinsic_event_corruption_maps_internal_error(
     corrupt_object = await object_client.get(f"/api/v1/core/objects/{object_id}")
     assert corrupt_object.status_code == 500
     assert corrupt_object.json()["code"] == "internal_error"
+    corrupt_delete = await object_client.delete(f"/api/v1/core/objects/{object_id}")
+    assert corrupt_delete.status_code == 500
+    assert corrupt_delete.json()["code"] == "internal_error"
+    with migrated_database_engine.connect() as connection:
+        assert (
+            connection.scalar(select(objects.c.id).where(objects.c.id == object_id))
+            == object_id
+        )
     with migrated_database_engine.begin() as connection:
         connection.execute(
             objects.update()

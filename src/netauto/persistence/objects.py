@@ -4,10 +4,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID
 
-from sqlalchemy import null, or_, select, text, tuple_
+from sqlalchemy import func, null, or_, select, text, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -18,6 +18,7 @@ from netauto.persistence.metadata import (
     object_components,
     object_lifecycle_events,
     objects,
+    runtime_relationship_resolutions,
 )
 
 
@@ -106,6 +107,15 @@ class OwnershipConflictError(Exception):
 
 class OwnershipReferenceError(Exception):
     pass
+
+
+type ObjectDeleteBlockerType = Literal["ownership", "relationship"]
+
+
+class ObjectDeleteReferenceError(Exception):
+    def __init__(self, blocker_type: ObjectDeleteBlockerType) -> None:
+        self.blocker_type = blocker_type
+        super().__init__("Object deletion is blocked by a current reference")
 
 
 def _object(row: RowMapping) -> Object:
@@ -352,6 +362,66 @@ class ObjectStore:
             .first()
         )
         return None if row is None else _object(row)
+
+    async def lock_update(self, object_id: UUID) -> Object | None:
+        row = (
+            (
+                await self.connection.execute(
+                    select(objects).where(objects.c.id == object_id).with_for_update()
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else _object(row)
+
+    async def delete_blocker_counts(self, object_id: UUID) -> dict[str, int]:
+        ownership_count = await self.connection.scalar(
+            select(func.count())
+            .select_from(object_components)
+            .where(
+                or_(
+                    object_components.c.child_object_id == object_id,
+                    object_components.c.parent_object_id == object_id,
+                )
+            )
+        )
+        relationship_count = await self.connection.scalar(
+            select(
+                func.count(
+                    func.distinct(runtime_relationship_resolutions.c.relationship_id)
+                )
+            ).where(
+                or_(
+                    runtime_relationship_resolutions.c.from_object_id == object_id,
+                    runtime_relationship_resolutions.c.to_object_id == object_id,
+                )
+            )
+        )
+        return {
+            "ownership": int(ownership_count or 0),
+            "relationship": int(relationship_count or 0),
+        }
+
+    async def delete(self, object_id: UUID) -> None:
+        try:
+            await self.connection.execute(
+                objects.delete().where(objects.c.id == object_id)
+            )
+        except IntegrityError as error:
+            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
+            constraint = getattr(diagnostic, "constraint_name", None)
+            if constraint in {
+                "fk_object_components_child",
+                "fk_object_components_parent",
+            }:
+                raise ObjectDeleteReferenceError("ownership") from error
+            if constraint in {
+                "fk_runtime_resolutions_from_object",
+                "fk_runtime_resolutions_to_object",
+            }:
+                raise ObjectDeleteReferenceError("relationship") from error
+            raise
 
     async def update_name(self, object_id: UUID, canonical_name: str) -> None:
         await self.connection.execute(

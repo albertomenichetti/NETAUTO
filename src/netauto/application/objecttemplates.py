@@ -776,7 +776,11 @@ class ObjectTemplateService:
                 raise _state(
                     "delete_blocked",
                     "A concurrent current reference prevented ObjectTemplate deletion.",
-                    {"resource_type": "object_template", "id": str(template_id)},
+                    {
+                        "resource_type": "object_template",
+                        "id": str(template_id),
+                        "blockers": [{"type": error.blocker_type, "count": 1}],
+                    },
                 ) from error
             await uow.commit()
 
