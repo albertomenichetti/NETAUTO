@@ -592,7 +592,9 @@ Implement:
 - Relationship/Object-relative read DTO tests;
 - lifecycle semantic-view cardinality and atomicity tests;
 - API tests for Relationship CREATE/GET/DELETE and Object relationship reads, including `201` new vs `200` convergence and `204` absent delete;
-- deterministic canonical scenarios including `ARB-05..07`, `REF-03`, `REF-04`, relationship variant of `REF-05`, `SNAP-01..03`, `ATOMIC-02`, `ATOMIC-03`, `PAR-01`, `PAR-02` and `PAR-05`;
+- deterministic canonical scenarios whose semantic operations are fully available in S07: `ARB-05..07`, `REF-04`, `SNAP-01..03`, `ATOMIC-02`, `ATOMIC-03`, `PAR-01`, `PAR-02` and `PAR-05`;
+- `REF-03` (`REL.CREATE × OBJ.DELETE`) and the Relationship `REF-05` variant (`REL.DELETE × OBJ.DELETE`) are intentionally completed in M1-S08 together with final `Object.DELETE`; S07 must not add a fake/private Object.DELETE merely to claim those scenario IDs early;
+- S07 must still prove the current RuntimeRelationshipResolution -> Object FK `RESTRICT` mechanics and rollback behavior directly at persistence level, without exposing a private Object.DELETE semantic operation;
 - lifecycle metadata snapshot tests must validate allowed committed snapshot combinations rather than requiring unrelated row locks.
 
 ### Exit criteria
