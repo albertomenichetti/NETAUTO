@@ -293,6 +293,8 @@ Nessun implicit detach/rebind.
 
 Uno slot removed e successivamente reintroduced con lo stesso name dalla stessa declaring lineage conserva historical identity/evolution continuity.
 
+Conseguenza normativa sul current ownership model: una migration riuscita non può lasciare alcuna `object_components` row che il target exact schema non sappia più interpretare. Il runtime edge non conserva una historical slot declaration separata; dopo il commit ogni edge continua a essere interpretato esclusivamente contro la current exact effective schema del parent. Perciò il caso "target schema senza slot ma legacy edge ancora presente" non è uno stato M1 supportato: SCHEMA_CHANGE deve fallire prima del repin.
+
 ## 10. Incoming ownership e Relationships
 
 Incoming ownership dell'Object migrato non richiede revalidation perché child compatibility dipende da:
