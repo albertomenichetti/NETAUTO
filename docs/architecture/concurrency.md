@@ -1,10 +1,10 @@
 # Concurrency and Unit of Work — Current AS-IS
 
-## Principle
+## Purpose and authority
 
 Concurrency is part of semantic correctness. A domain invariant is not considered guaranteed if a supported legal interleaving can violate it.
 
-The architecture therefore separates:
+The architecture separates:
 
 ```text
 semantic safety predicate
@@ -14,7 +14,25 @@ semantic safety predicate
     -> deterministic real-PostgreSQL verification
 ```
 
-The semantic guarantee is authoritative; a concrete PostgreSQL mechanism is chosen to realize it and must not silently redefine it.
+Authority is divided deliberately:
+
+```text
+concurrency-matrix.md
+    -> canonical mutation census
+    -> semantic interaction scopes
+    -> safety-predicate definitions
+    -> allowed outcomes
+
+this document
+    -> Unit of Work boundaries
+    -> isolation, locks, gates and constraint realization
+    -> retry / convergence realization
+
+verification-concurrency-registry.md
+    -> stable deterministic scenarios and recipes
+```
+
+The semantic guarantee is authoritative; PostgreSQL mechanisms realize it and must not silently redefine it. This document therefore uses predicate IDs defined in `concurrency-matrix.md` without duplicating their normative catalog.
 
 ## Semantic Unit of Work
 
@@ -99,86 +117,6 @@ with lineage header before exact version for the same lineage when both are requ
 
 Deadlock detection remains a fallback/retry safety mechanism, not the normal semantic serialization strategy.
 
-## Current mutation census
-
-The concurrency review covers the current 32 public semantic mutation primitives.
-
-### DataType — 10
-
-```text
-CREATE
-CREATE_NEXT
-REVISE
-PUBLISH
-SET_DEFAULT
-CLEAR_DEFAULT
-DEPRECATE
-DELETE_DRAFT
-DELETE_LINEAGE
-SET_DESCRIPTION
-```
-
-### ObjectTemplate — 10
-
-Same lifecycle/default/description primitive set as DataType.
-
-### Object / ownership — 7
-
-```text
-CREATE
-RENAME
-DATA_CHANGE
-SCHEMA_CHANGE
-ATTACH
-DETACH
-DELETE
-```
-
-### RelationshipDefinition — 3
-
-```text
-CREATE
-RENAME
-DELETE
-```
-
-### Relationship — 2
-
-```text
-CREATE
-DELETE
-```
-
-A future mutation must be added to the semantic concurrency census and compared against the existing mutation set before its concurrency design is considered complete.
-
-## Safety-predicate vocabulary
-
-The current semantic concurrency model uses 19 non-independent safety predicates.
-
-| ID | Meaning | Required property |
-|---|---|---|
-| `NU` / S-NAME-UNIQUE | Qualified-name uniqueness | At most one current stable model entity owns a qualified `(namespace,name)` in its entity kind. |
-| `VS` / S-VERSION-SET | Coherent version set | Allocation/source eligibility uses one serially coherent current lineage version set. |
-| `DG` / S-DRAFT-GENERATION | DRAFT generation freshness | Operations based on one exact `expected_revision` generation cannot independently commit incompatible outcomes. |
-| `LS` / S-LIFECYCLE-STATE | Version lifecycle | Same exact version transitions are explainable by a valid monotonic lifecycle order. |
-| `DV` / S-DEFAULT-VALIDITY | Default policy | Default is NULL or same-lineage exact PUBLISHED; concurrent lifecycle/default transitions remain coherent. |
-| `BA` / S-BINDING-ADMISSION | New exact binding admission | Selected exact dependency remains PUBLISHED through admission/commit. |
-| `AM` / S-ACTIVE-MODEL | Active model graph | No committed active PUBLISHED consumer points to a non-PUBLISHED exact dependency. |
-| `RL` / S-REFERENCE-LIFETIME | Cross-aggregate reference lifetime | Reference and target deletion resolve to a serially valid winner; no dangling current reference. |
-| `AL` / S-AGGREGATE-LIFETIME | Aggregate/owned-child lifetime | Child/internal mutation cannot resurrect or mutate an aggregate deleted by a winning delete. |
-| `ML` / S-METADATA-LWW | Metadata last-write-wins | Each metadata write is atomic and final value is exactly one committed candidate. |
-| `OS` / S-OBJECT-STATE | Complete Object state | Same-Object intrinsic mutations compose as a serial sequence over complete Object state/lifecycle snapshots. |
-| `PO` / S-PARENT-OWNERSHIP | Parent schema vs ownership | Every committed outgoing ownership edge remains valid against the parent's committed current exact schema. |
-| `OF` / S-OWNERSHIP-FACT | One child ownership fact | Current ownership evolves serially between detached or exactly one requested `(parent,slot)` state. |
-| `SO` / S-SINGLE-OWNER | Child single owner | A child has at most one current owner/slot. |
-| `OC` / S-OWN-CYCLE | Ownership acyclicity | Concurrent edge additions cannot make the committed ownership graph cyclic. |
-| `RC` / S-RD-CERTIFIED-SET | Certified RelationshipDefinition set | Committed Definition set remains semantically non-duplicated and cross-definition conflict-free. |
-| `RF` / S-REL-FACT | Factual Relationship uniqueness | Exactly one current factual Relationship represents a semantic fact; equivalent CREATE may converge. |
-| `RA` / S-REL-LIFETIME | Relationship exact-ID lifetime/ABA | DELETE(X) affects only X; recreated equivalent Y cannot be deleted by a stale delete of X. |
-| `ES` / S-REL-EVENT-SNAPSHOT | Relationship lifecycle metadata snapshot | Complete lifecycle event set uses coherent committed metadata observations, never mixed half-old/half-new state. |
-
-All mutation pairs not matched by a scoped safety rule are semantically `I — INDEPENDENT`. `I` does not promise physical non-contention; an implementation may intentionally over-serialize some semantically independent operations for simplicity.
-
 ## Versioned model locking
 
 ### Create-next / version allocation
@@ -226,7 +164,7 @@ lineage header FOR NO KEY UPDATE
 -> recheck PUBLISHED
 ```
 
-Clear default uses lineage owner lock.
+Clear default uses the lineage owner lock.
 
 Implicit default binding:
 
@@ -346,8 +284,6 @@ Relationship DELETE takes the factual Relationship header `FOR UPDATE`, reloads 
 
 Immediate PostgreSQL FK `RESTRICT` is a final correctness authority for current cross-aggregate references.
 
-This guarantees the serial alternatives:
-
 ```text
 reference wins
     -> target delete cannot commit
@@ -375,4 +311,4 @@ The architecture accepts some intentional over-serialization where it simplifies
 
 It also protects intended non-serialization where stronger locks would create unnecessary coupling. A key example is keeping `RelationshipResolution.name` out of FK-referencable key structures so pure Definition rename does not unnecessarily block runtime Relationship FK insertion.
 
-Correctness predicates dominate throughput; lock strength should still be no stronger than required by the ratified safety predicate.
+Correctness predicates dominate throughput; lock strength should still be no stronger than required by the predicate defined in `concurrency-matrix.md`.
