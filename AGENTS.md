@@ -2,112 +2,92 @@
 
 This file defines repository-level operating rules for coding agents.
 
-It is an **operational contract**, not a domain, architecture, technology or verification specification. It tells the agent:
+It is an **operational contract**, not a domain, architecture, technology or verification specification. It tells the agent how to locate the active work, use the owning documents, distinguish implementation freedom from missing design, stop safely, and hand a candidate to the reviewer.
 
-- how to determine the current project phase and assigned work;
-- which authoritative documents to read and how to combine them;
-- which pre-flight checks are required before implementation;
-- which choices remain local implementation freedom;
-- when work must stop for an explicit design decision;
-- what may be changed and what must remain reviewer-owned;
-- which evidence must be returned at handoff.
-
-It must not duplicate, reinterpret or silently override the owning normative documentation.
+It must not duplicate, reinterpret or silently override the normative documentation.
 
 ## 1. Start from the repository README
 
-Before any repository work, after having read `AGENTS.md`, **always** read the root `README.md`.
+After reading this file, always read the root `README.md` before inspecting or modifying the repository.
 
-The README is the mandatory **operational entry point**. It must identify, directly or through explicit links:
+The README is the operational navigator. It identifies the active cycle, its documentation root and its branch. It intentionally does not duplicate the detailed phase, current slice, blockers or task decomposition.
+
+Resolve the detailed context as follows:
 
 ```text
-current delivered baseline
-active cycle, if any
-active branch
-current phase
-active slice or task
-current operational status
-active execution aid, when one exists
-immediate next action
+README says active milestone Mx
+    -> read docs/milestones/Mx/status.md
+    -> read docs/milestones/Mx/steps.md
+    -> then read contract.md, architecture/README.md
+       and every owning document required by the assigned work
+
+README says active fix Fx-y
+    -> read docs/fixes/Fx-y/status.md
+    -> read docs/fixes/Fx-y/steps.md
+    -> then read defects.md, optional architecture/README.md
+       and every owning document required by the assigned work
+
+README says no active cycle
+    -> do not modify software
 ```
 
-Use the README to determine **where the project currently is**. Then verify that state against the current Git branch and the active cycle documents.
+The README is not a semantic authority. It cannot override the current AS-IS, an active contract or defect scope, frozen cycle architecture, or ratified technology decisions.
 
-The README is a navigator, not a semantic authority. It cannot override `docs/architecture/`, an active milestone contract, a frozen defect scope, frozen cycle architecture or the ratified technology baseline.
-
-Do not infer the current phase from branch name, commit recency, chat history, the latest prompt or agent memory alone.
-
-If the README does not identify the current phase clearly, points to missing or incompatible cycle documents, or disagrees with the branch or authoritative cycle status, stop before modifying the repository and report the state/documentation gap.
+If the README, checked-out branch or active-cycle documents disagree, stop and report the mismatch. Do not infer intent from recency, chat history, a prompt or agent memory.
 
 ## 2. Establish the exact work context
 
-Before modifying code or normative documentation, establish all of the following:
+Before modifying code, schema, migrations or normative documentation, establish:
 
 ```text
-current Git branch
-active cycle type: milestone Mx or fix Fx-y
-active cycle identifier
-current phase
-active slice identifier: Mx-Snn or Fx-y-Snn
-active task / execution aid
-publication expectation: local only, commit, push, or PR
+checked-out Git branch
+active cycle type and identifier
+current cycle phase
+active slice, when implementation is in progress
+assigned task or execution aid
+expected publication action: local only, commit, push or PR
 ```
 
-Code-base changes are permitted only inside an active milestone or fix cycle, as defined by `docs/general/linee_guida_progetto.md`.
+The active cycle's `status.md` owns the detailed operational state. The active `steps.md` owns slice decomposition and traceability. A prompt is only an execution aid: it narrows the assigned task but cannot create a cycle, change the phase or override frozen authorities.
 
-The README, branch, cycle, phase, slice, status and active task must agree. If they do not, stop and report the mismatch rather than guessing the intended target.
+### No active software cycle
 
-Typical phases include:
+When the README declares no active milestone or fix, software changes are forbidden.
 
-```text
-DESIGN
-IMPLEMENTATION
-REVIEW / REVIEW FIX
-FINAL ACCEPTANCE or FINAL REGRESSION
-AS-IS CONSOLIDATION
-DELIVERED / CLOSED
-NO ACTIVE CYCLE
-```
+A coding agent may perform repository-governance or documentation maintenance outside a software cycle only when a human explicitly authorizes both the scope and target branch. Such maintenance is limited to:
 
-Apply the phase boundary strictly:
+- repository navigation and governance documents;
+- broken references, stale status wording and editorial drift;
+- lossless clarification of the delivered AS-IS that does not change system meaning.
 
-- during `DESIGN`, do not implement the behavior being designed;
-- during `IMPLEMENTATION`, work only on the active frozen slice;
-- during `REVIEW / REVIEW FIX`, address only the current reviewer findings unless an explicit reopen occurs;
-- during `FINAL ACCEPTANCE / FINAL REGRESSION`, do not introduce unrelated production changes;
-- during `AS-IS CONSOLIDATION`, modify only the documentation or artifacts explicitly owned by consolidation;
-- when no active code cycle exists, do not modify the code-base.
-
-An active prompt is an execution aid. It narrows the assigned task but never creates authority, changes the phase or overrides frozen documents.
+If the proposed documentation change would alter delivered semantics, public behavior, persistence guarantees, concurrency guarantees or the supported technology baseline, stop and require a milestone or fix cycle.
 
 ## 3. Documentation authority map
 
 Repository documentation is authoritative. Code, tests, generated artifacts, Git history, chat, summaries, reports and memory are evidence or navigation aids; they do not create semantic authority by themselves.
 
-Use each source according to its owning role.
-
 | Source | How to use it |
 |---|---|
-| `README.md` | Determine the current baseline, cycle, phase, slice, active task and next action. Cross-check it against the active cycle documents and Git state. |
+| `README.md` | Identify the active cycle, its documentation root and branch. |
 | `AGENTS.md` | Apply coding-agent operating rules. It governs how the agent works, not what the system means. |
-| `docs/general/linee_guida_progetto.md` | Apply project governance: milestone/fix lifecycle, documentation roles, freeze/reopen/propagation, reviewer ownership, final gates and closure. |
-| `docs/architecture/README.md` | Enter the authoritative current delivered AS-IS and locate its owning architecture documents. |
+| `docs/general/linee_guida_progetto.md` | Apply project governance: cycle lifecycle, document roles, freeze/reopen/propagation, review ownership, final gates and closure. |
+| `docs/architecture/README.md` | Enter the authoritative current delivered AS-IS and locate its owning documents. |
 | `docs/architecture/*.md` | Verify every current assumption that the active cycle declares unchanged. |
-| `docs/milestones/<Mx>/contract.md` | Read milestone scope, non-goals and acceptance criteria. |
-| `docs/milestones/<Mx>/architecture/README.md` | Verify the milestone architecture-set status and locate the owning TO-BE documents. |
-| `docs/milestones/<Mx>/architecture/*.md` | Read only the explicit milestone TO-BE decisions and their dependencies. |
-| `docs/fixes/<Fx-y>/defects.md` | Read the frozen defect scope, reproduction evidence, violated authority and expected correction. |
-| `docs/fixes/<Fx-y>/architecture/`, when present | Read the frozen correction-design set for an architecture defect. |
-| active `steps.md` | Read the frozen slice decomposition, scope and traceability. It cannot redefine contract, defects or architecture. |
-| active `status.md` | Verify the current operational state and reviewer-controlled progress. |
+| milestone `contract.md` | Read scope, non-goals and acceptance criteria. |
+| milestone `architecture/README.md` | Verify architecture-set status and locate the owning TO-BE documents. |
+| milestone `architecture/*.md` | Read explicit TO-BE decisions and their dependencies. |
+| fix `defects.md` | Read frozen defect identities, reproduction evidence, violated authority and required correction. |
+| fix `architecture/`, when present | Read the frozen correction-design set. |
+| active `steps.md` | Read frozen slice scope, dependencies, verification and traceability. It cannot redefine contract, defects or architecture. |
+| active `status.md` | Determine the detailed current phase, slice and blockers. |
+| milestone `acceptance.md`, when present | Read durable final-acceptance evidence; it is evidence, not a replacement for architecture. |
 | `docs/general/technology_baseline.md` | Read every ratified `STACK-*` decision applicable to the task. Technology realizes semantic contracts; it cannot reinterpret them. |
-| active `wip/` material | Use only as a temporary execution aid. It is non-normative until promoted. |
-| root README commands and `pyproject.toml` | Use the current operational commands and configured project toolchain. |
-| code, tests, schema, OpenAPI and Git history | Inspect implementation, reproduce defects and collect evidence. Never use them to override normative documentation. |
+| active `wip/` material | Use only as temporary, non-normative execution aid. |
+| `pyproject.toml`, lockfile and code | Inspect configured realization and collect evidence; do not treat them as independent design authority. |
 
-### Combining AS-IS and active-cycle authority
+### Combining current AS-IS and active-cycle authority
 
-A milestone starts from `docs/architecture/` and may diverge from it only where the milestone contract and frozen architecture define an explicit TO-BE change.
+For a milestone:
 
 ```text
 current AS-IS
@@ -119,7 +99,7 @@ implementation authority for the active milestone
 
 Anything declared unchanged continues to derive from `docs/architecture/`.
 
-A fix also starts from the current AS-IS, but its authority is limited to the frozen defects and any frozen correction design. A fix must not be used to introduce new capability, intentional public-contract change or new product semantics.
+A fix also starts from the current AS-IS, but its authority is limited to the frozen defects and any frozen correction design. A fix cannot introduce a new capability, intentional public-contract change or new product semantics.
 
 ### Precedence and contradiction
 
@@ -139,28 +119,27 @@ current code or test behavior
     cannot silently redefine documentation
 ```
 
-If normative sources conflict, do not choose the newest, most convenient or last-read document. Stop the affected work and report an architecture/documentation defect.
+If normative sources conflict, do not choose the newest or most convenient. Stop the affected work and report an architecture/documentation defect.
 
 ## 4. Mandatory pre-flight before implementation
 
 Before implementing or modifying behavior, perform a dependency-driven repository re-read. Do not rely on memory.
 
-### Common checks
-
 Confirm that:
 
-- the README, branch, active cycle, phase, slice and task agree;
-- the task belongs to the current slice and does not exceed its frozen scope;
-- every starting assumption declared unchanged is verifiable in `docs/architecture/`;
-- the owning semantic, application, persistence, public-boundary and verification documents affected by the task are identified;
-- relevant invariants, failure semantics and acceptance or defect requirements are identified;
+- README, branch and active-cycle documents identify the same cycle;
+- `status.md` explicitly permits the assigned phase and task;
+- the task belongs to the active slice when a slice is required;
+- every unchanged starting assumption is verifiable in `docs/architecture/`;
+- the owning semantic, application, persistence, public-boundary and verification documents are identified;
+- relevant invariants, failure semantics and acceptance or defect requirements are known;
 - every applicable `STACK-*` decision is ratified;
-- no contradiction, stale-open marker or explicit reopen affects the task;
-- the required verification obligations are known before coding begins.
+- no contradiction, stale-open marker or explicit reopen affects the work;
+- required verification obligations are known before coding begins.
 
-### Milestone checks
+### Milestone implementation
 
-For milestone implementation, confirm at minimum:
+Verify at minimum:
 
 ```text
 contract.md
@@ -168,22 +147,21 @@ contract.md
 
 architecture/README.md
     architecture set FROZEN
-    no relevant open design point
+    no relevant open or reopened point
 
 steps.md
     FINAL / FROZEN
-    active slice defined
+    assigned slice defined
 
 status.md
-    active slice READY / IN PROGRESS / REVIEW CHANGES REQUIRED
-    as appropriate to the assigned work
+    explicitly authorizes the assigned implementation or review-fix work
 ```
 
 Read the current AS-IS plus every milestone document that owns an explicit TO-BE change or a dependency of the slice.
 
-### Fix checks
+### Fix implementation
 
-For fix implementation, confirm at minimum:
+Verify at minimum:
 
 ```text
 defects.md
@@ -198,11 +176,10 @@ architecture/README.md
 
 steps.md
     FROZEN
-    active slice defined
+    assigned slice defined
 
 status.md
-    active slice READY / IN PROGRESS / REVIEW CHANGES REQUIRED
-    as appropriate to the assigned work
+    explicitly authorizes the assigned implementation or review-fix work
 ```
 
 A reproducible defect must not reach implementation with only a vague symptom description.
@@ -211,12 +188,12 @@ A reproducible defect must not reach implementation with only a vague symptom de
 
 Use the owning documents rather than a summary in this file:
 
-- for domain or application behavior, read the owning current and active-cycle architecture;
-- for public behavior, read the owning API contracts;
-- for persistence or schema behavior, read the owning persistence and migration contracts;
-- for a technology, dependency, composition or toolchain choice, read the applicable ratified `STACK-*` decisions;
-- for concurrency-sensitive work, read `docs/architecture/concurrency-matrix.md`, `docs/architecture/concurrency.md` and `docs/architecture/verification-concurrency-registry.md`, plus any frozen active-cycle extensions;
-- for required test layers and closure evidence, read the owning verification documents, active `steps.md`, task prompt and root README commands.
+- domain/application behavior -> owning current and active-cycle architecture;
+- public behavior -> owning API contracts;
+- persistence/schema behavior -> owning persistence and migration contracts;
+- technology/dependency/composition/toolchain -> applicable ratified `STACK-*` decisions;
+- concurrency-sensitive work -> current semantic matrix, PostgreSQL realization and canonical verification registry, plus active-cycle extensions;
+- required verification -> current verification architecture, active steps and assigned task.
 
 Do not add an isolated mechanism and call the design complete when the owning semantic or verification chain is absent.
 
@@ -230,7 +207,7 @@ Do not resolve ambiguity by:
 
 - inventing a domain rule;
 - broadening or weakening a public contract;
-- changing a semantic transaction, concurrency or persistence guarantee;
+- changing a transaction, concurrency or persistence guarantee;
 - introducing a new authoritative representation;
 - selecting or substituting an unratified technology;
 - weakening a verification obligation;
@@ -259,7 +236,7 @@ Classify every relevant finding.
 
 ### Implementation defect
 
-The applicable authorities define the expected behavior correctly and unambiguously, but the implementation does not comply.
+The authorities define the expected behavior correctly and unambiguously, but the implementation does not comply.
 
 ```text
 preserve the design
@@ -277,7 +254,7 @@ The authorities are contradictory, incomplete, stale, wrong or insufficient to d
 
 ```text
 STOP affected implementation
--> identify the impacted authority and scope
+-> identify impacted authority and scope
 -> report the contradiction or gap
 -> re-read dependent authorities
 -> obtain an explicit design decision
@@ -286,13 +263,7 @@ STOP affected implementation
 -> only then resume implementation
 ```
 
-Never:
-
-- choose one interpretation in code;
-- weaken a test to obtain a green result;
-- rewrite frozen documentation to describe the convenient implementation;
-- use current code behavior as the new authority;
-- continue work that depends on the unresolved point.
+Never choose one interpretation in code, weaken a test to obtain a green result, rewrite frozen documentation to fit a convenient implementation, or use current code behavior as the new authority.
 
 A review-fix remains inside the same slice and stays limited to reviewer findings unless a new architecture issue requires explicit reopen.
 
@@ -300,15 +271,7 @@ A review-fix remains inside the same slice and stays limited to reviewer finding
 
 Testing and verification are part of the implementation candidate.
 
-Determine the required evidence from:
-
-```text
-owning verification architecture
-active contract / defects / steps
-active task or review-fix prompt
-root README operational commands
-project configuration
-```
+Determine the required evidence from the owning verification architecture, active contract or defects, active steps, assigned task and project configuration.
 
 Run the smallest focused verification that proves the affected contract, then expand to every cross-boundary and cycle-required gate.
 
@@ -321,24 +284,17 @@ Rules:
 - do not introduce broad suppressions for convenience;
 - keep any unavoidable suppression local and justified;
 - follow the owning deterministic-concurrency contract rather than improvising a different proof;
-- follow the current project commands and configured toolchain rather than creating a parallel quality policy.
+- use the ratified toolchain and repository configuration rather than creating a parallel quality policy.
 
 If required infrastructure or configuration is unavailable, report exactly which verification could not run and why. Do not claim a fully verified candidate and do not silently substitute another backend, tool or test strategy.
 
-### Schema, migration and dependency changes
-
-Make these changes only when they are explicitly inside the active frozen scope.
-
-- Identify and follow the owning persistence, migration and technology decisions before editing them.
-- Do not rewrite delivered schema history unless an explicit authority permits that operation.
-- Do not add a dependency for a speculative future need.
-- Keep project metadata, lock state and verification coherent according to the ratified technology baseline and root README workflow.
+Schema, migration and dependency changes are permitted only when explicitly inside the active frozen scope. Follow the owning persistence, migration and technology decisions; do not rewrite delivered schema history or add speculative dependencies.
 
 ## 8. Documentation, Git and reviewer ownership
 
-### Documentation modification boundaries
+### Documentation boundaries
 
-- `docs/architecture/` is the delivered AS-IS. Change it only during an explicitly authorized reopen or AS-IS consolidation task.
+- `docs/architecture/` is the delivered AS-IS. Change its meaning only through an authorized cycle; outside a cycle, only explicit human-authorized lossless clarification is permitted.
 - Delivered milestone and fix directories are historical records. Do not rewrite them as current authority.
 - Do not change an active frozen contract, `defects.md` or architecture merely to fit implementation.
 - Update active `steps.md`, `status.md`, `acceptance.md` or execution aids only when the task explicitly assigns that responsibility.
@@ -357,18 +313,17 @@ review outcome ACCEPTED
 review outcome REVIEW CHANGES REQUIRED
 ```
 
-Do not change reviewer-owned status merely because implementation and local tests appear successful.
+### Git rules
 
-### Git and repository rules
-
-- Work only on the active cycle branch.
-- Never merge the cycle branch into `master`; merge is human-owned.
+- Work on the active cycle branch identified by README and cycle status.
+- Never merge a cycle branch into `master`; merge is human-owned.
+- Outside a software cycle, commit directly to `master` only when a human explicitly authorizes a bounded governance/documentation-maintenance task.
 - Never force-push or rewrite published history unless explicitly authorized for a narrowly defined recovery operation.
 - Create a PR only when explicitly requested.
 - Commit and push only according to the task's publication instructions.
 - Do not include unrelated changes in the candidate.
 - Do not commit secrets, credentials, database URLs, local environments, generated caches or transient diagnostics.
-- When a committed/pushed handoff is requested, verify the working tree and local/remote branch state before reporting them.
+- Before reporting a committed/pushed handoff, verify the working tree and local/remote branch state.
 
 ## 9. Candidate handoff
 
@@ -404,88 +359,6 @@ Use language such as:
 candidate implemented and ready for reviewer inspection
 ```
 
-Do not state that a slice is `COMPLETED` or a cycle is `DELIVERED` unless reporting a reviewer-owned state that was already authoritatively recorded before the agent's work.
+Do not state that a slice is `COMPLETED` or a cycle is `DELIVERED` unless reporting a reviewer-owned state already authoritatively recorded before the agent's work.
 
 Never claim a test, migration, clean working tree, push or remote synchronization that was not actually verified.
-
-
-
-
-
-
-## 10. Tech Specs
-
-### Requirements
-
-- CPython 3.14;
-- [uv](https://docs.astral.sh/uv/);
-- an externally provisioned PostgreSQL database.
-
-PostgreSQL URLs must use SQLAlchemy's Psycopg driver form:
-
-```text
-postgresql+psycopg://user:password@host/database
-```
-
-Runtime and test databases are configured separately. The application and Alembic read `NETAUTO_DATABASE_URL`; the test suite reads only `TEST_DATABASE_URL`. Neither path provisions PostgreSQL, and application startup never runs migrations.
-
-### Setup and build
-
-Reproduce the locked development environment and build both distribution artifacts:
-
-```bash
-uv sync --locked
-uv build
-```
-
-### Database migration
-
-Set the explicit administrative/runtime target, then migrate it to Alembic head:
-
-```bash
-export NETAUTO_DATABASE_URL='postgresql+psycopg://user:password@host/runtime_database'
-uv run alembic upgrade head
-```
-
-Migrations are an explicit administrative operation.
-
-### Run the API
-
-After migrating the runtime database, start the Uvicorn application factory:
-
-```bash
-export NETAUTO_DATABASE_URL='postgresql+psycopg://user:password@host/runtime_database'
-uv run uvicorn netauto.entrypoints.http:create_app --factory
-```
-
-The kernel API is served below `/api/v1/core`.
-
-### Verification
-
-Cheap verification does not require a database:
-
-```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run pyright
-uv run pytest -q -m 'not postgresql'
-uv run pytest -q tests/test_m1_traceability.py
-```
-
-The complete suite requires a dedicated, externally supplied real PostgreSQL test database:
-
-```bash
-export TEST_DATABASE_URL='postgresql+psycopg://user:password@host/test_database'
-uv run pytest -q
-```
-
-Run PostgreSQL tests serially when only one test database is available. Do not add `-n`/xdist unless each worker has an externally managed isolated database target.
-
-Focused verification is available through the registered markers:
-
-```bash
-uv run pytest -q -m 'postgresql and concurrency'
-uv run pytest -q -m 'postgresql and api'
-uv run pytest -q -m 'postgresql and migration'
-uv run pytest -q -m property
-```
