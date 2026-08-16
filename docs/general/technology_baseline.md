@@ -687,7 +687,13 @@ Normative scenarios are not automatically rerun to hide flakes. Retry/convergenc
 
 #### Timeout safety
 
-Timeouts prevent hangs; they do not establish race ordering or non-blocking semantics.
+```text
+pytest-timeout
+```
+
+is part of the test safety toolset so a broken concurrency test cannot hang CI indefinitely.
+
+Timeouts prevent hangs; they do not establish race ordering, blocking or non-blocking semantics.
 
 #### Property-based testing
 
