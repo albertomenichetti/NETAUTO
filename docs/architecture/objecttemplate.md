@@ -275,16 +275,25 @@ Model-plane evolution and data-plane migration are distinct:
 
 Individual version delete is allowed only for DRAFT and requires `expected_revision`.
 
-Whole-lineage delete is allowed only when no external current reference remains, including:
+Whole-lineage delete removes the lineage and all of its owned state atomically after semantic admission:
 
-- exact parent/version pins;
-- DataType property dependencies where the lineage is the consumer;
-- component target references;
+```text
+ObjectTemplate
+    -> owned ObjectTemplateVersion rows
+    -> owned local Property/Component declarations
+```
+
+Outgoing references contained only in that owned state — for example exact parent pins or local property pins to DataTypeVersions — disappear with the aggregate and are not themselves blockers of deleting the consumer lineage.
+
+Whole-lineage delete is allowed only when no **external current reference into the lineage or one of its exact versions** remains, including:
+
+- child ObjectTemplate lineages that use it as stable parent;
+- external component declarations that target it;
 - RelationshipResolution endpoint references;
-- runtime Object exact version pins;
-- other references protected by the persistence model.
+- runtime Objects pinned to one of its exact versions;
+- other incoming cross-aggregate references protected by the persistence model.
 
-Owned local declarations are removed with their owning version only after semantic root-delete admission succeeds.
+The UoW provides bounded semantic blocker diagnostics; PostgreSQL `RESTRICT` foreign keys remain the final race authority. No external reference is removed implicitly to make deletion admissible.
 
 ## Read semantics
 
@@ -319,5 +328,5 @@ Ordinary reads are snapshot-consistent for the request but do not promise repeat
 - default is NULL or exact PUBLISHED same-lineage;
 - PUBLISHED active-model direct exact dependencies remain PUBLISHED;
 - model mutation performs no implicit runtime remediation;
-- individual delete is DRAFT-only and whole-lineage delete is reference-safe;
+- individual delete is DRAFT-only and whole-lineage delete is safe against incoming external references;
 - supported concurrent interleavings preserve all invariants above.
