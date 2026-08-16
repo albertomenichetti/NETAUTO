@@ -15,7 +15,7 @@ Le milestone usano `M1`, `M2`, ... `Mn`.
 
 I fix usano `F1-1`, `F1-2`, `F2-1`, ... `Fn-m`: `Fx-y` indica il fix `y` eseguito dopo `Mx` e prima di `Mx+1`.
 
-Ogni ciclo opera su un branch dedicato. Il branch di una milestone deve essere dichiarato nel README root e nello `status.md` del ciclo; per i fix il branch coincide normalmente con l'identificativo `Fx-y`. Il merge su `master` è un'attività umana e non viene mai eseguito dal coding agent.
+Ogni ciclo opera su un branch dedicato. Il branch di una milestone deve essere dichiarato nel README root e nello `status.md` del ciclo; per i fix il branch coincide con l'identificativo `Fx-y`. Il merge su `master` è un'attività umana e non viene mai eseguito dal coding agent.
 
 ### Manutenzione documentale fuori da un ciclo software
 
@@ -336,6 +336,10 @@ ARCHITECTURE SET = FROZEN
 ```
 
 Questo significa che il set è completo rispetto al contract, ogni area ha un owner, non restano decisioni semantiche aperte, le conseguenze cross-cutting sono propagate e il corpus ha superato un consistency sweep.
+
+Prima del freeze, gli status/header dei singoli documenti devono essere coerenti con lo stato complessivo del set. Eventuali eccezioni intenzionali devono essere dichiarate nel README dell'architecture set e non possono creare implicitamente libertà di design.
+
+Se una decisione viene riaperta, `architecture/README.md` deve rendere visibili lo scope riaperto e lo stato `PARTIALLY REOPENED` o equivalente finché la decisione non è stata revalidata, propagata e nuovamente congelata.
 
 #### `steps.md`
 
