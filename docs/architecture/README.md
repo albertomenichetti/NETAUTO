@@ -21,7 +21,7 @@ Project-wide technology choices are owned by `docs/general/technology_baseline.m
 
 | Cycle | Type | Delivered result | Historical record |
 |---|---|---|---|
-| `M1` | Milestone | PostgreSQL-only kernel; DataType, ObjectTemplate, Object and Relationship semantics; UoW, concurrency, public API and verification baseline. Delivered and merged on 2026-08-15. | `docs/milestones/M1/` |
+| `M1` | Milestone | PostgreSQL-only kernel; DataType, ObjectTemplate, Object and Relationship semantics; UoW, concurrency, public API and verification baseline. Delivered on 2026-08-15 and merged to `master` on 2026-08-16 (Europe/Rome). | `docs/milestones/M1/` |
 
 Future delivered `Mx` and `Fx-y` cycles are appended when their result is consolidated into this AS-IS.
 
