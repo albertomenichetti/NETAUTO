@@ -32,6 +32,15 @@ plus mutable non-semantic `description` and nullable `default_version`.
 
 `(namespace, name)` is unique among ObjectTemplates. Naming uses the same lowercase segmented grammar as DataType.
 
+`ObjectTemplate.name`, property names and component-slot names use:
+
+```text
+[a-z][a-z0-9_]*
+maximum length = 64
+```
+
+No automatic lowercase, trimming or replacement is applied; non-conforming input is rejected.
+
 The parent **lineage** is stable for the lifetime of the ObjectTemplate. Current normal operations do not reparent a lineage.
 
 Inheritance is acyclic.
