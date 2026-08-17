@@ -61,8 +61,13 @@ jobs:
       - name: Install locked environment
         run: uv sync --locked
 
-      - name: Ruff format
-        run: uv run ruff format --check .
+      - name: Apply and verify canonical Ruff formatting
+        run: |
+          set -euo pipefail
+          uv run ruff format .
+          git add -A
+          uv run ruff format --check .
+          git diff --cached --check
 
       - name: Ruff lint
         run: uv run ruff check .
@@ -78,6 +83,23 @@ jobs:
 
       - name: Full regression suite
         run: uv run pytest -q
+
+      - name: Capture failed candidate diagnostics
+        if: failure()
+        run: |
+          set -euo pipefail
+          git diff --cached --binary --full-index > /tmp/m2-s00-candidate.patch
+          tar --exclude=.git --exclude=.venv -czf /tmp/m2-s00-candidate-worktree.tar.gz .
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: M2-S00-failed-candidate
+          path: |
+            /tmp/m2-s00-candidate.patch
+            /tmp/m2-s00-candidate-worktree.tar.gz
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Publish verified candidate
         run: |
