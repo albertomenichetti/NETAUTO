@@ -1,8 +1,8 @@
 # M2 Verification Architecture
 
-**Status:** DRAFT — VERIFICATION DESIGN COMPLETE — OWNER-HOOK/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW; IMPLEMENTATION EVIDENCE PENDING BY GOVERNANCE
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## Authority and scope
 
@@ -2122,6 +2122,6 @@ No verification-design decision remains open inside this owner.
 
 Every architecture owner has confirmed outcome/criterion representation, and contract/AS-IS/authority/terminology/hygiene closure has passed.
 
-This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
+This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.
 
 Executed M2 implementation evidence remains intentionally pending until implementation is authorized. It is required by implementation-slice completion and final delivery, not by architecture design authorization.

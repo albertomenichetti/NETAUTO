@@ -1,8 +1,8 @@
 # M2 Semantic Concurrency Matrix
 
-**Status:** DRAFT — SEMANTIC MATRIX COMPLETE — POSTGRESQL/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## Authority and scope
 
@@ -1598,4 +1598,4 @@ No semantic concurrency decision remains open in this owner.
 
 PostgreSQL realization, progress/deadlock design and deterministic evidence registration have passed architecture review. Executed no-`40P01` evidence remains a mandatory implementation/final-delivery gate, not an architecture-freeze prerequisite.
 
-This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
+This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.

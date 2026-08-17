@@ -1,6 +1,6 @@
 # M2 Architecture
 
-**Architecture set status:** DESIGN COMPLETE — TRACEABILITY / CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN
+**Architecture set status:** FINAL / FROZEN
 
 ## Purpose and authority boundary
 
@@ -29,10 +29,8 @@ contract.md
     FINAL / FROZEN
 
 architecture set
-    design owners complete
-    traceability and consistency closure PASS
-    READY FOR FREEZE REVIEW
-    NOT FROZEN
+    FINAL / FROZEN
+    traceability, consistency and WIP-extraction closure PASS
 
 steps.md
     NOT STARTED / NOT FROZEN
@@ -47,17 +45,17 @@ Architecture freeze requires complete design and traceability, not executed M2 i
 
 | Area | Owning document | Status |
 |---|---|---|
-| Architecture set control, coverage and freeze | `README.md` | CLOSURE PASSED — READY FOR FREEZE REVIEW |
-| WIP extraction, provenance and retirement | `provenance.md` | DRAFT — EXTRACTION AUDIT PASSED; READY FOR FREEZE REVIEW |
-| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — TRANSACTION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — MATRIX/REALIZATION/VERIFICATION CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Core Health API | `health.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Official NETAUTO CLI | `cli.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
-| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Architecture set control, coverage and freeze | `README.md` | FINAL / FROZEN |
+| WIP extraction, provenance and retirement | `provenance.md` | FINAL / FROZEN |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | FINAL / FROZEN |
+| Public HTTP API, projections, failures and pagination | `api.md` | FINAL / FROZEN |
+| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | FINAL / FROZEN |
+| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | FINAL / FROZEN |
+| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | FINAL / FROZEN |
+| Core Health API | `health.md` | FINAL / FROZEN |
+| Official NETAUTO CLI | `cli.md` | FINAL / FROZEN |
+| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | FINAL / FROZEN |
+| Verification, acceptance evidence and traceability | `verification.md` | FINAL / FROZEN |
 
 A document may own only the area assigned above. Cross-document consequences are referenced rather than redefined.
 
@@ -250,29 +248,22 @@ final delivery
     -> installed wheel, startup, Health, CLI and Linux operation PASS
 ```
 
-## Remaining work before architecture freeze
+## Post-freeze handoff
 
-The design and closure gates have passed. Only the formal freeze transition remains:
-
-1. review `../wip/architecture-consistency-closure.md`;
-2. explicitly approve the architecture freeze;
-3. in one dedicated commit, mark every owner and this complete architecture set `FINAL / FROZEN`, update `status.md` to implementation planning, and leave `steps.md` as the next gated authority.
-
-The following are no longer open architecture decisions:
+The complete M2 architecture set is `FINAL / FROZEN`.
 
 ```text
-Relationship semantics
-public M2 HTTP contract
-persistence schema/lifecycle/index/Alembic model
-semantic concurrency matrix
-PostgreSQL lock/gate/retry/deadlock design
-Core Health application/query/timeout design
-official CLI grammar/transport/selectors/output design
-runtime settings, packaging, Alembic installation, startup and Linux operation
-verification layers, evidence bundles and scenario registry
+next gated authority
+    -> docs/milestones/M2/steps.md
+
+steps.md
+    -> NOT STARTED / NOT FROZEN
+
+implementation
+    -> NOT AUTHORIZED until steps.md is also FINAL / FROZEN
 ```
 
-A finding that would change Scope, Non-goals, explicit deltas, Required outcomes or Acceptance criteria requires formal contract reopening. A compatible architecture clarification does not.
+Implementation planning may decompose the work but may not derive a new semantic, technical or technology decision. Any such need requires formal reopening of the owning frozen authority.
 
 ## WIP extraction and retirement closure
 
@@ -318,7 +309,19 @@ open architecture finding                0
 contract reopening                       NOT REQUIRED
 ```
 
-The architecture is ready for explicit freeze review. No implementation evidence is claimed or required at this gate.
+The architecture freeze was explicitly approved after the traceability, consistency and WIP-extraction closures passed. No implementation evidence is claimed at this gate; executed evidence remains mandatory for implementation slices and final delivery.
+
+## Freeze declaration
+
+```text
+contract.md                 FINAL / FROZEN
+architecture/README.md      FINAL / FROZEN
+all architecture owners     FINAL / FROZEN
+steps.md                    NOT STARTED / NOT FROZEN
+implementation              NOT AUTHORIZED
+```
+
+Future semantic or technical changes require formal architecture reopening, impact analysis against the frozen contract and renewed consistency closure.
 
 ## Freeze condition
 

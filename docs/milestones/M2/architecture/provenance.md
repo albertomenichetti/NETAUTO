@@ -1,8 +1,8 @@
 # M2 WIP Extraction, Provenance and Retirement
 
-**Status:** DRAFT — EXTRACTION / SUPERSESSION AUDIT PASSED — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## 1. Purpose and authority rule
 
@@ -130,4 +130,4 @@ contract reopening                            NOT REQUIRED
 
 ## 5. Freeze and change control
 
-This document freezes together with the complete architecture set. Adding a new WIP document after freeze does not modify architecture authority. Any new semantic or technical requirement must formally reopen and amend the appropriate frozen contract or architecture owner before implementation can rely on it.
+This document is frozen together with the complete architecture set. Adding a new WIP document after freeze does not modify architecture authority. Any new semantic or technical requirement must formally reopen and amend the appropriate frozen contract or architecture owner before implementation can rely on it.

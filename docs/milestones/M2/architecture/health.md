@@ -1,8 +1,8 @@
 # M2 Core Health Architecture
 
-**Status:** DRAFT — HEALTH DESIGN COMPLETE — API/CLI/RUNTIME/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## Authority and scope
 
@@ -946,6 +946,6 @@ No Health-specific design decision remains open in this owner.
 
 Runtime composition, CLI consumption, traceability and consistency closure have passed.
 
-This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
+This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.
 
 Executed Health tests are implementation-slice and final-delivery evidence, not architecture-freeze prerequisites.

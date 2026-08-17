@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** ARCHITECTURE DESIGN — READY FOR FREEZE REVIEW
+**Milestone status:** IMPLEMENTATION PLANNING
 
 ## Cycle identity
 
@@ -13,20 +13,20 @@ branch      M2
 ## Current operational state
 
 ```text
-phase           ARCHITECTURE DESIGN
+phase           IMPLEMENTATION PLANNING
 current slice   none — implementation is not authorized
-current task    review and approve the dedicated architecture freeze transition
+current task    define and freeze the complete M2 implementation decomposition in steps.md
 blockers        none
 ```
 
-The M2 milestone contract is `FINAL / FROZEN`. Architecture design is authorized against the delivered AS-IS plus the frozen contract. Implementation planning remains blocked until the complete architecture set is frozen, and implementation remains unauthorized.
+The M2 milestone contract and complete architecture set are `FINAL / FROZEN`. Implementation planning is now authorized. Implementation remains unauthorized until `steps.md` is also `FINAL / FROZEN`.
 
 ## Design and delivery gates
 
 | Gate | State |
 |---|---|
 | Contract | FINAL / FROZEN |
-| Architecture set | DESIGN COMPLETE — CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN |
+| Architecture set | FINAL / FROZEN |
 | Implementation steps | NOT STARTED — NOT FROZEN |
 | Implementation | NOT AUTHORIZED |
 | Final acceptance | NOT STARTED |
@@ -39,11 +39,11 @@ No M2 implementation slice is defined.
 
 ## Current blockers and findings
 
-No contract-level, architecture-design, technology or consistency blocker remains. The final closure has passed; explicit approval and the dedicated architecture freeze commit are the only remaining architecture-gate actions.
+No contract-level or architecture-level blocker remains. The architecture set is frozen; the only current gate is the complete, traceable implementation decomposition in `steps.md`.
 
 ## Immediate next action
 
-Review `architecture/README.md` and `wip/architecture-consistency-closure.md`; after explicit approval, execute one dedicated commit that marks the complete architecture set `FINAL / FROZEN` and opens the implementation-planning gate for `steps.md`.
+Define every M2 implementation slice, dependency, owning architecture authority, required evidence target and completion condition in `steps.md`; then perform the steps consistency closure and freeze that document before implementation begins.
 
 ## Current status vocabulary
 

@@ -1,8 +1,8 @@
 # M2 Public API Architecture
 
-**Status:** DRAFT — WIRE DESIGN COMPLETE — CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## Authority and scope
 
@@ -1688,4 +1688,4 @@ No open HTTP/wire decision remains inside this owner.
 
 Cross-owner realization, operation coverage, traceability and consistency closure have passed.
 
-This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
+This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.

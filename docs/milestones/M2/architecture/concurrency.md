@@ -1,8 +1,8 @@
 # M2 Concurrency and PostgreSQL Realization
 
-**Status:** DRAFT — POSTGRESQL REALIZATION COMPLETE — DEADLOCK PROOF/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## Authority and scope
 
@@ -1419,4 +1419,4 @@ No PostgreSQL-concurrency design point remains open in this owner.
 
 Deterministic scenario registration, implementation-facing boundaries, traceability and consistency closure have passed architecture review. Executed PostgreSQL blocking/progress and no-`40P01` evidence remain mandatory implementation/final-delivery gates, not architecture-freeze prerequisites.
 
-This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
+This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.

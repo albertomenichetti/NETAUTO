@@ -1,8 +1,8 @@
 # M2 Runtime, Packaging and Deployment Architecture
 
-**Status:** DRAFT — RUNTIME/DEPLOYMENT DESIGN COMPLETE — CROSS-OWNER/STACK-10/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN
 
 ## Authority and scope
 
@@ -1531,6 +1531,6 @@ No runtime/deployment design point remains open in this owner.
 
 Final owner-by-owner traceability and contract/AS-IS/authority/terminology/hygiene closure have passed.
 
-This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
+This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.
 
 Executed installation, startup and operating evidence belongs to implementation slices and final delivery, not architecture freeze.
