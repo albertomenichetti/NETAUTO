@@ -1,4 +1,4 @@
-name: Audit and freeze M2 architecture
+name: Freeze M2 architecture after WIP audit
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  audit-and-freeze:
+  freeze:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Recover and validate the audit scripts
+      - name: Recover and validate the formal freeze script
         shell: bash
         run: |
           set -euo pipefail
@@ -35,75 +35,47 @@ jobs:
           parts = source.split(marker)
           if len(parts) != 3:
               raise SystemExit(f"expected two embedded scripts, found {len(parts) - 1}")
-
-          for index, remainder in enumerate(parts[1:], start=1):
-              if "\n          PY" not in remainder:
-                  raise SystemExit(f"stage {index}: closing marker missing")
-              block = remainder.split("\n          PY", 1)[0]
-              lines = [
-                  line[10:] if line.startswith("          ") else line
-                  for line in block.splitlines()
-              ]
-              script = "\n".join(lines) + "\n"
-              if index == 1:
-                  marker_replacements = {
-                      "'relationship_fact_conflict'": "'factual conflict'",
-                      "'Relationship.DATA_CHANGE'": "'DATA_CHANGE'",
-                      "'Relationship.SCHEMA_CHANGE'": "'SCHEMA_CHANGE'",
-                      "'15 authoritative tables'": "'Fifteen authoritative tables'",
-                      "'same AsyncEngine'": "'same-engine/pool policy'",
-                      "'no mandatory Health preflight'": "'preflight'",
-                  }
-                  for old, new in marker_replacements.items():
-                      if script.count(old) != 1:
-                          raise SystemExit(
-                              f"stage 1 marker replacement not unique: {old} "
-                              f"count={script.count(old)}"
-                          )
-                      script = script.replace(old, new, 1)
-              if index == 2:
-                  script = script.replace(
-                      "end = text.index('\\n## Final closure result\\n', start)",
-                      "end = text.index('\\n## WIP extraction and retirement closure\\n', start)",
-                  )
-              compile(script, f"m2-audit-stage-{index}", "exec")
-              Path(f"/tmp/m2-audit-stage-{index}.py").write_text(
-                  script, encoding="utf-8"
+          remainder = parts[2]
+          if "\n          PY" not in remainder:
+              raise SystemExit("freeze script closing marker missing")
+          block = remainder.split("\n          PY", 1)[0]
+          lines = [
+              line[10:] if line.startswith("          ") else line
+              for line in block.splitlines()
+          ]
+          script = "\n".join(lines) + "\n"
+          script = script.replace(
+              "end = text.index('\\n## Final closure result\\n', start)",
+              "end = text.index('\\n## WIP extraction and retirement closure\\n', start)",
+          )
+          old_assertion = """if 'NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN' not in body.splitlines()[:8]:
+              raise SystemExit(f'{name}: final authority missing')"""
+          new_assertion = """if not any(
+              'NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN' in line
+              for line in body.splitlines()[:8]
+          ):
+              raise SystemExit(f'{name}: final authority missing')"""
+          if script.count(old_assertion) != 1:
+              raise SystemExit(
+                  f"freeze authority assertion not unique: {script.count(old_assertion)}"
               )
+          script = script.replace(old_assertion, new_assertion, 1)
+          compile(script, "m2-formal-freeze", "exec")
+          Path("/tmp/m2-formal-freeze.py").write_text(script, encoding="utf-8")
           PY
-
-      - name: Execute WIP extraction audit
-        shell: bash
-        run: |
-          set -euo pipefail
-          python /tmp/m2-audit-stage-1.py
-
-      - name: Commit WIP extraction closure
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            docs/milestones/M2/architecture/README.md \
-            docs/milestones/M2/architecture/persistence.md \
-            docs/milestones/M2/architecture/provenance.md \
-            docs/milestones/M2/wip/architecture-consistency-closure.md \
-            docs/milestones/M2/wip/wip-extraction-closure.md
-          git diff --cached --check
-          git commit -m 'docs(m2): close WIP extraction into architecture'
-          git push origin HEAD:M2
 
       - name: Execute formal architecture freeze
         shell: bash
         run: |
           set -euo pipefail
-          python /tmp/m2-audit-stage-2.py
+          python /tmp/m2-formal-freeze.py
 
       - name: Commit formal architecture freeze
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A \
             .github/workflows/audit-and-freeze-m2-architecture.yml \
             docs/milestones/M2/architecture \
