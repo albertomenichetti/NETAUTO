@@ -1,8 +1,8 @@
 # M2 Technology Proposal — STACK-10 Official HTTP CLI
 
-**Status:** RATIFICATION PROPOSAL — CONSOLIDATION REQUIRED BEFORE M2 ARCHITECTURE FREEZE
+**Status:** RATIFIED / CONSOLIDATED — SUPERSEDED BY `docs/general/technology_baseline.md`
 
-**Authority:** TECHNOLOGY REVIEW INPUT — NON-NORMATIVE UNTIL CONSOLIDATED
+**Authority:** RATIFICATION RECORD — NON-NORMATIVE; PROJECT-WIDE AUTHORITY IS `STACK-10` IN THE TECHNOLOGY BASELINE
 
 ## Purpose
 
@@ -14,21 +14,21 @@ docs/milestones/M2/architecture/cli.md
 
 It is intentionally separate from the CLI semantic architecture because terminal and HTTP-client technologies are project-wide implementation choices.
 
-The decision becomes authoritative only after explicit consolidation in:
+The decision has been explicitly consolidated in:
 
 ```text
 docs/general/technology_baseline.md
 ```
 
-as a ratified `STACK-10` entry.
+as the ratified `STACK-10` entry. This file remains historical review evidence and no longer carries an open ratification action.
 
-No dependency or implementation change is authorized by this proposal alone.
+Dependency and implementation changes remain governed by the frozen M2 architecture set and future `steps.md`.
 
 ---
 
-## Proposed STACK-10 — official HTTP CLI and terminal interaction
+## Ratified STACK-10 record — official HTTP CLI and terminal interaction
 
-**Proposed status:** RATIFIED.
+**Ratification result:** RATIFIED and consolidated.
 
 ### Capability boundary
 
@@ -284,12 +284,12 @@ STACK-09's statement that the delivered baseline has no custom operator CLI is s
 Before M2 architecture freeze:
 
 ```text
-[ ] explicitly approve this technology choice
-[ ] consolidate the decision as STACK-10 in technology_baseline.md
-[ ] update the baseline status range to include STACK-10
-[ ] update STACK-09's custom-CLI paragraph to reference STACK-10
-[ ] ensure runtime-deployment.md owns wheel/dependency consequences
-[ ] remove this item from architecture open points
+[x] explicitly approve this technology choice
+[x] consolidate the decision as STACK-10 in technology_baseline.md
+[x] update the baseline status range to include STACK-10
+[x] update STACK-09's client-entrypoint paragraph to reference STACK-10
+[x] ensure runtime-deployment.md owns wheel/dependency consequences
+[x] remove this item from architecture open points
 ```
 
 During authorized implementation:
@@ -302,3 +302,16 @@ During authorized implementation:
 ```
 
 No contract reopening is required because the technology only realizes already-frozen CLI behavior.
+
+
+## Consolidation outcome
+
+```text
+decision                    RATIFIED
+project-wide authority      docs/general/technology_baseline.md / STACK-10
+CLI architecture alignment  PASS
+runtime packaging alignment PASS
+verification alignment      PASS
+contract reopening          NOT REQUIRED
+open technology point       0
+```

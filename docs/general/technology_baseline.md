@@ -1,6 +1,6 @@
 # NETAUTO — Technology Baseline
 
-**Status:** CURRENT / EXTENSIBLE — `STACK-01` through `STACK-09` are RATIFIED. Future technology decisions are non-authoritative until explicitly ratified and consolidated here.
+**Status:** CURRENT / EXTENSIBLE — `STACK-01` through `STACK-10` are RATIFIED. Future technology decisions are non-authoritative until explicitly ratified and consolidated here.
 
 ## 1. Scope and authority
 
@@ -877,9 +877,9 @@ Host, port, worker count, reload and proxy/server behavior belong to Uvicorn/dep
 
 TLS termination, reverse proxy and ingress topology remain deployment concerns.
 
-#### Custom NETAUTO CLI
+#### Server, administration and official client entrypoints
 
-The current baseline has no custom operator CLI merely wrapping existing tools:
+Server and administrative entrypoints remain direct and explicit:
 
 ```text
 serve               -> Uvicorn
@@ -888,11 +888,196 @@ tests               -> pytest
 project commands    -> uv
 ```
 
-`Typer` is not part of the current dependency baseline. A future real operator CLI requires a concrete NETAUTO-specific command surface and remains an adapter over application capabilities.
+The official `netauto` command selected in `STACK-10` is a genuine NETAUTO HTTP client. It does not wrap or replace Uvicorn, Alembic, pytest or uv, and it is not an alternate application-service or persistence interface.
 
 #### Signals and graceful shutdown
 
 Uvicorn/ASGI owns serving signals and graceful shutdown. Application lifespan cleans only resources NETAUTO owns.
+
+### STACK-10 — official HTTP CLI and terminal interaction
+
+**Status:** RATIFIED.
+
+#### Capability boundary
+
+NETAUTO provides one official operator/client CLI with:
+
+```text
+interactive asynchronous REPL
+non-interactive single-command mode
+public HTTP-only execution
+complete same-release business API coverage
+```
+
+The CLI is not a wrapper for Uvicorn, Alembic, pytest or uv and is not an alternate application-service, Unit-of-Work or database interface.
+
+#### HTTP client
+
+```text
+HTTPX AsyncClient
+```
+
+is the canonical CLI HTTP transport.
+
+Required use:
+
+```text
+one scoped client per connected endpoint/session or non-interactive command
+native asyncio
+HTTP connection pooling
+verified HTTPS and hostname validation
+explicit finite timeouts
+redirect following disabled
+no automatic retry
+```
+
+HTTPX remains a client/infrastructure dependency. Its request and response types do not cross into the CLI command/result model or the server application/domain layers.
+
+The compatible project range is:
+
+```text
+httpx>=0.28,<1
+```
+
+Exact resolution is committed through `uv.lock` and, for installed-release synchronization, through the runtime lock owned by the active runtime/deployment architecture.
+
+#### Interactive terminal
+
+```text
+prompt_toolkit 3.x
+```
+
+is the canonical REPL terminal toolkit.
+
+Required use includes:
+
+```text
+PromptSession
+prompt_async()
+line editing
+in-memory history integration
+Ctrl-R reverse search
+Ctrl-D and Ctrl-C key behavior
+terminal clear support
+```
+
+`prompt_toolkit` owns terminal mechanics only. It does not own NETAUTO grammar, command registration, dispatch, connection state, HTTP behavior, output semantics or error classification.
+
+The compatible project range is:
+
+```text
+prompt-toolkit>=3.0,<4
+```
+
+with exact resolution through the committed dependency authorities.
+
+#### Process and parsing baseline
+
+The remaining CLI substrate uses standard-library mechanisms:
+
+```text
+argparse
+    -> process mode and `-n` invocation
+
+shlex in POSIX mode
+    -> interactive command tokenization
+
+json
+    -> structured inline/file values and machine output
+
+pathlib
+    -> explicit file-backed JSON input
+
+asyncio
+    -> process coroutine and async terminal/HTTP integration
+```
+
+No general CLI framework is selected.
+
+#### Static command authority
+
+The official CLI command surface is described by one static same-release registry owned by the active CLI architecture.
+
+```text
+registry
+    -> parser
+    -> help
+    -> selector traversal
+    -> HTTP dispatch
+    -> response validation
+    -> formatted rendering
+    -> coverage verification
+```
+
+Generated OpenAPI remains a transport description and is not a runtime command-generation authority.
+
+#### Explicitly not selected
+
+```text
+Typer
+Click
+cmd2
+Rich as a semantic/output authority
+stdlib readline as the cross-platform REPL foundation
+dynamic OpenAPI command generation
+CLI plugin framework
+an alternative HTTP client
+```
+
+Terminal styling may not become semantic output authority.
+
+#### Dependency and packaging consequences
+
+The runtime project dependencies include HTTPX and `prompt_toolkit`, and the distribution exposes the `netauto` console entrypoint.
+
+```text
+pyproject compatibility ranges
+    -> reviewed dependency intent
+
+uv.lock
+    -> canonical exact repository resolution
+
+installed-release runtime lock
+    -> exact target synchronization
+
+one NETAUTO wheel
+    -> CLI modules and console entrypoint
+```
+
+A CLI-only installation executes no server, database or Alembic initialization merely by importing or invoking the client.
+
+#### Testing consequences
+
+The ratified testing baseline is extended through:
+
+```text
+pure CLI parser/state/registry tests
+HTTPX transport and ASGI integration tests where appropriate
+Linux PTY/process tests for Ctrl-R, Ctrl-D and Ctrl-C
+installed console-entrypoint and same-release coverage verification
+```
+
+Fake HTTP or terminal evidence cannot be used to claim PostgreSQL, migration or server-runtime guarantees.
+
+#### Security consequences
+
+The realization must preserve:
+
+```text
+HTTPS verification enabled
+no insecure verification bypass
+no native credential storage
+no URL userinfo
+no persistent cookie jar
+no hidden retry
+no persistent command history in M2
+```
+
+Administered standard proxy and trust-store configuration may be consumed by HTTPX; it does not create a NETAUTO profile, identity or authorization authority.
+
+#### Relationship with STACK-09
+
+`STACK-09` remains the authority for Uvicorn serving and explicit Alembic administration. `STACK-10` adds a genuine public-HTTP client and does not create a wrapper command for server or migration operation.
 
 ## 4. Evolution rule
 

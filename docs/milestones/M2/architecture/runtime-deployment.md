@@ -1,6 +1,6 @@
 # M2 Runtime, Packaging and Deployment Architecture
 
-**Status:** DRAFT — RUNTIME/DEPLOYMENT DESIGN COMPLETE — CROSS-OWNER REVIEW PASSED — TECHNOLOGY-BASELINE/FINAL-CLOSURE PENDING
+**Status:** DRAFT — RUNTIME/DEPLOYMENT DESIGN COMPLETE — CROSS-OWNER/STACK-10 REVIEW PASSED — FINAL CLOSURE PENDING
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -1327,7 +1327,7 @@ T5/T8/T9/T10 verification covers:
 built wheel content inventory
 installed distribution version
 netauto console entrypoint
-HTTPX/prompt-toolkit runtime dependencies after STACK-10 ratification
+HTTPX/prompt-toolkit runtime dependencies under ratified STACK-10
 embedded runtime.pylock.toml equals frozen uv.lock export
 clean dependency sync + --no-deps application install
 server/CLI/Alembic execution outside Git checkout
@@ -1454,7 +1454,7 @@ Every runtime outcome has a stable evidence path already owned by `verification.
 
 ### 23.6 Technology-baseline handoff
 
-`STACK-10` must be ratified before architecture freeze. That consolidation authorizes the HTTPX/prompt-toolkit runtime dependencies already accounted for by the wheel and lock design.
+`STACK-10` is ratified in `docs/general/technology_baseline.md`. It authorizes the HTTPX/prompt-toolkit runtime dependencies already accounted for by the wheel and exact-lock design.
 
 No other technology decision is required by this owner.
 
@@ -1524,15 +1524,14 @@ Linux layout/install/start/stop/restart procedure      CLOSED
 offline first-baseline/forward posture                 CLOSED
 trusted-boundary and external-TLS realization          CLOSED
 verification hooks and negative surface                CLOSED
-AS-IS/persistence/Health/CLI/verification cross-check  PASS
+AS-IS/persistence/Health/CLI/verification/STACK-10 review PASS
 ```
 
 No runtime/deployment design point remains open in this owner.
 
 This document remains `NOT FROZEN` until:
 
-- `STACK-10` is formally ratified and consolidated in the technology baseline;
 - final owner-by-owner traceability confirms every M2-OUT/M2-AC/M2-VER path;
-- the complete M2 architecture set passes contract, AS-IS, authority and normative-hygiene consistency closure.
+- the complete M2 architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.
 
 Executed installation, startup and operating evidence belongs to implementation slices and final delivery, not architecture freeze.

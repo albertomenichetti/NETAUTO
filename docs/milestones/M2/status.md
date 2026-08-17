@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** DESIGN IN PROGRESS
+**Milestone status:** ARCHITECTURE DESIGN — FINAL CLOSURE
 
 ## Cycle identity
 
@@ -15,7 +15,7 @@ branch      M2
 ```text
 phase           ARCHITECTURE DESIGN
 current slice   none — implementation is not authorized
-current task    build and freeze the normative M2 architecture set
+current task    execute final architecture traceability and consistency closure
 blockers        none
 ```
 
@@ -26,7 +26,7 @@ The M2 milestone contract is `FINAL / FROZEN`. Architecture design is authorized
 | Gate | State |
 |---|---|
 | Contract | FINAL / FROZEN |
-| Architecture set | DESIGN IN PROGRESS — NOT FROZEN |
+| Architecture set | DESIGN COMPLETE — FINAL CLOSURE IN PROGRESS — NOT FROZEN |
 | Implementation steps | NOT STARTED — NOT FROZEN |
 | Implementation | NOT AUTHORIZED |
 | Final acceptance | NOT STARTED |
@@ -39,11 +39,11 @@ No M2 implementation slice is defined.
 
 ## Current blockers and findings
 
-No contract-level blocker remains. The architecture set must now propagate the frozen contract into explicit normative owners, close all semantic and technical design points, and pass its own consistency sweep before implementation planning can begin.
+No contract-level or architecture-design blocker remains. Every semantic, technical and project-wide technology owner is complete; only the final traceability and consistency closure remains before the architecture freeze transition.
 
 ## Immediate next action
 
-Create and complete the normative M2 architecture corpus registered in `architecture/README.md`, including Relationship domain/API/persistence, semantic concurrency and PostgreSQL realization, Health and startup guard, CLI, runtime/deployment, and verification/traceability ownership.
+Execute the final owner-by-owner traceability sweep and the frozen-contract, AS-IS, authority, terminology and normative-hygiene consistency sweep defined by `architecture/README.md`; resolve any finding before proposing the dedicated architecture freeze transition.
 
 ## Current status vocabulary
 

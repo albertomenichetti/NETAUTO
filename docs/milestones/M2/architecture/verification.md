@@ -1,6 +1,6 @@
 # M2 Verification Architecture
 
-**Status:** DRAFT — VERIFICATION DESIGN COMPLETE — DEPENDENT-OWNER REVIEW / IMPLEMENTATION EVIDENCE PENDING
+**Status:** DRAFT — VERIFICATION DESIGN COMPLETE — HEALTH/CLI/RUNTIME HOOK REVIEW PASSED — FINAL CLOSURE / IMPLEMENTATION EVIDENCE PENDING
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -2115,14 +2115,14 @@ CLI/package/Linux/trust evidence design       CLOSED
 AS-IS regression and negative-surface design CLOSED
 final acceptance record contract             CLOSED
 governance circularity                       CLOSED
+dependent-owner implementation-hook review          CLOSED
 ```
 
 No verification-design decision remains open inside this owner.
 
 This document remains `NOT FROZEN` until:
 
-- `health.md`, `cli.md` and `runtime-deployment.md` confirm the exact implementation-facing evidence hooks without changing these bundles;
 - every M2 architecture owner confirms its outcomes and acceptance criteria are correctly represented;
-- the complete architecture set passes contract, AS-IS and cross-document consistency closure.
+- the complete architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.
 
 Executed M2 implementation evidence remains intentionally pending until implementation is authorized. It is required by implementation-slice completion and final delivery, not by architecture design authorization.

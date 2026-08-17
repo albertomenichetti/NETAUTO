@@ -1,6 +1,6 @@
 # M2 Official CLI Architecture
 
-**Status:** DRAFT — CLI DESIGN COMPLETE — API/HEALTH/VERIFICATION CROSS-CHECK PASSED — RUNTIME/TECHNOLOGY-BASELINE REVIEW PENDING
+**Status:** DRAFT — CLI DESIGN COMPLETE — API/HEALTH/RUNTIME/VERIFICATION/STACK-10 CROSS-CHECK PASSED — FINAL CLOSURE PENDING
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -1808,17 +1808,15 @@ non-interactive stdout/stderr/exit                  CLOSED
 history/help/terminal behavior                     CLOSED
 same-release and security boundary                  CLOSED
 verification hooks and negative surface            CLOSED
-API/Health/verification cross-check                 PASS
-technology selection                                CLOSED; STACK-10 consolidation pending
+API/Health/runtime/verification/STACK-10 cross-check PASS
+technology selection and project-wide authority      CLOSED
 ```
 
 No CLI-specific architecture decision remains open in this owner.
 
 This document remains `NOT FROZEN` until:
 
-- `runtime-deployment.md` confirms final wheel, dependency and CLI-only installation realization;
-- `docs/general/technology_baseline.md` consolidates the selected `STACK-10` decision;
-- the API and Health owners record final reciprocal CLI cross-check;
-- the complete architecture traceability/consistency closure passes.
+- final owner-by-owner traceability confirms every M2-OUT/M2-AC/M2-VER path;
+- the complete M2 architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.
 
 Executed CLI tests are implementation-slice and final-delivery evidence, not architecture-freeze prerequisites.

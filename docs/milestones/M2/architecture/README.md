@@ -1,6 +1,6 @@
 # M2 Architecture
 
-**Architecture set status:** DESIGN COMPLETE — FINAL CONSISTENCY / TECHNOLOGY RATIFICATION PENDING — NOT FROZEN
+**Architecture set status:** DESIGN COMPLETE — FINAL TRACEABILITY / CONSISTENCY CLOSURE PENDING — NOT FROZEN
 
 ## Purpose and authority boundary
 
@@ -53,9 +53,9 @@ Architecture freeze requires complete design and traceability, not executed M2 i
 | Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — 41-MUTATION / 861-CELL MATRIX COMPLETE |
 | PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION COMPLETE; ARCHITECTURE DEADLOCK PROOF PASSED |
 | Core Health API | `health.md` | DRAFT — DESIGN COMPLETE; API/CLI/RUNTIME/VERIFICATION REVIEW PASSED |
-| Official NETAUTO CLI | `cli.md` | DRAFT — DESIGN COMPLETE; API/HEALTH/RUNTIME/VERIFICATION REVIEW PASSED; STACK-10 RATIFICATION PENDING |
-| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED; STACK-10/FINAL CLOSURE PENDING |
-| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — DESIGN COMPLETE; DEPENDENT-OWNER REVIEW PASSED; FINAL TRACEABILITY CLOSURE PENDING |
+| Official NETAUTO CLI | `cli.md` | DRAFT — DESIGN COMPLETE; API/HEALTH/RUNTIME/VERIFICATION/STACK-10 REVIEW PASSED; FINAL CLOSURE PENDING |
+| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER/STACK-10 REVIEW PASSED; FINAL CLOSURE PENDING |
+| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — DESIGN COMPLETE; HEALTH/CLI/RUNTIME HOOK REVIEW PASSED; FINAL TRACEABILITY CLOSURE PENDING |
 
 A document may own only the area assigned above. Cross-document consequences are referenced rather than redefined.
 
@@ -171,6 +171,12 @@ runtime-deployment.md
     -> reproducible manual Linux install/start/stop/restart/readiness procedure
     -> trusted-boundary HTTP and external TLS responsibility
 
+STACK-10
+    -> HTTPX AsyncClient as the official client transport
+    -> prompt_toolkit as the asynchronous REPL terminal foundation
+    -> stdlib process/token/JSON/file parsing
+    -> no general CLI framework or dynamic OpenAPI command generation
+
 verification.md
     -> T0 ... T10 layers
     -> M2-VER-01 ... M2-VER-32 bundles
@@ -240,11 +246,10 @@ final delivery
 
 Only set-level closure remains:
 
-1. formally ratify and consolidate the official CLI technology decision from `../wip/cli-stack-10-proposal.md` as `STACK-10` in `docs/general/technology_baseline.md`;
-2. perform the final owner-by-owner `M2-OUT -> M2-AC -> M2-VER -> implementation-path` traceability sweep;
-3. perform the final frozen-contract, AS-IS, cross-document authority, terminology and normative-hygiene consistency sweep;
-4. resolve every resulting finding without changing the frozen contract;
-5. mark every owner and this complete architecture set `FINAL / FROZEN` in one dedicated freeze transition.
+1. perform the final owner-by-owner `M2-OUT -> M2-AC -> M2-VER -> implementation-path` traceability sweep;
+2. perform the final frozen-contract, AS-IS, cross-document authority, terminology and normative-hygiene consistency sweep;
+3. resolve every resulting finding without changing the frozen contract;
+4. mark every owner and this complete architecture set `FINAL / FROZEN` in one dedicated freeze transition.
 
 The following are no longer open architecture decisions:
 
