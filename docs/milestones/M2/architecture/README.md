@@ -44,20 +44,18 @@ No M2 architecture document is frozen yet. Implementation planning and implement
 |---|---|---|
 | Architecture set control, coverage and freeze | `README.md` | DESIGN IN PROGRESS |
 | Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE; API/PERSISTENCE/CONCURRENCY/VERIFICATION-DESIGN CROSS-CHECK PASSED |
-| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — WIRE DESIGN COMPLETE; PERSISTENCE/CONCURRENCY/VERIFICATION-DESIGN/HEALTH CROSS-CHECK PASSED |
+| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — WIRE DESIGN COMPLETE; PERSISTENCE/CONCURRENCY/VERIFICATION-DESIGN/HEALTH/CLI CROSS-CHECK PASSED |
 | Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — PHYSICAL DESIGN COMPLETE; TRANSACTION/DEADLOCK/SEMANTIC-MATRIX/POSTGRESQL/VERIFICATION-DESIGN CROSS-CHECK PASSED |
 | Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — SEMANTIC MATRIX COMPLETE; POSTGRESQL/VERIFICATION-REGISTRY CROSS-CHECK PASSED |
 | PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — POSTGRESQL REALIZATION COMPLETE; DEADLOCK PROOF / VERIFICATION-REGISTRY CROSS-CHECK PASSED |
-| Core Health API | `health.md` | DRAFT — HEALTH DESIGN COMPLETE; API/VERIFICATION CROSS-CHECK PASSED; RUNTIME OWNER REVIEW PENDING |
-| Official NETAUTO CLI | `cli.md` | NOT STARTED |
+| Core Health API | `health.md` | DRAFT — HEALTH DESIGN COMPLETE; API/VERIFICATION/CLI CROSS-CHECK PASSED; RUNTIME OWNER REVIEW PENDING |
+| Official NETAUTO CLI | `cli.md` | DRAFT — CLI DESIGN COMPLETE; API/HEALTH/VERIFICATION CROSS-CHECK PASSED; RUNTIME/STACK-10 REVIEW PENDING |
 | Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | NOT STARTED |
-| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — VERIFICATION DESIGN COMPLETE; HEALTH CROSS-CHECK PASSED; CLI/RUNTIME REVIEW PENDING |
+| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — VERIFICATION DESIGN COMPLETE; HEALTH/CLI CROSS-CHECK PASSED; RUNTIME REVIEW PENDING |
 
 A document may own only the areas assigned here. Cross-document consequences must be referenced rather than redefined.
 
-## Initial coverage and ownership map
-
-The outcome ownership is:
+## Outcome ownership map
 
 ```text
 relationship.md
@@ -115,14 +113,14 @@ relationship.md
     -> Relationship semantic design complete
     -> API, persistence, complete concurrency and verification-design
        cross-check passed
-    -> dependent-owner final review pending
+    -> final dependent-owner review pending
 
 api.md
     -> normative draft created
     -> final business and Health wire design complete
     -> Relationship, persistence, complete concurrency,
-       verification-design and Health cross-check passed
-    -> CLI owner review pending
+       verification-design, Health and CLI cross-check passed
+    -> runtime release-boundary review pending
 
 persistence.md
     -> normative draft created
@@ -156,8 +154,19 @@ health.md
     -> same runtime engine/pool and exact SELECT 1 probe closed
     -> fixed two-second timeout, cleanup and monotonic timing closed
     -> safe failure and strict HTTP-adapter realization closed
-    -> API and verification-design cross-check passed
-    -> runtime lifespan/startup-guard and CLI consumption review pending
+    -> API, CLI and verification-design cross-check passed
+    -> runtime lifespan/startup-guard review pending
+
+cli.md
+    -> normative draft created
+    -> interactive and non-interactive state/process contracts closed
+    -> static registry covers exactly 63 business HTTP operations
+    -> endpoint, HTTPX transport, TLS, selector and structured-input
+       policies closed
+    -> FORMATTED and exact JSON trace contracts closed
+    -> in-memory history, help and terminal behavior closed
+    -> API, Health and verification-design cross-check passed
+    -> runtime wheel/dependency review and STACK-10 consolidation pending
 
 verification.md
     -> normative draft created
@@ -167,11 +176,11 @@ verification.md
     -> all 21 predicates mapped to deterministic evidence
     -> AS-IS regression, negative surface and final acceptance
        evidence contract closed
-    -> Health implementation hooks cross-checked
-    -> CLI and runtime-deployment implementation-hook review pending
+    -> Health and CLI implementation hooks cross-checked
+    -> runtime-deployment implementation-hook review pending
 ```
 
-The completed semantic/persistence/concurrency/Health/verification review requires the first durable baseline to preserve:
+The completed semantic/persistence/concurrency/Health/CLI/verification review requires the first durable baseline to preserve:
 
 ```text
 complete pre-DML lock plans
@@ -191,6 +200,11 @@ exact positive and negative surface inventories
 same runtime engine/pool for business and Health
 a fixed two-second full database-probe deadline
 no Health/Alembic responsibility overlap
+one static exact 63-operation CLI registry
+HTTP-only CLI execution with no application/persistence path
+no mandatory Health preflight for non-interactive commands
+verified HTTPS with no insecure bypass
+no persistent endpoint, credentials or command history
 ```
 
 These are architecture requirements and do not alter the frozen public contract.
@@ -203,7 +217,7 @@ Architecture freeze and delivery evidence are deliberately separate.
 architecture freeze
     -> complete normative design
     -> complete M2-OUT / M2-AC / M2-VER traceability
-    -> complete deterministic scenario registry
+    -> complete deterministic scenario and surface registries
     -> no open architecture decision
 
 implementation-slice completion
@@ -221,8 +235,8 @@ Implementation evidence cannot be a prerequisite for architecture freeze because
 
 Before the set can freeze it must at least:
 
-1. create and cross-check `cli.md` against the exact 63-operation business inventory, `health.md` and `M2-VER-25 ... 28`;
-2. create and cross-check `runtime-deployment.md` against Alembic packaging, startup guard, Health lifespan composition, Linux operation, trust/TLS and `M2-VER-22`, `24`, `29`, `30`;
+1. create and cross-check `runtime-deployment.md` against application/pool settings, the first durable Alembic graph, installed unique-head discovery, startup guard, Health lifespan composition, one-wheel server/CLI packaging, Linux operation and trust/TLS boundaries;
+2. explicitly ratify and consolidate the CLI technology decision proposed in `../wip/cli-stack-10-proposal.md` into `docs/general/technology_baseline.md`;
 3. perform final owner-by-owner M2-OUT / M2-AC / M2-VER traceability closure;
 4. perform contract, AS-IS, cross-document authority and normative-hygiene sweeps;
 5. resolve every architecture finding without altering the frozen contract.
@@ -232,12 +246,15 @@ Before the set can freeze it must at least:
 The following architecture work remains open:
 
 ```text
-CLI grammar, transport, terminal and exact operation mapping
-runtime settings, installed migration/head discovery,
-Health startup/lifespan integration and Linux procedure
-dependent-owner verification-hook confirmation for CLI/runtime
-technology ratification required by final CLI design, if any
-final architecture consistency closure
+runtime application/pool settings realization
+installed Alembic graph and unique-head discovery
+startup revision guard and Health lifespan composition
+one-wheel server/CLI/Alembic package-resource realization
+Linux install/start/stop/restart/readiness procedure
+trusted-boundary and external-TLS deployment realization
+CLI STACK-10 formal technology-baseline consolidation
+final dependent-owner verification-hook confirmation
+final architecture traceability and consistency closure
 ```
 
 The following are no longer open architecture decisions:
@@ -249,6 +266,7 @@ persistence schema/lifecycle/index/Alembic model
 semantic concurrency matrix
 PostgreSQL lock/gate/retry/deadlock design
 Core Health application/query/timeout design
+official CLI grammar/transport/selectors/output design
 verification layers, stable bundles and scenario registry
 ```
 
@@ -264,11 +282,12 @@ The architecture set may become `FROZEN` only when:
 - every `M2-AC-*` criterion maps to exactly one stable `M2-VER-*` bundle and a traceable implementation path;
 - every supported multi-resource mutation has a complete deterministic lock plan;
 - every non-trivial semantic matrix rule has a concrete PostgreSQL realization, stable scenario ID, recipe and expected assertion;
-- all positive and negative surface inventories are complete;
+- all positive and negative HTTP/CLI/schema/runtime surface inventories are complete;
+- every project-wide technology choice required by M2 is ratified in `docs/general/technology_baseline.md`;
 - cross-document consequences are propagated without duplicated authority;
 - no relevant open, contradictory or partially reopened architecture point remains;
 - the complete set passes AS-IS, contract-coverage and consistency sweeps;
-- `steps.md` can decompose implementation and executed evidence without making a new semantic or architecture decision.
+- `steps.md` can decompose implementation and executed evidence without making a new semantic, technology or architecture decision.
 
 Executed M2 implementation tests and final artifact evidence are not architecture-freeze prerequisites. They are mandatory implementation-slice and final-delivery gates defined by `verification.md` and the future frozen `steps.md`.
 
