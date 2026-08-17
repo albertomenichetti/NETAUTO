@@ -1,6 +1,6 @@
 # M2 Persistence Architecture
 
-**Status:** DRAFT — PHYSICAL DESIGN COMPLETE — TRANSACTION/DEADLOCK CROSS-CHECK PASSED — CROSS-DOCUMENT REVIEW PENDING
+**Status:** DRAFT — PHYSICAL DESIGN COMPLETE — TRANSACTION/DEADLOCK/CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -821,4 +821,4 @@ deadlock wait-graph cross-check                    PASS
 required AS-IS physical hardening                  CLOSED
 ```
 
-This document is not frozen until `concurrency-matrix.md` covers every pair, `concurrency.md` realizes the plan without contradiction, `runtime-deployment.md` closes installed migration/head discovery, `verification.md` supplies deterministic evidence, and the architecture set passes final consistency closure.
+Pairwise concurrency, PostgreSQL realization, installed migration/head discovery, evidence design, traceability and consistency closure have passed. This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.

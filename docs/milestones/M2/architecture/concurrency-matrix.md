@@ -1,6 +1,6 @@
 # M2 Semantic Concurrency Matrix
 
-**Status:** DRAFT — SEMANTIC MATRIX COMPLETE — POSTGRESQL/VERIFICATION REVIEW PENDING
+**Status:** DRAFT — SEMANTIC MATRIX COMPLETE — POSTGRESQL/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -1596,10 +1596,6 @@ persistence hardening handoff                      CLOSED
 
 No semantic concurrency decision remains open in this owner.
 
-This document remains `NOT FROZEN` until:
+PostgreSQL realization, progress/deadlock design and deterministic evidence registration have passed architecture review. Executed no-`40P01` evidence remains a mandatory implementation/final-delivery gate, not an architecture-freeze prerequisite.
 
-- `concurrency.md` realizes every non-trivial cell with one non-contradictory PostgreSQL plan;
-- the complete lock/gate plan preserves intended progress and the persistence deadlock proof;
-- `verification.md` maps every predicate and M2 acceptance criterion to deterministic real-PostgreSQL evidence;
-- no supported scenario produces SQLSTATE `40P01`;
-- the complete M2 architecture set passes cross-document consistency closure.
+This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.

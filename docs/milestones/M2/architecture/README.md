@@ -1,6 +1,6 @@
 # M2 Architecture
 
-**Architecture set status:** DESIGN COMPLETE — FINAL TRACEABILITY / CONSISTENCY CLOSURE PENDING — NOT FROZEN
+**Architecture set status:** DESIGN COMPLETE — TRACEABILITY / CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN
 
 ## Purpose and authority boundary
 
@@ -30,7 +30,8 @@ contract.md
 
 architecture set
     design owners complete
-    final cross-document closure pending
+    traceability and consistency closure PASS
+    READY FOR FREEZE REVIEW
     NOT FROZEN
 
 steps.md
@@ -46,16 +47,16 @@ Architecture freeze requires complete design and traceability, not executed M2 i
 
 | Area | Owning document | Status |
 |---|---|---|
-| Architecture set control, coverage and freeze | `README.md` | FINAL CLOSURE IN PROGRESS |
-| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED |
-| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED |
-| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — DESIGN COMPLETE; TRANSACTION/DEADLOCK/CROSS-OWNER REVIEW PASSED |
-| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — 41-MUTATION / 861-CELL MATRIX COMPLETE |
-| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION COMPLETE; ARCHITECTURE DEADLOCK PROOF PASSED |
-| Core Health API | `health.md` | DRAFT — DESIGN COMPLETE; API/CLI/RUNTIME/VERIFICATION REVIEW PASSED |
-| Official NETAUTO CLI | `cli.md` | DRAFT — DESIGN COMPLETE; API/HEALTH/RUNTIME/VERIFICATION/STACK-10 REVIEW PASSED; FINAL CLOSURE PENDING |
-| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER/STACK-10 REVIEW PASSED; FINAL CLOSURE PENDING |
-| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — DESIGN COMPLETE; HEALTH/CLI/RUNTIME HOOK REVIEW PASSED; FINAL TRACEABILITY CLOSURE PENDING |
+| Architecture set control, coverage and freeze | `README.md` | CLOSURE PASSED — READY FOR FREEZE REVIEW |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — TRANSACTION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — MATRIX/REALIZATION/VERIFICATION CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Core Health API | `health.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Official NETAUTO CLI | `cli.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
+| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
 
 A document may own only the area assigned above. Cross-document consequences are referenced rather than redefined.
 
@@ -244,12 +245,11 @@ final delivery
 
 ## Remaining work before architecture freeze
 
-Only set-level closure remains:
+The design and closure gates have passed. Only the formal freeze transition remains:
 
-1. perform the final owner-by-owner `M2-OUT -> M2-AC -> M2-VER -> implementation-path` traceability sweep;
-2. perform the final frozen-contract, AS-IS, cross-document authority, terminology and normative-hygiene consistency sweep;
-3. resolve every resulting finding without changing the frozen contract;
-4. mark every owner and this complete architecture set `FINAL / FROZEN` in one dedicated freeze transition.
+1. review `../wip/architecture-consistency-closure.md`;
+2. explicitly approve the architecture freeze;
+3. in one dedicated commit, mark every owner and this complete architecture set `FINAL / FROZEN`, update `status.md` to implementation planning, and leave `steps.md` as the next gated authority.
 
 The following are no longer open architecture decisions:
 
@@ -266,6 +266,34 @@ verification layers, evidence bundles and scenario registry
 ```
 
 A finding that would change Scope, Non-goals, explicit deltas, Required outcomes or Acceptance criteria requires formal contract reopening. A compatible architecture clarification does not.
+
+## Final closure result
+
+The non-normative review record is:
+
+```text
+docs/milestones/M2/wip/architecture-consistency-closure.md
+```
+
+Result:
+
+```text
+frozen-contract coverage                 PASS
+M2-OUT owner coverage                    PASS — 16 / 16
+M2-AC evidence mapping                   PASS — 32 / 32
+M2-CQG contract quality gates            PASS — 10 / 10
+deterministic concurrency registry       PASS — 83 scenarios / 21 predicates
+API / CLI surface equality               PASS — 63 / 63 business operations
+schema / migration authority             PASS — 15 tables / one root / one head design
+AS-IS preservation and delta allowlist   PASS
+cross-document authority                 PASS — no competing owner
+required technology ratification         PASS — STACK-01 ... STACK-10
+normative placeholders                   PASS — 0
+open architecture finding                0
+contract reopening                       NOT REQUIRED
+```
+
+The architecture is ready for explicit freeze review. No implementation evidence is claimed or required at this gate.
 
 ## Freeze condition
 

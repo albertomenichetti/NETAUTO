@@ -1,6 +1,6 @@
 # M2 Public API Architecture
 
-**Status:** DRAFT — WIRE DESIGN COMPLETE — CROSS-DOCUMENT REVIEW PENDING
+**Status:** DRAFT — WIRE DESIGN COMPLETE — CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -1686,11 +1686,6 @@ AS-IS wire delta register                             CLOSED
 
 No open HTTP/wire decision remains inside this owner.
 
-This document remains `NOT FROZEN` until:
+Cross-owner realization, operation coverage, traceability and consistency closure have passed.
 
-- `persistence.md` confirms every projection and lifecycle DTO has one physical/codec authority;
-- `concurrency-matrix.md` and `concurrency.md` prove every stated final outcome under supported races;
-- `health.md` confirms the bounded readiness operation behind the Health DTO;
-- `cli.md` maps every operation without changing the HTTP contract;
-- `verification.md` assigns deterministic evidence;
-- the complete M2 architecture set passes its cross-document consistency closure.
+This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.

@@ -1,6 +1,6 @@
 # M2 Relationship Architecture
 
-**Status:** DRAFT — SEMANTIC DESIGN COMPLETE — CROSS-DOCUMENT REVIEW PENDING
+**Status:** DRAFT — SEMANTIC DESIGN COMPLETE — CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -1611,10 +1611,6 @@ semantic concurrency obligations          CLOSED
 
 No open Relationship-domain decision remains inside this owner.
 
-This document remains `NOT FROZEN` until:
+Cross-owner realization, traceability and consistency closure have passed.
 
-- `api.md` confirms wire-level consistency;
-- `persistence.md` confirms one physical authority for every state element;
-- `concurrency-matrix.md` and `concurrency.md` prove the required interleavings;
-- `verification.md` assigns deterministic evidence;
-- the complete M2 architecture set passes its cross-document consistency closure.
+This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.

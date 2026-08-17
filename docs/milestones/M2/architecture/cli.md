@@ -1,6 +1,6 @@
 # M2 Official CLI Architecture
 
-**Status:** DRAFT — CLI DESIGN COMPLETE — API/HEALTH/RUNTIME/VERIFICATION/STACK-10 CROSS-CHECK PASSED — FINAL CLOSURE PENDING
+**Status:** DRAFT — CLI DESIGN COMPLETE — API/HEALTH/RUNTIME/VERIFICATION/STACK-10/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -1814,9 +1814,8 @@ technology selection and project-wide authority      CLOSED
 
 No CLI-specific architecture decision remains open in this owner.
 
-This document remains `NOT FROZEN` until:
+Final owner-by-owner traceability and contract/AS-IS/authority/terminology/hygiene closure have passed.
 
-- final owner-by-owner traceability confirms every M2-OUT/M2-AC/M2-VER path;
-- the complete M2 architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.
+This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
 
 Executed CLI tests are implementation-slice and final-delivery evidence, not architecture-freeze prerequisites.

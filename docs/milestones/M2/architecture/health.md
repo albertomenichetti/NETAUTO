@@ -1,6 +1,6 @@
 # M2 Core Health Architecture
 
-**Status:** DRAFT — HEALTH DESIGN COMPLETE — API/VERIFICATION CROSS-CHECK PASSED — RUNTIME OWNER REVIEW PENDING
+**Status:** DRAFT — HEALTH DESIGN COMPLETE — API/CLI/RUNTIME/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW
 
 **Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
 
@@ -880,7 +880,7 @@ The design supplies a concrete implementation and test path for every assertion 
 
 ### 14.5 Startup/runtime handoff
 
-`runtime-deployment.md` must confirm:
+`runtime-deployment.md` confirms:
 
 ```text
 same engine/pool composition
@@ -890,7 +890,7 @@ engine disposal after serving
 installed-wheel inclusion
 ```
 
-That review may refine composition mechanics but may not change this document's observable Health behavior or database-probe semantics.
+The confirmed composition does not change this document's observable Health behavior or database-probe semantics.
 
 No contract reopening is required.
 
@@ -939,15 +939,13 @@ HTTP-adapter realization                        CLOSED
 startup-versus-runtime responsibility           CLOSED
 transaction/concurrency posture                 CLOSED
 verification hooks and negative evidence        CLOSED
-AS-IS/API/verification cross-check               PASS
+AS-IS/API/CLI/runtime/verification cross-check   PASS
 ```
 
 No Health-specific design decision remains open in this owner.
 
-This document remains `NOT FROZEN` until:
+Runtime composition, CLI consumption, traceability and consistency closure have passed.
 
-- `runtime-deployment.md` confirms final lifespan, startup-guard and installed-wheel composition;
-- `cli.md` confirms consumption without changing the Health contract;
-- the complete architecture traceability/consistency closure passes.
+This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.
 
 Executed Health tests are implementation-slice and final-delivery evidence, not architecture-freeze prerequisites.

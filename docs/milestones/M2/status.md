@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** ARCHITECTURE DESIGN — FINAL CLOSURE
+**Milestone status:** ARCHITECTURE DESIGN — READY FOR FREEZE REVIEW
 
 ## Cycle identity
 
@@ -15,7 +15,7 @@ branch      M2
 ```text
 phase           ARCHITECTURE DESIGN
 current slice   none — implementation is not authorized
-current task    execute final architecture traceability and consistency closure
+current task    review and approve the dedicated architecture freeze transition
 blockers        none
 ```
 
@@ -26,7 +26,7 @@ The M2 milestone contract is `FINAL / FROZEN`. Architecture design is authorized
 | Gate | State |
 |---|---|
 | Contract | FINAL / FROZEN |
-| Architecture set | DESIGN COMPLETE — FINAL CLOSURE IN PROGRESS — NOT FROZEN |
+| Architecture set | DESIGN COMPLETE — CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN |
 | Implementation steps | NOT STARTED — NOT FROZEN |
 | Implementation | NOT AUTHORIZED |
 | Final acceptance | NOT STARTED |
@@ -39,11 +39,11 @@ No M2 implementation slice is defined.
 
 ## Current blockers and findings
 
-No contract-level or architecture-design blocker remains. Every semantic, technical and project-wide technology owner is complete; only the final traceability and consistency closure remains before the architecture freeze transition.
+No contract-level, architecture-design, technology or consistency blocker remains. The final closure has passed; explicit approval and the dedicated architecture freeze commit are the only remaining architecture-gate actions.
 
 ## Immediate next action
 
-Execute the final owner-by-owner traceability sweep and the frozen-contract, AS-IS, authority, terminology and normative-hygiene consistency sweep defined by `architecture/README.md`; resolve any finding before proposing the dedicated architecture freeze transition.
+Review `architecture/README.md` and `wip/architecture-consistency-closure.md`; after explicit approval, execute one dedicated commit that marks the complete architecture set `FINAL / FROZEN` and opens the implementation-planning gate for `steps.md`.
 
 ## Current status vocabulary
 
