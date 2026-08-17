@@ -794,7 +794,140 @@ Tests assert semantic outcomes and absence of `40P01`; timeouts are hang guards,
 
 ---
 
-## 18. Traceability and closure
+## 18. WIP-extraction technical closure
+
+The complete WIP extraction audit identified several implementation-significant details that were previously compressed in this owner. They are normative below.
+
+### 18.1 Uniform defensive validation of default pointers
+
+Every stable `DataType`, `ObjectTemplate` and `RelationshipDefinition` GET/list projection that observes a non-null `default_version` must validate, in the same coherent read snapshot, that the exact same-lineage target exists and is `PUBLISHED`.
+
+```text
+valid non-null default
+    -> exact same-lineage PUBLISHED version
+
+missing, cross-lineage, DRAFT or DEPRECATED target
+    -> persisted invariant corruption
+    -> internal_error
+    -> no fallback, repair or pointer clearing
+```
+
+This is cross-domain read hardening only. Mutation and concurrency remain the primary invariant-preservation authority.
+
+### 18.2 Final index replacement, FK-support and plan contract
+
+Constraint-owned PK/UNIQUE indexes are not duplicated. The fresh durable schema contains the final explicit indexes in §13 and does not contain the superseded development structures:
+
+```text
+ix_relationships_definition
+ix_runtime_resolutions_from_object
+ix_runtime_resolutions_to_object
+```
+
+Their final replacements are:
+
+```text
+ix_relationships_definition_version
+ix_runtime_resolutions_from_object_page
+ix_runtime_resolutions_to_object_relationship
+```
+
+Nullable lifecycle selector indexes for destination Object, Relationship, Definition and relationship name are partial with the exact predicate `WHERE <selector> IS NOT NULL`. The global occurred, object and kind indexes remain non-partial.
+
+Referencing-side FK support is closed as follows:
+
+| Reference | Referencing-side authority |
+|---|---|
+| RDV -> Definition | RDV PK prefix `(relationship_definition_id, version)` |
+| RD property -> RDV | property PK / position-UNIQUE prefix |
+| RD property -> DTV | `ix_relationship_definition_properties_datatype_version` |
+| Definition default -> RDV | one Definition row selected by Definition PK |
+| Relationship -> exact RDV | `ix_relationships_definition_version` |
+| runtime row -> Relationship | `ix_runtime_resolutions_relationship` |
+| runtime row -> Resolution | runtime PK prefix `(resolution_id, ...)` |
+| runtime row -> from Object | `ix_runtime_resolutions_from_object_page` |
+| runtime row -> to Object | `ix_runtime_resolutions_to_object_relationship` |
+| Resolution -> Definition | `ix_relationship_resolutions_definition_id` |
+
+Representative PostgreSQL plan evidence may force sequential scans off only to prove eligibility of an approved index. It must not freeze cost values, row estimates or one exact plan tree.
+
+### 18.3 Durable-root DDL realization
+
+The first durable graph contains exactly one root revision, no predecessor and one head. The disposable development revision files are absent from the shipped graph.
+
+Dependency-safe creation order is:
+
+```text
+1. object_lifecycle_events historical authority
+2. stable roots: datatypes, object_templates, relationship_definitions
+3. exact versions: datatype_versions, object_template_versions,
+   relationship_definition_versions
+4. the three optional cyclic default-version FKs
+5. declarations/topology children
+6. factual roots: objects, relationships
+7. owned current-state children
+8. explicit non-constraint indexes
+```
+
+Equivalent ordering is permitted only when it preserves the same dependency and cyclic-FK guarantees.
+
+The root revision:
+
+```text
+is self-contained
+uses explicit stable constraint/index names
+imports no mutable application metadata or domain code
+uses no IF EXISTS / IF NOT EXISTS to conceal drift
+performs no stamp, legacy backfill or runtime schema repair
+executes transactionally under PostgreSQL
+```
+
+Failure leaves the database at base with no committed partial NETAUTO schema. A corrected upgrade can rerun from base. `head -> base` removes all and only NETAUTO-owned structures and preserves unrelated sentinel objects.
+
+### 18.4 Shared historical runtime-property carrier codec
+
+Object and Relationship lifecycle snapshots share one historical runtime-property carrier validator. It validates self-contained JSON carrier integrity without current model lookup.
+
+```text
+allowed scalar carrier
+    string | integer | boolean
+
+forbidden
+    null | float | object | nested list
+
+LIST
+    non-empty
+    ordered
+    homogeneous carrier kind
+```
+
+Relationship factual snapshots additionally require exact keys:
+
+```text
+relationship_definition_version
+properties
+```
+
+The version is a positive non-boolean integer and property names satisfy the canonical identifier grammar. Historical decoding never infers a PrimitiveType from a string and never consults a live RDV/DTV. The fresh baseline admits only canonical M2 event shapes; no permanent legacy dual decoder exists.
+
+### 18.5 Superseded migration bridge
+
+Any earlier WIP requirement for synthetic M1 data or event backfill is cancelled by the first durable baseline. It is not an omitted implementation task.
+
+```text
+pre-baseline databases
+    -> recreate
+    -> upgrade empty database to the single head
+
+M2-created data
+    -> follows native v1 DRAFT/default-null semantics
+```
+
+No contract reopening is required by this extraction closure.
+
+---
+
+## 19. Traceability and closure
 
 Primary ownership:
 

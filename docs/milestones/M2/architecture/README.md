@@ -48,6 +48,7 @@ Architecture freeze requires complete design and traceability, not executed M2 i
 | Area | Owning document | Status |
 |---|---|---|
 | Architecture set control, coverage and freeze | `README.md` | CLOSURE PASSED — READY FOR FREEZE REVIEW |
+| WIP extraction, provenance and retirement | `provenance.md` | DRAFT — EXTRACTION AUDIT PASSED; READY FOR FREEZE REVIEW |
 | Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
 | Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |
 | Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — TRANSACTION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |
@@ -178,6 +179,12 @@ STACK-10
     -> stdlib process/token/JSON/file parsing
     -> no general CLI framework or dynamic OpenAPI command generation
 
+provenance.md
+    -> complete 19-document WIP disposition map
+    -> explicit supersession register
+    -> zero implementation authority retained by WIP
+    -> technical extraction additions assigned to persistence.md
+
 verification.md
     -> T0 ... T10 layers
     -> M2-VER-01 ... M2-VER-32 bundles
@@ -267,6 +274,23 @@ verification layers, evidence bundles and scenario registry
 
 A finding that would change Scope, Non-goals, explicit deltas, Required outcomes or Acceptance criteria requires formal contract reopening. A compatible architecture clarification does not.
 
+## WIP extraction and retirement closure
+
+The complete source-to-authority map is owned by `provenance.md`; the review record is `../wip/wip-extraction-closure.md`.
+
+```text
+WIP census                              PASS — 19 / 19
+primary discovery/decision sources       PASS — 8 / 8
+technology proposal                      PASS — 1 / 1
+review/closure evidence                  PASS — 10 / 10
+superseded positions explicitly retired  PASS
+technical extraction gaps closed         PASS
+implementation dependency on WIP         0
+open extraction finding                  0
+```
+
+No future implementation slice may cite WIP as its normative owner.
+
 ## Final closure result
 
 The non-normative review record is:
@@ -289,6 +313,7 @@ AS-IS preservation and delta allowlist   PASS
 cross-document authority                 PASS — no competing owner
 required technology ratification         PASS — STACK-01 ... STACK-10
 normative placeholders                   PASS — 0
+WIP extraction / retirement              PASS — 19 / 19
 open architecture finding                0
 contract reopening                       NOT REQUIRED
 ```
@@ -307,6 +332,7 @@ The architecture set may become `FINAL / FROZEN` only when:
 - every non-trivial semantic-matrix rule has a concrete PostgreSQL realization, stable scenario ID, recipe and expected assertion;
 - all positive and negative HTTP/CLI/schema/runtime inventories are complete;
 - every project-wide technology required by M2 is ratified in `docs/general/technology_baseline.md`;
+- every WIP document has one recorded normative destination, explicit supersession or review-evidence disposition;
 - cross-document consequences are propagated without duplicated authority;
 - no relevant open, contradictory or partially reopened architecture point remains;
 - the complete set passes contract, AS-IS, coverage, authority, terminology and normative-hygiene sweeps;

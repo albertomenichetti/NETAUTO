@@ -39,6 +39,7 @@ operational Health surface               PASS — 1 route
 authoritative relational tables          PASS — 15
 technology decisions                     PASS — STACK-01 ... STACK-10
 normative TBD / TODO                      PASS — 0
+WIP extraction / retirement               PASS — 19 / 19
 open architecture finding                0
 contract reopening                       NOT REQUIRED
 ```
@@ -143,6 +144,28 @@ acceptance criterion without VER  0
 unclassified concurrency cell     0
 open technology decision          0
 open architecture decision        0
+```
+
+## WIP extraction addendum
+
+A dedicated second-pass audit classified every document in `wip/` and compared its decision-bearing content with the frozen contract, the architecture owners and `STACK-10`.
+
+Four documentation gaps were closed without changing contract behavior:
+
+```text
+normative WIP provenance/retirement map
+uniform default-pointer defensive read validation
+final index replacement/FK-support detail
+first-root DDL and shared historical carrier-codec detail
+```
+
+Earlier lossless M1→M2 migration/backfill requirements are explicitly superseded, not omitted. The audit result is recorded in `wip-extraction-closure.md`; `architecture/provenance.md` is the normative retirement authority.
+
+```text
+classified WIP documents       19 / 19
+unpropagated final decision      0
+open extraction finding         0
+contract reopening              NOT REQUIRED
 ```
 
 ## Freeze recommendation
