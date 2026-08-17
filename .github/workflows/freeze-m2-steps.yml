@@ -1,4 +1,5 @@
 name: Freeze M2 implementation steps
+# retry after validated payload correction
 
 on:
   push:
