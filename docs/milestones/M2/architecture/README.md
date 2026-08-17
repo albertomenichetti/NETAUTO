@@ -43,11 +43,11 @@ No M2 architecture document is frozen yet. Implementation planning and implement
 | Area | Owning document | Status |
 |---|---|---|
 | Architecture set control, coverage and freeze | `README.md` | DESIGN IN PROGRESS |
-| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE; API/PERSISTENCE/CONCURRENCY-MATRIX CROSS-CHECK PASSED |
-| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — WIRE DESIGN COMPLETE; PERSISTENCE/CONCURRENCY-MATRIX CROSS-CHECK PASSED |
-| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — PHYSICAL DESIGN COMPLETE; TRANSACTION/DEADLOCK/SEMANTIC-MATRIX CROSS-CHECK PASSED |
-| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — SEMANTIC MATRIX COMPLETE |
-| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | NOT STARTED |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE; API/PERSISTENCE/CONCURRENCY CROSS-CHECK PASSED |
+| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — WIRE DESIGN COMPLETE; PERSISTENCE/CONCURRENCY CROSS-CHECK PASSED |
+| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — PHYSICAL DESIGN COMPLETE; TRANSACTION/DEADLOCK/SEMANTIC-MATRIX/POSTGRESQL-REALIZATION CROSS-CHECK PASSED |
+| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — SEMANTIC MATRIX COMPLETE; POSTGRESQL CROSS-CHECK PASSED |
+| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — POSTGRESQL REALIZATION COMPLETE; DEADLOCK PROOF PASSED |
 | Core Health API | `health.md` | NOT STARTED |
 | Official NETAUTO CLI | `cli.md` | NOT STARTED |
 | Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | NOT STARTED |
@@ -112,23 +112,22 @@ Shared outcomes require coordinated owners, but each individual invariant, publi
 relationship.md
     -> normative draft created
     -> Relationship semantic design complete
-    -> API, persistence and semantic-concurrency cross-check passed
-    -> PostgreSQL realization and verification review pending
+    -> API, persistence and complete concurrency cross-check passed
+    -> verification review pending
 
 api.md
     -> normative draft created
     -> final business and Health wire design complete
-    -> Relationship, persistence and semantic-concurrency cross-check passed
-    -> Health, CLI, PostgreSQL realization and verification review pending
+    -> Relationship, persistence and complete concurrency cross-check passed
+    -> Health, CLI and verification review pending
 
 persistence.md
     -> normative draft created
     -> fifteen-table authority, constraints, lifecycle codec,
        index inventory and first durable Alembic baseline complete
-    -> transaction validity cross-check passed
-    -> architecture-level deadlock wait-graph cross-check passed
-    -> semantic concurrency-matrix cross-check passed
-    -> exact PostgreSQL realization and deterministic evidence pending
+    -> transaction validity and architecture deadlock proof passed
+    -> semantic matrix and PostgreSQL realization cross-check passed
+    -> deterministic evidence pending
 
 concurrency-matrix.md
     -> normative draft created
@@ -136,22 +135,35 @@ concurrency-matrix.md
     -> all 15 family blocks and 861 unordered cells classified
     -> delivered 19 predicates preserved
     -> VH schema-history and RS factual-Relationship-state predicates added
-    -> frozen M2 conflict/delete outcomes propagated
-    -> PostgreSQL realization and deterministic evidence pending
+    -> PostgreSQL realization cross-check passed
+    -> deterministic evidence pending
+
+concurrency.md
+    -> normative draft created
+    -> complete lock planner and three-gate registry closed
+    -> all 41 mutation lock plans closed
+    -> all 21 predicates mapped to PostgreSQL authorities
+    -> bounded whole-UoW restart and SQLSTATE policy closed
+    -> intended blocking/non-blocking contract closed
+    -> supported wait-for graph proven acyclic at architecture level
+    -> deterministic real-PostgreSQL evidence pending
 ```
 
-The completed semantic/persistence review requires the first durable baseline to preserve:
+The completed semantic/persistence/concurrency review requires the first durable baseline to preserve:
 
 ```text
 complete pre-DML lock plans
 advisory-gate-first acquisition
 one new model-root delete gate
 no normal row-lock upgrades
-existing-owner FK target-before-owner ordering
+one canonical row-class/intra-class order
+existing-owner direct-FK target-before-owner ordering
+child-FK target-before-DML ordering
 differential declaration replacement
 CREATE_NEXT cloned-reference lifetime holds
 deterministic closure/event writes
-whole-UoW restart for stale optimistic lock plans
+bounded whole-UoW restart for approved causes
+no automatic retry of SQLSTATE 40P01
 ```
 
 These are architecture hardening requirements and do not alter the frozen public contract.
@@ -162,24 +174,20 @@ No M2 architecture document is frozen yet.
 
 Before the set can freeze it must at least:
 
-1. cross-check and freeze the Relationship semantic, API wire, persistence and semantic-concurrency owners with every dependent owner;
-2. define the exact PostgreSQL lock helpers, modes, gate registry, acquisition plan, restart/retry boundary and deadlock-proof realization;
-3. extend the deterministic real-PostgreSQL scenario registry to prove every predicate, intended progress outcome and absence of supported-path deadlocks;
-4. freeze Health, startup revision guard, CLI and runtime/deployment behavior at architecture level;
-5. define complete deterministic verification and traceability registries;
-6. perform cross-document consistency, AS-IS and contract-coverage sweeps;
-7. resolve every architecture finding without altering the frozen contract.
+1. cross-check and freeze the Relationship semantic, API wire, persistence, semantic-matrix and PostgreSQL realization owners with every remaining dependent owner;
+2. extend the deterministic real-PostgreSQL scenario registry to prove every predicate, intended progress outcome, retry boundary and absence of supported-path deadlocks;
+3. freeze Health, startup revision guard, CLI and runtime/deployment behavior at architecture level;
+4. define complete deterministic verification and contract/architecture traceability;
+5. perform cross-document consistency, AS-IS and contract-coverage sweeps;
+6. resolve every architecture finding without altering the frozen contract.
 
 ## Open design points
 
 The following architecture work remains open:
 
 ```text
-exact PostgreSQL implementation of the canonical lock planner
-MODEL_ROOT_DELETE_GATE and gate-first realization
-whole-UoW restart/retry and SQLSTATE handling
-new deterministic VH/RS/FK/rebind/root-delete/no-40P01 scenarios
-final persistence-boundary/module review
+deterministic VH/RS/FK/rebind/root-delete/no-40P01 scenarios
+real-PostgreSQL lock-planner and SQLSTATE evidence
 Health and startup-guard realization
 CLI grammar, transport, operation mapping and output realization
 runtime/deployment realization
