@@ -1,8 +1,10 @@
 # M2 — Milestone Contract
 
-**Status:** DRAFT — READY FOR FREEZE REVIEW
+**Status:** FINAL / FROZEN
 
-**Authority:** NORMATIVE MILESTONE DRAFT
+**Authority:** NORMATIVE MILESTONE CONTRACT
+
+**Freeze approval:** Explicitly approved after the PASS consistency closure recorded in `wip/contract-consistency-closure.md`.
 
 ## Authority and baseline
 
@@ -1045,9 +1047,9 @@ These decisions may not alter this contract without formal reopening.
 
 None.
 
-## Freeze condition
+## Freeze status
 
-This contract is ready for freeze review when:
+The following closure conditions have been satisfied:
 
 ```text
 Capability coverage                 PASS
@@ -1057,15 +1059,10 @@ Dependency/boundary consistency     PASS
 Outcome/acceptance traceability     PASS
 Normative hygiene                   PASS
 Open contract points                0
+Explicit freeze approval            GRANTED
 ```
 
-After explicit approval of the consolidated content and its consistency-closure report, the status may change to:
-
-```text
-FINAL / FROZEN
-```
-
-At that transition, `status.md` must enter ARCHITECTURE DESIGN, the M2 architecture set must enter DESIGN IN PROGRESS — NOT FROZEN, implementation planning must remain not started and implementation must remain unauthorized.
+This contract is `FINAL / FROZEN`. Architecture design is authorized. Implementation planning remains not started, and implementation remains unauthorized until the complete M2 architecture set is frozen.
 
 ## Change-control rule
 

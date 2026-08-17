@@ -13,20 +13,20 @@ branch      M2
 ## Current operational state
 
 ```text
-phase           CONTRACT DEFINITION
+phase           ARCHITECTURE DESIGN
 current slice   none — implementation is not authorized
-current task    define and review the M2 contract
+current task    build and freeze the normative M2 architecture set
 blockers        none
 ```
 
-The repository bootstrap is complete when the required M2 document structure exists on branch `M2`. This status file does not authorize application, schema, migration or dependency changes.
+The M2 milestone contract is `FINAL / FROZEN`. Architecture design is authorized against the delivered AS-IS plus the frozen contract. Implementation planning remains blocked until the complete architecture set is frozen, and implementation remains unauthorized.
 
 ## Design and delivery gates
 
 | Gate | State |
 |---|---|
-| Contract | DRAFT — NOT FROZEN |
-| Architecture set | DESIGN NOT STARTED — NOT FROZEN |
+| Contract | FINAL / FROZEN |
+| Architecture set | DESIGN IN PROGRESS — NOT FROZEN |
 | Implementation steps | NOT STARTED — NOT FROZEN |
 | Implementation | NOT AUTHORIZED |
 | Final acceptance | NOT STARTED |
@@ -39,28 +39,29 @@ No M2 implementation slice is defined.
 
 ## Current blockers and findings
 
-None. No M2 architecture or implementation finding exists because the milestone contract has not yet been designed.
+No contract-level blocker remains. The architecture set must now propagate the frozen contract into explicit normative owners, close all semantic and technical design points, and pass its own consistency sweep before implementation planning can begin.
 
 ## Immediate next action
 
-Define M2 purpose, objectives, scope, non-goals, required outcomes and observable acceptance criteria in `contract.md`, validating every starting assumption against `docs/architecture/`.
+Create and complete the normative M2 architecture corpus registered in `architecture/README.md`, including Relationship domain/API/persistence, semantic concurrency and PostgreSQL realization, Health and startup guard, CLI, runtime/deployment, and verification/traceability ownership.
 
 ## Current status vocabulary
 
-For the bootstrap/design phase:
-
 ```text
+FINAL / FROZEN
+    -> normative authority; semantic change requires formal reopening
+
 DESIGN IN PROGRESS
-    -> contract or architecture design is active
+    -> the active contract or architecture design gate is being completed
 
 NOT STARTED
     -> the gate or activity has not begun
 
 NOT FROZEN
-    -> the document or set is not an implementation authority
+    -> the document or set is not yet an implementation authority
 
 NOT AUTHORIZED
     -> the activity must not begin
 ```
 
-The implementation/review vocabulary will be defined here before the first implementation slice is authorized.
+The implementation/review vocabulary will be completed before the first implementation slice is authorized.
