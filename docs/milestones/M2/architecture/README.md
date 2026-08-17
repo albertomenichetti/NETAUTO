@@ -1,6 +1,6 @@
 # M2 Architecture
 
-**Architecture set status:** DESIGN IN PROGRESS — NOT FROZEN
+**Architecture set status:** DESIGN COMPLETE — FINAL CONSISTENCY / TECHNOLOGY RATIFICATION PENDING — NOT FROZEN
 
 ## Purpose and authority boundary
 
@@ -18,42 +18,46 @@ FROZEN M2 architecture delta
 implementation authority for M2
 ```
 
-This README controls architecture-set composition, ownership coverage, gate interpretation and set-level status. Detailed semantic and technical decisions belong to the owning documents indexed here and must not be duplicated as competing authorities.
+This README owns architecture-set composition, owner coverage, gate interpretation and set-level status. Detailed semantic and technical decisions belong only to the owning documents indexed below and must not be duplicated as competing authorities.
 
-Discovery material under `../wip/` is non-normative input. It must be distilled into the owning architecture documents before the set can freeze.
+Discovery material under `../wip/` is non-normative input. Every implemented M2 behavior must be traceable to the frozen contract and, after set freeze, to one normative owner here.
 
-## Current baseline
-
-The starting architecture is the delivered AS-IS under:
+## Current baseline and governance state
 
 ```text
-docs/architecture/
+contract.md
+    FINAL / FROZEN
+
+architecture set
+    design owners complete
+    final cross-document closure pending
+    NOT FROZEN
+
+steps.md
+    NOT STARTED / NOT FROZEN
+
+implementation
+    NOT AUTHORIZED
 ```
 
-The milestone obligations and authorized deltas are frozen in:
-
-```text
-docs/milestones/M2/contract.md
-```
-
-No M2 architecture document is frozen yet. Implementation planning and implementation remain unauthorized.
+Architecture freeze requires complete design and traceability, not executed M2 implementation evidence. Executed evidence belongs to future implementation-slice and final-delivery gates defined by `verification.md` and the future frozen `steps.md`.
 
 ## Normative document map
 
 | Area | Owning document | Status |
 |---|---|---|
-| Architecture set control, coverage and freeze | `README.md` | DESIGN IN PROGRESS |
-| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE; API/PERSISTENCE/CONCURRENCY/VERIFICATION-DESIGN CROSS-CHECK PASSED |
-| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — WIRE DESIGN COMPLETE; PERSISTENCE/CONCURRENCY/VERIFICATION-DESIGN/HEALTH/CLI CROSS-CHECK PASSED |
-| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — PHYSICAL DESIGN COMPLETE; TRANSACTION/DEADLOCK/SEMANTIC-MATRIX/POSTGRESQL/VERIFICATION-DESIGN CROSS-CHECK PASSED |
-| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — SEMANTIC MATRIX COMPLETE; POSTGRESQL/VERIFICATION-REGISTRY CROSS-CHECK PASSED |
-| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — POSTGRESQL REALIZATION COMPLETE; DEADLOCK PROOF / VERIFICATION-REGISTRY CROSS-CHECK PASSED |
-| Core Health API | `health.md` | DRAFT — HEALTH DESIGN COMPLETE; API/VERIFICATION/CLI CROSS-CHECK PASSED; RUNTIME OWNER REVIEW PENDING |
-| Official NETAUTO CLI | `cli.md` | DRAFT — CLI DESIGN COMPLETE; API/HEALTH/VERIFICATION CROSS-CHECK PASSED; RUNTIME/STACK-10 REVIEW PENDING |
-| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | NOT STARTED |
-| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — VERIFICATION DESIGN COMPLETE; HEALTH/CLI CROSS-CHECK PASSED; RUNTIME REVIEW PENDING |
+| Architecture set control, coverage and freeze | `README.md` | FINAL CLOSURE IN PROGRESS |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED |
+| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED |
+| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — DESIGN COMPLETE; TRANSACTION/DEADLOCK/CROSS-OWNER REVIEW PASSED |
+| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — 41-MUTATION / 861-CELL MATRIX COMPLETE |
+| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION COMPLETE; ARCHITECTURE DEADLOCK PROOF PASSED |
+| Core Health API | `health.md` | DRAFT — DESIGN COMPLETE; API/CLI/RUNTIME/VERIFICATION REVIEW PASSED |
+| Official NETAUTO CLI | `cli.md` | DRAFT — DESIGN COMPLETE; API/HEALTH/RUNTIME/VERIFICATION REVIEW PASSED; STACK-10 RATIFICATION PENDING |
+| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED; STACK-10/FINAL CLOSURE PENDING |
+| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — DESIGN COMPLETE; DEPENDENT-OWNER REVIEW PASSED; FINAL TRACEABILITY CLOSURE PENDING |
 
-A document may own only the areas assigned here. Cross-document consequences must be referenced rather than redefined.
+A document may own only the area assigned above. Cross-document consequences are referenced rather than redefined.
 
 ## Outcome ownership map
 
@@ -99,90 +103,88 @@ runtime-deployment.md
 verification.md
     M2-OUT-16
     all M2-AC acceptance criteria
-    all deterministic scenario/evidence registries
+    all M2-VER evidence bundles
+    deterministic concurrency and surface registries
     architecture-set traceability and consistency closure
 ```
 
-Shared outcomes require coordinated owners, but each individual invariant, public contract, realization rule and evidence obligation has one explicit normative home.
+Shared outcomes require coordinated owners, but every invariant, public contract, realization rule and evidence obligation has one explicit normative home.
 
-## Current architecture progress
+## Completed architecture design
 
 ```text
 relationship.md
-    -> normative draft created
-    -> Relationship semantic design complete
-    -> API, persistence, complete concurrency and verification-design
-       cross-check passed
-    -> final dependent-owner review pending
+    -> stable topology and factual identity preservation
+    -> RDV lifecycle/default/property-history semantics
+    -> exact factual pin and canonical properties
+    -> CREATE / DATA_CHANGE / SCHEMA_CHANGE / DELETE
+    -> lifecycle and corruption boundaries
 
 api.md
-    -> normative draft created
-    -> final business and Health wire design complete
-    -> Relationship, persistence, complete concurrency,
-       verification-design, Health and CLI cross-check passed
-    -> runtime release-boundary review pending
+    -> exact 63-operation business inventory
+    -> strict request/response/failure contracts
+    -> Relationship/RDV projections and lifecycle union
+    -> /health/core wire contract
+    -> CLI coverage authority
 
 persistence.md
-    -> normative draft created
-    -> fifteen-table authority, constraints, lifecycle codec,
-       index inventory and first durable Alembic baseline complete
-    -> transaction validity and architecture deadlock proof passed
-    -> semantic matrix, PostgreSQL realization and verification-design
-       cross-check passed
-    -> runtime packaging/head-discovery review pending
+    -> authoritative fifteen-table model
+    -> final keys, constraints, delete actions and indexes
+    -> JSONB current/history authority and lifecycle codec
+    -> first durable Alembic root baseline
+    -> transaction-valid and deadlock-safe persistence pipelines
 
 concurrency-matrix.md
-    -> normative draft created
-    -> canonical census complete: 41 mutations
-    -> all 15 family blocks and 861 unordered cells classified
-    -> delivered 19 predicates preserved; VH and RS added
-    -> PostgreSQL and verification-registry cross-check passed
+    -> 41 mutation primitives
+    -> 15 family blocks
+    -> all 861 unordered cells classified
+    -> delivered predicates preserved; VH and RS added
 
 concurrency.md
-    -> normative draft created
-    -> complete lock planner and three-gate registry closed
-    -> all 41 mutation lock plans closed
-    -> all 21 predicates mapped to PostgreSQL authorities
-    -> bounded whole-UoW restart and SQLSTATE policy closed
-    -> intended blocking/non-blocking contract closed
-    -> supported wait-for graph proven acyclic at architecture level
-    -> verification-registry cross-check passed
+    -> complete centralized lock planner
+    -> three-gate registry
+    -> canonical row order and sufficient initial lock modes
+    -> all 41 mutation lock plans
+    -> bounded whole-UoW restart and SQLSTATE policy
+    -> supported wait-for graph acyclic by construction
 
 health.md
-    -> normative draft created
-    -> readiness semantics and application/probe boundaries closed
-    -> same runtime engine/pool and exact SELECT 1 probe closed
-    -> fixed two-second timeout, cleanup and monotonic timing closed
-    -> safe failure and strict HTTP-adapter realization closed
-    -> API, CLI and verification-design cross-check passed
-    -> runtime lifespan/startup-guard review pending
+    -> same runtime engine/pool as business work
+    -> exact SELECT 1 active probe
+    -> fixed two-second whole-probe deadline
+    -> safe 200/503 result and startup-guard separation
 
 cli.md
-    -> normative draft created
-    -> interactive and non-interactive state/process contracts closed
-    -> static registry covers exactly 63 business HTTP operations
-    -> endpoint, HTTPX transport, TLS, selector and structured-input
-       policies closed
-    -> FORMATTED and exact JSON trace contracts closed
-    -> in-memory history, help and terminal behavior closed
-    -> API, Health and verification-design cross-check passed
-    -> runtime wheel/dependency review and STACK-10 consolidation pending
+    -> interactive and non-interactive process contracts
+    -> static exact 63-operation registry
+    -> HTTP-only execution and deterministic selector resolution
+    -> verified HTTPS, no insecure bypass or credential storage
+    -> exact FORMATTED/JSON trace, help and in-memory history
+
+runtime-deployment.md
+    -> exact application/pool settings and secret-source composition
+    -> one-wheel server/CLI/Alembic distribution
+    -> embedded exact runtime dependency lock exported from uv.lock
+    -> installed package-resource Alembic graph and unique-head discovery
+    -> exact pre-serving startup revision guard
+    -> Health composition from the same worker engine
+    -> reproducible manual Linux install/start/stop/restart/readiness procedure
+    -> trusted-boundary HTTP and external TLS responsibility
 
 verification.md
-    -> normative draft created
-    -> T0 ... T10 verification layers closed
-    -> M2-VER-01 ... M2-VER-32 evidence bundles closed
-    -> canonical 83-scenario registry closed
+    -> T0 ... T10 layers
+    -> M2-VER-01 ... M2-VER-32 bundles
+    -> canonical 83-scenario concurrency registry
     -> all 21 predicates mapped to deterministic evidence
-    -> AS-IS regression, negative surface and final acceptance
-       evidence contract closed
-    -> Health and CLI implementation hooks cross-checked
-    -> runtime-deployment implementation-hook review pending
+    -> positive/negative surface, installed artifact and final acceptance contracts
 ```
 
-The completed semantic/persistence/concurrency/Health/CLI/verification review requires the first durable baseline to preserve:
+## Cross-cutting architecture obligations
+
+The complete first durable baseline must preserve:
 
 ```text
+one semantic mutation / one PostgreSQL UoW
 complete pre-DML lock plans
 advisory-gate-first acquisition
 one model-root delete gate
@@ -193,69 +195,56 @@ child-FK target-before-DML ordering
 differential declaration replacement
 CREATE_NEXT cloned-reference lifetime holds
 deterministic closure/event writes
-bounded whole-UoW restart for approved causes
+bounded whole-UoW restart only for approved causes
 no automatic retry of SQLSTATE 40P01
 stable verification/evidence identifiers
 exact positive and negative surface inventories
-same runtime engine/pool for business and Health
-a fixed two-second full database-probe deadline
+same runtime engine/pool for business, startup inspection and Health
+a fixed two-second full Health database-probe deadline
 no Health/Alembic responsibility overlap
 one static exact 63-operation CLI registry
 HTTP-only CLI execution with no application/persistence path
 no mandatory Health preflight for non-interactive commands
 verified HTTPS with no insecure bypass
 no persistent endpoint, credentials or command history
+one wheel containing server, CLI, release metadata and Alembic graph
+one exact embedded runtime dependency lock derived from committed uv.lock
+unique shipped Alembic head as the sole expected-revision authority
+exact database revision equality before any HTTP serving
 ```
 
-These are architecture requirements and do not alter the frozen public contract.
+These are realization obligations and do not introduce any public behavior beyond the frozen contract.
 
 ## Verification gate separation
-
-Architecture freeze and delivery evidence are deliberately separate.
 
 ```text
 architecture freeze
     -> complete normative design
     -> complete M2-OUT / M2-AC / M2-VER traceability
-    -> complete deterministic scenario and surface registries
-    -> no open architecture decision
+    -> complete deterministic concurrency and surface registries
+    -> ratified required technologies
+    -> no open architecture finding
 
 implementation-slice completion
-    -> affected evidence targets implemented and passing
+    -> assigned evidence targets implemented and passing
+    -> affected AS-IS regression evidence preserved
 
 final delivery
     -> every M2-VER bundle and canonical scenario executed and PASS
     -> no supported SQLSTATE 40P01
-    -> installed artifact and operating evidence PASS
+    -> schema drift = []
+    -> installed wheel, startup, Health, CLI and Linux operation PASS
 ```
 
-Implementation evidence cannot be a prerequisite for architecture freeze because implementation is not authorized until the architecture is frozen. This separation does not weaken final acceptance; it places execution at the only governance stage where M2 code may exist.
+## Remaining work before architecture freeze
 
-## Required architecture work
+Only set-level closure remains:
 
-Before the set can freeze it must at least:
-
-1. create and cross-check `runtime-deployment.md` against application/pool settings, the first durable Alembic graph, installed unique-head discovery, startup guard, Health lifespan composition, one-wheel server/CLI packaging, Linux operation and trust/TLS boundaries;
-2. explicitly ratify and consolidate the CLI technology decision proposed in `../wip/cli-stack-10-proposal.md` into `docs/general/technology_baseline.md`;
-3. perform final owner-by-owner M2-OUT / M2-AC / M2-VER traceability closure;
-4. perform contract, AS-IS, cross-document authority and normative-hygiene sweeps;
-5. resolve every architecture finding without altering the frozen contract.
-
-## Open design points
-
-The following architecture work remains open:
-
-```text
-runtime application/pool settings realization
-installed Alembic graph and unique-head discovery
-startup revision guard and Health lifespan composition
-one-wheel server/CLI/Alembic package-resource realization
-Linux install/start/stop/restart/readiness procedure
-trusted-boundary and external-TLS deployment realization
-CLI STACK-10 formal technology-baseline consolidation
-final dependent-owner verification-hook confirmation
-final architecture traceability and consistency closure
-```
+1. formally ratify and consolidate the official CLI technology decision from `../wip/cli-stack-10-proposal.md` as `STACK-10` in `docs/general/technology_baseline.md`;
+2. perform the final owner-by-owner `M2-OUT -> M2-AC -> M2-VER -> implementation-path` traceability sweep;
+3. perform the final frozen-contract, AS-IS, cross-document authority, terminology and normative-hygiene consistency sweep;
+4. resolve every resulting finding without changing the frozen contract;
+5. mark every owner and this complete architecture set `FINAL / FROZEN` in one dedicated freeze transition.
 
 The following are no longer open architecture decisions:
 
@@ -267,28 +256,27 @@ semantic concurrency matrix
 PostgreSQL lock/gate/retry/deadlock design
 Core Health application/query/timeout design
 official CLI grammar/transport/selectors/output design
-verification layers, stable bundles and scenario registry
+runtime settings, packaging, Alembic installation, startup and Linux operation
+verification layers, evidence bundles and scenario registry
 ```
 
-Any finding that would change Scope, Non-goals, explicit deltas, Required outcomes or Acceptance criteria requires formal contract reopening.
+A finding that would change Scope, Non-goals, explicit deltas, Required outcomes or Acceptance criteria requires formal contract reopening. A compatible architecture clarification does not.
 
 ## Freeze condition
 
-The architecture set may become `FROZEN` only when:
+The architecture set may become `FINAL / FROZEN` only when:
 
 - `../contract.md` remains `FINAL / FROZEN`;
 - every contract area and every `M2-OUT-*` outcome has an explicit normative owner;
-- all required semantic, persistence, concurrency, API, failure, runtime, CLI, Health and verification **design** decisions are closed;
-- every `M2-AC-*` criterion maps to exactly one stable `M2-VER-*` bundle and a traceable implementation path;
+- every required semantic, persistence, concurrency, API, runtime, CLI, Health, security and verification **design** decision is closed;
+- every `M2-AC-*` maps to exactly one stable `M2-VER-*` bundle and a traceable implementation path;
 - every supported multi-resource mutation has a complete deterministic lock plan;
-- every non-trivial semantic matrix rule has a concrete PostgreSQL realization, stable scenario ID, recipe and expected assertion;
-- all positive and negative HTTP/CLI/schema/runtime surface inventories are complete;
-- every project-wide technology choice required by M2 is ratified in `docs/general/technology_baseline.md`;
+- every non-trivial semantic-matrix rule has a concrete PostgreSQL realization, stable scenario ID, recipe and expected assertion;
+- all positive and negative HTTP/CLI/schema/runtime inventories are complete;
+- every project-wide technology required by M2 is ratified in `docs/general/technology_baseline.md`;
 - cross-document consequences are propagated without duplicated authority;
 - no relevant open, contradictory or partially reopened architecture point remains;
-- the complete set passes AS-IS, contract-coverage and consistency sweeps;
+- the complete set passes contract, AS-IS, coverage, authority, terminology and normative-hygiene sweeps;
 - `steps.md` can decompose implementation and executed evidence without making a new semantic, technology or architecture decision.
 
-Executed M2 implementation tests and final artifact evidence are not architecture-freeze prerequisites. They are mandatory implementation-slice and final-delivery gates defined by `verification.md` and the future frozen `steps.md`.
-
-Until the architecture set is frozen, `steps.md` must remain not frozen and implementation of M2 behavior is not authorized.
+Until then, `steps.md` remains not frozen and M2 implementation remains unauthorized.
