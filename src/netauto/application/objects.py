@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from netauto.application.cursors import Page, decode_cursor, encode_cursor
@@ -21,7 +22,11 @@ from netauto.domain.objects import (
     migrate_properties,
     validate_canonical_name,
 )
-from netauto.domain.objecttemplates import EffectiveSchema
+from netauto.domain.objecttemplates import (
+    EffectiveSchema,
+    ObjectTemplate,
+    ObjectTemplateVersion,
+)
 from netauto.domain.primitives import (
     JsonValue,
     PrimitiveType,
@@ -31,7 +36,17 @@ from netauto.domain.primitives import (
 )
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.datatypes import DataTypeStore
-from netauto.persistence.gates import AdvisoryGate, acquire_advisory_gate
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    LockPlanAttemptsExhausted,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    acquire_lock_plan,
+    run_semantic_uow_attempts,
+)
 from netauto.persistence.objects import (
     EventKind,
     LifecycleEvent,
@@ -118,6 +133,40 @@ def _state(
 
 def _internal(message: str) -> ApplicationFailure:
     return ApplicationFailure(FailureClass.INTERNAL_FAILURE, "internal_error", message)
+
+
+def _object_intent(object_id: UUID, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(RowLockKey(RowLockClass.OBJECT, object_id), mode)
+
+
+def _template_header(template_id: UUID, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id), mode
+    )
+
+
+def _template_version(
+    template_id: UUID, version: int, mode: RowLockMode
+) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version), mode
+    )
+
+
+async def _acquire(
+    connection: Any,
+    template_store: ObjectTemplateStore,
+    intents: tuple[RowLockIntent, ...],
+    *,
+    gate: AdvisoryGate | None = None,
+) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
+    plan = LockPlan(
+        intents=intents,
+        gate=gate,
+        object_template_parent_by_id=await template_store.lineage_parents(),
+    )
+    missing = await acquire_lock_plan(connection, plan)
+    return plan, missing
 
 
 def _canonical_timestamp(value: datetime) -> str:
@@ -249,6 +298,34 @@ class ObjectService:
     def _component(slot: ResolvedComponentSlot, child_id: UUID) -> ComponentProjection:
         return ComponentProjection(slot.declaring_template_id, slot.name, child_id)
 
+    async def _selected_template(
+        self,
+        store: ObjectTemplateStore,
+        template_id: UUID,
+        requested_version: int | None,
+    ) -> tuple[ObjectTemplate, ObjectTemplateVersion, int]:
+        lineage = await store.get_lineage(template_id)
+        if lineage is None:
+            raise _referenced(template_id)
+        if requested_version is None:
+            if lineage.default_version is None:
+                raise _state(
+                    "default_version_unavailable",
+                    "The selected ObjectTemplate has no default version.",
+                    {"id": str(template_id)},
+                )
+            selected_version = lineage.default_version
+        else:
+            selected_version = requested_version
+        header = await store.get_version(template_id, selected_version)
+        if header is None:
+            if requested_version is None:
+                raise _internal(
+                    "The persisted ObjectTemplate default target is missing."
+                )
+            raise _referenced(template_id, requested_version)
+        return lineage, header, selected_version
+
     async def create(
         self,
         template_id: UUID,
@@ -262,32 +339,33 @@ class ObjectService:
             validate_canonical_name(name)
         except ObjectValidationError as error:
             raise _semantic(error) from error
-        async with self._uow_factory() as uow:
+
+        async def attempt(uow: Any, attempt_number: int) -> Object:
+            del attempt_number
             template_store = ObjectTemplateStore(uow.connection)
-            if template_version is None:
-                admitted = await template_store.admit_default(template_id)
-                if admitted is None:
-                    raise _referenced(template_id)
-                lineage, header = admitted
-                if lineage.default_version is None:
-                    raise _state(
-                        "default_version_unavailable",
-                        "The selected ObjectTemplate has no default version.",
-                        {"id": str(template_id)},
-                    )
-                if header is None:
-                    raise _internal(
-                        "The persisted ObjectTemplate default target is missing."
-                    )
-                selected_version = lineage.default_version
-            else:
-                header = await template_store.admit_exact(template_id, template_version)
-                if header is None:
-                    raise _referenced(template_id, template_version)
-                lineage = await template_store.get_lineage(template_id)
-                if lineage is None:
-                    raise _internal("The persisted ObjectTemplate lineage is missing.")
-                selected_version = template_version
+            lineage, header, selected_version = await self._selected_template(
+                template_store, template_id, template_version
+            )
+            intents = (
+                _template_header(
+                    template_id,
+                    RowLockMode.S if template_version is None else RowLockMode.KS,
+                ),
+                _template_version(template_id, selected_version, RowLockMode.S),
+            )
+            plan, _ = await _acquire(uow.connection, template_store, intents)
+            lineage, header, selected_version = await self._selected_template(
+                template_store, template_id, template_version
+            )
+            plan.require_same_plan(
+                (
+                    _template_header(
+                        template_id,
+                        RowLockMode.S if template_version is None else RowLockMode.KS,
+                    ),
+                    _template_version(template_id, selected_version, RowLockMode.S),
+                )
+            )
             if header.status is not VersionStatus.PUBLISHED:
                 raise _state(
                     "dependency_not_admissible",
@@ -307,6 +385,7 @@ class ObjectService:
                 raise _semantic(error) from error
             result = Object(object_id, name, template_id, selected_version, canonical)
             store = ObjectStore(uow.connection)
+            plan.begin_dml()
             try:
                 await store.insert(result)
             except ObjectTemplateReferenceError as error:
@@ -314,6 +393,11 @@ class ObjectService:
             await store.insert_intrinsic_event(EventKind.CREATED, result, None, result)
             await uow.commit()
             return result
+
+        try:
+            return await run_semantic_uow_attempts(self._uow_factory, attempt)
+        except LockPlanAttemptsExhausted as error:
+            raise _internal("The Object lock plan did not stabilize.") from error
 
     async def get(self, object_id: UUID) -> Object:
         async with self._uow_factory() as uow:
@@ -328,12 +412,18 @@ class ObjectService:
     async def delete(self, object_id: UUID) -> None:
         async with self._uow_factory() as uow:
             store = ObjectStore(uow.connection)
-            before = await store.lock_update(object_id)
+            template_store = ObjectTemplateStore(uow.connection)
+            plan, missing = await _acquire(
+                uow.connection,
+                template_store,
+                (_object_intent(object_id, RowLockMode.U),),
+            )
+            if missing:
+                raise _not_found(object_id)
+            before = await store.get(object_id)
             if before is None:
                 raise _not_found(object_id)
-            await self._validate_persisted_object(
-                ObjectTemplateStore(uow.connection), before
-            )
+            await self._validate_persisted_object(template_store, before)
             counts = await store.delete_blocker_counts(object_id)
             blockers: list[JsonValue] = [
                 {"type": blocker_type, "count": counts[blocker_type]}
@@ -350,6 +440,7 @@ class ObjectService:
                         "blockers": blockers,
                     },
                 )
+            plan.begin_dml()
             try:
                 await store.delete(object_id)
             except ObjectDeleteReferenceError as error:
@@ -372,12 +463,18 @@ class ObjectService:
             raise _semantic(error) from error
         async with self._uow_factory() as uow:
             store = ObjectStore(uow.connection)
-            before = await store.lock_no_key(object_id)
+            template_store = ObjectTemplateStore(uow.connection)
+            plan, missing = await _acquire(
+                uow.connection,
+                template_store,
+                (_object_intent(object_id, RowLockMode.NKU),),
+            )
+            if missing:
+                raise _not_found(object_id)
+            before = await store.get(object_id)
             if before is None:
                 raise _not_found(object_id)
-            await self._validate_persisted_object(
-                ObjectTemplateStore(uow.connection), before
-            )
+            await self._validate_persisted_object(template_store, before)
             after = Object(
                 before.id,
                 canonical_name,
@@ -385,6 +482,7 @@ class ObjectService:
                 before.template_version,
                 before.properties,
             )
+            plan.begin_dml()
             await store.update_name(object_id, canonical_name)
             await store.insert_intrinsic_event(EventKind.RENAME, after, before, after)
             await uow.commit()
@@ -395,12 +493,18 @@ class ObjectService:
     ) -> Object:
         async with self._uow_factory() as uow:
             store = ObjectStore(uow.connection)
-            before = await store.lock_no_key(object_id)
+            template_store = ObjectTemplateStore(uow.connection)
+            plan, missing = await _acquire(
+                uow.connection,
+                template_store,
+                (_object_intent(object_id, RowLockMode.NKU),),
+            )
+            if missing:
+                raise _not_found(object_id)
+            before = await store.get(object_id)
             if before is None:
                 raise _not_found(object_id)
-            specs = await self._validate_persisted_object(
-                ObjectTemplateStore(uow.connection), before
-            )
+            specs = await self._validate_persisted_object(template_store, before)
             try:
                 properties = apply_data_change(before.properties, operations, specs)
             except (ObjectValidationError, PrimitiveValidationError) as error:
@@ -414,6 +518,7 @@ class ObjectService:
                 before.template_version,
                 properties,
             )
+            plan.begin_dml()
             await store.update_properties(object_id, properties)
             await store.insert_intrinsic_event(
                 EventKind.DATA_CHANGE, after, before, after
@@ -424,10 +529,35 @@ class ObjectService:
     async def schema_change(self, object_id: UUID, target_version: int) -> Object:
         async with self._uow_factory() as uow:
             store = ObjectStore(uow.connection)
-            before = await store.lock_no_key(object_id)
+            before = await store.get(object_id)
             if before is None:
                 raise _not_found(object_id)
             template_store = ObjectTemplateStore(uow.connection)
+            plan, missing = await _acquire(
+                uow.connection,
+                template_store,
+                (
+                    _template_header(before.template_id, RowLockMode.KS),
+                    _template_version(
+                        before.template_id, target_version, RowLockMode.S
+                    ),
+                    _object_intent(object_id, RowLockMode.NKU),
+                ),
+            )
+            if RowLockKey(RowLockClass.OBJECT, object_id) in missing:
+                raise _not_found(object_id)
+            if (
+                RowLockKey(
+                    RowLockClass.OBJECT_TEMPLATE_VERSION,
+                    before.template_id,
+                    target_version,
+                )
+                in missing
+            ):
+                raise _referenced(before.template_id, target_version)
+            before = await store.get(object_id)
+            if before is None:
+                raise _not_found(object_id)
             source_schema, source_specs = await self._schema_specs(
                 template_store,
                 before.template_id,
@@ -447,7 +577,7 @@ class ObjectService:
                 raise _semantic(
                     ObjectValidationError("target_version", "forward_version_required")
                 )
-            target = await template_store.admit_exact(
+            target = await template_store.get_version(
                 before.template_id, target_version
             )
             if target is None:
@@ -527,6 +657,7 @@ class ObjectService:
                 target_version,
                 properties,
             )
+            plan.begin_dml()
             await store.update_schema(object_id, target_version, properties)
             await store.insert_intrinsic_event(
                 EventKind.SCHEMA_CHANGE, after, before, after
@@ -537,57 +668,70 @@ class ObjectService:
     async def attach(
         self, parent_object_id: UUID, slot_name: str, child_object_id: UUID
     ) -> ComponentProjection:
-        async with self._uow_factory() as uow:
+        async def attempt(uow: Any, attempt_number: int) -> ComponentProjection:
+            del attempt_number
             store = ObjectStore(uow.connection)
-            parent = await store.lock_no_key(parent_object_id)
-            if parent is None:
-                raise _not_found(parent_object_id)
             template_store = ObjectTemplateStore(uow.connection)
-            schema, _ = await self._schema_specs(
-                template_store, parent.template_id, parent.template_version
+
+            async def load_candidate() -> tuple[
+                Object, Object, ResolvedComponentSlot, OwnershipFact | None
+            ]:
+                parent = await store.get(parent_object_id)
+                if parent is None:
+                    raise _not_found(parent_object_id)
+                schema, _ = await self._schema_specs(
+                    template_store, parent.template_id, parent.template_version
+                )
+                slot = self._slot(schema, slot_name)
+                if slot is None:
+                    raise _state(
+                        "ownership_slot_unavailable",
+                        "The requested ownership slot is unavailable.",
+                        {
+                            "parent_object_id": str(parent_object_id),
+                            "slot_name": slot_name,
+                        },
+                    )
+                child = await store.get(child_object_id)
+                if child is None:
+                    raise _referenced_object(child_object_id)
+                if child.id == parent.id:
+                    raise _semantic(
+                        ObjectValidationError("child_object_id", "self_attachment")
+                    )
+                try:
+                    compatible = await template_store.is_ancestor(
+                        slot.target_template_id, child.template_id
+                    )
+                except RuntimeError as error:
+                    raise _internal(
+                        "The persisted ObjectTemplate lineage graph is invalid."
+                    ) from error
+                if not compatible:
+                    raise _semantic(
+                        ObjectValidationError("child_object_id", "incompatible_lineage")
+                    )
+                return (
+                    parent,
+                    child,
+                    slot,
+                    await store.get_ownership(child_object_id),
+                )
+
+            _, _, _, discovered = await load_candidate()
+            intents = (
+                _object_intent(parent_object_id, RowLockMode.NKU),
+                _object_intent(child_object_id, RowLockMode.KS),
             )
-            slot = self._slot(schema, slot_name)
-            if slot is None:
-                raise _state(
-                    "ownership_slot_unavailable",
-                    "The requested ownership slot is unavailable.",
-                    {"parent_object_id": str(parent_object_id), "slot_name": slot_name},
-                )
-            child = await store.get(child_object_id)
-            if child is None:
-                raise _referenced_object(child_object_id)
-            if child.id == parent.id:
-                raise _semantic(
-                    ObjectValidationError("child_object_id", "self_attachment")
-                )
-            try:
-                compatible = await template_store.is_ancestor(
-                    slot.target_template_id, child.template_id
-                )
-            except RuntimeError as error:
-                raise _internal(
-                    "The persisted ObjectTemplate lineage graph is invalid."
-                ) from error
-            if not compatible:
-                raise _semantic(
-                    ObjectValidationError("child_object_id", "incompatible_lineage")
-                )
-            current = await store.get_ownership(child_object_id)
-            if current is not None:
-                if (
-                    current.parent_object_id == parent_object_id
-                    and current.slot_name == slot_name
-                ):
-                    return self._component(slot, child_object_id)
-                raise _state(
-                    "ownership_conflict",
-                    "The child Object already has a different owner.",
-                    {"child_object_id": str(child_object_id)},
-                )
-            await acquire_advisory_gate(
-                uow.connection, AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE
+            gate = (
+                AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE if discovered is None else None
             )
-            current = await store.get_ownership(child_object_id)
+            plan, _ = await _acquire(uow.connection, template_store, intents, gate=gate)
+            parent, child, slot, current = await load_candidate()
+            fresh_gate = (
+                AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE if current is None else None
+            )
+            plan.require_same_plan(intents, gate=fresh_gate)
             if current is not None:
                 if (
                     current.parent_object_id == parent_object_id
@@ -609,6 +753,7 @@ class ObjectService:
                     },
                 )
             fact = OwnershipFact(child_object_id, parent_object_id, slot_name)
+            plan.begin_dml()
             try:
                 await store.insert_ownership(fact)
             except OwnershipConflictError as error:
@@ -629,12 +774,25 @@ class ObjectService:
             await uow.commit()
             return self._component(slot, child_object_id)
 
+        try:
+            return await run_semantic_uow_attempts(self._uow_factory, attempt)
+        except LockPlanAttemptsExhausted as error:
+            raise _internal("The ownership lock plan did not stabilize.") from error
+
     async def detach(
         self, parent_object_id: UUID, slot_name: str, child_object_id: UUID
     ) -> None:
         async with self._uow_factory() as uow:
             store = ObjectStore(uow.connection)
-            parent = await store.lock_no_key(parent_object_id)
+            template_store = ObjectTemplateStore(uow.connection)
+            plan, missing = await _acquire(
+                uow.connection,
+                template_store,
+                (_object_intent(parent_object_id, RowLockMode.NKU),),
+            )
+            if missing:
+                raise _not_found(parent_object_id)
+            parent = await store.get(parent_object_id)
             if parent is None:
                 raise _not_found(parent_object_id)
             child = await store.get(child_object_id)
@@ -652,7 +810,6 @@ class ObjectService:
                     "The requested edge is not the child's current ownership fact.",
                     {"child_object_id": str(child_object_id)},
                 )
-            template_store = ObjectTemplateStore(uow.connection)
             schema, _ = await self._schema_specs(
                 template_store, parent.template_id, parent.template_version
             )
@@ -661,6 +818,7 @@ class ObjectService:
                 raise _internal(
                     "A persisted ownership edge has no current semantic slot."
                 )
+            plan.begin_dml()
             if not await store.delete_ownership(current):
                 raise _internal("The current ownership edge disappeared unexpectedly.")
             await store.insert_ownership_event(

@@ -16,6 +16,14 @@ from netauto.domain.datatypes import (
     VersionStatus,
 )
 from netauto.domain.primitives import JsonValue, PrimitiveType
+from netauto.persistence.locking import (
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    classify_postgresql_failure,
+    row_lock_statement,
+)
 from netauto.persistence.metadata import (
     datatype_versions,
     datatypes,
@@ -70,6 +78,11 @@ class DataTypeStore:
     def __init__(self, connection: AsyncConnection) -> None:
         self.connection = connection
 
+    async def _lock(self, key: RowLockKey, mode: RowLockMode) -> bool:
+        return (
+            await self.connection.execute(row_lock_statement(RowLockIntent(key, mode)))
+        ).first() is not None
+
     async def create(self, datatype: DataType, version: DataTypeVersion) -> None:
         try:
             await self.connection.execute(
@@ -92,10 +105,8 @@ class DataTypeStore:
                 )
             )
         except IntegrityError as error:
-            constraint = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(constraint, "constraint_name", None) == (
-                "uq_datatypes_namespace_name"
-            ):
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == "uq_datatypes_namespace_name":
                 raise QualifiedNameArbitrationError from error
             raise
 
@@ -129,73 +140,37 @@ class DataTypeStore:
         return None if row is None else _version(row)
 
     async def lock_lineage_no_key(self, datatype_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatypes.c.id)
-                .where(datatypes.c.id == datatype_id)
-                .with_for_update(key_share=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), RowLockMode.NKU
+        )
 
     async def lock_lineage_share(self, datatype_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatypes.c.id)
-                .where(datatypes.c.id == datatype_id)
-                .with_for_update(read=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), RowLockMode.S
+        )
 
     async def lock_lineage_update(self, datatype_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatypes.c.id)
-                .where(datatypes.c.id == datatype_id)
-                .with_for_update()
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), RowLockMode.U
+        )
 
     async def lock_version_no_key(self, datatype_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatype_versions.c.datatype_id)
-                .where(
-                    datatype_versions.c.datatype_id == datatype_id,
-                    datatype_versions.c.version == version,
-                )
-                .with_for_update(key_share=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version),
+            RowLockMode.NKU,
+        )
 
     async def lock_version_update(self, datatype_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatype_versions.c.datatype_id)
-                .where(
-                    datatype_versions.c.datatype_id == datatype_id,
-                    datatype_versions.c.version == version,
-                )
-                .with_for_update()
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version),
+            RowLockMode.U,
+        )
 
     async def lock_version_share(self, datatype_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatype_versions.c.datatype_id)
-                .where(
-                    datatype_versions.c.datatype_id == datatype_id,
-                    datatype_versions.c.version == version,
-                )
-                .with_for_update(read=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version),
+            RowLockMode.S,
+        )
 
     async def next_version(self, datatype_id: UUID) -> int:
         maximum = await self.connection.scalar(
@@ -341,8 +316,8 @@ class DataTypeStore:
                 datatypes.delete().where(datatypes.c.id == datatype_id)
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) == (
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == (
                 "fk_object_template_properties_datatype_version"
             ):
                 raise DeleteReferenceError from error

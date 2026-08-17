@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import Engine, func, select
 
+import netauto.application.relationships as relationship_application
 from netauto.application.objects import ObjectService
 from netauto.application.objecttemplates import ObjectTemplateService, PropertyCandidate
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
@@ -27,6 +28,7 @@ from netauto.domain.relationships import (
     derive_runtime_closure,
 )
 from netauto.failures import ApplicationFailure, FailureClass
+from netauto.persistence.locking import RowLockClass, RowLockMode
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     relationships,
@@ -46,6 +48,7 @@ from tests.support.semantic_concurrency import (
     SemanticActors,
     blocked_race,
     capture,
+    install_lock_plan_cut,
     progress_race,
     semantic_actors,
 )
@@ -305,21 +308,12 @@ def _object_update_cut(
 
 
 def _delete_owner_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = RuntimeRelationshipStore.lock_update
-
-    async def intercepted(
-        store: RuntimeRelationshipStore, relationship_id: UUID
-    ) -> bool:
-        result = await original(store, relationship_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(RuntimeRelationshipStore, "lock_update", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        relationship_application,
+        RowLockClass.RELATIONSHIP,
+        RowLockMode.U,
+    )
 
 
 def _definition_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:

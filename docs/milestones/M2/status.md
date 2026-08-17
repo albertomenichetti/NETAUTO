@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S00 READY
+**Milestone status:** IMPLEMENTATION — M2-S00 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S00 — READY
-current task    implement and publish the M2-S00 candidate for reviewer inspection
-blockers        none
+current slice   M2-S00 — IN PROGRESS
+current task    implement and verify the M2-S00 transaction-hardening candidate
+blockers        TEST_DATABASE_URL is unavailable for mandatory real-PostgreSQL evidence
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -39,7 +39,7 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 
 | Slice | State | Dependency |
 |---|---|---|
-| `M2-S00` | READY | none |
+| `M2-S00` | IN PROGRESS | none |
 | `M2-S01` | BLOCKED | `M2-S00 COMPLETED` |
 | `M2-S02` | BLOCKED | `M2-S01 COMPLETED` |
 | `M2-S03` | BLOCKED | `M2-S02 COMPLETED` |
@@ -56,11 +56,17 @@ No implementation slice is reviewer-owned `COMPLETED`.
 
 No contract, architecture, implementation-planning or technology blocker is open.
 
+Mandatory T2/T3 verification is currently blocked because the externally supplied
+`TEST_DATABASE_URL` is not available in the implementation environment. No fallback
+database, local credentials or alternate environment variable is authorized.
+
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
 ## Immediate next action
 
-Execute the mandatory pre-flight for `M2-S00`, then implement only the centralized LockPlan and AS-IS transaction-hardening foundation defined by frozen `steps.md`.
+Complete the M2-S00 implementation and all non-PostgreSQL verification that can be
+executed honestly, then run the mandatory focused and full real-PostgreSQL gates when
+`TEST_DATABASE_URL` is supplied.
 
 The implementer produces a candidate and may mark it ready for reviewer inspection. The reviewer alone may mark `M2-S00` `COMPLETED` and open `M2-S01`.
 

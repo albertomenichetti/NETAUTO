@@ -12,6 +12,7 @@ from netauto.domain.relationships import (
     RelationshipDefinitionValidationError,
     RelationshipValidationError,
     RelationshipView,
+    RuntimeRelationshipResolution,
     derive_runtime_closure,
     relationship_views,
     validate_definition,
@@ -19,6 +20,15 @@ from netauto.domain.relationships import (
     validate_relationship,
 )
 from netauto.failures import ApplicationFailure, FailureClass
+from netauto.persistence.locking import (
+    MAX_SEMANTIC_UOW_ATTEMPTS,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    acquire_lock_plan,
+)
 from netauto.persistence.objects import EventKind, ObjectStore
 from netauto.persistence.relationships import (
     ExactRelationshipViewCollision,
@@ -96,6 +106,23 @@ def _fact_conflict(relationship_id: UUID) -> ApplicationFailure:
     )
 
 
+def _definition_intent(definition_id: UUID) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.RELATIONSHIP_DEFINITION_HEADER, definition_id),
+        RowLockMode.KS,
+    )
+
+
+def _object_intent(object_id: UUID) -> RowLockIntent:
+    return RowLockIntent(RowLockKey(RowLockClass.OBJECT, object_id), RowLockMode.KS)
+
+
+def _relationship_intent(relationship_id: UUID) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.RELATIONSHIP, relationship_id), RowLockMode.U
+    )
+
+
 class RelationshipService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
@@ -149,123 +176,164 @@ class RelationshipService:
     async def create(
         self, resolution_id: UUID, from_object_id: UUID, to_object_id: UUID
     ) -> RelationshipCreateResult:
-        while True:
-            collision = False
-            try:
-                async with self._uow_factory() as uow:
-                    definition_store = RelationshipDefinitionStore(uow.connection)
-                    definition = await definition_store.get_by_resolution(resolution_id)
-                    if definition is None:
-                        raise _referenced_resolution(resolution_id)
-                    try:
-                        validate_definition(definition)
-                    except RelationshipDefinitionValidationError as error:
-                        raise _internal(
-                            "The selected RelationshipDefinition aggregate is invalid."
-                        ) from error
-
-                    store = RuntimeRelationshipStore(uow.connection)
-                    templates = await store.object_template_ids(
-                        (from_object_id, to_object_id)
+        for attempt_number in range(1, MAX_SEMANTIC_UOW_ATTEMPTS + 1):
+            collision_keys: tuple[RuntimeRelationshipResolution, ...] | None = None
+            async with self._uow_factory() as uow:
+                definition_store = RelationshipDefinitionStore(uow.connection)
+                definition = await definition_store.get_by_resolution(resolution_id)
+                if definition is None:
+                    raise _referenced_resolution(resolution_id)
+                plan = LockPlan(
+                    intents=(
+                        _definition_intent(definition.id),
+                        _object_intent(from_object_id),
+                        _object_intent(to_object_id),
                     )
-                    if from_object_id not in templates:
-                        raise _referenced_object(from_object_id)
-                    if to_object_id not in templates:
-                        raise _referenced_object(to_object_id)
-                    parents = await definition_store.lineage_parents()
-                    try:
-                        validate_lineage_graph(parents)
-                        relationship_id = uuid4()
-                        resolutions = derive_runtime_closure(
-                            definition,
-                            selected_resolution_id=resolution_id,
-                            from_object_id=from_object_id,
-                            from_template_id=templates[from_object_id],
-                            to_object_id=to_object_id,
-                            to_template_id=templates[to_object_id],
-                            parent_by_id=parents,
-                            relationship_id=relationship_id,
-                        )
-                    except RelationshipValidationError as error:
-                        raise _semantic(error) from error
-                    except RelationshipDefinitionValidationError as error:
-                        raise _internal(
-                            "The persisted Relationship model or lineage graph "
-                            "is invalid."
-                        ) from error
+                )
+                missing = await acquire_lock_plan(uow.connection, plan)
+                if RowLockKey(RowLockClass.OBJECT, from_object_id) in missing:
+                    raise _referenced_object(from_object_id)
+                if RowLockKey(RowLockClass.OBJECT, to_object_id) in missing:
+                    raise _referenced_object(to_object_id)
 
-                    current_id = await store.exact_relationship_id(
-                        resolution_id, from_object_id, to_object_id
+                definition = await definition_store.get_by_resolution(resolution_id)
+                if definition is None:
+                    raise _referenced_resolution(resolution_id)
+                try:
+                    validate_definition(definition)
+                except RelationshipDefinitionValidationError as error:
+                    raise _internal(
+                        "The selected RelationshipDefinition aggregate is invalid."
+                    ) from error
+
+                store = RuntimeRelationshipStore(uow.connection)
+                templates = await store.object_template_ids(
+                    (from_object_id, to_object_id)
+                )
+                if from_object_id not in templates:
+                    raise _referenced_object(from_object_id)
+                if to_object_id not in templates:
+                    raise _referenced_object(to_object_id)
+                parents = await definition_store.lineage_parents()
+                try:
+                    validate_lineage_graph(parents)
+                    relationship_id = uuid4()
+                    resolutions = derive_runtime_closure(
+                        definition,
+                        selected_resolution_id=resolution_id,
+                        from_object_id=from_object_id,
+                        from_template_id=templates[from_object_id],
+                        to_object_id=to_object_id,
+                        to_template_id=templates[to_object_id],
+                        parent_by_id=parents,
+                        relationship_id=relationship_id,
                     )
-                    if current_id is not None:
+                except RelationshipValidationError as error:
+                    raise _semantic(error) from error
+                except RelationshipDefinitionValidationError as error:
+                    raise _internal(
+                        "The persisted Relationship model or lineage graph is invalid."
+                    ) from error
+
+                current_id = await store.exact_relationship_id(
+                    resolution_id, from_object_id, to_object_id
+                )
+                if current_id is not None:
+                    try:
                         _, _, projection = await self._validated(
                             store,
                             definition_store,
                             current_id,
                             restart_if_missing=True,
                         )
+                    except _RestartRelationshipCreate:
+                        pass
+                    else:
                         return RelationshipCreateResult(projection, False)
 
-                    conflicts = await store.current_candidate_relationship_ids(
-                        resolutions
-                    )
-                    if conflicts:
-                        for conflicting_id in conflicts:
+                conflicts = await store.current_candidate_relationship_ids(resolutions)
+                if conflicts:
+                    surviving_conflicts: list[UUID] = []
+                    for conflicting_id in conflicts:
+                        try:
                             await self._validated(
                                 store,
                                 definition_store,
                                 conflicting_id,
                                 restart_if_missing=True,
                             )
-                        raise _fact_conflict(conflicts[0])
+                        except _RestartRelationshipCreate:
+                            continue
+                        surviving_conflicts.append(conflicting_id)
+                    if surviving_conflicts:
+                        raise _fact_conflict(surviving_conflicts[0])
 
-                    relationship = Relationship(
-                        relationship_id, definition.id, resolutions
+                relationship = Relationship(relationship_id, definition.id, resolutions)
+                plan.begin_dml()
+                try:
+                    await store.insert(relationship)
+                except ExactRelationshipViewCollision:
+                    collision_keys = tuple(resolutions)
+                except RuntimeRelationshipModelReferenceError as error:
+                    raise _referenced_resolution(resolution_id) from error
+                except RuntimeRelationshipObjectReferenceError as error:
+                    raise _referenced_object(error.object_id) from error
+                if collision_keys is None:
+                    lifecycle_views = await store.lifecycle_views(relationship.id)
+                    expected = relationship_views(relationship, definition)
+                    if {
+                        (
+                            item.object_id,
+                            item.destination_object_id,
+                            item.relationship_name,
+                        )
+                        for item in lifecycle_views
+                    } != {
+                        (item.object_id, item.destination_object_id, item.name)
+                        for item in expected
+                    }:
+                        raise _internal(
+                            "The Relationship lifecycle metadata projection is "
+                            "incomplete."
+                        )
+                    await store.insert_lifecycle_events(
+                        kind=EventKind.RELATIONSHIP_CREATED.value,
+                        relationship=relationship,
+                        views=lifecycle_views,
                     )
-                    try:
-                        await store.insert(relationship)
-                    except ExactRelationshipViewCollision:
-                        collision = True
-                    except RuntimeRelationshipModelReferenceError as error:
-                        raise _referenced_resolution(resolution_id) from error
-                    except RuntimeRelationshipObjectReferenceError as error:
-                        raise _referenced_object(error.object_id) from error
-                    if not collision:
-                        lifecycle_views = await store.lifecycle_views(relationship.id)
-                        expected = relationship_views(relationship, definition)
-                        if {
-                            (
-                                item.object_id,
-                                item.destination_object_id,
-                                item.relationship_name,
-                            )
-                            for item in lifecycle_views
-                        } != {
-                            (item.object_id, item.destination_object_id, item.name)
-                            for item in expected
-                        }:
-                            raise _internal(
-                                "The Relationship lifecycle metadata projection "
-                                "is incomplete."
-                            )
-                        await store.insert_lifecycle_events(
-                            kind=EventKind.RELATIONSHIP_CREATED.value,
-                            relationship=relationship,
-                            views=lifecycle_views,
-                        )
-                        await uow.commit()
-                        return RelationshipCreateResult(
-                            RelationshipProjection(
-                                relationship.id,
-                                relationship.relationship_definition_id,
-                                expected,
-                            ),
-                            True,
-                        )
-            except _RestartRelationshipCreate:
-                continue
-            if not collision:
-                raise RuntimeError("unreachable Relationship create state")
+                    await uow.commit()
+                    return RelationshipCreateResult(
+                        RelationshipProjection(
+                            relationship.id,
+                            relationship.relationship_definition_id,
+                            expected,
+                        ),
+                        True,
+                    )
+
+            async with self._uow_factory() as classification_uow:
+                store = RuntimeRelationshipStore(classification_uow.connection)
+                definition_store = RelationshipDefinitionStore(
+                    classification_uow.connection
+                )
+                current_id = await store.exact_relationship_id(
+                    resolution_id, from_object_id, to_object_id
+                )
+                if current_id is not None:
+                    _, _, projection = await self._validated(
+                        store, definition_store, current_id
+                    )
+                    return RelationshipCreateResult(projection, False)
+                conflicts = await store.current_candidate_relationship_ids(
+                    collision_keys
+                )
+                if conflicts:
+                    for conflicting_id in conflicts:
+                        await self._validated(store, definition_store, conflicting_id)
+                    raise _fact_conflict(conflicts[0])
+            if attempt_number == MAX_SEMANTIC_UOW_ATTEMPTS:
+                break
+        raise _internal("The Relationship create restart budget was exhausted.")
 
     async def get(self, relationship_id: UUID) -> RelationshipProjection:
         async with self._uow_factory.coherent_read() as uow:
@@ -280,7 +348,8 @@ class RelationshipService:
     async def delete(self, relationship_id: UUID) -> None:
         async with self._uow_factory() as uow:
             store = RuntimeRelationshipStore(uow.connection)
-            if not await store.lock_update(relationship_id):
+            plan = LockPlan(intents=(_relationship_intent(relationship_id),))
+            if await acquire_lock_plan(uow.connection, plan):
                 return
             relationship, definition, _ = await self._validated(
                 store, RelationshipDefinitionStore(uow.connection), relationship_id
@@ -297,6 +366,7 @@ class RelationshipService:
                 raise _internal(
                     "The Relationship lifecycle metadata projection is incomplete."
                 )
+            plan.begin_dml()
             await store.delete(relationship_id)
             await store.insert_lifecycle_events(
                 kind=EventKind.RELATIONSHIP_DELETED.value,

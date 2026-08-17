@@ -10,15 +10,18 @@ import pytest
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+import netauto.application.datatypes as datatype_application
 from netauto.application.datatypes import DataTypeService
 from netauto.application.objecttemplates import ObjectTemplateService, PropertyCandidate
 from netauto.domain.datatypes import DataTypeVersion, VersionStatus
 from netauto.domain.objecttemplates import CreateObjectTemplateResult, ValueMode
 from netauto.failures import ApplicationFailure
 from netauto.persistence.datatypes import DataTypeStore
+from netauto.persistence.locking import RowLockClass, RowLockMode
 from netauto.persistence.metadata import datatype_versions, datatypes
 from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
+from tests.support.semantic_concurrency import PhaseCut, install_lock_plan_cut
 
 Operation = Callable[[], Awaitable[object]]
 
@@ -73,12 +76,6 @@ class ObservedUnitOfWorkFactory(UnitOfWorkFactory):
 
     def __call__(self) -> UnitOfWork:
         return ObservedUnitOfWork(self._observed_engine, self._tracker, self._role)
-
-
-@dataclass(slots=True)
-class PhaseCut:
-    reached: asyncio.Event = field(default_factory=asyncio.Event)
-    release: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 def _service_engine(database_url: str, application_name: str) -> AsyncEngine:
@@ -157,53 +154,30 @@ async def _progress_race(
 def _install_lineage_no_key_cut(
     monkeypatch: pytest.MonkeyPatch,
 ) -> PhaseCut:
-    cut = PhaseCut()
-    original = DataTypeStore.lock_lineage_no_key
-
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> bool:
-        result = await original(store, datatype_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(DataTypeStore, "lock_lineage_no_key", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        datatype_application,
+        RowLockClass.DATA_TYPE_HEADER,
+        RowLockMode.NKU,
+    )
 
 
 def _install_lineage_share_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = DataTypeStore.lock_lineage_share
-
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> bool:
-        result = await original(store, datatype_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(DataTypeStore, "lock_lineage_share", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        datatype_application,
+        RowLockClass.DATA_TYPE_HEADER,
+        RowLockMode.S,
+    )
 
 
 def _install_version_no_key_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = DataTypeStore.lock_version_no_key
-
-    async def intercepted(
-        store: DataTypeStore, datatype_id: UUID, version: int
-    ) -> bool:
-        result = await original(store, datatype_id, version)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(DataTypeStore, "lock_version_no_key", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        datatype_application,
+        RowLockClass.DATA_TYPE_VERSION,
+        RowLockMode.NKU,
+    )
 
 
 def _install_description_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:

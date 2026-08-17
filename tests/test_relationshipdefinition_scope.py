@@ -68,10 +68,11 @@ def test_s07_registers_runtime_routes_without_resolution_crud() -> None:
     assert forbidden.isdisjoint(paths)
 
 
-def test_s07_keeps_only_two_frozen_gates_and_authorized_migrations() -> None:
+def test_m2_s00_keeps_exact_three_frozen_gates_and_m1_migrations() -> None:
     assert list(AdvisoryGate) == [
         AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE,
         AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
+        AdvisoryGate.MODEL_ROOT_DELETE_GATE,
     ]
     migrations = sorted((ROOT / "migrations" / "versions").glob("*.py"))
     assert [item.name for item in migrations] == [

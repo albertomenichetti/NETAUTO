@@ -14,6 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from netauto.domain.objects import Object, ObjectSummary
 from netauto.domain.primitives import JsonValue
+from netauto.persistence.locking import (
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    classify_postgresql_failure,
+    row_lock_statement,
+)
 from netauto.persistence.metadata import (
     object_components,
     object_lifecycle_events,
@@ -330,10 +338,8 @@ class ObjectStore:
                 )
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) == (
-                "fk_objects_template_version"
-            ):
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == "fk_objects_template_version":
                 raise ObjectTemplateReferenceError from error
             raise
 
@@ -350,30 +356,28 @@ class ObjectStore:
         return None if row is None else _object(row)
 
     async def lock_no_key(self, object_id: UUID) -> Object | None:
-        row = (
-            (
-                await self.connection.execute(
-                    select(objects)
-                    .where(objects.c.id == object_id)
-                    .with_for_update(key_share=True)
+        found = (
+            await self.connection.execute(
+                row_lock_statement(
+                    RowLockIntent(
+                        RowLockKey(RowLockClass.OBJECT, object_id), RowLockMode.NKU
+                    )
                 )
             )
-            .mappings()
-            .first()
-        )
-        return None if row is None else _object(row)
+        ).first()
+        return None if found is None else await self.get(object_id)
 
     async def lock_update(self, object_id: UUID) -> Object | None:
-        row = (
-            (
-                await self.connection.execute(
-                    select(objects).where(objects.c.id == object_id).with_for_update()
+        found = (
+            await self.connection.execute(
+                row_lock_statement(
+                    RowLockIntent(
+                        RowLockKey(RowLockClass.OBJECT, object_id), RowLockMode.U
+                    )
                 )
             )
-            .mappings()
-            .first()
-        )
-        return None if row is None else _object(row)
+        ).first()
+        return None if found is None else await self.get(object_id)
 
     async def delete_blocker_counts(self, object_id: UUID) -> dict[str, int]:
         ownership_count = await self.connection.scalar(
@@ -409,8 +413,7 @@ class ObjectStore:
                 objects.delete().where(objects.c.id == object_id)
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            constraint = getattr(diagnostic, "constraint_name", None)
+            constraint = classify_postgresql_failure(error).constraint_name
             if constraint in {
                 "fk_object_components_child",
                 "fk_object_components_parent",
@@ -523,8 +526,7 @@ class ObjectStore:
                 )
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            name = getattr(diagnostic, "constraint_name", None)
+            name = classify_postgresql_failure(error).constraint_name
             if name == "object_components_pkey":
                 raise OwnershipConflictError from error
             if name in {

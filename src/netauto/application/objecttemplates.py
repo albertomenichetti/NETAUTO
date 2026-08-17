@@ -1,7 +1,7 @@
 """Complete M1 ObjectTemplate semantic application capability."""
 
 from dataclasses import dataclass
-from typing import Final, cast
+from typing import Any, Final, cast
 from uuid import UUID, uuid4
 
 from netauto.application.cursors import Page, decode_cursor, encode_cursor
@@ -30,6 +30,17 @@ from netauto.domain.primitives import (
 )
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.datatypes import DataTypeStore
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    LockPlanAttemptsExhausted,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    acquire_lock_plan,
+    run_semantic_uow_attempts,
+)
 from netauto.persistence.objecttemplates import (
     ObjectTemplateComponentTargetReferenceError,
     ObjectTemplateDeleteReferenceError,
@@ -120,6 +131,44 @@ def _internal(message: str) -> ApplicationFailure:
         "internal_error",
         message,
     )
+
+
+def _ot_header(template_id: UUID, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id), mode
+    )
+
+
+def _ot_version(template_id: UUID, version: int, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version), mode
+    )
+
+
+def _dt_header(datatype_id: UUID, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), mode)
+
+
+def _dt_version(datatype_id: UUID, version: int, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version), mode
+    )
+
+
+async def _acquire(
+    connection: Any,
+    store: ObjectTemplateStore,
+    intents: tuple[RowLockIntent, ...],
+    *,
+    gate: AdvisoryGate | None = None,
+) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
+    plan = LockPlan(
+        intents=intents,
+        gate=gate,
+        object_template_parent_by_id=await store.lineage_parents(),
+    )
+    missing = await acquire_lock_plan(connection, plan)
+    return plan, missing
 
 
 async def load_exact_effective_chain(
@@ -237,23 +286,25 @@ class ObjectTemplateService:
         ):
             return parent_id, requested_version
         if requested_version is not None:
-            parent = await store.admit_exact(parent_id, requested_version)
+            parent = await store.get_version(parent_id, requested_version)
             if parent is None:
                 raise _referenced(
                     "object_template_version", parent_id, requested_version
                 )
             self._require_published_dependency(parent, parent_id, requested_version)
             return parent_id, requested_version
-        admitted = await store.admit_default(parent_id)
-        if admitted is None:
+        parent_lineage = await store.get_lineage(parent_id)
+        if parent_lineage is None:
             raise _referenced("object_template", parent_id)
-        _, parent = admitted
-        if parent is None:
+        if parent_lineage.default_version is None:
             raise _state(
                 "default_version_unavailable",
                 "The selected parent ObjectTemplate has no default version.",
                 {"id": str(parent_id)},
             )
+        parent = await store.get_version(parent_id, parent_lineage.default_version)
+        if parent is None:
+            raise _internal("A persisted ObjectTemplate default target is missing.")
         self._require_published_dependency(parent, parent_id, parent.version)
         return parent_id, parent.version
 
@@ -296,18 +347,22 @@ class ObjectTemplateService:
             if key in resolved_versions:
                 continue
             if candidate.datatype_version is None:
-                admitted = await datatype_store.admit_default(candidate.datatype_id)
-                if admitted is None:
+                lineage = await datatype_store.get_lineage(candidate.datatype_id)
+                if lineage is None:
                     raise _referenced("datatype", candidate.datatype_id)
-                _, selected = admitted
-                if selected is None:
+                if lineage.default_version is None:
                     raise _state(
                         "default_version_unavailable",
                         "The selected DataType has no default version.",
                         {"id": str(candidate.datatype_id)},
                     )
+                selected = await datatype_store.get_version(
+                    candidate.datatype_id, lineage.default_version
+                )
+                if selected is None:
+                    raise _internal("A persisted DataType default target is missing.")
             else:
-                selected = await datatype_store.admit_exact(
+                selected = await datatype_store.get_version(
                     candidate.datatype_id, candidate.datatype_version
                 )
                 if selected is None:
@@ -402,6 +457,143 @@ class ObjectTemplateService:
             )
         )
 
+    @staticmethod
+    def _candidate_dependency_intents(
+        *,
+        lineage: ObjectTemplate,
+        requested_parent_version: int | None,
+        resolved: ObjectTemplateVersion,
+        property_candidates: tuple[PropertyCandidate, ...],
+        current: ObjectTemplateVersion | None,
+    ) -> tuple[RowLockIntent, ...]:
+        intents: list[RowLockIntent] = []
+        old_parent = (
+            None
+            if current is None
+            else (current.parent_template_id, current.parent_version)
+        )
+        new_parent = (resolved.parent_template_id, resolved.parent_version)
+        if resolved.parent_template_id is not None and new_parent != old_parent:
+            if resolved.parent_version is None:
+                raise RuntimeError("resolved parent exact identity is incomplete")
+            intents.extend(
+                (
+                    _ot_header(
+                        resolved.parent_template_id,
+                        RowLockMode.S
+                        if requested_parent_version is None
+                        else RowLockMode.KS,
+                    ),
+                    _ot_version(
+                        resolved.parent_template_id,
+                        resolved.parent_version,
+                        RowLockMode.S,
+                    ),
+                )
+            )
+
+        candidates_by_name = {item.name: item for item in property_candidates}
+        current_properties = (
+            {} if current is None else {item.name: item for item in current.properties}
+        )
+        for item in resolved.properties:
+            old = current_properties.get(item.name)
+            if old == item:
+                continue
+            same_target = (
+                old is not None
+                and old.datatype_id == item.datatype_id
+                and old.datatype_version == item.datatype_version
+            )
+            requested = candidates_by_name[item.name].datatype_version
+            intents.extend(
+                (
+                    _dt_header(
+                        item.datatype_id,
+                        RowLockMode.KS
+                        if same_target or requested is not None
+                        else RowLockMode.S,
+                    ),
+                    _dt_version(
+                        item.datatype_id,
+                        item.datatype_version,
+                        RowLockMode.KS if same_target else RowLockMode.S,
+                    ),
+                )
+            )
+
+        current_components = (
+            {} if current is None else {item.name: item for item in current.components}
+        )
+        for item in resolved.components:
+            if current_components.get(item.name) != item:
+                intents.append(_ot_header(item.target_template_id, RowLockMode.KS))
+
+        if lineage.parent_template_id != resolved.parent_template_id:
+            raise RuntimeError("resolved parent contradicts stable lineage")
+        return tuple(intents)
+
+    @staticmethod
+    def _clone_dependency_intents(
+        source: ObjectTemplateVersion,
+    ) -> tuple[RowLockIntent, ...]:
+        intents: list[RowLockIntent] = []
+        if source.parent_template_id is not None:
+            if source.parent_version is None:
+                raise RuntimeError("persisted parent exact identity is incomplete")
+            intents.extend(
+                (
+                    _ot_header(source.parent_template_id, RowLockMode.KS),
+                    _ot_version(
+                        source.parent_template_id,
+                        source.parent_version,
+                        RowLockMode.KS,
+                    ),
+                )
+            )
+        intents.extend(
+            _ot_header(item.target_template_id, RowLockMode.KS)
+            for item in source.components
+        )
+        for item in source.properties:
+            intents.extend(
+                (
+                    _dt_header(item.datatype_id, RowLockMode.KS),
+                    _dt_version(
+                        item.datatype_id, item.datatype_version, RowLockMode.KS
+                    ),
+                )
+            )
+        return tuple(intents)
+
+    @staticmethod
+    def _publish_intents(current: ObjectTemplateVersion) -> tuple[RowLockIntent, ...]:
+        intents: list[RowLockIntent] = [
+            _ot_header(current.template_id, RowLockMode.NKU),
+            _ot_version(current.template_id, current.version, RowLockMode.NKU),
+        ]
+        if current.parent_template_id is not None:
+            if current.parent_version is None:
+                raise RuntimeError("persisted parent exact identity is incomplete")
+            intents.extend(
+                (
+                    _ot_header(current.parent_template_id, RowLockMode.KS),
+                    _ot_version(
+                        current.parent_template_id,
+                        current.parent_version,
+                        RowLockMode.S,
+                    ),
+                )
+            )
+        for item in current.properties:
+            intents.extend(
+                (
+                    _dt_header(item.datatype_id, RowLockMode.KS),
+                    _dt_version(item.datatype_id, item.datatype_version, RowLockMode.S),
+                )
+            )
+        return tuple(intents)
+
     async def _effective_chain(
         self,
         store: ObjectTemplateStore,
@@ -481,7 +673,11 @@ class ObjectTemplateService:
             raise _semantic(error) from error
         template_id = uuid4()
         try:
-            async with self._uow_factory() as uow:
+
+            async def attempt(
+                uow: Any, attempt_number: int
+            ) -> CreateObjectTemplateResult:
+                del attempt_number
                 store = ObjectTemplateStore(uow.connection)
                 if parent_template_id is None:
                     if parent_version is not None:
@@ -529,12 +725,53 @@ class ObjectTemplateService:
                     local_properties,
                     local_components,
                 )
+                intents = self._candidate_dependency_intents(
+                    lineage=lineage,
+                    requested_parent_version=parent_version,
+                    resolved=version,
+                    property_candidates=properties,
+                    current=None,
+                )
+                plan, _ = await _acquire(uow.connection, store, intents)
+
+                resolved_parent = await self._resolve_parent(
+                    store, lineage, parent_version, None
+                )
+                local_properties = await self._resolve_properties(
+                    store, properties, None
+                )
+                local_components = await self._resolve_components(store, components)
+                version = ObjectTemplateVersion(
+                    template_id,
+                    1,
+                    1,
+                    VersionStatus.DRAFT,
+                    *resolved_parent,
+                    local_properties,
+                    local_components,
+                )
+                plan.require_same_plan(
+                    self._candidate_dependency_intents(
+                        lineage=lineage,
+                        requested_parent_version=parent_version,
+                        resolved=version,
+                        property_candidates=properties,
+                        current=None,
+                    )
+                )
                 await self._validate_candidate(
                     store, version, history=False, leaf_lineage=lineage
                 )
+                plan.begin_dml()
                 await store.create(lineage, version)
                 await uow.commit()
                 return CreateObjectTemplateResult(lineage, version)
+
+            return await run_semantic_uow_attempts(self._uow_factory, attempt)
+        except LockPlanAttemptsExhausted as error:
+            raise _internal(
+                "The ObjectTemplate lock plan did not stabilize."
+            ) from error
         except ObjectTemplateQualifiedNameError as error:
             raise _state(
                 "qualified_name_conflict",
@@ -547,11 +784,12 @@ class ObjectTemplateService:
     async def create_next(
         self, template_id: UUID, source_version: int
     ) -> ObjectTemplateVersion:
-        async with self._uow_factory() as uow:
+        async def attempt(uow: Any, attempt_number: int) -> ObjectTemplateVersion:
+            del attempt_number
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_no_key(template_id):
-                raise _not_found(template_id)
             source = await store.get_version(template_id, source_version)
+            if await store.get_lineage(template_id) is None:
+                raise _not_found(template_id)
             if source is None:
                 raise _referenced(
                     "object_template_version", template_id, source_version
@@ -562,6 +800,35 @@ class ObjectTemplateService:
                     "The selected version is not eligible as a create-next source.",
                     {"id": str(template_id), "source_version": source_version},
                 )
+            intents = (
+                *self._clone_dependency_intents(source),
+                _ot_header(template_id, RowLockMode.NKU),
+                _ot_version(template_id, source_version, RowLockMode.KS),
+            )
+            plan, missing = await _acquire(uow.connection, store, intents)
+            if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
+                raise _not_found(template_id)
+            source = await store.get_version(template_id, source_version)
+            if source is None:
+                raise _referenced(
+                    "object_template_version", template_id, source_version
+                )
+            if source.status not in {
+                VersionStatus.PUBLISHED,
+                VersionStatus.DEPRECATED,
+            }:
+                raise _state(
+                    "version_source_conflict",
+                    "The selected version is not eligible as a create-next source.",
+                    {"id": str(template_id), "source_version": source_version},
+                )
+            plan.require_same_plan(
+                (
+                    *self._clone_dependency_intents(source),
+                    _ot_header(template_id, RowLockMode.NKU),
+                    _ot_version(template_id, source_version, RowLockMode.KS),
+                )
+            )
             created = ObjectTemplateVersion(
                 template_id,
                 await store.next_version(template_id),
@@ -572,9 +839,17 @@ class ObjectTemplateService:
                 source.properties,
                 source.components,
             )
+            plan.begin_dml()
             await store.insert_version(created)
             await uow.commit()
             return created
+
+        try:
+            return await run_semantic_uow_attempts(self._uow_factory, attempt)
+        except LockPlanAttemptsExhausted as error:
+            raise _internal(
+                "The ObjectTemplate lock plan did not stabilize."
+            ) from error
 
     async def revise(
         self,
@@ -585,10 +860,9 @@ class ObjectTemplateService:
         properties: tuple[PropertyCandidate, ...],
         components: tuple[ComponentCandidate, ...],
     ) -> ObjectTemplateVersion:
-        async with self._uow_factory() as uow:
+        async def attempt(uow: Any, attempt_number: int) -> ObjectTemplateVersion:
+            del attempt_number
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_version_no_key(template_id, version):
-                raise _not_found(template_id, version)
             lineage = await store.get_lineage(template_id)
             current = await store.get_version(template_id, version)
             if lineage is None or current is None:
@@ -610,7 +884,62 @@ class ObjectTemplateService:
                 local_properties,
                 local_components,
             )
+            intents = (
+                *self._candidate_dependency_intents(
+                    lineage=lineage,
+                    requested_parent_version=parent_version,
+                    resolved=candidate,
+                    property_candidates=properties,
+                    current=current,
+                ),
+                _ot_header(template_id, RowLockMode.KS),
+                _ot_version(template_id, version, RowLockMode.NKU),
+            )
+            plan, missing = await _acquire(uow.connection, store, intents)
+            if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
+                raise _not_found(template_id)
+            if (
+                RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version)
+                in missing
+            ):
+                raise _not_found(template_id, version)
+
+            lineage = await store.get_lineage(template_id)
+            current = await store.get_version(template_id, version)
+            if lineage is None or current is None:
+                raise _not_found(template_id, version)
+            self._require_draft(current, expected_revision)
+            resolved_parent = await self._resolve_parent(
+                store, lineage, parent_version, current
+            )
+            local_properties = await self._resolve_properties(
+                store, properties, current
+            )
+            local_components = await self._resolve_components(store, components)
+            candidate = ObjectTemplateVersion(
+                template_id,
+                version,
+                current.revision + 1,
+                VersionStatus.DRAFT,
+                *resolved_parent,
+                local_properties,
+                local_components,
+            )
+            plan.require_same_plan(
+                (
+                    *self._candidate_dependency_intents(
+                        lineage=lineage,
+                        requested_parent_version=parent_version,
+                        resolved=candidate,
+                        property_candidates=properties,
+                        current=current,
+                    ),
+                    _ot_header(template_id, RowLockMode.KS),
+                    _ot_version(template_id, version, RowLockMode.NKU),
+                )
+            )
             await self._validate_candidate(store, candidate, history=True)
+            plan.begin_dml()
             try:
                 await store.replace_candidate(candidate)
             except ObjectTemplateComponentTargetReferenceError as error:
@@ -623,50 +952,63 @@ class ObjectTemplateService:
             await uow.commit()
             return revised
 
+        try:
+            return await run_semantic_uow_attempts(self._uow_factory, attempt)
+        except LockPlanAttemptsExhausted as error:
+            raise _internal(
+                "The ObjectTemplate lock plan did not stabilize."
+            ) from error
+
     async def publish(
         self, template_id: UUID, version: int, expected_revision: int
     ) -> ObjectTemplateVersion:
-        async with self._uow_factory() as uow:
+        async def attempt(uow: Any, attempt_number: int) -> ObjectTemplateVersion:
+            del attempt_number
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_no_key(template_id):
+            lineage = await store.get_lineage(template_id)
+            current = await store.get_version(template_id, version)
+            if lineage is None or current is None:
+                raise _not_found(template_id, version)
+            self._require_draft(current, expected_revision)
+            plan, missing = await _acquire(
+                uow.connection, store, self._publish_intents(current)
+            )
+            if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
-            if not await store.lock_version_no_key(template_id, version):
+            if (
+                RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version)
+                in missing
+            ):
                 raise _not_found(template_id, version)
             lineage = await store.get_lineage(template_id)
             current = await store.get_version(template_id, version)
             if lineage is None or current is None:
                 raise _not_found(template_id, version)
             self._require_draft(current, expected_revision)
+            plan.require_same_plan(self._publish_intents(current))
             await self._validate_candidate(store, current, history=True)
-            dependencies: list[tuple[str, UUID, int]] = [
-                ("datatype", item.datatype_id, item.datatype_version)
-                for item in current.properties
-            ]
-            if (
-                current.parent_template_id is not None
-                and current.parent_version is not None
-            ):
-                dependencies.append(
-                    (
-                        "object_template",
-                        current.parent_template_id,
-                        current.parent_version,
-                    )
-                )
             datatype_store = DataTypeStore(uow.connection)
-            for kind, resource_id, dependency_version in sorted(
-                dependencies, key=lambda item: (item[0], str(item[1]), item[2])
-            ):
-                dependency = (
-                    await datatype_store.admit_exact(resource_id, dependency_version)
-                    if kind == "datatype"
-                    else await store.admit_exact(resource_id, dependency_version)
+            for item in current.properties:
+                dependency = await datatype_store.get_version(
+                    item.datatype_id, item.datatype_version
                 )
                 if dependency is None:
                     raise _internal("A persisted direct dependency is missing.")
                 self._require_published_dependency(
-                    dependency, resource_id, dependency_version
+                    dependency, item.datatype_id, item.datatype_version
                 )
+            if current.parent_template_id is not None:
+                if current.parent_version is None:
+                    raise _internal("A persisted direct dependency is incomplete.")
+                parent = await store.get_version(
+                    current.parent_template_id, current.parent_version
+                )
+                if parent is None:
+                    raise _internal("A persisted direct dependency is missing.")
+                self._require_published_dependency(
+                    parent, current.parent_template_id, current.parent_version
+                )
+            plan.begin_dml()
             await store.set_status(template_id, version, VersionStatus.PUBLISHED)
             if lineage.default_version is None:
                 await store.set_default(template_id, version)
@@ -676,15 +1018,31 @@ class ObjectTemplateService:
             await uow.commit()
             return published
 
+        try:
+            return await run_semantic_uow_attempts(self._uow_factory, attempt)
+        except LockPlanAttemptsExhausted as error:
+            raise _internal(
+                "The ObjectTemplate lock plan did not stabilize."
+            ) from error
+
     async def set_default(self, template_id: UUID, version: int) -> ObjectTemplate:
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_no_key(template_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                store,
+                (
+                    _ot_header(template_id, RowLockMode.NKU),
+                    _ot_version(template_id, version, RowLockMode.S),
+                ),
+            )
+            if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
-            target = await store.admit_exact(template_id, version)
+            target = await store.get_version(template_id, version)
             if target is None:
                 raise _referenced("object_template_version", template_id, version)
             self._require_published_dependency(target, template_id, version)
+            plan.begin_dml()
             lineage = await store.set_default(template_id, version)
             await uow.commit()
             return lineage
@@ -692,8 +1050,14 @@ class ObjectTemplateService:
     async def clear_default(self, template_id: UUID) -> ObjectTemplate:
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_no_key(template_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                store,
+                (_ot_header(template_id, RowLockMode.NKU),),
+            )
+            if missing:
                 raise _not_found(template_id)
+            plan.begin_dml()
             lineage = await store.set_default(template_id, None)
             await uow.commit()
             return lineage
@@ -701,9 +1065,20 @@ class ObjectTemplateService:
     async def deprecate(self, template_id: UUID, version: int) -> ObjectTemplateVersion:
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_share(template_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                store,
+                (
+                    _ot_header(template_id, RowLockMode.S),
+                    _ot_version(template_id, version, RowLockMode.NKU),
+                ),
+            )
+            if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
-            if not await store.lock_version_no_key(template_id, version):
+            if (
+                RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version)
+                in missing
+            ):
                 raise _not_found(template_id, version)
             lineage = await store.get_lineage(template_id)
             current = await store.get_version(template_id, version)
@@ -727,6 +1102,7 @@ class ObjectTemplateService:
                     "A PUBLISHED child ObjectTemplateVersion depends on this version.",
                     {"id": str(template_id), "version": version},
                 )
+            plan.begin_dml()
             await store.set_status(template_id, version, VersionStatus.DEPRECATED)
             deprecated = await store.get_version(template_id, version)
             if deprecated is None:
@@ -739,21 +1115,39 @@ class ObjectTemplateService:
     ) -> None:
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_no_key(template_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                store,
+                (
+                    _ot_header(template_id, RowLockMode.NKU),
+                    _ot_version(template_id, version, RowLockMode.U),
+                ),
+            )
+            if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
-            if not await store.lock_version_update(template_id, version):
+            if (
+                RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version)
+                in missing
+            ):
                 raise _not_found(template_id, version)
             current = await store.get_version(template_id, version)
             if current is None:
                 raise _not_found(template_id, version)
             self._require_draft(current, expected_revision)
+            plan.begin_dml()
             await store.delete_draft(template_id, version)
             await uow.commit()
 
     async def delete_lineage(self, template_id: UUID) -> None:
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            if not await store.lock_lineage_update(template_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                store,
+                (_ot_header(template_id, RowLockMode.U),),
+                gate=AdvisoryGate.MODEL_ROOT_DELETE_GATE,
+            )
+            if missing:
                 raise _not_found(template_id)
             blockers = await store.external_reference_counts(template_id)
             blockers = {key: value for key, value in blockers.items() if value}
@@ -770,6 +1164,7 @@ class ObjectTemplateService:
                         ],
                     },
                 )
+            plan.begin_dml()
             try:
                 await store.delete_lineage(template_id)
             except ObjectTemplateDeleteReferenceError as error:
@@ -788,9 +1183,16 @@ class ObjectTemplateService:
         self, template_id: UUID, description: str | None
     ) -> ObjectTemplate:
         async with self._uow_factory() as uow:
-            lineage = await ObjectTemplateStore(uow.connection).set_description(
-                template_id, description
+            store = ObjectTemplateStore(uow.connection)
+            plan, missing = await _acquire(
+                uow.connection,
+                store,
+                (_ot_header(template_id, RowLockMode.NKU),),
             )
+            if missing:
+                raise _not_found(template_id)
+            plan.begin_dml()
+            lineage = await store.set_description(template_id, description)
             if lineage is None:
                 raise _not_found(template_id)
             await uow.commit()

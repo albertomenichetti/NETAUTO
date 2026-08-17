@@ -18,6 +18,14 @@ from netauto.domain.relationships import (
     RelationshipResolution,
     RuntimeRelationshipResolution,
 )
+from netauto.persistence.locking import (
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    classify_postgresql_failure,
+    row_lock_statement,
+)
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     object_templates,
@@ -119,7 +127,10 @@ class RelationshipDefinitionStore:
                 id=value.id, symmetric=value.symmetric
             )
         )
-        for item in value.resolutions:
+        for item in sorted(
+            value.resolutions,
+            key=lambda row: row.id.int,
+        ):
             try:
                 await self.connection.execute(
                     relationship_resolutions.insert().values(
@@ -131,8 +142,7 @@ class RelationshipDefinitionStore:
                     )
                 )
             except IntegrityError as error:
-                diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-                constraint_name = getattr(diagnostic, "constraint_name", None)
+                constraint_name = classify_postgresql_failure(error).constraint_name
                 if constraint_name == "fk_relationship_resolutions_from_template":
                     raise RelationshipEndpointReferenceError(
                         item.from_template_id
@@ -211,24 +221,34 @@ class RelationshipDefinitionStore:
         return _decode_aggregates(rows)
 
     async def lock_no_key(self, definition_id: UUID) -> bool:
-        row = (
+        return (
             await self.connection.execute(
-                select(relationship_definitions.c.id)
-                .where(relationship_definitions.c.id == definition_id)
-                .with_for_update(key_share=True)
+                row_lock_statement(
+                    RowLockIntent(
+                        RowLockKey(
+                            RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+                            definition_id,
+                        ),
+                        RowLockMode.NKU,
+                    )
+                )
             )
-        ).first()
-        return row is not None
+        ).first() is not None
 
     async def lock_update(self, definition_id: UUID) -> bool:
-        row = (
+        return (
             await self.connection.execute(
-                select(relationship_definitions.c.id)
-                .where(relationship_definitions.c.id == definition_id)
-                .with_for_update()
+                row_lock_statement(
+                    RowLockIntent(
+                        RowLockKey(
+                            RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+                            definition_id,
+                        ),
+                        RowLockMode.U,
+                    )
+                )
             )
-        ).first()
-        return row is not None
+        ).first() is not None
 
     async def update_names(self, value: RelationshipDefinition) -> None:
         names = {item.id: item.name for item in value.resolutions}
@@ -261,10 +281,8 @@ class RelationshipDefinitionStore:
                 )
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) == (
-                "fk_relationships_definition"
-            ):
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == ("fk_relationships_definition"):
                 raise RelationshipDefinitionDeleteReferenceError from error
             raise
 
@@ -402,14 +420,16 @@ class RuntimeRelationshipStore:
         return _runtime_relationship(rows)
 
     async def lock_update(self, relationship_id: UUID) -> bool:
-        row = (
+        return (
             await self.connection.execute(
-                select(relationships.c.id)
-                .where(relationships.c.id == relationship_id)
-                .with_for_update()
+                row_lock_statement(
+                    RowLockIntent(
+                        RowLockKey(RowLockClass.RELATIONSHIP, relationship_id),
+                        RowLockMode.U,
+                    )
+                )
             )
-        ).first()
-        return row is not None
+        ).first() is not None
 
     async def object_template_ids(self, object_ids: Iterable[UUID]) -> dict[UUID, UUID]:
         ids = tuple(set(object_ids))
@@ -455,13 +475,18 @@ class RuntimeRelationshipStore:
                 )
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) == (
-                "fk_relationships_definition"
-            ):
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == ("fk_relationships_definition"):
                 raise RuntimeRelationshipModelReferenceError from error
             raise
-        for item in value.resolutions:
+        for item in sorted(
+            value.resolutions,
+            key=lambda row: (
+                row.resolution_id.int,
+                row.from_object_id.int,
+                row.to_object_id.int,
+            ),
+        ):
             try:
                 await self.connection.execute(
                     runtime_relationship_resolutions.insert().values(
@@ -473,8 +498,7 @@ class RuntimeRelationshipStore:
                     )
                 )
             except IntegrityError as error:
-                diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-                constraint_name = getattr(diagnostic, "constraint_name", None)
+                constraint_name = classify_postgresql_failure(error).constraint_name
                 if constraint_name == "runtime_relationship_resolutions_pkey":
                     raise ExactRelationshipViewCollision from error
                 if constraint_name in {

@@ -10,6 +10,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 import netauto.application.objects as object_application
+import netauto.persistence.locking as locking_persistence
 from netauto.application.objects import ObjectService
 from netauto.application.objecttemplates import (
     ComponentCandidate,
@@ -19,7 +20,7 @@ from netauto.application.objecttemplates import (
 from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.failures import ApplicationFailure
-from netauto.persistence.gates import AdvisoryGate
+from netauto.persistence.locking import AdvisoryGate, RowLockClass, RowLockMode
 from netauto.persistence.objects import EventKind, ObjectStore, OwnershipLifecycleEvent
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
@@ -28,6 +29,7 @@ from tests.support.semantic_concurrency import (
     PhaseCut,
     SemanticActors,
     blocked_race,
+    install_lock_plan_cut,
     progress_race,
     semantic_actors,
 )
@@ -129,19 +131,12 @@ async def _ownership_template(actors: SemanticActors, name: str) -> UUID:
 
 
 def _object_owner_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = ObjectStore.lock_no_key
-
-    async def intercepted(store: ObjectStore, object_id: UUID) -> Object | None:
-        result = await original(store, object_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(ObjectStore, "lock_no_key", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        object_application,
+        RowLockClass.OBJECT,
+        RowLockMode.NKU,
+    )
 
 
 def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -161,7 +156,7 @@ def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 
 def _ownership_gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     cut = PhaseCut()
-    original = object_application.acquire_advisory_gate
+    original = locking_persistence.acquire_advisory_gate
 
     async def intercepted(connection: AsyncConnection, gate: AdvisoryGate) -> None:
         await original(connection, gate)
@@ -170,42 +165,26 @@ def _ownership_gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
             cut.reached.set()
             await cut.release.wait()
 
-    monkeypatch.setattr(object_application, "acquire_advisory_gate", intercepted)
+    monkeypatch.setattr(locking_persistence, "acquire_advisory_gate", intercepted)
     return cut
 
 
 def _version_share_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = ObjectTemplateStore.lock_version_share
-
-    async def intercepted(
-        store: ObjectTemplateStore, template_id: UUID, version: int
-    ) -> bool:
-        result = await original(store, template_id, version)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(ObjectTemplateStore, "lock_version_share", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        object_application,
+        RowLockClass.OBJECT_TEMPLATE_VERSION,
+        RowLockMode.S,
+    )
 
 
 def _lineage_share_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = ObjectTemplateStore.lock_lineage_share
-
-    async def intercepted(store: ObjectTemplateStore, template_id: UUID) -> bool:
-        result = await original(store, template_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(ObjectTemplateStore, "lock_lineage_share", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        object_application,
+        RowLockClass.OBJECT_TEMPLATE_HEADER,
+        RowLockMode.S,
+    )
 
 
 def _object_insert_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -874,7 +853,9 @@ async def test_idempotent_conflict_and_detach_paths_skip_ownership_gate(
             calls += 1
             raise AssertionError("ownership graph gate must not be acquired")
 
-        monkeypatch.setattr(object_application, "acquire_advisory_gate", forbidden_gate)
+        monkeypatch.setattr(
+            locking_persistence, "acquire_advisory_gate", forbidden_gate
+        )
 
         projection = await reader.attach(first_parent.id, "children", first_child.id)
         assert projection.child_object_id == first_child.id

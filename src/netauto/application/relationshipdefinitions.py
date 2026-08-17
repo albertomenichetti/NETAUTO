@@ -1,5 +1,6 @@
 """RelationshipDefinition model-plane application capability."""
 
+from typing import Any
 from uuid import UUID
 
 from netauto.application.cursors import Page, decode_cursor, encode_cursor
@@ -20,7 +21,15 @@ from netauto.domain.relationships import (
     validate_lineage_graph,
 )
 from netauto.failures import ApplicationFailure, FailureClass
-from netauto.persistence.gates import AdvisoryGate, acquire_advisory_gate
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    acquire_lock_plan,
+)
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.relationships import (
     RelationshipDefinitionDeleteReferenceError,
@@ -86,6 +95,33 @@ def _validate_persisted(value: RelationshipDefinition) -> None:
         raise _internal(
             "A persisted RelationshipDefinition aggregate is invalid."
         ) from error
+
+
+def _definition_intent(definition_id: UUID, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.RELATIONSHIP_DEFINITION_HEADER, definition_id),
+        mode,
+    )
+
+
+def _template_intent(template_id: UUID) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id), RowLockMode.KS
+    )
+
+
+async def _acquire(
+    connection: Any,
+    template_store: ObjectTemplateStore,
+    intents: tuple[RowLockIntent, ...],
+    gate: AdvisoryGate,
+) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
+    plan = LockPlan(
+        intents=intents,
+        gate=gate,
+        object_template_parent_by_id=await template_store.lineage_parents(),
+    )
+    return plan, await acquire_lock_plan(connection, plan)
 
 
 class RelationshipDefinitionService:
@@ -185,12 +221,26 @@ class RelationshipDefinitionService:
         self, candidate: RelationshipDefinition
     ) -> RelationshipDefinition:
         async with self._uow_factory() as uow:
-            await acquire_advisory_gate(
+            template_store = ObjectTemplateStore(uow.connection)
+            endpoint_ids = {
+                template_id
+                for resolution in candidate.resolutions
+                for template_id in (
+                    resolution.from_template_id,
+                    resolution.to_template_id,
+                )
+            }
+            plan, missing = await _acquire(
                 uow.connection,
+                template_store,
+                tuple(_template_intent(item) for item in endpoint_ids),
                 AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
             )
+            if missing:
+                raise _referenced_template(missing[0].resource_id)
             store = RelationshipDefinitionStore(uow.connection)
             await self._certify(store, candidate, create_operands=True)
+            plan.begin_dml()
             try:
                 await store.insert(candidate)
             except RelationshipEndpointReferenceError as error:
@@ -219,7 +269,13 @@ class RelationshipDefinitionService:
     ) -> RelationshipDefinition:
         async with self._uow_factory() as uow:
             store = RelationshipDefinitionStore(uow.connection)
-            if not await store.lock_no_key(definition_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                ObjectTemplateStore(uow.connection),
+                (_definition_intent(definition_id, RowLockMode.KS),),
+                AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
+            )
+            if missing:
                 raise _not_found(definition_id)
             current = await store.get(definition_id)
             if current is None:
@@ -236,12 +292,8 @@ class RelationshipDefinitionService:
                     raise RuntimeError("rename candidate is missing")
             except RelationshipDefinitionValidationError as error:
                 raise _semantic(error) from error
-
-            await acquire_advisory_gate(
-                uow.connection,
-                AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
-            )
             await self._certify(store, candidate, create_operands=False)
+            plan.begin_dml()
             try:
                 await store.update_names(candidate)
             except RuntimeError as error:
@@ -254,7 +306,13 @@ class RelationshipDefinitionService:
     async def delete(self, definition_id: UUID) -> None:
         async with self._uow_factory() as uow:
             store = RelationshipDefinitionStore(uow.connection)
-            if not await store.lock_update(definition_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                ObjectTemplateStore(uow.connection),
+                (_definition_intent(definition_id, RowLockMode.U),),
+                AdvisoryGate.MODEL_ROOT_DELETE_GATE,
+            )
+            if missing:
                 raise _not_found(definition_id)
             current = await store.get(definition_id)
             if current is None:
@@ -275,6 +333,7 @@ class RelationshipDefinitionService:
                         ],
                     },
                 )
+            plan.begin_dml()
             try:
                 await store.delete(definition_id)
             except RelationshipDefinitionDeleteReferenceError as error:

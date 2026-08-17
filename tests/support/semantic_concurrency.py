@@ -4,16 +4,28 @@ import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from types import ModuleType
+from typing import cast
 
+import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from netauto.application.datatypes import DataTypeService
 from netauto.failures import ApplicationFailure
+from netauto.persistence.locking import (
+    LockPlan,
+    RowLockClass,
+    RowLockKey,
+    RowLockMode,
+)
 from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
 
 type Operation = Callable[[], Awaitable[object]]
+type AcquireLockPlan = Callable[
+    [AsyncConnection, LockPlan], Awaitable[tuple[RowLockKey, ...]]
+]
 
 
 @dataclass(slots=True)
@@ -70,6 +82,34 @@ class SemanticActors:
 class PhaseCut:
     reached: asyncio.Event = field(default_factory=asyncio.Event)
     release: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+def install_lock_plan_cut(
+    monkeypatch: pytest.MonkeyPatch,
+    application_module: ModuleType,
+    row_class: RowLockClass,
+    mode: RowLockMode,
+) -> PhaseCut:
+    """Pause T1 after the selected central lock-plan row is held."""
+    cut = PhaseCut()
+    original = cast(AcquireLockPlan, application_module.acquire_lock_plan)
+
+    async def intercepted(
+        connection: AsyncConnection, plan: LockPlan
+    ) -> tuple[RowLockKey, ...]:
+        missing = await original(connection, plan)
+        task = asyncio.current_task()
+        selected = any(
+            intent.key.row_class is row_class and intent.mode is mode
+            for intent in plan.rows
+        )
+        if task is not None and task.get_name() == "T1" and selected:
+            cut.reached.set()
+            await cut.release.wait()
+        return missing
+
+    monkeypatch.setattr(application_module, "acquire_lock_plan", intercepted)
+    return cut
 
 
 def service_engine(database_url: str, application_name: str) -> AsyncEngine:

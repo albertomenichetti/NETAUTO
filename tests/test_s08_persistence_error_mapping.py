@@ -22,6 +22,7 @@ class _Diagnostic:
 
 class _OriginalError(Exception):
     def __init__(self, constraint_name: str) -> None:
+        self.sqlstate = "23503"
         self.diag = _Diagnostic(constraint_name)
         super().__init__(constraint_name)
 

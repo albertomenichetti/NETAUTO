@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-import netauto.application.relationshipdefinitions as relationship_application
+import netauto.application.relationshipdefinitions as relationshipdefinition_application
+import netauto.persistence.locking as locking_persistence
 from netauto.application.objecttemplates import ObjectTemplateService
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.domain.relationships import (
@@ -17,6 +18,7 @@ from netauto.domain.relationships import (
 )
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.gates import AdvisoryGate, acquire_advisory_gate
+from netauto.persistence.locking import RowLockClass, RowLockMode
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.relationships import RelationshipDefinitionStore
 from netauto.persistence.uow import UnitOfWorkFactory
@@ -26,6 +28,7 @@ from tests.support.semantic_concurrency import (
     PhaseCut,
     SemanticActors,
     blocked_race,
+    install_lock_plan_cut,
     semantic_actors,
 )
 
@@ -79,7 +82,7 @@ def _failure_code(value: object) -> str | None:
 
 def _gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     cut = PhaseCut()
-    original = relationship_application.acquire_advisory_gate
+    original = locking_persistence.acquire_advisory_gate
 
     async def intercepted(connection: AsyncConnection, gate: AdvisoryGate) -> None:
         await original(connection, gate)
@@ -88,29 +91,19 @@ def _gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
             cut.reached.set()
             await cut.release.wait()
 
-    monkeypatch.setattr(relationship_application, "acquire_advisory_gate", intercepted)
+    monkeypatch.setattr(locking_persistence, "acquire_advisory_gate", intercepted)
     return cut
 
 
 def _definition_owner_cut(
     monkeypatch: pytest.MonkeyPatch, *, delete: bool = False
 ) -> PhaseCut:
-    cut = PhaseCut()
-    method_name = "lock_update" if delete else "lock_no_key"
-    original = getattr(RelationshipDefinitionStore, method_name)
-
-    async def intercepted(
-        store: RelationshipDefinitionStore, definition_id: UUID
-    ) -> bool:
-        result = await original(store, definition_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(RelationshipDefinitionStore, method_name, intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        relationshipdefinition_application,
+        RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+        RowLockMode.U if delete else RowLockMode.NKU,
+    )
 
 
 def _definition_insert_cut(
@@ -314,7 +307,7 @@ async def test_gate_05b_different_definition_renames_serialize_globally(
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_same_definition_rename_serializes_on_header_before_gate(
+async def test_same_definition_rename_serializes_on_gate_before_header(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -332,7 +325,7 @@ async def test_same_definition_rename_serializes_on_header_before_gate(
             "old_second",
         )
         first, second = _definition_services(actors)
-        cut = _definition_owner_cut(monkeypatch)
+        cut = _gate_cut(monkeypatch)
         outcomes = await blocked_race(
             actors,
             cut,
