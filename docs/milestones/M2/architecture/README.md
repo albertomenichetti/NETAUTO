@@ -43,7 +43,7 @@ No M2 architecture document is frozen yet. Implementation planning and implement
 | Area | Owning document | Status |
 |---|---|---|
 | Architecture set control, coverage and freeze | `README.md` | DESIGN IN PROGRESS |
-| Relationship domain, version lifecycle and factual semantics | `relationship.md` | NOT STARTED |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE |
 | Public HTTP API, projections, failures and pagination | `api.md` | NOT STARTED |
 | Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | NOT STARTED |
 | Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | NOT STARTED |
@@ -106,12 +106,23 @@ verification.md
 
 Shared outcomes require coordinated owners, but each individual invariant, public contract and realization rule must still have one explicit normative home.
 
+## Current architecture progress
+
+```text
+relationship.md
+    -> normative draft created
+    -> Relationship semantic design complete
+    -> cross-document review with API, persistence, concurrency and verification pending
+```
+
+No M2 architecture document is frozen yet.
+
 ## Required architecture work
 
 Before the set can freeze it must at least:
 
-1. propagate all frozen Relationship semantic and API decisions into normative owners;
-2. close the complete persistence metadata and lifecycle realization;
+1. cross-check and freeze the Relationship semantic owner with all dependent owners;
+2. propagate and close the frozen API and persistence decisions in their normative owners;
 3. build the complete mutation census and pairwise semantic concurrency matrix;
 4. define PostgreSQL lock ownership, modes, ordering, advisory gates, retries and constraint arbitration;
 5. freeze Health, startup revision guard, CLI and runtime/deployment behavior at architecture level;
@@ -124,7 +135,8 @@ Before the set can freeze it must at least:
 The following architecture work remains open:
 
 ```text
-normative propagation from WIP discovery
+Relationship semantic cross-document review
+normative API and persistence propagation from WIP discovery
 complete concurrency matrix
 PostgreSQL realization
 final module and persistence-boundary ownership
