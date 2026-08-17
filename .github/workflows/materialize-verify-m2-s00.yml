@@ -1,0 +1,92 @@
+name: Materialize and verify M2-S00 candidate
+
+on:
+  push:
+    branches: [M2]
+    paths:
+      - .github/workflows/materialize-verify-m2-s00.yml
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify-and-publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: netauto
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d netauto"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/netauto
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Materialize exact candidate patch
+        run: |
+          set -euo pipefail
+          cat .github/m2-s00-payload/patch-*.b64 > /tmp/m2-s00.patch.b64
+          echo '185e6eed3fb7310141fa3641ef30230294579cf12ffa61cb768094b42bb2e34a  /tmp/m2-s00.patch.b64' | sha256sum -c -
+          base64 --decode /tmp/m2-s00.patch.b64 > /tmp/m2-s00.patch.gz
+          echo '275c5fca13cb7699bb2db8bb299f80ada411d48d3dbcb77ca773b5d0104d53c7  /tmp/m2-s00.patch.gz' | sha256sum -c -
+          gzip --decompress --stdout /tmp/m2-s00.patch.gz > /tmp/m2-s00.patch
+          echo '29004e949c2df358dc93267c7ec709f19ae8d99f1638b203e872ab494c63b5de  /tmp/m2-s00.patch' | sha256sum -c -
+          git apply --index --whitespace=error-all /tmp/m2-s00.patch
+          git diff --cached --check
+
+      - name: Install locked environment
+        run: uv sync --locked
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Pyright strict
+        run: uv run pyright
+
+      - name: PLAN unit evidence
+        run: uv run pytest -q tests/test_m2_locking.py
+
+      - name: PLAN PostgreSQL evidence
+        run: uv run pytest -q tests/test_m2_locking_postgresql.py
+
+      - name: Full regression suite
+        run: uv run pytest -q
+
+      - name: Publish verified candidate
+        run: |
+          set -euo pipefail
+          rm -rf .github/m2-s00-payload
+          rm -f .github/workflows/materialize-verify-m2-s00.yml
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(m2-s00): centralize transaction lock planning'
+          git push origin HEAD:M2
