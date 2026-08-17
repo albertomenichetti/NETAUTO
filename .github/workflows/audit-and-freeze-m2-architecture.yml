@@ -1,0 +1,787 @@
+name: Audit and freeze M2 architecture
+
+on:
+  push:
+    branches: [M2]
+    paths:
+      - .github/workflows/audit-and-freeze-m2-architecture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audit-and-freeze:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit WIP extraction and close documentation gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          M2 = ROOT / 'docs/milestones/M2'
+          ARCH = M2 / 'architecture'
+          WIP = M2 / 'wip'
+
+          def read(path: Path) -> str:
+              return path.read_text(encoding='utf-8')
+
+          def write(path: Path, text: str) -> None:
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(text, encoding='utf-8')
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one occurrence, found {count}: {old[:100]!r}')
+              write(path, text.replace(old, new, 1))
+
+          expected_wip = {
+              'architecture-consistency-closure.md',
+              'cli-architecture-cross-check.md',
+              'cli-stack-10-proposal.md',
+              'concurrency-matrix-cross-check.md',
+              'concurrency-postgresql-cross-check.md',
+              'contract-consistency-closure.md',
+              'health-api.md',
+              'health-architecture-cross-check.md',
+              'netauto-cli.md',
+              'persistence-transaction-deadlock-cross-check.md',
+              'relationship-properties-alembic-baseline.md',
+              'relationship-properties-indexes.md',
+              'relationship-properties-lifecycle.md',
+              'relationship-properties-persistence.md',
+              'relationship-properties.md',
+              'runtime-configuration-production-deployment.md',
+              'runtime-deployment-architecture-cross-check.md',
+              'stack-10-ratification-cross-check.md',
+              'verification-architecture-cross-check.md',
+          }
+          actual_wip = {p.name for p in WIP.glob('*.md')}
+          if actual_wip != expected_wip:
+              raise SystemExit(
+                  f'WIP census mismatch: missing={sorted(expected_wip-actual_wip)} '
+                  f'extra={sorted(actual_wip-expected_wip)}'
+              )
+
+          provenance = '''# M2 WIP Extraction, Provenance and Retirement
+
+**Status:** DRAFT — EXTRACTION / SUPERSESSION AUDIT PASSED — READY FOR FREEZE REVIEW
+
+**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT
+
+## 1. Purpose and authority rule
+
+This document proves that every semantic, decision-bearing or technical item recorded under `../wip/` has one final disposition before the M2 architecture freeze.
+
+After the architecture set is frozen, implementation planning and implementation **must not** use `../wip/` as a requirement or design authority.
+
+The implementation authority remains:
+
+```text
+delivered AS-IS in docs/architecture/
++
+FINAL / FROZEN docs/milestones/M2/contract.md
++
+FINAL / FROZEN docs/milestones/M2/architecture/
++
+ratified project-wide decisions in docs/general/technology_baseline.md
+```
+
+`../wip/` is retained only as historical discovery and review evidence. When WIP text conflicts with a later frozen decision, the later normative authority wins. A WIP statement absent from the authority composition above is not an implementation requirement.
+
+## 2. Complete WIP disposition map
+
+| WIP file | Classification | Final normative destination | Disposition |
+|---|---|---|---|
+| `relationship-properties.md` | semantic/API discovery | `relationship.md`, `api.md`, frozen `contract.md` | Core topology/version/property/factual/API decisions absorbed. The early lossless M1→M2 bridge is superseded by the first durable baseline. |
+| `relationship-properties-persistence.md` | persistence discovery | `persistence.md`, `concurrency.md`, `verification.md` | Authorities, schema, lifetime, pipelines and reads absorbed. Uniform default-pointer validation is made explicit in `persistence.md`. |
+| `relationship-properties-lifecycle.md` | lifecycle discovery | `persistence.md`, `api.md`, `verification.md` | Codec, fan-out, metadata, event-set and DTO decisions absorbed. Historical M1 backfill is superseded. |
+| `relationship-properties-indexes.md` | index/access-path discovery | `persistence.md`, `verification.md` | Final index inventory, replacements, FK support and negative index contract absorbed. M1 backfill sequencing is superseded. |
+| `relationship-properties-alembic-baseline.md` | durable-baseline decision | `persistence.md`, `runtime-deployment.md`, `verification.md` | One root/one head, fresh realization, exact guard, downgrade isolation and old-chain removal absorbed. |
+| `health-api.md` | Health discovery | `health.md`, `api.md`, `runtime-deployment.md`, `verification.md` | Route, readiness, statuses, timeout and separation from schema compatibility absorbed; exact probe refined to `SELECT 1`. |
+| `netauto-cli.md` | CLI discovery | `cli.md`, `api.md`, `health.md`, `runtime-deployment.md`, `verification.md` | Modes, state, grammar, selectors, output, errors, help and coverage absorbed. Cross-session history is deliberately rejected for M2. |
+| `runtime-configuration-production-deployment.md` | runtime/deployment discovery | `runtime-deployment.md`, `health.md`, `verification.md` | Settings, pool, secret, wheel, startup, Linux and trust boundaries absorbed and refined to installed-release execution. |
+| `cli-stack-10-proposal.md` | technology proposal | `docs/general/technology_baseline.md` `STACK-10`, plus `cli.md` and `runtime-deployment.md` consequences | Ratified; proposal retired as evidence. |
+| `contract-consistency-closure.md` | contract review evidence | frozen `contract.md` | No implementation authority; records the completed contract gate. |
+| `architecture-consistency-closure.md` | architecture review evidence | `architecture/README.md` and all owners | No implementation authority; records set-level closure. |
+| `persistence-transaction-deadlock-cross-check.md` | review evidence with findings | `persistence.md`, `concurrency.md`, `verification.md` | Differential replacement, target-before-owner and root-delete gate absorbed. |
+| `concurrency-matrix-cross-check.md` | review evidence with findings | `concurrency-matrix.md`, `verification.md` | `VH`, `RS`, RF/RA deltas and clone lifetime absorbed. |
+| `concurrency-postgresql-cross-check.md` | review evidence with findings | `concurrency.md`, `verification.md` | Central LockPlan, gates, modes, order, retry budget and no-`40P01` policy absorbed. |
+| `health-architecture-cross-check.md` | review evidence with findings | `health.md`, `runtime-deployment.md`, `verification.md` | Same pool, full two-second deadline, safe failure and no mutation-graph entry absorbed. |
+| `cli-architecture-cross-check.md` | review evidence with findings | `cli.md`, `runtime-deployment.md`, `verification.md`, `STACK-10` | Static registry, neutral transport DTOs, nested selectors and bounded enrichment absorbed. |
+| `runtime-deployment-architecture-cross-check.md` | review evidence with findings | `runtime-deployment.md`, `verification.md` | Embedded runtime lock, package migrations, exact head and direct installed executables absorbed. |
+| `verification-architecture-cross-check.md` | review evidence with findings | `verification.md`, `architecture/README.md` | T0–T10, 32 bundles, 83 scenarios and freeze/evidence gate separation absorbed. |
+| `stack-10-ratification-cross-check.md` | technology review evidence | `docs/general/technology_baseline.md` | No implementation authority; records successful ratification. |
+
+Census:
+
+```text
+discovery / decision sources       8
+project-wide technology proposal   1
+review / closure evidence         10
+                                  --
+total WIP documents               19
+classified                        19 / 19
+unclassified                       0
+```
+
+## 3. Explicit supersession register
+
+The following earlier WIP positions are deliberately **not** propagated as final requirements:
+
+```text
+lossless in-place M1 -> M2 database migration
+synthetic RDV v1 PUBLISHED/default/current-fact backfill
+historical M1 Relationship event snapshot backfill
+transitional nullable columns, dual decoders and progressive FK replacement
+M1-aware or data-preserving downgrade
+migration-time replacement-index sequencing for populated M1 data
+persistent cross-session CLI history
+source-project/checkout-based production launch through `uv run`
+prompt_toolkit as an unratified candidate
+Health query left unspecified
+startup schema guard location left open
+CLI process argument order and JSON trace shape left open
+```
+
+Their final replacements are, respectively:
+
+```text
+first durable empty-database root baseline
+M2-native v1 DRAFT creation semantics
+M2-only lifecycle shapes from fresh schema
+single final DDL and index inventory
+head -> base destructive isolated verification only
+no legacy backfill phase
+in-memory process history only
+installed versioned release environment and direct executables
+ratified STACK-10
+exact `SELECT 1` probe
+pre-serving same-engine exact-head guard
+frozen `netauto -n <endpoint-root> <resource> <operation> ...` and trace schema
+```
+
+## 4. Technical extraction closure
+
+The final owners contain the complete decision-bearing material required by subsequent phases:
+
+```text
+Relationship semantics and lifecycle          relationship.md
+public routes, carriers and failures          api.md
+relational schema, codec, indexes and DDL      persistence.md
+pairwise semantic interleavings               concurrency-matrix.md
+PostgreSQL locking, gates and retry            concurrency.md
+Core readiness execution                      health.md
+official HTTP client                          cli.md
+settings, artifact, startup and operation      runtime-deployment.md
+evidence and traceability                      verification.md
+project-wide CLI technologies                  technology_baseline.md / STACK-10
+```
+
+The detailed audit record is `../wip/wip-extraction-closure.md`.
+
+Result:
+
+```text
+WIP files classified                         PASS — 19 / 19
+semantic decisions propagated                PASS
+technical decisions propagated               PASS after persistence closure additions
+superseded decisions explicitly retired      PASS
+review findings owned normatively             PASS
+implementation dependency on WIP              0
+open extraction finding                       0
+contract reopening                            NOT REQUIRED
+```
+
+## 5. Freeze and change control
+
+This document freezes together with the complete architecture set. Adding a new WIP document after freeze does not modify architecture authority. Any new semantic or technical requirement must formally reopen and amend the appropriate frozen contract or architecture owner before implementation can rely on it.
+'''
+          write(ARCH / 'provenance.md', provenance)
+
+          persistence_section = '''## 18. WIP-extraction technical closure
+
+The complete WIP extraction audit identified several implementation-significant details that were previously compressed in this owner. They are normative below.
+
+### 18.1 Uniform defensive validation of default pointers
+
+Every stable `DataType`, `ObjectTemplate` and `RelationshipDefinition` GET/list projection that observes a non-null `default_version` must validate, in the same coherent read snapshot, that the exact same-lineage target exists and is `PUBLISHED`.
+
+```text
+valid non-null default
+    -> exact same-lineage PUBLISHED version
+
+missing, cross-lineage, DRAFT or DEPRECATED target
+    -> persisted invariant corruption
+    -> internal_error
+    -> no fallback, repair or pointer clearing
+```
+
+This is cross-domain read hardening only. Mutation and concurrency remain the primary invariant-preservation authority.
+
+### 18.2 Final index replacement, FK-support and plan contract
+
+Constraint-owned PK/UNIQUE indexes are not duplicated. The fresh durable schema contains the final explicit indexes in §13 and does not contain the superseded development structures:
+
+```text
+ix_relationships_definition
+ix_runtime_resolutions_from_object
+ix_runtime_resolutions_to_object
+```
+
+Their final replacements are:
+
+```text
+ix_relationships_definition_version
+ix_runtime_resolutions_from_object_page
+ix_runtime_resolutions_to_object_relationship
+```
+
+Nullable lifecycle selector indexes for destination Object, Relationship, Definition and relationship name are partial with the exact predicate `WHERE <selector> IS NOT NULL`. The global occurred, object and kind indexes remain non-partial.
+
+Referencing-side FK support is closed as follows:
+
+| Reference | Referencing-side authority |
+|---|---|
+| RDV -> Definition | RDV PK prefix `(relationship_definition_id, version)` |
+| RD property -> RDV | property PK / position-UNIQUE prefix |
+| RD property -> DTV | `ix_relationship_definition_properties_datatype_version` |
+| Definition default -> RDV | one Definition row selected by Definition PK |
+| Relationship -> exact RDV | `ix_relationships_definition_version` |
+| runtime row -> Relationship | `ix_runtime_resolutions_relationship` |
+| runtime row -> Resolution | runtime PK prefix `(resolution_id, ...)` |
+| runtime row -> from Object | `ix_runtime_resolutions_from_object_page` |
+| runtime row -> to Object | `ix_runtime_resolutions_to_object_relationship` |
+| Resolution -> Definition | `ix_relationship_resolutions_definition_id` |
+
+Representative PostgreSQL plan evidence may force sequential scans off only to prove eligibility of an approved index. It must not freeze cost values, row estimates or one exact plan tree.
+
+### 18.3 Durable-root DDL realization
+
+The first durable graph contains exactly one root revision, no predecessor and one head. The disposable development revision files are absent from the shipped graph.
+
+Dependency-safe creation order is:
+
+```text
+1. object_lifecycle_events historical authority
+2. stable roots: datatypes, object_templates, relationship_definitions
+3. exact versions: datatype_versions, object_template_versions,
+   relationship_definition_versions
+4. the three optional cyclic default-version FKs
+5. declarations/topology children
+6. factual roots: objects, relationships
+7. owned current-state children
+8. explicit non-constraint indexes
+```
+
+Equivalent ordering is permitted only when it preserves the same dependency and cyclic-FK guarantees.
+
+The root revision:
+
+```text
+is self-contained
+uses explicit stable constraint/index names
+imports no mutable application metadata or domain code
+uses no IF EXISTS / IF NOT EXISTS to conceal drift
+performs no stamp, legacy backfill or runtime schema repair
+executes transactionally under PostgreSQL
+```
+
+Failure leaves the database at base with no committed partial NETAUTO schema. A corrected upgrade can rerun from base. `head -> base` removes all and only NETAUTO-owned structures and preserves unrelated sentinel objects.
+
+### 18.4 Shared historical runtime-property carrier codec
+
+Object and Relationship lifecycle snapshots share one historical runtime-property carrier validator. It validates self-contained JSON carrier integrity without current model lookup.
+
+```text
+allowed scalar carrier
+    string | integer | boolean
+
+forbidden
+    null | float | object | nested list
+
+LIST
+    non-empty
+    ordered
+    homogeneous carrier kind
+```
+
+Relationship factual snapshots additionally require exact keys:
+
+```text
+relationship_definition_version
+properties
+```
+
+The version is a positive non-boolean integer and property names satisfy the canonical identifier grammar. Historical decoding never infers a PrimitiveType from a string and never consults a live RDV/DTV. The fresh baseline admits only canonical M2 event shapes; no permanent legacy dual decoder exists.
+
+### 18.5 Superseded migration bridge
+
+Any earlier WIP requirement for synthetic M1 data or event backfill is cancelled by the first durable baseline. It is not an omitted implementation task.
+
+```text
+pre-baseline databases
+    -> recreate
+    -> upgrade empty database to the single head
+
+M2-created data
+    -> follows native v1 DRAFT/default-null semantics
+```
+
+No contract reopening is required by this extraction closure.
+
+---
+
+'''
+          persistence_path = ARCH / 'persistence.md'
+          persistence = read(persistence_path)
+          if '## 18. WIP-extraction technical closure' not in persistence:
+              marker = '## 18. Traceability and closure\n'
+              if persistence.count(marker) != 1:
+                  raise SystemExit('persistence traceability marker not unique')
+              persistence = persistence.replace(
+                  marker,
+                  persistence_section + '## 19. Traceability and closure\n',
+                  1,
+              )
+              write(persistence_path, persistence)
+
+          readme_path = ARCH / 'README.md'
+          readme = read(readme_path)
+          provenance_row = '| WIP extraction, provenance and retirement | `provenance.md` | DRAFT — EXTRACTION AUDIT PASSED; READY FOR FREEZE REVIEW |\n'
+          if provenance_row not in readme:
+              table_marker = '| Architecture set control, coverage and freeze | `README.md` | CLOSURE PASSED — READY FOR FREEZE REVIEW |\n'
+              if readme.count(table_marker) != 1:
+                  raise SystemExit('README table marker not unique')
+              readme = readme.replace(table_marker, table_marker + provenance_row, 1)
+
+          completed_marker = 'verification.md\n    -> T0 ... T10 layers\n'
+          if 'provenance.md\n    -> complete 19-document WIP disposition map' not in readme:
+              provenance_block = '''provenance.md
+    -> complete 19-document WIP disposition map
+    -> explicit supersession register
+    -> zero implementation authority retained by WIP
+    -> technical extraction additions assigned to persistence.md
+
+'''
+              if readme.count(completed_marker) != 1:
+                  raise SystemExit('README completed-design marker not unique')
+              readme = readme.replace(completed_marker, provenance_block + completed_marker, 1)
+
+          if '## WIP extraction and retirement closure' not in readme:
+              closure_marker = '## Final closure result\n'
+              section = '''## WIP extraction and retirement closure
+
+The complete source-to-authority map is owned by `provenance.md`; the review record is `../wip/wip-extraction-closure.md`.
+
+```text
+WIP census                              PASS — 19 / 19
+primary discovery/decision sources       PASS — 8 / 8
+technology proposal                      PASS — 1 / 1
+review/closure evidence                  PASS — 10 / 10
+superseded positions explicitly retired  PASS
+technical extraction gaps closed         PASS
+implementation dependency on WIP         0
+open extraction finding                  0
+```
+
+No future implementation slice may cite WIP as its normative owner.
+
+'''
+              if readme.count(closure_marker) != 1:
+                  raise SystemExit('README final closure marker not unique')
+              readme = readme.replace(closure_marker, section + closure_marker, 1)
+
+          readme = readme.replace(
+              'normative placeholders                   PASS — 0\n',
+              'normative placeholders                   PASS — 0\nWIP extraction / retirement              PASS — 19 / 19\n',
+              1,
+          )
+          freeze_bullet = '- every WIP document has one recorded normative destination, explicit supersession or review-evidence disposition;\n'
+          if freeze_bullet not in readme:
+              marker = '- cross-document consequences are propagated without duplicated authority;\n'
+              if readme.count(marker) != 1:
+                  raise SystemExit('README freeze bullet marker not unique')
+              readme = readme.replace(marker, freeze_bullet + marker, 1)
+          write(readme_path, readme)
+
+          architecture_closure_path = WIP / 'architecture-consistency-closure.md'
+          architecture_closure = read(architecture_closure_path)
+          if 'WIP extraction / retirement' not in architecture_closure:
+              architecture_closure = architecture_closure.replace(
+                  'normative TBD / TODO                      PASS — 0\n',
+                  'normative TBD / TODO                      PASS — 0\nWIP extraction / retirement               PASS — 19 / 19\n',
+                  1,
+              )
+              marker = '## Freeze recommendation\n'
+              section = '''## WIP extraction addendum
+
+A dedicated second-pass audit classified every document in `wip/` and compared its decision-bearing content with the frozen contract, the architecture owners and `STACK-10`.
+
+Four documentation gaps were closed without changing contract behavior:
+
+```text
+normative WIP provenance/retirement map
+uniform default-pointer defensive read validation
+final index replacement/FK-support detail
+first-root DDL and shared historical carrier-codec detail
+```
+
+Earlier lossless M1→M2 migration/backfill requirements are explicitly superseded, not omitted. The audit result is recorded in `wip-extraction-closure.md`; `architecture/provenance.md` is the normative retirement authority.
+
+```text
+classified WIP documents       19 / 19
+unpropagated final decision      0
+open extraction finding         0
+contract reopening              NOT REQUIRED
+```
+
+'''
+              if architecture_closure.count(marker) != 1:
+                  raise SystemExit('architecture closure freeze marker not unique')
+              architecture_closure = architecture_closure.replace(marker, section + marker, 1)
+              write(architecture_closure_path, architecture_closure)
+
+          audit_rows = [
+              ('architecture-consistency-closure.md', 'review evidence', 'README + all owners', 'review-only'),
+              ('cli-architecture-cross-check.md', 'review evidence', 'cli/runtime/verification/STACK-10', 'absorbed'),
+              ('cli-stack-10-proposal.md', 'technology proposal', 'technology_baseline STACK-10', 'ratified'),
+              ('concurrency-matrix-cross-check.md', 'review evidence', 'concurrency-matrix/verification', 'absorbed'),
+              ('concurrency-postgresql-cross-check.md', 'review evidence', 'concurrency/verification', 'absorbed'),
+              ('contract-consistency-closure.md', 'review evidence', 'contract.md', 'review-only'),
+              ('health-api.md', 'discovery', 'health/api/runtime/verification', 'absorbed/refined'),
+              ('health-architecture-cross-check.md', 'review evidence', 'health/runtime/verification', 'absorbed'),
+              ('netauto-cli.md', 'discovery', 'cli/api/health/runtime/verification', 'absorbed/refined'),
+              ('persistence-transaction-deadlock-cross-check.md', 'review evidence', 'persistence/concurrency/verification', 'absorbed'),
+              ('relationship-properties-alembic-baseline.md', 'decision source', 'persistence/runtime/verification', 'absorbed'),
+              ('relationship-properties-indexes.md', 'discovery', 'persistence/verification', 'absorbed; legacy sequencing superseded'),
+              ('relationship-properties-lifecycle.md', 'discovery', 'persistence/api/verification', 'absorbed; M1 backfill superseded'),
+              ('relationship-properties-persistence.md', 'discovery', 'persistence/concurrency/verification', 'absorbed + extraction additions'),
+              ('relationship-properties.md', 'discovery', 'relationship/api/contract', 'absorbed; migration bridge superseded'),
+              ('runtime-configuration-production-deployment.md', 'discovery', 'runtime-deployment/health/verification', 'absorbed/refined'),
+              ('runtime-deployment-architecture-cross-check.md', 'review evidence', 'runtime-deployment/verification', 'absorbed'),
+              ('stack-10-ratification-cross-check.md', 'review evidence', 'technology_baseline', 'review-only'),
+              ('verification-architecture-cross-check.md', 'review evidence', 'verification/README', 'absorbed'),
+          ]
+          report = [
+              '# M2 WIP Extraction Closure',
+              '',
+              '**Status:** PASS — COMPLETE WIP-TO-ARCHITECTURE EXTRACTION — READY FOR ARCHITECTURE FREEZE',
+              '',
+              '**Authority:** REVIEW EVIDENCE — NON-NORMATIVE',
+              '',
+              '## Scope',
+              '',
+              'Every Markdown document present in `docs/milestones/M2/wip/` at the candidate freeze commit was inspected for semantic, decision-bearing and technical content.',
+              '',
+              '## Census and disposition',
+              '',
+              '| WIP file | Class | Final destination | Result |',
+              '|---|---|---|---|',
+          ]
+          for row in audit_rows:
+              report.append(f'| `{row[0]}` | {row[1]} | `{row[2]}` | {row[3]} |')
+          report.extend([
+              '',
+              '```text',
+              'documents inspected                 19 / 19',
+              'final decisions propagated          PASS',
+              'superseded decisions classified     PASS',
+              'review-only evidence classified     PASS',
+              'unpropagated final decision          0',
+              'implementation dependency on WIP     0',
+              'open finding                         0',
+              'contract reopening                   NOT REQUIRED',
+              '```',
+              '',
+              '## Material supersessions',
+              '',
+              'The early lossless M1→M2 migration, event backfill, transitional schema and dual-decoder requirements were cancelled by the later first-durable-baseline decision. Persistent cross-session CLI history remained optional and was deliberately rejected. Source-checkout launch examples were refined into direct installed-release execution. None is an omitted final requirement.',
+              '',
+              '## Documentation findings resolved',
+              '',
+              '```text',
+              'WIP provenance/retirement authority              CLOSED in architecture/provenance.md',
+              'default-pointer defensive read hardening          CLOSED in architecture/persistence.md',
+              'final index replacement and FK support            CLOSED in architecture/persistence.md',
+              'root DDL / shared historical carrier codec        CLOSED in architecture/persistence.md',
+              '```',
+              '',
+              '## Final authority rule',
+              '',
+              'After freeze, `wip/` remains historical evidence only. `steps.md` and implementation must trace to the frozen contract, the frozen architecture owners and ratified project-wide technology decisions; they may not derive a requirement from WIP.',
+              '',
+              '## Recommendation',
+              '',
+              'The WIP extraction condition is satisfied. The complete architecture set may proceed to the already approved dedicated freeze transition.',
+          ])
+          write(WIP / 'wip-extraction-closure.md', '\n'.join(report) + '\n')
+
+          # Semantic/technical marker audit after the extraction additions.
+          docs = {
+              'relationship': read(ARCH / 'relationship.md'),
+              'api': read(ARCH / 'api.md'),
+              'persistence': read(ARCH / 'persistence.md'),
+              'matrix': read(ARCH / 'concurrency-matrix.md'),
+              'concurrency': read(ARCH / 'concurrency.md'),
+              'health': read(ARCH / 'health.md'),
+              'cli': read(ARCH / 'cli.md'),
+              'runtime': read(ARCH / 'runtime-deployment.md'),
+              'verification': read(ARCH / 'verification.md'),
+              'provenance': read(ARCH / 'provenance.md'),
+              'technology': read(ROOT / 'docs/general/technology_baseline.md'),
+          }
+          required_markers = {
+              'relationship': ['RelationshipDefinitionVersion', 'SCALAR -> LIST', 'relationship_fact_conflict', 'Relationship.DATA_CHANGE', 'Relationship.SCHEMA_CHANGE'],
+              'api': ['63 total /api/v1/core operations', 'GET /health/core', 'RELATIONSHIP_SCHEMA_CHANGE', 'relationship_definition_version'],
+              'persistence': ['15 authoritative tables', 'MODEL_ROOT_DELETE_GATE', 'ix_relationships_definition_version', 'Uniform defensive validation of default pointers', 'Durable-root DDL realization', 'Shared historical runtime-property carrier codec'],
+              'matrix': ['mutation census complete        41 / 41', 'unordered cells classified      861 / 861', 'VH', 'RS'],
+              'concurrency': ['MAX_SEMANTIC_UOW_ATTEMPTS = 4', 'MODEL_ROOT_DELETE_GATE', 'FOR NO KEY UPDATE', '40P01'],
+              'health': ['SELECT 1', 'CORE_DATABASE_HEALTH_TIMEOUT_SECONDS = 2.0', 'same AsyncEngine'],
+              'cli': ['static 63-operation registry', 'netauto -n', 'no mandatory Health preflight', 'in-memory', 'HTTPX'],
+              'runtime': ['runtime.pylock.toml', 'netauto:migrations', 'NETAUTO_SECRETS_DIR', 'CORE_STARTUP_SCHEMA_GUARD_TIMEOUT_SECONDS = 10.0', 'exact equality'],
+              'verification': ['M2-VER-01', 'M2-VER-32', '83 canonical scenario registry', 'T10'],
+              'provenance': ['classified                        19 / 19', 'implementation dependency on WIP              0', 'Explicit supersession register'],
+              'technology': ['STACK-10 — official HTTP CLI and terminal interaction', 'prompt_toolkit', 'HTTPX AsyncClient'],
+          }
+          missing = []
+          for owner, markers in required_markers.items():
+              for marker in markers:
+                  if marker not in docs[owner]:
+                      missing.append(f'{owner}:{marker}')
+          if missing:
+              raise SystemExit(f'extraction marker audit failed: {missing}')
+          if {p.name for p in WIP.glob('*.md')} != expected_wip | {'wip-extraction-closure.md'}:
+              raise SystemExit('post-audit WIP census mismatch')
+          if any(name not in docs['provenance'] for name in expected_wip):
+              absent = sorted(name for name in expected_wip if name not in docs['provenance'])
+              raise SystemExit(f'provenance missing WIP files: {absent}')
+          PY
+
+      - name: Commit WIP extraction closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            docs/milestones/M2/architecture/README.md \
+            docs/milestones/M2/architecture/persistence.md \
+            docs/milestones/M2/architecture/provenance.md \
+            docs/milestones/M2/wip/architecture-consistency-closure.md \
+            docs/milestones/M2/wip/wip-extraction-closure.md
+          git diff --cached --check
+          git commit -m 'docs(m2): close WIP extraction into architecture'
+          git push origin HEAD:M2
+
+      - name: Freeze the complete architecture set
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          M2 = ROOT / 'docs/milestones/M2'
+          ARCH = M2 / 'architecture'
+          STEPS = M2 / 'steps.md'
+          steps_before = STEPS.read_bytes()
+
+          owners = [
+              'relationship.md',
+              'api.md',
+              'persistence.md',
+              'concurrency-matrix.md',
+              'concurrency.md',
+              'health.md',
+              'cli.md',
+              'runtime-deployment.md',
+              'verification.md',
+              'provenance.md',
+          ]
+          for name in owners:
+              path = ARCH / name
+              text = path.read_text(encoding='utf-8')
+              text, count = re.subn(
+                  r'^\*\*Status:\*\* .+$',
+                  '**Status:** FINAL / FROZEN',
+                  text,
+                  count=1,
+                  flags=re.MULTILINE,
+              )
+              if count != 1:
+                  raise SystemExit(f'{name}: status line not replaced')
+              text = text.replace(
+                  '**Authority:** NORMATIVE M2 ARCHITECTURE DRAFT',
+                  '**Authority:** NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN',
+                  1,
+              )
+              text = re.sub(
+                  r'This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed\.',
+                  'This document is `FINAL / FROZEN`. Any semantic or technical change requires formal architecture reopening and a renewed cross-document consistency review.',
+                  text,
+              )
+              if name == 'provenance.md':
+                  text = text.replace(
+                      'This document freezes together with the complete architecture set.',
+                      'This document is frozen together with the complete architecture set.',
+                      1,
+                  )
+              path.write_text(text, encoding='utf-8')
+
+          readme = ARCH / 'README.md'
+          text = readme.read_text(encoding='utf-8')
+          text, count = re.subn(
+              r'^\*\*Architecture set status:\*\* .+$',
+              '**Architecture set status:** FINAL / FROZEN',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit('README architecture status not replaced')
+          text = text.replace(
+              '''architecture set
+    design owners complete
+    traceability and consistency closure PASS
+    READY FOR FREEZE REVIEW
+    NOT FROZEN''',
+              '''architecture set
+    FINAL / FROZEN
+    traceability, consistency and WIP-extraction closure PASS''',
+              1,
+          )
+          table_replacements = {
+              '| Architecture set control, coverage and freeze | `README.md` | CLOSURE PASSED — READY FOR FREEZE REVIEW |': '| Architecture set control, coverage and freeze | `README.md` | FINAL / FROZEN |',
+              '| WIP extraction, provenance and retirement | `provenance.md` | DRAFT — EXTRACTION AUDIT PASSED; READY FOR FREEZE REVIEW |': '| WIP extraction, provenance and retirement | `provenance.md` | FINAL / FROZEN |',
+              '| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Relationship domain, version lifecycle and factual semantics | `relationship.md` | FINAL / FROZEN |',
+              '| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Public HTTP API, projections, failures and pagination | `api.md` | FINAL / FROZEN |',
+              '| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — TRANSACTION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | FINAL / FROZEN |',
+              '| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — MATRIX/REALIZATION/VERIFICATION CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | FINAL / FROZEN |',
+              '| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | FINAL / FROZEN |',
+              '| Core Health API | `health.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Core Health API | `health.md` | FINAL / FROZEN |',
+              '| Official NETAUTO CLI | `cli.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Official NETAUTO CLI | `cli.md` | FINAL / FROZEN |',
+              '| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | FINAL / FROZEN |',
+              '| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |': '| Verification, acceptance evidence and traceability | `verification.md` | FINAL / FROZEN |',
+          }
+          for old, new in table_replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f'README expected one table status: {old}')
+              text = text.replace(old, new, 1)
+
+          start = text.index('## Remaining work before architecture freeze\n')
+          end = text.index('\n## Final closure result\n', start)
+          handoff = '''## Post-freeze handoff
+
+The complete M2 architecture set is `FINAL / FROZEN`.
+
+```text
+next gated authority
+    -> docs/milestones/M2/steps.md
+
+steps.md
+    -> NOT STARTED / NOT FROZEN
+
+implementation
+    -> NOT AUTHORIZED until steps.md is also FINAL / FROZEN
+```
+
+Implementation planning may decompose the work but may not derive a new semantic, technical or technology decision. Any such need requires formal reopening of the owning frozen authority.
+'''
+          text = text[:start] + handoff + text[end:]
+          text = text.replace(
+              'The architecture is ready for explicit freeze review. No implementation evidence is claimed or required at this gate.',
+              'The architecture freeze was explicitly approved after the traceability, consistency and WIP-extraction closures passed. No implementation evidence is claimed at this gate; executed evidence remains mandatory for implementation slices and final delivery.',
+              1,
+          )
+          freeze_marker = '## Freeze condition\n'
+          declaration = '''## Freeze declaration
+
+```text
+contract.md                 FINAL / FROZEN
+architecture/README.md      FINAL / FROZEN
+all architecture owners     FINAL / FROZEN
+steps.md                    NOT STARTED / NOT FROZEN
+implementation              NOT AUTHORIZED
+```
+
+Future semantic or technical changes require formal architecture reopening, impact analysis against the frozen contract and renewed consistency closure.
+
+'''
+          if declaration not in text:
+              if text.count(freeze_marker) != 1:
+                  raise SystemExit('README freeze condition marker not unique')
+              text = text.replace(freeze_marker, declaration + freeze_marker, 1)
+          readme.write_text(text, encoding='utf-8')
+
+          status = M2 / 'status.md'
+          text = status.read_text(encoding='utf-8')
+          text = re.sub(r'^\*\*Milestone status:\*\* .+$', '**Milestone status:** IMPLEMENTATION PLANNING', text, count=1, flags=re.MULTILINE)
+          text = text.replace('phase           ARCHITECTURE DESIGN', 'phase           IMPLEMENTATION PLANNING', 1)
+          text = text.replace('current task    review and approve the dedicated architecture freeze transition', 'current task    define and freeze the complete M2 implementation decomposition in steps.md', 1)
+          text = text.replace('| Architecture set | DESIGN COMPLETE — CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN |', '| Architecture set | FINAL / FROZEN |', 1)
+          text = text.replace(
+              'The M2 milestone contract is `FINAL / FROZEN`. Architecture design is authorized against the delivered AS-IS plus the frozen contract. Implementation planning remains blocked until the complete architecture set is frozen, and implementation remains unauthorized.',
+              'The M2 milestone contract and complete architecture set are `FINAL / FROZEN`. Implementation planning is now authorized. Implementation remains unauthorized until `steps.md` is also `FINAL / FROZEN`.',
+              1,
+          )
+          text = text.replace(
+              'No contract-level, architecture-design, technology or consistency blocker remains. The final closure has passed; explicit approval and the dedicated architecture freeze commit are the only remaining architecture-gate actions.',
+              'No contract-level or architecture-level blocker remains. The architecture set is frozen; the only current gate is the complete, traceable implementation decomposition in `steps.md`.',
+              1,
+          )
+          text = text.replace(
+              'Review `architecture/README.md` and `wip/architecture-consistency-closure.md`; after explicit approval, execute one dedicated commit that marks the complete architecture set `FINAL / FROZEN` and opens the implementation-planning gate for `steps.md`.',
+              'Define every M2 implementation slice, dependency, owning architecture authority, required evidence target and completion condition in `steps.md`; then perform the steps consistency closure and freeze that document before implementation begins.',
+              1,
+          )
+          status.write_text(text, encoding='utf-8')
+
+          if STEPS.read_bytes() != steps_before:
+              raise SystemExit('steps.md changed during architecture freeze')
+          if '**Status:** NOT STARTED — NOT FROZEN' not in STEPS.read_text(encoding='utf-8'):
+              raise SystemExit('steps.md gate changed unexpectedly')
+
+          # Final static freeze assertions.
+          for name in owners:
+              body = (ARCH / name).read_text(encoding='utf-8')
+              if '**Status:** FINAL / FROZEN' not in body.splitlines()[:6]:
+                  raise SystemExit(f'{name}: not frozen')
+              if 'NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN' not in body.splitlines()[:8]:
+                  raise SystemExit(f'{name}: final authority missing')
+          readme_body = readme.read_text(encoding='utf-8')
+          if '**Architecture set status:** FINAL / FROZEN' not in readme_body:
+              raise SystemExit('README not frozen')
+          status_body = status.read_text(encoding='utf-8')
+          if '| Architecture set | FINAL / FROZEN |' not in status_body:
+              raise SystemExit('status architecture gate not frozen')
+          if '| Implementation | NOT AUTHORIZED |' not in status_body:
+              raise SystemExit('implementation was incorrectly authorized')
+
+          workflow = Path('.github/workflows/audit-and-freeze-m2-architecture.yml')
+          workflow.unlink()
+          PY
+
+      - name: Commit formal architecture freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A \
+            .github/workflows/audit-and-freeze-m2-architecture.yml \
+            docs/milestones/M2/architecture \
+            docs/milestones/M2/status.md
+          git diff --cached --check
+          git diff --exit-code -- docs/milestones/M2/steps.md
+          git commit -m 'docs(m2): freeze milestone architecture set'
+          git push origin HEAD:M2
