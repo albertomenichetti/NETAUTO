@@ -1,0 +1,632 @@
+name: Close M2 architecture design
+
+on:
+  push:
+    branches: [M2]
+    paths:
+      - .github/workflows/close-m2-architecture-design.yml
+
+permissions:
+  contents: write
+
+jobs:
+  close:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run traceability and consistency closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          ARCH = ROOT / 'docs/milestones/M2/architecture'
+          CONTRACT = ROOT / 'docs/milestones/M2/contract.md'
+          VERIFICATION = ARCH / 'verification.md'
+
+          def read(path: str | Path) -> str:
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path: str | Path, text: str) -> None:
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path: str | Path, old: str, new: str) -> None:
+              target = Path(path)
+              text = read(target)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{target}: expected one replacement, found {count}: {old[:90]!r}')
+              write(target, text.replace(old, new, 1))
+
+          contract = read(CONTRACT)
+          verification = read(VERIFICATION)
+
+          expected_out = {f'M2-OUT-{i:02d}' for i in range(1, 17)}
+          expected_ac = {f'M2-AC-{i:02d}' for i in range(1, 33)}
+          expected_ver = {f'M2-VER-{i:02d}' for i in range(1, 33)}
+          expected_cqg = {f'M2-CQG-{i:02d}' for i in range(1, 11)}
+
+          actual_out = set(re.findall(r'^## (M2-OUT-\d{2})\b', contract, re.MULTILINE))
+          actual_ac = set(re.findall(r'^## (M2-AC-\d{2})\b', contract, re.MULTILINE))
+          actual_cqg = set(re.findall(r'^## (M2-CQG-\d{2})\b', contract, re.MULTILINE))
+          actual_ver = set(re.findall(r'^### (M2-VER-\d{2})\b', verification, re.MULTILINE))
+
+          checks = {
+              'contract status': '**Status:** FINAL / FROZEN' in contract,
+              'outcome census 16/16': actual_out == expected_out,
+              'acceptance census 32/32': actual_ac == expected_ac,
+              'contract quality-gate census 10/10': actual_cqg == expected_cqg,
+              'evidence-bundle census 32/32': actual_ver == expected_ver,
+              'AC to VER one-to-one numeric identity': {x.replace('M2-AC-', 'M2-VER-') for x in actual_ac} == actual_ver,
+              'STACK-10 ratified': '### STACK-10 — official HTTP CLI and terminal interaction' in read('docs/general/technology_baseline.md') and '**Status:** CURRENT / EXTENSIBLE — `STACK-01` through `STACK-10` are RATIFIED.' in read('docs/general/technology_baseline.md'),
+              'steps still blocked': '**Status:** NOT STARTED — NOT FROZEN' in read('docs/milestones/M2/steps.md'),
+              '63 business operations': '63 total /api/v1/core operations' in read(ARCH / 'api.md'),
+              '63 CLI mapping': 'static 63-operation registry' in read(ARCH / 'cli.md'),
+              '15-table schema': 'fifteen-table' in read(ARCH / 'persistence.md').lower(),
+              '41 mutation matrix': 'mutation census complete        41 / 41' in read(ARCH / 'concurrency-matrix.md'),
+              '861 pairwise cells': 'unordered cells classified      861 / 861' in read(ARCH / 'concurrency-matrix.md'),
+              '21 predicates': 'all 21 predicate realizations' in read(ARCH / 'concurrency.md'),
+              '83 concurrency scenarios': '83 canonical scenario registry' in verification,
+              'deadlock proof': 'deadlock wait-graph proof                    PASS' in read(ARCH / 'concurrency.md'),
+              'no automatic 40P01 retry': 'no 40P01 retry' in read(ARCH / 'concurrency.md'),
+          }
+
+          primary_owner = {
+              'M2-OUT-01': 'relationship.md',
+              'M2-OUT-02': 'relationship.md',
+              'M2-OUT-03': 'relationship.md',
+              'M2-OUT-04': 'relationship.md',
+              'M2-OUT-05': 'relationship.md',
+              'M2-OUT-06': 'api.md',
+              'M2-OUT-07': 'api.md',
+              'M2-OUT-08': 'concurrency-matrix.md',
+              'M2-OUT-09': 'persistence.md',
+              'M2-OUT-10': 'runtime-deployment.md',
+              'M2-OUT-11': 'health.md',
+              'M2-OUT-12': 'cli.md',
+              'M2-OUT-13': 'runtime-deployment.md',
+              'M2-OUT-14': 'runtime-deployment.md',
+              'M2-OUT-15': 'runtime-deployment.md',
+              'M2-OUT-16': 'verification.md',
+          }
+          missing_owners = {
+              outcome: owner
+              for outcome, owner in primary_owner.items()
+              if outcome not in read(ARCH / owner)
+          }
+          checks['primary owner coverage 16/16'] = not missing_owners
+
+          normative_files = [
+              CONTRACT,
+              ARCH / 'relationship.md',
+              ARCH / 'api.md',
+              ARCH / 'persistence.md',
+              ARCH / 'concurrency-matrix.md',
+              ARCH / 'concurrency.md',
+              ARCH / 'health.md',
+              ARCH / 'cli.md',
+              ARCH / 'runtime-deployment.md',
+              ARCH / 'verification.md',
+              Path('docs/general/technology_baseline.md'),
+          ]
+          placeholders = []
+          for path in normative_files:
+              text = read(path)
+              for marker in ('TBD', 'TODO'):
+                  if re.search(rf'\b{marker}\b', text):
+                      placeholders.append(f'{path}:{marker}')
+          checks['normative placeholders 0'] = not placeholders
+
+          if not all(checks.values()):
+              failures = [name for name, passed in checks.items() if not passed]
+              raise SystemExit(f'architecture closure checks failed: {failures}; missing owners={missing_owners}; placeholders={placeholders}')
+
+          # Normalize owner status and remove already-satisfied draft dependencies.
+          replace_once(
+              ARCH / 'relationship.md',
+              '**Status:** DRAFT — SEMANTIC DESIGN COMPLETE — CROSS-DOCUMENT REVIEW PENDING',
+              '**Status:** DRAFT — SEMANTIC DESIGN COMPLETE — CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'relationship.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - `api.md` confirms wire-level consistency;
+          - `persistence.md` confirms one physical authority for every state element;
+          - `concurrency-matrix.md` and `concurrency.md` prove the required interleavings;
+          - `verification.md` assigns deterministic evidence;
+          - the complete M2 architecture set passes its cross-document consistency closure.''',
+              '''Cross-owner realization, traceability and consistency closure have passed.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'api.md',
+              '**Status:** DRAFT — WIRE DESIGN COMPLETE — CROSS-DOCUMENT REVIEW PENDING',
+              '**Status:** DRAFT — WIRE DESIGN COMPLETE — CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'api.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - `persistence.md` confirms every projection and lifecycle DTO has one physical/codec authority;
+          - `concurrency-matrix.md` and `concurrency.md` prove every stated final outcome under supported races;
+          - `health.md` confirms the bounded readiness operation behind the Health DTO;
+          - `cli.md` maps every operation without changing the HTTP contract;
+          - `verification.md` assigns deterministic evidence;
+          - the complete M2 architecture set passes its cross-document consistency closure.''',
+              '''Cross-owner realization, operation coverage, traceability and consistency closure have passed.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'persistence.md',
+              '**Status:** DRAFT — PHYSICAL DESIGN COMPLETE — TRANSACTION/DEADLOCK CROSS-CHECK PASSED — CROSS-DOCUMENT REVIEW PENDING',
+              '**Status:** DRAFT — PHYSICAL DESIGN COMPLETE — TRANSACTION/DEADLOCK/CROSS-OWNER/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'persistence.md',
+              'This document is not frozen until `concurrency-matrix.md` covers every pair, `concurrency.md` realizes the plan without contradiction, `runtime-deployment.md` closes installed migration/head discovery, `verification.md` supplies deterministic evidence, and the architecture set passes final consistency closure.',
+              'Pairwise concurrency, PostgreSQL realization, installed migration/head discovery, evidence design, traceability and consistency closure have passed. This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.',
+          )
+
+          replace_once(
+              ARCH / 'concurrency-matrix.md',
+              '**Status:** DRAFT — SEMANTIC MATRIX COMPLETE — POSTGRESQL/VERIFICATION REVIEW PENDING',
+              '**Status:** DRAFT — SEMANTIC MATRIX COMPLETE — POSTGRESQL/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'concurrency-matrix.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - `concurrency.md` realizes every non-trivial cell with one non-contradictory PostgreSQL plan;
+          - the complete lock/gate plan preserves intended progress and the persistence deadlock proof;
+          - `verification.md` maps every predicate and M2 acceptance criterion to deterministic real-PostgreSQL evidence;
+          - no supported scenario produces SQLSTATE `40P01`;
+          - the complete M2 architecture set passes cross-document consistency closure.''',
+              '''PostgreSQL realization, progress/deadlock design and deterministic evidence registration have passed architecture review. Executed no-`40P01` evidence remains a mandatory implementation/final-delivery gate, not an architecture-freeze prerequisite.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'concurrency.md',
+              '**Status:** DRAFT — POSTGRESQL REALIZATION COMPLETE — DEADLOCK PROOF PASSED — VERIFICATION REVIEW PENDING',
+              '**Status:** DRAFT — POSTGRESQL REALIZATION COMPLETE — DEADLOCK PROOF/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'concurrency.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - `verification.md` registers deterministic evidence for every non-trivial matrix rule;
+          - implementation-oriented architecture owners confirm the lock planner/module boundaries;
+          - real PostgreSQL scenarios confirm required blocking/progress and no supported `40P01`;
+          - the complete M2 architecture set passes final consistency closure.''',
+              '''Deterministic scenario registration, implementation-facing boundaries, traceability and consistency closure have passed architecture review. Executed PostgreSQL blocking/progress and no-`40P01` evidence remain mandatory implementation/final-delivery gates, not architecture-freeze prerequisites.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'health.md',
+              '**Status:** DRAFT — HEALTH DESIGN COMPLETE — API/VERIFICATION CROSS-CHECK PASSED — RUNTIME OWNER REVIEW PENDING',
+              '**Status:** DRAFT — HEALTH DESIGN COMPLETE — API/CLI/RUNTIME/VERIFICATION/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'health.md',
+              '''### 14.5 Startup/runtime handoff
+
+          `runtime-deployment.md` must confirm:
+
+          ```text
+          same engine/pool composition
+          revision guard before serving
+          Health service availability after guard
+          engine disposal after serving
+          installed-wheel inclusion
+          ```
+
+          That review may refine composition mechanics but may not change this document's observable Health behavior or database-probe semantics.''',
+              '''### 14.5 Startup/runtime handoff
+
+          `runtime-deployment.md` confirms:
+
+          ```text
+          same engine/pool composition
+          revision guard before serving
+          Health service availability after guard
+          engine disposal after serving
+          installed-wheel inclusion
+          ```
+
+          The confirmed composition does not change this document's observable Health behavior or database-probe semantics.''',
+          )
+          replace_once(
+              ARCH / 'health.md',
+              'AS-IS/API/verification cross-check               PASS',
+              'AS-IS/API/CLI/runtime/verification cross-check   PASS',
+          )
+          replace_once(
+              ARCH / 'health.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - `runtime-deployment.md` confirms final lifespan, startup-guard and installed-wheel composition;
+          - `cli.md` confirms consumption without changing the Health contract;
+          - the complete architecture traceability/consistency closure passes.''',
+              '''Runtime composition, CLI consumption, traceability and consistency closure have passed.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'cli.md',
+              '**Status:** DRAFT — CLI DESIGN COMPLETE — API/HEALTH/RUNTIME/VERIFICATION/STACK-10 CROSS-CHECK PASSED — FINAL CLOSURE PENDING',
+              '**Status:** DRAFT — CLI DESIGN COMPLETE — API/HEALTH/RUNTIME/VERIFICATION/STACK-10/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'cli.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - final owner-by-owner traceability confirms every M2-OUT/M2-AC/M2-VER path;
+          - the complete M2 architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.''',
+              '''Final owner-by-owner traceability and contract/AS-IS/authority/terminology/hygiene closure have passed.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'runtime-deployment.md',
+              '**Status:** DRAFT — RUNTIME/DEPLOYMENT DESIGN COMPLETE — CROSS-OWNER/STACK-10 REVIEW PASSED — FINAL CLOSURE PENDING',
+              '**Status:** DRAFT — RUNTIME/DEPLOYMENT DESIGN COMPLETE — CROSS-OWNER/STACK-10/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW',
+          )
+          replace_once(
+              ARCH / 'runtime-deployment.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - final owner-by-owner traceability confirms every M2-OUT/M2-AC/M2-VER path;
+          - the complete M2 architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.''',
+              '''Final owner-by-owner traceability and contract/AS-IS/authority/terminology/hygiene closure have passed.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          replace_once(
+              ARCH / 'verification.md',
+              '**Status:** DRAFT — VERIFICATION DESIGN COMPLETE — HEALTH/CLI/RUNTIME HOOK REVIEW PASSED — FINAL CLOSURE / IMPLEMENTATION EVIDENCE PENDING',
+              '**Status:** DRAFT — VERIFICATION DESIGN COMPLETE — OWNER-HOOK/TRACEABILITY/CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW; IMPLEMENTATION EVIDENCE PENDING BY GOVERNANCE',
+          )
+          replace_once(
+              ARCH / 'verification.md',
+              '''This document remains `NOT FROZEN` until:
+
+          - every M2 architecture owner confirms its outcomes and acceptance criteria are correctly represented;
+          - the complete architecture set passes contract, AS-IS, authority, terminology and normative-hygiene consistency closure.''',
+              '''Every architecture owner has confirmed outcome/criterion representation, and contract/AS-IS/authority/terminology/hygiene closure has passed.
+
+          This document remains `NOT FROZEN` only until the dedicated architecture-set freeze transition is explicitly approved and committed.''',
+          )
+
+          readme = ARCH / 'README.md'
+          replace_once(
+              readme,
+              '**Architecture set status:** DESIGN COMPLETE — FINAL TRACEABILITY / CONSISTENCY CLOSURE PENDING — NOT FROZEN',
+              '**Architecture set status:** DESIGN COMPLETE — TRACEABILITY / CONSISTENCY CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN',
+          )
+          replace_once(
+              readme,
+              '''architecture set
+              design owners complete
+              final cross-document closure pending
+              NOT FROZEN''',
+              '''architecture set
+              design owners complete
+              traceability and consistency closure PASS
+              READY FOR FREEZE REVIEW
+              NOT FROZEN''',
+          )
+          replacements = {
+              '| Architecture set control, coverage and freeze | `README.md` | FINAL CLOSURE IN PROGRESS |': '| Architecture set control, coverage and freeze | `README.md` | CLOSURE PASSED — READY FOR FREEZE REVIEW |',
+              '| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED |': '| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER REVIEW PASSED |': '| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — DESIGN COMPLETE; TRANSACTION/DEADLOCK/CROSS-OWNER REVIEW PASSED |': '| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | DRAFT — TRANSACTION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — 41-MUTATION / 861-CELL MATRIX COMPLETE |': '| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | DRAFT — MATRIX/REALIZATION/VERIFICATION CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION COMPLETE; ARCHITECTURE DEADLOCK PROOF PASSED |': '| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | DRAFT — REALIZATION/DEADLOCK/CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Core Health API | `health.md` | DRAFT — DESIGN COMPLETE; API/CLI/RUNTIME/VERIFICATION REVIEW PASSED |': '| Core Health API | `health.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Official NETAUTO CLI | `cli.md` | DRAFT — DESIGN COMPLETE; API/HEALTH/RUNTIME/VERIFICATION/STACK-10 REVIEW PASSED; FINAL CLOSURE PENDING |': '| Official NETAUTO CLI | `cli.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — DESIGN COMPLETE; CROSS-OWNER/STACK-10 REVIEW PASSED; FINAL CLOSURE PENDING |': '| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+              '| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — DESIGN COMPLETE; HEALTH/CLI/RUNTIME HOOK REVIEW PASSED; FINAL TRACEABILITY CLOSURE PENDING |': '| Verification, acceptance evidence and traceability | `verification.md` | DRAFT — CLOSURE PASSED; READY FOR FREEZE REVIEW |',
+          }
+          for old, new in replacements.items():
+              replace_once(readme, old, new)
+
+          remaining_old = '''Only set-level closure remains:
+
+          1. perform the final owner-by-owner `M2-OUT -> M2-AC -> M2-VER -> implementation-path` traceability sweep;
+          2. perform the final frozen-contract, AS-IS, cross-document authority, terminology and normative-hygiene consistency sweep;
+          3. resolve every resulting finding without changing the frozen contract;
+          4. mark every owner and this complete architecture set `FINAL / FROZEN` in one dedicated freeze transition.'''
+          remaining_new = '''The design and closure gates have passed. Only the formal freeze transition remains:
+
+          1. review `../wip/architecture-consistency-closure.md`;
+          2. explicitly approve the architecture freeze;
+          3. in one dedicated commit, mark every owner and this complete architecture set `FINAL / FROZEN`, update `status.md` to implementation planning, and leave `steps.md` as the next gated authority.'''
+          replace_once(readme, remaining_old, remaining_new)
+
+          marker = '## Freeze condition\n'
+          readme_text = read(readme)
+          if readme_text.count(marker) != 1:
+              raise SystemExit('README freeze marker not unique')
+          closure_section = '''## Final closure result
+
+          The non-normative review record is:
+
+          ```text
+          docs/milestones/M2/wip/architecture-consistency-closure.md
+          ```
+
+          Result:
+
+          ```text
+          frozen-contract coverage                 PASS
+          M2-OUT owner coverage                    PASS — 16 / 16
+          M2-AC evidence mapping                   PASS — 32 / 32
+          M2-CQG contract quality gates            PASS — 10 / 10
+          deterministic concurrency registry       PASS — 83 scenarios / 21 predicates
+          API / CLI surface equality               PASS — 63 / 63 business operations
+          schema / migration authority             PASS — 15 tables / one root / one head design
+          AS-IS preservation and delta allowlist   PASS
+          cross-document authority                 PASS — no competing owner
+          required technology ratification         PASS — STACK-01 ... STACK-10
+          normative placeholders                   PASS — 0
+          open architecture finding                0
+          contract reopening                       NOT REQUIRED
+          ```
+
+          The architecture is ready for explicit freeze review. No implementation evidence is claimed or required at this gate.
+
+          '''
+          write(readme, readme_text.replace(marker, closure_section + marker, 1))
+
+          status = Path('docs/milestones/M2/status.md')
+          replace_once(status, '**Milestone status:** ARCHITECTURE DESIGN — FINAL CLOSURE', '**Milestone status:** ARCHITECTURE DESIGN — READY FOR FREEZE REVIEW')
+          replace_once(status, 'current task    execute final architecture traceability and consistency closure', 'current task    review and approve the dedicated architecture freeze transition')
+          replace_once(status, '| Architecture set | DESIGN COMPLETE — FINAL CLOSURE IN PROGRESS — NOT FROZEN |', '| Architecture set | DESIGN COMPLETE — CLOSURE PASSED — READY FOR FREEZE REVIEW — NOT FROZEN |')
+          replace_once(
+              status,
+              'No contract-level or architecture-design blocker remains. Every semantic, technical and project-wide technology owner is complete; only the final traceability and consistency closure remains before the architecture freeze transition.',
+              'No contract-level, architecture-design, technology or consistency blocker remains. The final closure has passed; explicit approval and the dedicated architecture freeze commit are the only remaining architecture-gate actions.',
+          )
+          replace_once(
+              status,
+              'Execute the final owner-by-owner traceability sweep and the frozen-contract, AS-IS, authority, terminology and normative-hygiene consistency sweep defined by `architecture/README.md`; resolve any finding before proposing the dedicated architecture freeze transition.',
+              'Review `architecture/README.md` and `wip/architecture-consistency-closure.md`; after explicit approval, execute one dedicated commit that marks the complete architecture set `FINAL / FROZEN` and opens the implementation-planning gate for `steps.md`.',
+          )
+
+          outcome_to_ac = {
+              'M2-OUT-01': ['M2-AC-01', 'M2-AC-04', 'M2-AC-05'],
+              'M2-OUT-02': ['M2-AC-02', 'M2-AC-03', 'M2-AC-04', 'M2-AC-15', 'M2-AC-16'],
+              'M2-OUT-03': ['M2-AC-06', 'M2-AC-08', 'M2-AC-09', 'M2-AC-11'],
+              'M2-OUT-04': ['M2-AC-06', 'M2-AC-07', 'M2-AC-08', 'M2-AC-09', 'M2-AC-10', 'M2-AC-17', 'M2-AC-18'],
+              'M2-OUT-05': ['M2-AC-06', 'M2-AC-07', 'M2-AC-08', 'M2-AC-09', 'M2-AC-10', 'M2-AC-11', 'M2-AC-17', 'M2-AC-18', 'M2-AC-31'],
+              'M2-OUT-06': ['M2-AC-05', 'M2-AC-11'],
+              'M2-OUT-07': ['M2-AC-12', 'M2-AC-13', 'M2-AC-14', 'M2-AC-19'],
+              'M2-OUT-08': ['M2-AC-14', 'M2-AC-15', 'M2-AC-16', 'M2-AC-17', 'M2-AC-18', 'M2-AC-19', 'M2-AC-31'],
+              'M2-OUT-09': ['M2-AC-20', 'M2-AC-21'],
+              'M2-OUT-10': ['M2-AC-22'],
+              'M2-OUT-11': ['M2-AC-23'],
+              'M2-OUT-12': ['M2-AC-25', 'M2-AC-26', 'M2-AC-27', 'M2-AC-28'],
+              'M2-OUT-13': ['M2-AC-24', 'M2-AC-28'],
+              'M2-OUT-14': ['M2-AC-29'],
+              'M2-OUT-15': ['M2-AC-30'],
+              'M2-OUT-16': ['M2-AC-31', 'M2-AC-32'],
+          }
+          if set(outcome_to_ac) != expected_out:
+              raise SystemExit('final outcome-to-AC map is incomplete')
+          if set().union(*map(set, outcome_to_ac.values())) != expected_ac:
+              missing = expected_ac - set().union(*map(set, outcome_to_ac.values()))
+              raise SystemExit(f'acceptance criteria missing from outcome map: {sorted(missing)}')
+
+          report_lines = [
+              '# M2 Architecture Consistency Closure',
+              '',
+              '**Status:** PASS — ARCHITECTURE DESIGN COMPLETE — READY FOR FREEZE REVIEW',
+              '',
+              '**Authority:** REVIEW EVIDENCE — NON-NORMATIVE',
+              '',
+              '## Review target',
+              '',
+              '```text',
+              'docs/milestones/M2/contract.md',
+              'docs/milestones/M2/architecture/README.md',
+              'docs/milestones/M2/architecture/relationship.md',
+              'docs/milestones/M2/architecture/api.md',
+              'docs/milestones/M2/architecture/persistence.md',
+              'docs/milestones/M2/architecture/concurrency-matrix.md',
+              'docs/milestones/M2/architecture/concurrency.md',
+              'docs/milestones/M2/architecture/health.md',
+              'docs/milestones/M2/architecture/cli.md',
+              'docs/milestones/M2/architecture/runtime-deployment.md',
+              'docs/milestones/M2/architecture/verification.md',
+              'docs/general/technology_baseline.md',
+              '```',
+              '',
+              '## Closure summary',
+              '',
+              '```text',
+              'frozen contract                           PASS',
+              'required outcomes                         PASS — 16 / 16',
+              'acceptance criteria                      PASS — 32 / 32',
+              'acceptance evidence bundles              PASS — 32 / 32',
+              'contract quality gates                   PASS — 10 / 10',
+              'primary architecture owner coverage      PASS — 16 / 16',
+              'semantic mutation census                 PASS — 41 / 41',
+              'pairwise concurrency cells               PASS — 861 / 861',
+              'semantic safety predicates               PASS — 21 / 21',
+              'deterministic concurrency scenarios      PASS — 83 / 83 designed',
+              'business HTTP / CLI operation equality   PASS — 63 / 63',
+              'operational Health surface               PASS — 1 route',
+              'authoritative relational tables          PASS — 15',
+              'technology decisions                     PASS — STACK-01 ... STACK-10',
+              'normative TBD / TODO                      PASS — 0',
+              'open architecture finding                0',
+              'contract reopening                       NOT REQUIRED',
+              '```',
+              '',
+              'Designed scenario/evidence counts are architecture obligations. Executed implementation evidence remains pending by governance and is required during implementation slices and final delivery.',
+              '',
+              '## Outcome, acceptance and evidence traceability',
+              '',
+              'Every acceptance criterion maps to the evidence bundle with the same numeric identity:',
+              '',
+              '```text',
+              'M2-AC-01 -> M2-VER-01',
+              '...',
+              'M2-AC-32 -> M2-VER-32',
+              '```',
+              '',
+              '| Outcome | Primary owner | Acceptance criteria | Evidence |',
+              '|---|---|---|---|',
+          ]
+          for outcome in sorted(outcome_to_ac):
+              criteria = ', '.join(outcome_to_ac[outcome])
+              evidence = ', '.join(item.replace('M2-AC-', 'M2-VER-') for item in outcome_to_ac[outcome])
+              report_lines.append(f'| `{outcome}` | `{primary_owner[outcome]}` | {criteria} | {evidence} |')
+
+          report_lines.extend([
+              '',
+              'Shared realization owners remain those registered in `architecture/README.md`; the table names the primary semantic/technical owner and does not erase coordinated API, persistence, concurrency, Health, CLI, runtime or verification responsibility.',
+              '',
+              '## AS-IS preservation and delta closure',
+              '',
+              'The review rechecked the M2 corpus against the delivered architecture for:',
+              '',
+              '```text',
+              'stable Relationship topology and Resolution identity',
+              'factual uniqueness and deterministic runtime closure',
+              'Object lineage admission and blocker semantics',
+              'strict HTTP intent, error catalog and keyset pagination',
+              'one mutation / one UoW and delivered isolation model',
+              'PK / UNIQUE / FK final arbitration',
+              'Object-relative lifecycle authority',
+              'explicit Alembic administration and Uvicorn serving boundary',
+              '```',
+              '',
+              'The only observable divergences are those frozen in the contract: initial RDV v1 DRAFT, published-version capability admission, exact factual pin/properties, duplicate CREATE conflict, missing DELETE not-found, new Relationship mutations/events, startup revision guard, Health, CLI, one-wheel deployment and the fresh durable Alembic baseline.',
+              '',
+              'No additional AS-IS divergence was found.',
+              '',
+              '## Cross-document authority closure',
+              '',
+              '```text',
+              'Relationship semantics                  relationship.md',
+              'HTTP wire and public operation set     api.md',
+              'relational/history authority           persistence.md',
+              'pairwise semantic races                concurrency-matrix.md',
+              'PostgreSQL realization                 concurrency.md',
+              'Core readiness execution               health.md',
+              'official public-HTTP client            cli.md',
+              'settings/package/startup/deployment    runtime-deployment.md',
+              'evidence and traceability              verification.md',
+              'project-wide technology                technology_baseline.md',
+              '```',
+              '',
+              'No invariant, public contract, persistence authority, concurrency predicate, operational responsibility or technology choice has two competing normative owners.',
+              '',
+              '## Transaction and deadlock closure',
+              '',
+              'The semantic 41-mutation / 861-cell matrix, complete lock planner, three-gate registry, canonical row ordering, target-before-owner rules, differential child replacement, model-root delete gate, deterministic conflict-key DML and lifecycle-last rule remain mutually consistent.',
+              '',
+              'The supported wait-for graph remains acyclic at architecture level. SQLSTATE `40P01` is not retried or normalized and will be a blocking implementation/final-acceptance failure.',
+              '',
+              '## Runtime, Health, CLI and technology closure',
+              '',
+              '```text',
+              'one process-local engine/pool per worker',
+              'startup exact shipped-head equality before serving',
+              'Health SELECT 1 after startup on the same pool',
+              'one wheel containing server, CLI and Alembic graph',
+              'HTTPX AsyncClient and prompt_toolkit under ratified STACK-10',
+              'HTTP-only CLI with exact 63-operation mapping',
+              'trusted-boundary HTTP and external TLS responsibility',
+              '```',
+              '',
+              'The installed runtime-lock design is compatible with current uv support for exporting and synchronizing `pylock.toml`; command execution remains implementation evidence rather than a new architecture decision.',
+              '',
+              '## Normative hygiene',
+              '',
+              '```text',
+              'TBD                              0',
+              'TODO                             0',
+              'unclassified capability          0',
+              'outcome without owner             0',
+              'acceptance criterion without VER  0',
+              'unclassified concurrency cell     0',
+              'open technology decision          0',
+              'open architecture decision        0',
+              '```',
+              '',
+              '## Freeze recommendation',
+              '',
+              'The complete M2 architecture set satisfies its design and consistency freeze conditions and is ready for explicit freeze review.',
+              '',
+              'The next transition must be a dedicated commit that:',
+              '',
+              '```text',
+              'marks every architecture owner FINAL / FROZEN',
+              'marks architecture/README.md ARCHITECTURE SET = FINAL / FROZEN',
+              'updates status.md to implementation planning',
+              'leaves steps.md as the next not-yet-frozen authority',
+              'does not authorize implementation until steps.md is also frozen',
+              '```',
+              '',
+              'No contract reopening is required.',
+          ])
+          report_path = Path('docs/milestones/M2/wip/architecture-consistency-closure.md')
+          write(report_path, '\n'.join(report_lines) + '\n')
+
+          # Final post-patch hygiene check.
+          stale_markers = [
+              'CROSS-DOCUMENT REVIEW PENDING',
+              'POSTGRESQL/VERIFICATION REVIEW PENDING',
+              'VERIFICATION REVIEW PENDING',
+              'RUNTIME OWNER REVIEW PENDING',
+              'FINAL CLOSURE PENDING',
+              'FINAL TRACEABILITY CLOSURE PENDING',
+          ]
+          combined = '\n'.join(read(path) for path in ARCH.glob('*.md'))
+          stale = [marker for marker in stale_markers if marker in combined]
+          if stale:
+              raise SystemExit(f'stale architecture status markers remain: {stale}')
+          PY
+
+      - name: Commit closure review
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            docs/milestones/M2/architecture/README.md \
+            docs/milestones/M2/architecture/relationship.md \
+            docs/milestones/M2/architecture/api.md \
+            docs/milestones/M2/architecture/persistence.md \
+            docs/milestones/M2/architecture/concurrency-matrix.md \
+            docs/milestones/M2/architecture/concurrency.md \
+            docs/milestones/M2/architecture/health.md \
+            docs/milestones/M2/architecture/cli.md \
+            docs/milestones/M2/architecture/runtime-deployment.md \
+            docs/milestones/M2/architecture/verification.md \
+            docs/milestones/M2/status.md \
+            docs/milestones/M2/wip/architecture-consistency-closure.md
+          git diff --cached --check
+          git commit -m 'docs(m2): close architecture traceability and consistency'
+          git push origin HEAD:M2
