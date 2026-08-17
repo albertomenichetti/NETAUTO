@@ -1,0 +1,47 @@
+name: Materialize M2 runtime deployment docs
+
+on:
+  push:
+    branches: [M2]
+    paths:
+      - .m2-upload/**
+      - .github/workflows/materialize-m2-runtime-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify document bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .m2-upload/*.b64 | tr -d '[:space:]' | base64 --decode > /tmp/m2-runtime-deployment-docs.tar.gz
+          echo '27ec0a88efaae331e33cd50fb3dfa0705d742f7715c5723082ecf65e067e80ce  /tmp/m2-runtime-deployment-docs.tar.gz' | sha256sum --check --strict
+          rm -rf /tmp/m2-runtime-deployment-docs
+          tar -xzf /tmp/m2-runtime-deployment-docs.tar.gz -C /tmp
+          cp /tmp/m2-runtime-deployment-docs/docs/milestones/M2/architecture/runtime-deployment.md docs/milestones/M2/architecture/runtime-deployment.md
+          cp /tmp/m2-runtime-deployment-docs/docs/milestones/M2/wip/runtime-deployment-architecture-cross-check.md docs/milestones/M2/wip/runtime-deployment-architecture-cross-check.md
+          cp /tmp/m2-runtime-deployment-docs/docs/milestones/M2/architecture/README.md docs/milestones/M2/architecture/README.md
+          echo 'dc2cd58bd5902d206ec4b7bf6f43d1ae4f75117ce2b2170c1ac0e3f0366016f2  docs/milestones/M2/architecture/runtime-deployment.md' | sha256sum --check --strict
+          echo '7479f929aa3ff79c8086aa97f143904ead6278bb90e01055eeea0cb18376f9d7  docs/milestones/M2/wip/runtime-deployment-architecture-cross-check.md' | sha256sum --check --strict
+          echo '20181b54a89ee09c0aaf1aea3f0dd72181ba703430d117c34012182afab921c6  docs/milestones/M2/architecture/README.md' | sha256sum --check --strict
+          rm -rf .m2-upload
+
+      - name: Commit materialized documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A .m2-upload docs/milestones/M2/architecture/README.md docs/milestones/M2/architecture/runtime-deployment.md docs/milestones/M2/wip/runtime-deployment-architecture-cross-check.md
+          git diff --cached --check
+          git commit -m 'docs(m2): complete runtime deployment architecture'
+          git push origin HEAD:M2
