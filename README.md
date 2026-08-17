@@ -10,7 +10,7 @@ If this README, the checked-out branch or an active cycle's authoritative docume
 
 | Active cycle | Type | Status | Documentation | Branch |
 |---|---|---|---|---|
-| `M2` | Milestone | DESIGN | [`docs/milestones/M2`](docs/milestones/M2) | M2 |
+| `M2` | Milestone | IMPLEMENTATION | [`docs/milestones/M2`](docs/milestones/M2) | M2 |
 
 When a cycle is active:
 
