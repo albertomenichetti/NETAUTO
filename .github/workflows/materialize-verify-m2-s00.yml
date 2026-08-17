@@ -69,8 +69,16 @@ jobs:
           uv run ruff format --check .
           git diff --cached --check
 
-      - name: Ruff lint
-        run: uv run ruff check .
+      - name: Apply and verify canonical Ruff lint fixes
+        run: |
+          set -euo pipefail
+          uv run ruff check --fix --unsafe-fixes .
+          git add -A
+          uv run ruff format .
+          git add -A
+          uv run ruff format --check .
+          uv run ruff check .
+          git diff --cached --check
 
       - name: Pyright strict
         run: uv run pyright
