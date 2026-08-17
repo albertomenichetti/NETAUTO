@@ -24,6 +24,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import re
           import subprocess
 
           path = ".github/workflows/audit-and-freeze-m2-architecture.yml"
@@ -48,18 +49,19 @@ jobs:
               "end = text.index('\\n## Final closure result\\n', start)",
               "end = text.index('\\n## WIP extraction and retirement closure\\n', start)",
           )
-          old_assertion = """if 'NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN' not in body.splitlines()[:8]:
-              raise SystemExit(f'{name}: final authority missing')"""
-          new_assertion = """if not any(
-              'NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN' in line
-              for line in body.splitlines()[:8]
-          ):
-              raise SystemExit(f'{name}: final authority missing')"""
-          if script.count(old_assertion) != 1:
-              raise SystemExit(
-                  f"freeze authority assertion not unique: {script.count(old_assertion)}"
-              )
-          script = script.replace(old_assertion, new_assertion, 1)
+          pattern = re.compile(
+              r"if [\"']NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN[\"'] "
+              r"not in body\.splitlines\(\)\[:8\]:"
+          )
+          replacement = (
+              "if not any(\n"
+              "    'NORMATIVE M2 ARCHITECTURE — FINAL / FROZEN' in line\n"
+              "    for line in body.splitlines()[:8]\n"
+              "):"
+          )
+          script, count = pattern.subn(replacement, script, count=1)
+          if count != 1:
+              raise SystemExit(f"freeze authority assertion matches: {count}")
           compile(script, "m2-formal-freeze", "exec")
           Path("/tmp/m2-formal-freeze.py").write_text(script, encoding="utf-8")
           PY
