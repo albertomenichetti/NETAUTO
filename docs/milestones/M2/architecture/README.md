@@ -43,8 +43,8 @@ No M2 architecture document is frozen yet. Implementation planning and implement
 | Area | Owning document | Status |
 |---|---|---|
 | Architecture set control, coverage and freeze | `README.md` | DESIGN IN PROGRESS |
-| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE |
-| Public HTTP API, projections, failures and pagination | `api.md` | NOT STARTED |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | DRAFT — SEMANTIC DESIGN COMPLETE; API CROSS-CHECK PASSED |
+| Public HTTP API, projections, failures and pagination | `api.md` | DRAFT — WIRE DESIGN COMPLETE |
 | Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | NOT STARTED |
 | Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | NOT STARTED |
 | PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | NOT STARTED |
@@ -112,7 +112,14 @@ Shared outcomes require coordinated owners, but each individual invariant, publi
 relationship.md
     -> normative draft created
     -> Relationship semantic design complete
-    -> cross-document review with API, persistence, concurrency and verification pending
+    -> API wire cross-check passed
+    -> persistence, concurrency and verification review pending
+
+api.md
+    -> normative draft created
+    -> final business and Health wire design complete
+    -> Relationship semantic cross-check passed
+    -> persistence, Health, CLI, concurrency and verification review pending
 ```
 
 No M2 architecture document is frozen yet.
@@ -121,8 +128,8 @@ No M2 architecture document is frozen yet.
 
 Before the set can freeze it must at least:
 
-1. cross-check and freeze the Relationship semantic owner with all dependent owners;
-2. propagate and close the frozen API and persistence decisions in their normative owners;
+1. cross-check and freeze the Relationship semantic and API wire owners with every dependent owner;
+2. propagate and close the complete persistence metadata, lifecycle codec, index and Alembic realization;
 3. build the complete mutation census and pairwise semantic concurrency matrix;
 4. define PostgreSQL lock ownership, modes, ordering, advisory gates, retries and constraint arbitration;
 5. freeze Health, startup revision guard, CLI and runtime/deployment behavior at architecture level;
@@ -135,13 +142,13 @@ Before the set can freeze it must at least:
 The following architecture work remains open:
 
 ```text
-Relationship semantic cross-document review
-normative API and persistence propagation from WIP discovery
+Relationship/API cross-review with persistence and concurrency
+normative persistence propagation from WIP discovery
 complete concurrency matrix
 PostgreSQL realization
 final module and persistence-boundary ownership
 Health and startup-guard realization
-CLI grammar, transport and output realization
+CLI grammar, transport, operation mapping and output realization
 runtime/deployment realization
 verification registry and evidence map
 architecture consistency closure
