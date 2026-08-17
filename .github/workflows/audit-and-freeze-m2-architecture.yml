@@ -27,8 +27,9 @@ jobs:
           import subprocess
 
           path = ".github/workflows/audit-and-freeze-m2-architecture.yml"
+          source_commit = "c377106cc2b7497d1e8c0cd697fc15be77b641d7"
           source = subprocess.check_output(
-              ["git", "show", f"HEAD^:{path}"], text=True
+              ["git", "show", f"{source_commit}:{path}"], text=True
           )
           marker = "          python - <<'PY'\n"
           parts = source.split(marker)
@@ -44,6 +45,22 @@ jobs:
                   for line in block.splitlines()
               ]
               script = "\n".join(lines) + "\n"
+              if index == 1:
+                  marker_replacements = {
+                      "'relationship_fact_conflict'": "'factual conflict'",
+                      "'Relationship.DATA_CHANGE'": "'DATA_CHANGE'",
+                      "'Relationship.SCHEMA_CHANGE'": "'SCHEMA_CHANGE'",
+                      "'15 authoritative tables'": "'Fifteen authoritative tables'",
+                      "'same AsyncEngine'": "'same-engine/pool policy'",
+                      "'no mandatory Health preflight'": "'preflight'",
+                  }
+                  for old, new in marker_replacements.items():
+                      if script.count(old) != 1:
+                          raise SystemExit(
+                              f"stage 1 marker replacement not unique: {old} "
+                              f"count={script.count(old)}"
+                          )
+                      script = script.replace(old, new, 1)
               if index == 2:
                   script = script.replace(
                       "end = text.index('\\n## Final closure result\\n', start)",
