@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S01 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S01 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S01 — IN PROGRESS
-current task    prepare the M2-S01 Codex implementation prompt and execute the authorized slice
+current slice   M2-S01 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published M2-S01 candidate
 blockers        none
 ```
 
@@ -40,7 +40,7 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 | Slice | State | Dependency |
 |---|---|---|
 | `M2-S00` | COMPLETED | none |
-| `M2-S01` | IN PROGRESS | `M2-S00 COMPLETED` |
+| `M2-S01` | CANDIDATE READY FOR REVIEW | `M2-S00 COMPLETED` |
 | `M2-S02` | BLOCKED | `M2-S01 COMPLETED` |
 | `M2-S03` | BLOCKED | `M2-S02 COMPLETED` |
 | `M2-S04` | BLOCKED | `M2-S03 COMPLETED` |
@@ -54,11 +54,49 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S01`.
+No contract, architecture, implementation-planning, technology or verification blocker is open for reviewer inspection of `M2-S01`.
 
 `M2-S01` requires an externally supplied real PostgreSQL target through `TEST_DATABASE_URL` for its mandatory migration, schema, persistence and concurrency evidence. No fallback database, local credentials or alternate environment variable is authorized.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+
+## M2-S01 candidate record
+
+Published implementation candidate:
+
+```text
+M2-S01 state                   CANDIDATE READY FOR REVIEW
+implementation commit         c019cada4152e9798e25476d35b0cec5127d6135
+branch                        M2
+remote                        origin/M2
+durable revision              0001_m2_kernel
+Alembic graph                 one base / one head
+authoritative table census    15
+metadata drift                compare_metadata == []
+CPython                       3.14.7
+PostgreSQL                    16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+```
+
+Verified candidate gates:
+
+```text
+uv lock --check                                             PASS
+uv sync --locked                                            PASS
+uv build                                                    PASS
+uv run ruff format --check .                                PASS (168 files)
+uv run ruff check .                                         PASS
+uv run pyright                                              PASS (0 errors)
+focused RDV / Relationship API and domain targets           PASS (41)
+uv run pytest -q tests/test_migrations.py -ra               PASS (2)
+uv run pytest -q tests/test_m2_s01_semantic_concurrency.py  PASS (12)
+uv run pytest -q -m "postgresql and concurrency" -ra        PASS (122)
+uv run pytest -q -m "not postgresql" -ra                    PASS (168)
+uv run pytest -q -ra                                        PASS (337)
+```
+
+The full suite reported no skip, xfail or rerun. Every concrete target mapped by `M2-VER-01 ... 07`, `M2-VER-10`, `M2-VER-20` and `M2-VER-21` passed. The assigned `ROW-18 ... 25`, factual-CREATE `ROW-30`, `ARB-05 ... 08`, `REF-03`, `REF-04`, `REF-07`, `REF-09`, `ATOMIC-02`, `ATOMIC-03` and `ATOMIC-05` targets passed. No supported scenario produced SQLSTATE `40P01`.
+
+No dependency or lockfile changed. No M1 bridge, backfill, stamp path or dual lifecycle decoder was added. M2-S02 factual DATA_CHANGE/SCHEMA_CHANGE routes and commands, Health, CLI and startup-revision capability remain absent. The obsolete S00 Actions/payload material remains absent.
 
 ## M2-S00 completion record
 
@@ -115,13 +153,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare the non-normative Codex implementation prompt for:
+Review the published candidate for:
 
 ```text
 M2-S01 — Durable relational baseline and versioned Relationship model plane
 ```
 
-Before implementation, execute the mandatory repository-based pre-flight for `M2-S01`, including verification that `TEST_DATABASE_URL` is available for the required real-PostgreSQL gates. Do not start `M2-S02`.
+The reviewer decision is pending. Do not mark `M2-S01` completed and do not start `M2-S02` before reviewer-owned acceptance.
 
 ## Current status vocabulary
 
