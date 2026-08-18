@@ -68,7 +68,7 @@ Candidate state:
 M2-S02                         CANDIDATE READY FOR REVIEW
 reviewer decision              pending
 implementation                 99b6d32d1ab9f3529881eb2e16809e01ea5b2be2
-candidate evidence/status      recorded by the commit containing this record
+candidate evidence/status      66d9d47dab97c2b42b63ed015261d65ccf1abc16
 prompt baseline                9f4ed2ef69efdfbb6bc0e79dfc14c979f4f0f66d
 durable revision               0001_m2_kernel (unchanged)
 Alembic graph                  one base / one head
