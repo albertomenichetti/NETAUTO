@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S04 READY
+**Milestone status:** IMPLEMENTATION — M2-S04 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S04 — READY
-current task    prepare the M2-S04 Codex implementation prompt and execute the authorized slice
-blockers        none
+current slice   M2-S04 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published M2-S04 candidate
+blockers        none; reviewer decision pending
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -43,7 +43,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S01` | COMPLETED | `M2-S00 COMPLETED` |
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
-| `M2-S04` | READY | `M2-S03 COMPLETED` |
+| `M2-S04` | CANDIDATE READY FOR REVIEW | `M2-S03 COMPLETED` |
 | `M2-S05` | BLOCKED | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
@@ -54,11 +54,82 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S04`.
+No contract, architecture, implementation-planning, technology or verification blocker is open for the `M2-S04` candidate.
 
-`M2-S04` requires the externally supplied real PostgreSQL target and runtime/lifespan evidence prescribed by its frozen authorities. No fallback database, invented credential, automatic migration path or alternate public behavior is authorized.
+The required externally supplied real PostgreSQL, runtime/lifespan and installed-wheel evidence passed. No fallback database, invented credential, automatic migration path or alternate public behavior was used.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+
+## M2-S04 candidate record
+
+Implementation result:
+
+```text
+M2-S04                         CANDIDATE READY FOR REVIEW
+reviewer decision              pending
+starting baseline              43b2c42188af35db650b1e7badecf39038987566
+implementation and evidence    dc18d5dcca586b6c64ae6912921448318db8e27c
+candidate evidence/status      recorded by the commit containing this status
+M2-S05                         BLOCKED / not started
+```
+
+Candidate scope:
+
+```text
+Settings fields                 7 exact immutable runtime values
+source precedence               constructor > environment > explicit secret files > defaults
+secret selector                 absolute existing NETAUTO_SECRETS_DIR only; no implicit source
+runtime engine                  one bounded lazy AsyncEngine per app/worker
+engine consumers                mutation/read UoW, startup guard and Health share identity
+startup guard                   installed netauto:migrations head == actual singleton head
+guard timeout                   fixed 10.0 seconds; no retry, migration, stamp or repair
+Health probe                    exact SELECT 1 on the shared engine
+Health timeout                  fixed 2.0 seconds including checkout and cleanup
+operational API                 GET /health/core only; exact 200/503/400/500 boundaries
+installed artifact              wheel import/graph/lifespan/Health/fail-closed smoke outside checkout
+M2-VER-22 / M2-VER-23           IMPLEMENTED with resolvable permanent targets
+```
+
+Candidate verification:
+
+```text
+uv lock --check                                      PASS — 0.03 s
+uv sync --locked                                     PASS — 0.03 s
+uv build                                             PASS — 1.58 s
+Ruff format/check                                    PASS
+Ruff lint                                            PASS
+Pyright                                              PASS — 0 errors
+pytest collection                                    543 tests
+focused S04/cross-boundary bundle                    122 passed — 25.61 s
+schema metadata / migrations                           5 passed — 2.20 s
+M1 / S00 / M2 traceability                            20 passed — 12.58 s
+PostgreSQL concurrency marker                        182 passed — 117.15 s
+non-PostgreSQL                                       292 passed — 19.18 s
+full repository suite                                543 passed — 185.19 s
+skip / xfail / rerun                                   0 / 0 / 0
+supported-path 40P01 / unexpected 40001                0 / 0
+```
+
+Environment and unchanged boundaries:
+
+```text
+CPython                         3.14.7
+PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+uv                              0.12.3
+authoritative tables            15
+Alembic graph                   one base / one head
+root migration                  0001_m2_kernel unchanged
+metadata drift                  compare_metadata == []
+schema / migration / index diff none
+dependency / uv.lock diff       none
+business HTTP operations        41 mutations + 22 reads = 63 exact
+operational HTTP operations      1 Health; total public HTTP = 64
+scenario / predicate registries 83 / 21 unchanged
+CLI / packaging / S05 surface   none introduced
+GitHub Actions/encoded payloads absent
+```
+
+The full suite emitted one dependency deprecation warning for the existing FastAPI/Starlette test-client compatibility path. It caused no skip, xfail, rerun or failure and is not a candidate blocker. No architecture or normative-document finding is open. The non-normative S04 prompt remains in `wip/` for reviewer acceptance.
 
 ## M2-S03 completion record
 
@@ -240,13 +311,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare the non-normative Codex implementation prompt for:
+Review the published candidate for:
 
 ```text
 M2-S04 — Runtime settings, startup revision guard and Core Health
 ```
 
-Before implementation, execute the mandatory repository-based pre-flight for `M2-S04`, including verification of its runtime, installed Alembic graph, lifespan and real-PostgreSQL evidence prerequisites. Do not start `M2-S05`.
+Do not mark `M2-S04 COMPLETED` or start `M2-S05` without the reviewer-owned acceptance decision.
 
 ## Current status vocabulary
 
