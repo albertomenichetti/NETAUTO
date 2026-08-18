@@ -122,8 +122,8 @@ PGTEST_SCENARIOS: dict[str, tuple[ScenarioTarget, ...]] = {
     ),
     "ARB-05": _node(
         "tests/test_relationship_semantic_concurrency.py",
-        "test_arb_05_reciprocal_create_uses_pk_and_converges",
-        "test_arb_05_symmetric_inverse_and_overlap_create_converge",
+        "test_arb_05_reciprocal_create_uses_pk_and_rejects_loser",
+        "test_arb_05_symmetric_inverse_and_overlap_create_reject_loser",
     ),
     "ARB-06": _node(
         "tests/test_relationship_semantic_concurrency.py",

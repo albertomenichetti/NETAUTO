@@ -71,7 +71,23 @@ async def _definition(
         },
     )
     assert created.status_code == 201, created.text
-    return cast(dict[str, object], created.json())
+    return await _publish_created_definition(client, created)
+
+
+async def _publish_created_definition(
+    client: httpx.AsyncClient, created: httpx.Response
+) -> dict[str, object]:
+    payload = cast(dict[str, object], created.json())
+    definition = cast(dict[str, object], payload["relationship_definition"])
+    definition_id = cast(str, definition["id"])
+    published = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/1/publish",
+        params={"expected_revision": 1},
+    )
+    assert published.status_code == 200, published.text
+    current = await client.get(f"/api/v1/core/relationship-definitions/{definition_id}")
+    assert current.status_code == 200, current.text
+    return cast(dict[str, object], current.json())
 
 
 def _resolution(definition: dict[str, object], from_template_id: str) -> dict[str, str]:
@@ -83,7 +99,7 @@ def _resolution(definition: dict[str, object], from_template_id: str) -> dict[st
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unblock(
+async def test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock(
     relationship_client: httpx.AsyncClient,
 ) -> None:
     client = relationship_client
@@ -108,6 +124,8 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
     relationship_id = value["id"]
     assert created.headers["location"].endswith(relationship_id)
     assert value["relationship_definition_id"] == definition["id"]
+    assert value["relationship_definition_version"] == 1
+    assert value["properties"] == {}
     assert {
         (item["object_id"], item["destination_object_id"], item["name"])
         for item in value["views"]
@@ -124,9 +142,10 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
             "to_object_id": first_object,
         },
     )
-    assert converged.status_code == 200, converged.text
+    assert converged.status_code == 409, converged.text
     assert "location" not in converged.headers
-    assert converged.json() == value
+    assert converged.json()["code"] == "relationship_fact_conflict"
+    assert converged.json()["details"] == {"relationship_id": relationship_id}
 
     exact = await client.get(f"/api/v1/core/relationships/{relationship_id}")
     assert exact.status_code == 200
@@ -145,9 +164,11 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
             {
                 "relationship_id": relationship_id,
                 "relationship_definition_id": definition["id"],
+                "relationship_definition_version": 1,
                 "object_id": first_object,
                 "destination_object_id": second_object,
                 "name": "hosts",
+                "properties": {},
             }
         ],
         "next_cursor": None,
@@ -173,7 +194,14 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
             "relationship_id",
             "relationship_definition_id",
             "relationship_name",
+            "before",
+            "after",
         }
+        for item in events
+    )
+    assert all(item["before"] is None for item in events)
+    assert all(
+        item["after"] == {"relationship_definition_version": 1, "properties": {}}
         for item in events
     )
 
@@ -295,7 +323,7 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
     deleted = await client.delete(f"/api/v1/core/relationships/{relationship_id}")
     assert deleted.status_code == 204
     repeated = await client.delete(f"/api/v1/core/relationships/{relationship_id}")
-    assert repeated.status_code == 204
+    assert repeated.status_code == 404
     missing = await client.get(f"/api/v1/core/relationships/{relationship_id}")
     assert missing.status_code == 404
 
@@ -345,7 +373,10 @@ async def test_strict_operands_missing_resources_incompatibility_and_self_loop(
         },
     )
     assert definition.status_code == 201
-    resolution_id = definition.json()["resolutions"][0]["resolution_id"]
+    definition_value = await _publish_created_definition(client, definition)
+    resolution_id = cast(list[dict[str, str]], definition_value["resolutions"])[0][
+        "resolution_id"
+    ]
 
     unknown = await client.post(
         "/api/v1/core/relationships",
@@ -448,7 +479,11 @@ async def test_object_relative_keyset_cursor_and_filter_identity(
             "name": "linked",
         },
     )
-    resolution_id = definition.json()["resolutions"][0]["resolution_id"]
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
+    resolution_id = cast(list[dict[str, str]], definition_value["resolutions"])[0][
+        "resolution_id"
+    ]
     for destination in (second, third):
         created = await client.post(
             "/api/v1/core/relationships",
@@ -498,7 +533,11 @@ async def test_runtime_object_foreign_keys_restrict_and_rollback(
             "name": "fk_link",
         },
     )
-    resolution_id = definition.json()["resolutions"][0]["resolution_id"]
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
+    resolution_id = cast(list[dict[str, str]], definition_value["resolutions"])[0][
+        "resolution_id"
+    ]
     created = await client.post(
         "/api/v1/core/relationships",
         json={
@@ -541,13 +580,20 @@ async def test_db_valid_incomplete_runtime_aggregate_maps_to_internal_error(
             "name": "corrupt_link",
         },
     )
-    definition_id = UUID(definition.json()["id"])
-    resolution_id = UUID(definition.json()["resolutions"][0]["resolution_id"])
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
+    definition_id = UUID(cast(str, definition_value["id"]))
+    resolution_id = UUID(
+        cast(list[dict[str, str]], definition_value["resolutions"])[0]["resolution_id"]
+    )
     relationship_id = uuid4()
     with migrated_database_engine.begin() as connection:
         connection.execute(
             insert(relationships).values(
-                id=relationship_id, relationship_definition_id=definition_id
+                id=relationship_id,
+                relationship_definition_id=definition_id,
+                relationship_definition_version=1,
+                properties={},
             )
         )
         connection.execute(
@@ -588,10 +634,14 @@ async def test_relationship_event_rows_use_database_identity_and_timestamp_defau
             "name": "event_default_link",
         },
     )
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
     created = await client.post(
         "/api/v1/core/relationships",
         json={
-            "resolution_id": definition.json()["resolutions"][0]["resolution_id"],
+            "resolution_id": cast(
+                list[dict[str, str]], definition_value["resolutions"]
+            )[0]["resolution_id"],
             "from_object_id": first,
             "to_object_id": second,
         },

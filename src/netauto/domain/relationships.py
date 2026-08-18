@@ -2,13 +2,21 @@
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID, uuid4
+
+from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objecttemplates import ValueMode
+from netauto.domain.primitives import JsonValue
 
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 
 type ResolutionSemanticKey = tuple[UUID, UUID, str]
 type DefinitionSemanticSignature = tuple[bool, frozenset[ResolutionSemanticKey]]
+
+
+def _empty_properties() -> dict[str, JsonValue]:
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +33,48 @@ class RelationshipDefinition:
     id: UUID
     symmetric: bool
     resolutions: tuple[RelationshipResolution, ...]
+    default_version: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipDefinitionProperty:
+    name: str
+    position: int
+    datatype_id: UUID
+    datatype_version: int
+    value_mode: ValueMode
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipDefinitionVersion:
+    relationship_definition_id: UUID
+    version: int
+    revision: int
+    status: VersionStatus
+    properties: tuple[RelationshipDefinitionProperty, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipDefinitionVersionSummary:
+    relationship_definition_id: UUID
+    version: int
+    revision: int
+    status: VersionStatus
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipPropertyCandidate:
+    name: str
+    position: int
+    datatype_id: UUID
+    datatype_version: int | None
+    value_mode: ValueMode
+
+
+@dataclass(frozen=True, slots=True)
+class CreateRelationshipDefinitionResult:
+    relationship_definition: RelationshipDefinition
+    version: RelationshipDefinitionVersion
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +96,7 @@ class RelationshipCapability:
     name: str
     from_template_id: UUID
     to_template_id: UUID
+    default_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +113,8 @@ class Relationship:
     id: UUID
     relationship_definition_id: UUID
     resolutions: tuple[RuntimeRelationshipResolution, ...]
+    relationship_definition_version: int = 1
+    properties: dict[str, JsonValue] = field(default_factory=_empty_properties)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +131,8 @@ class ObjectRelationshipView:
     object_id: UUID
     destination_object_id: UUID
     name: str
+    relationship_definition_version: int = 1
+    properties: dict[str, JsonValue] = field(default_factory=_empty_properties)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +161,68 @@ class RelationshipValidationError(ValueError):
 def validate_relationship_name(name: str, path: str = "name") -> None:
     if _IDENTIFIER.fullmatch(name) is None:
         raise RelationshipDefinitionValidationError(path, "invalid_identifier")
+
+
+def validate_relationship_definition_version(
+    value: RelationshipDefinitionVersion,
+) -> None:
+    if value.version <= 0:
+        raise RelationshipDefinitionValidationError("version", "positive_required")
+    if value.revision <= 0:
+        raise RelationshipDefinitionValidationError("revision", "positive_required")
+    names: set[str] = set()
+    positions: set[int] = set()
+    for item in value.properties:
+        validate_relationship_name(item.name, f"properties.{item.name}.name")
+        if item.name in names:
+            raise RelationshipDefinitionValidationError(
+                f"properties.{item.name}.name", "duplicate_property_name"
+            )
+        if item.position <= 0 or item.position in positions:
+            raise RelationshipDefinitionValidationError(
+                f"properties.{item.name}.position",
+                "duplicate_or_invalid_position",
+            )
+        if item.datatype_version <= 0:
+            raise RelationshipDefinitionValidationError(
+                f"properties.{item.name}.datatype_version", "positive_required"
+            )
+        names.add(item.name)
+        positions.add(item.position)
+
+
+def validate_relationship_property_history(
+    candidate: RelationshipDefinitionVersion,
+    published_history: tuple[RelationshipDefinitionVersion, ...],
+) -> None:
+    """Validate continuity against every committed published generation.
+
+    Reviewing the complete history, rather than only the numerically previous
+    version, keeps out-of-order publication serializable.
+    """
+    validate_relationship_definition_version(candidate)
+    history_by_name: dict[str, list[RelationshipDefinitionProperty]] = {}
+    for version in published_history:
+        if version.relationship_definition_id != candidate.relationship_definition_id:
+            raise RelationshipDefinitionValidationError(
+                "properties", "history_definition_mismatch"
+            )
+        for item in version.properties:
+            history_by_name.setdefault(item.name, []).append(item)
+    for item in candidate.properties:
+        previous = history_by_name.get(item.name, ())
+        if any(value.datatype_id != item.datatype_id for value in previous):
+            raise RelationshipDefinitionValidationError(
+                f"properties.{item.name}.datatype_id",
+                "property_datatype_lineage_changed",
+            )
+        if any(
+            value.value_mode is ValueMode.LIST and item.value_mode is ValueMode.SCALAR
+            for value in previous
+        ):
+            raise RelationshipDefinitionValidationError(
+                f"properties.{item.name}.value_mode", "list_to_scalar_forbidden"
+            )
 
 
 def validate_definition(value: RelationshipDefinition) -> None:
@@ -248,6 +365,7 @@ def rename_non_symmetric(
             )
             for item in value.resolutions
         ),
+        value.default_version,
     )
     validate_definition(renamed)
     return renamed
@@ -274,6 +392,7 @@ def rename_symmetric(
             )
             for item in value.resolutions
         ),
+        value.default_version,
     )
     validate_definition(renamed)
     return renamed

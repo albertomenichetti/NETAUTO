@@ -20,6 +20,7 @@ def test_relationship_aggregate_has_only_frozen_model_plane_fields() -> None:
         "id",
         "symmetric",
         "resolutions",
+        "default_version",
     ]
     assert [field.name for field in fields(RelationshipResolution)] == [
         "id",
@@ -68,14 +69,14 @@ def test_s07_registers_runtime_routes_without_resolution_crud() -> None:
     assert forbidden.isdisjoint(paths)
 
 
-def test_m2_s00_keeps_exact_three_frozen_gates_and_m1_migrations() -> None:
+def test_m2_s01_keeps_three_gates_and_installs_one_durable_root() -> None:
     assert list(AdvisoryGate) == [
         AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE,
         AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
         AdvisoryGate.MODEL_ROOT_DELETE_GATE,
     ]
-    migrations = sorted((ROOT / "migrations" / "versions").glob("*.py"))
+    migrations = sorted((ROOT / "src/netauto/migrations/versions").glob("*.py"))
     assert [item.name for item in migrations] == [
-        "0001_m1_schema_initial_m1_schema.py",
-        "0002_relationship_resolution_name_nonkey.py",
+        "0001_m2_durable_kernel.py",
+        "__init__.py",
     ]

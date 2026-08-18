@@ -1,5 +1,6 @@
 """SQLAlchemy Core persistence for intrinsic Object state and lifecycle events."""
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -38,6 +39,8 @@ class EventKind(StrEnum):
     ATTACH_TO = "ATTACH_TO"
     DETACH_FROM = "DETACH_FROM"
     RELATIONSHIP_CREATED = "RELATIONSHIP_CREATED"
+    RELATIONSHIP_DATA_CHANGE = "RELATIONSHIP_DATA_CHANGE"
+    RELATIONSHIP_SCHEMA_CHANGE = "RELATIONSHIP_SCHEMA_CHANGE"
     RELATIONSHIP_DELETED = "RELATIONSHIP_DELETED"
     DELETED = "DELETED"
 
@@ -78,6 +81,12 @@ class OwnershipLifecycleEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class RelationshipFactualState:
+    relationship_definition_version: int
+    properties: dict[str, JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
 class RelationshipLifecycleEvent:
     id: UUID
     occurred_at: datetime
@@ -89,8 +98,8 @@ class RelationshipLifecycleEvent:
     relationship_id: UUID
     relationship_definition_id: UUID
     relationship_name: str
-    before: None = None
-    after: None = None
+    before: RelationshipFactualState | None
+    after: RelationshipFactualState | None
 
 
 type LifecycleEvent = (
@@ -161,6 +170,60 @@ def snapshot(value: Object) -> dict[str, JsonValue]:
     }
 
 
+_HISTORICAL_PROPERTY_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+
+
+def _historical_properties(raw: object) -> dict[str, JsonValue]:
+    if not isinstance(raw, dict):
+        raise RuntimeError("persisted lifecycle properties are invalid")
+    candidate = cast(dict[object, object], raw)
+    if not all(
+        isinstance(name, str) and _HISTORICAL_PROPERTY_NAME.fullmatch(name)
+        for name in candidate
+    ):
+        raise RuntimeError("persisted lifecycle properties are invalid")
+    result: dict[str, JsonValue] = {}
+    for raw_name, value in candidate.items():
+        name = cast(str, raw_name)
+        if isinstance(value, (str, bool)) or (
+            isinstance(value, int) and not isinstance(value, bool)
+        ):
+            result[name] = value
+            continue
+        if not isinstance(value, list) or not value:
+            raise RuntimeError("persisted lifecycle property carrier is invalid")
+        items = cast(list[object], value)
+        if any(
+            not isinstance(item, (str, int, bool)) or isinstance(item, float)
+            for item in items
+        ):
+            raise RuntimeError("persisted lifecycle property carrier is invalid")
+        kinds = {
+            bool if isinstance(item, bool) else int if isinstance(item, int) else str
+            for item in items
+        }
+        if len(kinds) != 1:
+            raise RuntimeError("persisted lifecycle property carrier is invalid")
+        result[name] = cast(list[JsonValue], items)
+    return result
+
+
+def _relationship_factual_state(raw: object) -> RelationshipFactualState | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise RuntimeError("persisted Relationship factual state is invalid")
+    value = cast(dict[object, object], raw)
+    if set(value) != {"relationship_definition_version", "properties"}:
+        raise RuntimeError("persisted Relationship factual state is invalid")
+    version = value["relationship_definition_version"]
+    if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
+        raise RuntimeError("persisted Relationship factual state is invalid")
+    return RelationshipFactualState(
+        version, _historical_properties(value["properties"])
+    )
+
+
 def _snapshot(raw: object) -> Object | None:
     if raw is None:
         return None
@@ -187,9 +250,7 @@ def _snapshot(raw: object) -> Object | None:
         or not isinstance(properties, dict)
     ):
         raise RuntimeError("persisted lifecycle snapshot is invalid")
-    raw_properties = cast(dict[object, object], properties)
-    if not all(isinstance(key, str) for key in raw_properties):
-        raise RuntimeError("persisted lifecycle snapshot is invalid")
+    historical_properties = _historical_properties(cast(object, properties))
     raw_id = value["id"]
     raw_template_id = value["template_id"]
     if not isinstance(raw_id, str) or not isinstance(raw_template_id, str):
@@ -204,7 +265,7 @@ def _snapshot(raw: object) -> Object | None:
         name,
         template_id,
         version,
-        cast(dict[str, JsonValue], raw_properties),
+        historical_properties,
     )
 
 
@@ -213,7 +274,12 @@ def _event(row: RowMapping) -> LifecycleEvent:
         kind = EventKind(cast(str, row["kind"]))
     except ValueError as error:
         raise RuntimeError("persisted lifecycle kind is invalid") from error
-    if kind in {EventKind.RELATIONSHIP_CREATED, EventKind.RELATIONSHIP_DELETED}:
+    if kind in {
+        EventKind.RELATIONSHIP_CREATED,
+        EventKind.RELATIONSHIP_DATA_CHANGE,
+        EventKind.RELATIONSHIP_SCHEMA_CHANGE,
+        EventKind.RELATIONSHIP_DELETED,
+    }:
         destination_id = cast(UUID | None, row["destination_object_id"])
         destination_name = cast(str | None, row["destination_canonical_name"])
         relationship_id = cast(UUID | None, row["relationship_id"])
@@ -227,10 +293,42 @@ def _event(row: RowMapping) -> LifecycleEvent:
             or relationship_name is None
             or row["slot_declaring_template_id"] is not None
             or row["slot_name"] is not None
-            or row["before_state"] is not None
-            or row["after_state"] is not None
         ):
             raise RuntimeError("persisted Relationship lifecycle event is incoherent")
+        before = _relationship_factual_state(row["before_state"])
+        after = _relationship_factual_state(row["after_state"])
+        if (
+            kind is EventKind.RELATIONSHIP_CREATED
+            and (before is not None or after is None)
+        ) or (
+            kind is EventKind.RELATIONSHIP_DELETED
+            and (before is None or after is not None)
+        ):
+            raise RuntimeError("persisted Relationship lifecycle event is incoherent")
+        if kind in {
+            EventKind.RELATIONSHIP_DATA_CHANGE,
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE,
+        } and (before is None or after is None):
+            raise RuntimeError("persisted Relationship lifecycle event is incoherent")
+        if (
+            kind is EventKind.RELATIONSHIP_DATA_CHANGE
+            and before is not None
+            and after is not None
+            and (
+                before.relationship_definition_version
+                != after.relationship_definition_version
+                or before.properties == after.properties
+            )
+        ):
+            raise RuntimeError("persisted Relationship DATA_CHANGE is incoherent")
+        if (
+            kind is EventKind.RELATIONSHIP_SCHEMA_CHANGE
+            and before is not None
+            and after is not None
+            and after.relationship_definition_version
+            <= before.relationship_definition_version
+        ):
+            raise RuntimeError("persisted Relationship SCHEMA_CHANGE is incoherent")
         return RelationshipLifecycleEvent(
             id=cast(UUID, row["id"]),
             occurred_at=cast(datetime, row["occurred_at"]),
@@ -242,6 +340,8 @@ def _event(row: RowMapping) -> LifecycleEvent:
             relationship_id=relationship_id,
             relationship_definition_id=definition_id,
             relationship_name=relationship_name,
+            before=before,
+            after=after,
         )
     if kind in {EventKind.ATTACH_TO, EventKind.DETACH_FROM}:
         destination_id = cast(UUID | None, row["destination_object_id"])

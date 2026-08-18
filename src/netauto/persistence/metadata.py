@@ -1,4 +1,4 @@
-"""Authoritative SQLAlchemy Core metadata for the frozen M1 schema."""
+"""Authoritative SQLAlchemy Core metadata for the frozen M2 kernel schema."""
 
 from sqlalchemy import (
     Boolean,
@@ -41,6 +41,8 @@ EVENT_KINDS = (
     "ATTACH_TO",
     "DETACH_FROM",
     "RELATIONSHIP_CREATED",
+    "RELATIONSHIP_DATA_CHANGE",
+    "RELATIONSHIP_SCHEMA_CHANGE",
     "RELATIONSHIP_DELETED",
     "DELETED",
 )
@@ -289,6 +291,99 @@ relationship_definitions = Table(
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("symmetric", Boolean, nullable=False),
+    Column("default_version", Integer),
+    CheckConstraint(
+        "default_version IS NULL OR default_version > 0",
+        name="ck_relationship_definitions_default_version_positive",
+    ),
+)
+
+relationship_definition_versions = Table(
+    "relationship_definition_versions",
+    metadata,
+    Column("relationship_definition_id", UUID(as_uuid=True), primary_key=True),
+    Column("version", Integer, primary_key=True),
+    Column("revision", Integer, nullable=False),
+    Column("status", Text, nullable=False),
+    CheckConstraint(
+        "version > 0", name="ck_relationship_definition_versions_version_positive"
+    ),
+    CheckConstraint(
+        "revision > 0", name="ck_relationship_definition_versions_revision_positive"
+    ),
+    CheckConstraint(
+        f"status IN ({_quoted(VERSION_STATUSES)})",
+        name="ck_relationship_definition_versions_status",
+    ),
+    ForeignKeyConstraint(
+        ["relationship_definition_id"],
+        ["relationship_definitions.id"],
+        name="fk_relationship_definition_versions_definition",
+        ondelete="CASCADE",
+    ),
+)
+
+relationship_definitions.append_constraint(
+    ForeignKeyConstraint(
+        ["id", "default_version"],
+        [
+            "relationship_definition_versions.relationship_definition_id",
+            "relationship_definition_versions.version",
+        ],
+        name="fk_relationship_definitions_default_version",
+        ondelete="RESTRICT",
+        use_alter=True,
+    )
+)
+
+relationship_definition_properties = Table(
+    "relationship_definition_properties",
+    metadata,
+    Column("relationship_definition_id", UUID(as_uuid=True), primary_key=True),
+    Column("relationship_definition_version", Integer, primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("position", Integer, nullable=False),
+    Column("datatype_id", UUID(as_uuid=True), nullable=False),
+    Column("datatype_version", Integer, nullable=False),
+    Column("value_mode", Text, nullable=False),
+    _identifier_check("name", "ck_relationship_definition_properties_name"),
+    CheckConstraint(
+        "relationship_definition_version > 0",
+        name="ck_relationship_definition_properties_version_positive",
+    ),
+    CheckConstraint(
+        "position > 0",
+        name="ck_relationship_definition_properties_position_positive",
+    ),
+    CheckConstraint(
+        "datatype_version > 0",
+        name="ck_relationship_definition_properties_datatype_version_positive",
+    ),
+    CheckConstraint(
+        f"value_mode IN ({_quoted(VALUE_MODES)})",
+        name="ck_relationship_definition_properties_value_mode",
+    ),
+    UniqueConstraint(
+        "relationship_definition_id",
+        "relationship_definition_version",
+        "position",
+        name="uq_relationship_definition_properties_position",
+    ),
+    ForeignKeyConstraint(
+        ["relationship_definition_id", "relationship_definition_version"],
+        [
+            "relationship_definition_versions.relationship_definition_id",
+            "relationship_definition_versions.version",
+        ],
+        name="fk_relationship_definition_properties_version",
+        ondelete="CASCADE",
+    ),
+    ForeignKeyConstraint(
+        ["datatype_id", "datatype_version"],
+        ["datatype_versions.datatype_id", "datatype_versions.version"],
+        name="fk_relationship_definition_properties_datatype_version",
+        ondelete="RESTRICT",
+    ),
 )
 
 relationship_resolutions = Table(
@@ -380,15 +475,28 @@ relationships = Table(
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("relationship_definition_id", UUID(as_uuid=True), nullable=False),
+    Column("relationship_definition_version", Integer, nullable=False),
+    Column("properties", JSONB, nullable=False),
+    CheckConstraint(
+        "relationship_definition_version > 0",
+        name="ck_relationships_definition_version_positive",
+    ),
+    CheckConstraint(
+        "jsonb_typeof(properties) = 'object'",
+        name="ck_relationships_properties_object",
+    ),
     UniqueConstraint(
         "id",
         "relationship_definition_id",
         name="uq_relationships_id_definition",
     ),
     ForeignKeyConstraint(
-        ["relationship_definition_id"],
-        ["relationship_definitions.id"],
-        name="fk_relationships_definition",
+        ["relationship_definition_id", "relationship_definition_version"],
+        [
+            "relationship_definition_versions.relationship_definition_id",
+            "relationship_definition_versions.version",
+        ],
+        name="fk_relationships_definition_version",
         ondelete="RESTRICT",
     ),
 )
@@ -455,8 +563,8 @@ object_lifecycle_events = Table(
     Column("relationship_id", UUID(as_uuid=True)),
     Column("relationship_definition_id", UUID(as_uuid=True)),
     Column("relationship_name", Text),
-    Column("before_state", JSONB),
-    Column("after_state", JSONB),
+    Column("before_state", JSONB(none_as_null=True)),
+    Column("after_state", JSONB(none_as_null=True)),
     CheckConstraint(
         f"kind IN ({_quoted(EVENT_KINDS)})", name="ck_lifecycle_events_kind"
     ),
@@ -491,14 +599,14 @@ object_lifecycle_events = Table(
         "AND relationship_id IS NULL AND relationship_definition_id IS NULL "
         "AND relationship_name IS NULL AND before_state IS NULL "
         "AND after_state IS NULL) OR "
-        "(kind IN ('RELATIONSHIP_CREATED', 'RELATIONSHIP_DELETED') "
+        "(kind IN ('RELATIONSHIP_CREATED', 'RELATIONSHIP_DATA_CHANGE', "
+        "'RELATIONSHIP_SCHEMA_CHANGE', 'RELATIONSHIP_DELETED') "
         "AND destination_object_id IS NOT NULL "
         "AND destination_canonical_name IS NOT NULL "
         "AND relationship_id IS NOT NULL "
         "AND relationship_definition_id IS NOT NULL "
         "AND relationship_name IS NOT NULL "
-        "AND slot_declaring_template_id IS NULL AND slot_name IS NULL "
-        "AND before_state IS NULL AND after_state IS NULL)",
+        "AND slot_declaring_template_id IS NULL AND slot_name IS NULL)",
         name="ck_lifecycle_events_family_shape",
     ),
     CheckConstraint(
@@ -506,8 +614,13 @@ object_lifecycle_events = Table(
         "(kind IN ('RENAME', 'DATA_CHANGE', 'SCHEMA_CHANGE') "
         "AND before_state IS NOT NULL AND after_state IS NOT NULL) OR "
         "(kind = 'DELETED' AND before_state IS NOT NULL AND after_state IS NULL) OR "
-        "kind IN ('ATTACH_TO', 'DETACH_FROM', 'RELATIONSHIP_CREATED', "
-        "'RELATIONSHIP_DELETED')",
+        "kind IN ('ATTACH_TO', 'DETACH_FROM') OR "
+        "(kind = 'RELATIONSHIP_CREATED' AND before_state IS NULL "
+        "AND after_state IS NOT NULL) OR "
+        "(kind IN ('RELATIONSHIP_DATA_CHANGE', 'RELATIONSHIP_SCHEMA_CHANGE') "
+        "AND before_state IS NOT NULL AND after_state IS NOT NULL) OR "
+        "(kind = 'RELATIONSHIP_DELETED' AND before_state IS NOT NULL "
+        "AND after_state IS NULL)",
         name="ck_lifecycle_events_state_shape",
     ),
     CheckConstraint(
@@ -524,6 +637,30 @@ Index(
     "ix_object_template_properties_datatype_version",
     object_template_properties.c.datatype_id,
     object_template_properties.c.datatype_version,
+)
+Index(
+    "ix_datatype_versions_status_datatype_version",
+    datatype_versions.c.status,
+    datatype_versions.c.datatype_id,
+    datatype_versions.c.version,
+)
+Index(
+    "ix_object_template_versions_status_template_version",
+    object_template_versions.c.status,
+    object_template_versions.c.template_id,
+    object_template_versions.c.version,
+)
+Index(
+    "ix_object_template_properties_semantic_history",
+    object_template_properties.c.template_id,
+    object_template_properties.c.name,
+    object_template_properties.c.template_version.desc(),
+)
+Index(
+    "ix_object_template_components_semantic_history",
+    object_template_components.c.template_id,
+    object_template_components.c.name,
+    object_template_components.c.template_version.desc(),
 )
 Index(
     "ix_object_template_versions_parent_version",
@@ -543,6 +680,33 @@ Index(
     "ix_relationship_resolutions_to_template",
     relationship_resolutions.c.to_template_id,
 )
+Index(
+    "ix_relationship_definition_versions_status_definition_version",
+    relationship_definition_versions.c.status,
+    relationship_definition_versions.c.relationship_definition_id,
+    relationship_definition_versions.c.version,
+)
+Index(
+    "ix_relationship_definition_properties_datatype_version",
+    relationship_definition_properties.c.datatype_id,
+    relationship_definition_properties.c.datatype_version,
+)
+Index(
+    "ix_relationship_definition_properties_semantic_history",
+    relationship_definition_properties.c.relationship_definition_id,
+    relationship_definition_properties.c.name,
+    relationship_definition_properties.c.relationship_definition_version.desc(),
+)
+Index(
+    "ix_relationship_resolutions_definition_id",
+    relationship_resolutions.c.relationship_definition_id,
+    relationship_resolutions.c.id,
+)
+Index(
+    "ix_relationship_resolutions_name_id",
+    relationship_resolutions.c.name,
+    relationship_resolutions.c.id,
+)
 Index("ix_objects_template_version", objects.c.template_id, objects.c.template_version)
 Index("ix_objects_canonical_name_id", objects.c.canonical_name, objects.c.id)
 Index(
@@ -552,18 +716,27 @@ Index(
     object_components.c.child_object_id,
 )
 Index(
-    "ix_runtime_resolutions_from_object",
+    "ix_runtime_resolutions_from_object_page",
     runtime_relationship_resolutions.c.from_object_id,
+    runtime_relationship_resolutions.c.relationship_id,
+    runtime_relationship_resolutions.c.to_object_id,
+    runtime_relationship_resolutions.c.resolution_id,
+    postgresql_include=["relationship_definition_id"],
 )
 Index(
-    "ix_runtime_resolutions_to_object",
+    "ix_runtime_resolutions_to_object_relationship",
     runtime_relationship_resolutions.c.to_object_id,
+    runtime_relationship_resolutions.c.relationship_id,
 )
 Index(
     "ix_runtime_resolutions_relationship",
     runtime_relationship_resolutions.c.relationship_id,
 )
-Index("ix_relationships_definition", relationships.c.relationship_definition_id)
+Index(
+    "ix_relationships_definition_version",
+    relationships.c.relationship_definition_id,
+    relationships.c.relationship_definition_version,
+)
 Index(
     "ix_lifecycle_events_occurred",
     object_lifecycle_events.c.occurred_at,
@@ -580,18 +753,21 @@ Index(
     object_lifecycle_events.c.destination_object_id,
     object_lifecycle_events.c.occurred_at,
     object_lifecycle_events.c.id,
+    postgresql_where=object_lifecycle_events.c.destination_object_id.is_not(None),
 )
 Index(
     "ix_lifecycle_events_relationship",
     object_lifecycle_events.c.relationship_id,
     object_lifecycle_events.c.occurred_at,
     object_lifecycle_events.c.id,
+    postgresql_where=object_lifecycle_events.c.relationship_id.is_not(None),
 )
 Index(
     "ix_lifecycle_events_definition",
     object_lifecycle_events.c.relationship_definition_id,
     object_lifecycle_events.c.occurred_at,
     object_lifecycle_events.c.id,
+    postgresql_where=object_lifecycle_events.c.relationship_definition_id.is_not(None),
 )
 Index(
     "ix_lifecycle_events_kind",

@@ -132,7 +132,7 @@ async def test_cross_domain_delete_blocker_matrix_and_aggregate_integrity(
         },
     )
     assert definition.status_code == 201, definition.text
-    definition_id = cast(str, definition.json()["id"])
+    definition_id = cast(str, definition.json()["relationship_definition"]["id"])
 
     blocked_template = await client.delete(f"/api/v1/core/object-templates/{target_id}")
     assert blocked_template.status_code == 409

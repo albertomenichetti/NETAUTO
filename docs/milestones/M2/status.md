@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S01 READY
+**Milestone status:** IMPLEMENTATION — M2-S01 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,7 +14,7 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S01 — READY
+current slice   M2-S01 — IN PROGRESS
 current task    prepare the M2-S01 Codex implementation prompt and execute the authorized slice
 blockers        none
 ```
@@ -40,7 +40,7 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 | Slice | State | Dependency |
 |---|---|---|
 | `M2-S00` | COMPLETED | none |
-| `M2-S01` | READY | `M2-S00 COMPLETED` |
+| `M2-S01` | IN PROGRESS | `M2-S00 COMPLETED` |
 | `M2-S02` | BLOCKED | `M2-S01 COMPLETED` |
 | `M2-S03` | BLOCKED | `M2-S02 COMPLETED` |
 | `M2-S04` | BLOCKED | `M2-S03 COMPLETED` |

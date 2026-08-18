@@ -229,6 +229,26 @@ class ObjectTemplateService:
         self._uow_factory = uow_factory
 
     @staticmethod
+    async def _validate_default_pointers(
+        store: ObjectTemplateStore, lineages: tuple[ObjectTemplate, ...]
+    ) -> None:
+        targets = await store.get_headers(
+            tuple(
+                (lineage.id, lineage.default_version)
+                for lineage in lineages
+                if lineage.default_version is not None
+            )
+        )
+        for lineage in lineages:
+            if lineage.default_version is None:
+                continue
+            target = targets.get((lineage.id, lineage.default_version))
+            if target is None or target.status is not VersionStatus.PUBLISHED:
+                raise _internal(
+                    "A persisted ObjectTemplate default pointer is invalid."
+                )
+
+    @staticmethod
     def _require_draft(current: ObjectTemplateVersion, expected_revision: int) -> None:
         if current.status is not VersionStatus.DRAFT:
             raise _state(
@@ -1189,10 +1209,12 @@ class ObjectTemplateService:
             return lineage
 
     async def get_lineage(self, template_id: UUID) -> ObjectTemplate:
-        async with self._uow_factory() as uow:
-            lineage = await ObjectTemplateStore(uow.connection).get_lineage(template_id)
+        async with self._uow_factory.coherent_read() as uow:
+            store = ObjectTemplateStore(uow.connection)
+            lineage = await store.get_lineage(template_id)
             if lineage is None:
                 raise _not_found(template_id)
+            await self._validate_default_pointers(store, (lineage,))
             return lineage
 
     async def get_version(
@@ -1255,9 +1277,10 @@ class ObjectTemplateService:
                     "The cursor is malformed or incompatible with this query.",
                 )
             after = cast(tuple[str, str], (key[0], key[1]))
-        async with self._uow_factory() as uow:
+        async with self._uow_factory.coherent_read() as uow:
+            store = ObjectTemplateStore(uow.connection)
             rows = list(
-                await ObjectTemplateStore(uow.connection).list_lineages(
+                await store.list_lineages(
                     namespace=namespace,
                     name=name,
                     abstract=abstract,
@@ -1267,6 +1290,7 @@ class ObjectTemplateService:
                     limit=limit + 1,
                 )
             )
+            await self._validate_default_pointers(store, tuple(rows))
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = (

@@ -521,12 +521,14 @@ async def test_plan_02_non_template_mutations_skip_planner_ancestry(
         child_object = await objects_service.create(
             target.object_template.id, 1, "mutation-child", {}
         )
-        definition = await definitions.create_non_symmetric(
+        created_definition = await definitions.create_non_symmetric(
             (
                 RelationshipPerspective(parent.object_template.id, "contains"),
                 RelationshipPerspective(target.object_template.id, "contained_by"),
             )
         )
+        definition = created_definition.relationship_definition
+        await definitions.publish(definition.id, 1, 1)
 
         planner_calls: list[tuple[UUID, ...]] = []
         semantic_reads = 0

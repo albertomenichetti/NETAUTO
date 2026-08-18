@@ -39,6 +39,7 @@ from netauto.persistence.objects import (
     EventKind,
     LifecycleEvent,
     OwnershipLifecycleEvent,
+    RelationshipFactualState,
     RelationshipLifecycleEvent,
 )
 
@@ -208,8 +209,14 @@ class OwnershipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
     slot_name: str
 
 
-class RelationshipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
-    kind: Literal["RELATIONSHIP_CREATED", "RELATIONSHIP_DELETED"]
+class RelationshipFactualStateDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    relationship_definition_version: int
+    properties: dict[str, JsonValue]
+
+
+class RelationshipLifecycleEventBaseDto(IntrinsicLifecycleEventBaseDto):
     destination_object_id: UUID
     destination_canonical_name: str
     relationship_id: UUID
@@ -217,12 +224,32 @@ class RelationshipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
     relationship_name: str
 
 
+class RelationshipCreatedLifecycleEventDto(RelationshipLifecycleEventBaseDto):
+    kind: Literal["RELATIONSHIP_CREATED"]
+    before: None
+    after: RelationshipFactualStateDto
+
+
+class RelationshipChangedLifecycleEventDto(RelationshipLifecycleEventBaseDto):
+    kind: Literal["RELATIONSHIP_DATA_CHANGE", "RELATIONSHIP_SCHEMA_CHANGE"]
+    before: RelationshipFactualStateDto
+    after: RelationshipFactualStateDto
+
+
+class RelationshipDeletedLifecycleEventDto(RelationshipLifecycleEventBaseDto):
+    kind: Literal["RELATIONSHIP_DELETED"]
+    before: RelationshipFactualStateDto
+    after: None
+
+
 type LifecycleEventDto = Annotated[
     CreatedLifecycleEventDto
     | ChangedLifecycleEventDto
     | DeletedLifecycleEventDto
     | OwnershipLifecycleEventDto
-    | RelationshipLifecycleEventDto,
+    | RelationshipCreatedLifecycleEventDto
+    | RelationshipChangedLifecycleEventDto
+    | RelationshipDeletedLifecycleEventDto,
     Field(discriminator="kind"),
 ]
 
@@ -245,24 +272,67 @@ def _summary(value: ObjectSummary) -> ObjectSummaryDto:
     return ObjectSummaryDto.model_validate(value)
 
 
+def _relationship_state(
+    value: RelationshipFactualState,
+) -> RelationshipFactualStateDto:
+    return RelationshipFactualStateDto.model_validate(value)
+
+
 def _event(value: LifecycleEvent) -> LifecycleEventDto:
     if isinstance(value, RelationshipLifecycleEvent):
-        relationship_kind = cast(
-            Literal["RELATIONSHIP_CREATED", "RELATIONSHIP_DELETED"],
-            value.kind.value,
-        )
-        return RelationshipLifecycleEventDto(
-            id=value.id,
-            occurred_at=value.occurred_at,
-            kind=relationship_kind,
-            object_id=value.object_id,
-            canonical_name=value.canonical_name,
-            destination_object_id=value.destination_object_id,
-            destination_canonical_name=value.destination_canonical_name,
-            relationship_id=value.relationship_id,
-            relationship_definition_id=value.relationship_definition_id,
-            relationship_name=value.relationship_name,
-        )
+        if value.kind is EventKind.RELATIONSHIP_CREATED and value.after is not None:
+            return RelationshipCreatedLifecycleEventDto(
+                id=value.id,
+                occurred_at=value.occurred_at,
+                object_id=value.object_id,
+                canonical_name=value.canonical_name,
+                destination_object_id=value.destination_object_id,
+                destination_canonical_name=value.destination_canonical_name,
+                relationship_id=value.relationship_id,
+                relationship_definition_id=value.relationship_definition_id,
+                relationship_name=value.relationship_name,
+                kind="RELATIONSHIP_CREATED",
+                before=None,
+                after=_relationship_state(value.after),
+            )
+        if value.kind in {
+            EventKind.RELATIONSHIP_DATA_CHANGE,
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE,
+        } and (value.before is not None and value.after is not None):
+            relationship_kind = cast(
+                Literal["RELATIONSHIP_DATA_CHANGE", "RELATIONSHIP_SCHEMA_CHANGE"],
+                value.kind.value,
+            )
+            return RelationshipChangedLifecycleEventDto(
+                id=value.id,
+                occurred_at=value.occurred_at,
+                object_id=value.object_id,
+                canonical_name=value.canonical_name,
+                destination_object_id=value.destination_object_id,
+                destination_canonical_name=value.destination_canonical_name,
+                relationship_id=value.relationship_id,
+                relationship_definition_id=value.relationship_definition_id,
+                relationship_name=value.relationship_name,
+                kind=relationship_kind,
+                before=_relationship_state(value.before),
+                after=_relationship_state(value.after),
+            )
+        if value.kind is EventKind.RELATIONSHIP_DELETED and value.before is not None:
+            return RelationshipDeletedLifecycleEventDto(
+                id=value.id,
+                occurred_at=value.occurred_at,
+                object_id=value.object_id,
+                canonical_name=value.canonical_name,
+                destination_object_id=value.destination_object_id,
+                destination_canonical_name=value.destination_canonical_name,
+                relationship_id=value.relationship_id,
+                relationship_definition_id=value.relationship_definition_id,
+                relationship_name=value.relationship_name,
+                kind="RELATIONSHIP_DELETED",
+                before=_relationship_state(value.before),
+                after=None,
+            )
+        raise RuntimeError("unsupported Relationship lifecycle response state")
     if isinstance(value, OwnershipLifecycleEvent):
         ownership_kind = cast(Literal["ATTACH_TO", "DETACH_FROM"], value.kind.value)
         return OwnershipLifecycleEventDto(

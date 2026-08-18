@@ -1,10 +1,18 @@
 """Factual Relationship application capability and semantic projections."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 from netauto.application.cursors import Page, decode_cursor, encode_cursor
-from netauto.domain.primitives import JsonValue
+from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objects import (
+    ObjectValidationError,
+    RuntimePropertySpec,
+    canonicalize_properties,
+)
+from netauto.domain.primitives import JsonValue, PrimitiveValidationError
 from netauto.domain.relationships import (
     ObjectRelationshipView,
     Relationship,
@@ -18,8 +26,10 @@ from netauto.domain.relationships import (
     validate_definition,
     validate_lineage_graph,
     validate_relationship,
+    validate_relationship_definition_version,
 )
 from netauto.failures import ApplicationFailure, FailureClass
+from netauto.persistence.datatypes import DataTypeStore
 from netauto.persistence.locking import (
     MAX_SEMANTIC_UOW_ATTEMPTS,
     RowLockClass,
@@ -33,6 +43,7 @@ from netauto.persistence.objects import EventKind, ObjectStore
 from netauto.persistence.relationships import (
     ExactRelationshipViewCollision,
     RelationshipDefinitionStore,
+    RelationshipDefinitionVersionStore,
     RuntimeRelationshipModelReferenceError,
     RuntimeRelationshipObjectReferenceError,
     RuntimeRelationshipStore,
@@ -44,6 +55,8 @@ from netauto.persistence.uow import UnitOfWorkFactory
 class RelationshipProjection:
     id: UUID
     relationship_definition_id: UUID
+    relationship_definition_version: int
+    properties: dict[str, JsonValue]
     views: tuple[RelationshipView, ...]
 
 
@@ -84,6 +97,37 @@ def _referenced_object(object_id: UUID) -> ApplicationFailure:
     )
 
 
+def _referenced_version(definition_id: UUID, version: int) -> ApplicationFailure:
+    return ApplicationFailure(
+        FailureClass.SEMANTIC_VALIDATION,
+        "referenced_resource_not_found",
+        "The selected RelationshipDefinitionVersion does not exist.",
+        {
+            "resource_type": "relationship_definition_version",
+            "id": str(definition_id),
+            "version": version,
+        },
+    )
+
+
+def _default_unavailable(definition_id: UUID) -> ApplicationFailure:
+    return ApplicationFailure(
+        FailureClass.STATE_CONFLICT,
+        "default_version_unavailable",
+        "The selected RelationshipDefinition has no default version.",
+        {"id": str(definition_id)},
+    )
+
+
+def _dependency_not_admissible(definition_id: UUID, version: int) -> ApplicationFailure:
+    return ApplicationFailure(
+        FailureClass.STATE_CONFLICT,
+        "dependency_not_admissible",
+        "The selected RelationshipDefinitionVersion is not PUBLISHED.",
+        {"id": str(definition_id), "version": version},
+    )
+
+
 def _semantic(error: RelationshipValidationError) -> ApplicationFailure:
     return ApplicationFailure(
         FailureClass.SEMANTIC_VALIDATION,
@@ -106,10 +150,21 @@ def _fact_conflict(relationship_id: UUID) -> ApplicationFailure:
     )
 
 
-def _definition_intent(definition_id: UUID) -> RowLockIntent:
+def _definition_create_intent(definition_id: UUID, *, implicit: bool) -> RowLockIntent:
     return RowLockIntent(
         RowLockKey(RowLockClass.RELATIONSHIP_DEFINITION_HEADER, definition_id),
-        RowLockMode.KS,
+        RowLockMode.S if implicit else RowLockMode.KS,
+    )
+
+
+def _definition_version_intent(definition_id: UUID, version: int) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(
+            RowLockClass.RELATIONSHIP_DEFINITION_VERSION,
+            definition_id,
+            version,
+        ),
+        RowLockMode.S,
     )
 
 
@@ -132,6 +187,54 @@ def _relationship_lifetime_intent(relationship_id: UUID) -> RowLockIntent:
 class RelationshipService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
+
+    async def _relationship_specs(
+        self,
+        version_store: RelationshipDefinitionVersionStore,
+        definition_id: UUID,
+        version: int,
+        *,
+        require_published: bool,
+    ) -> tuple[RuntimePropertySpec, ...]:
+        exact = await version_store.get_version(definition_id, version)
+        if exact is None:
+            raise _internal("A factual Relationship exact schema is missing.")
+        try:
+            validate_relationship_definition_version(exact)
+        except RelationshipDefinitionValidationError as error:
+            raise _internal(
+                "A persisted RelationshipDefinitionVersion is invalid."
+            ) from error
+        if require_published and exact.status is not VersionStatus.PUBLISHED:
+            raise _dependency_not_admissible(definition_id, version)
+        if exact.status is VersionStatus.DRAFT:
+            raise _internal("A factual Relationship is pinned to a DRAFT schema.")
+        datatype_store = DataTypeStore(version_store.connection)
+        datatypes = await datatype_store.get_versions(
+            tuple(
+                (item.datatype_id, item.datatype_version) for item in exact.properties
+            )
+        )
+        specs: list[RuntimePropertySpec] = []
+        for item in exact.properties:
+            datatype = datatypes.get((item.datatype_id, item.datatype_version))
+            if datatype is None or datatype.status is VersionStatus.DRAFT:
+                raise _internal("A Relationship property dependency is invalid.")
+            if (
+                exact.status is VersionStatus.PUBLISHED
+                and datatype.status is not VersionStatus.PUBLISHED
+            ):
+                raise _internal("An active Relationship dependency is not PUBLISHED.")
+            specs.append(
+                RuntimePropertySpec(
+                    item.name,
+                    item.value_mode,
+                    False,
+                    datatype.base_type,
+                    datatype.constraints,
+                )
+            )
+        return tuple(specs)
 
     async def _validated(
         self,
@@ -165,8 +268,21 @@ class RelationshipService:
                 parent_by_id=parents,
                 template_by_object_id=templates,
             )
+            specs = await self._relationship_specs(
+                RelationshipDefinitionVersionStore(store.connection),
+                value.relationship_definition_id,
+                value.relationship_definition_version,
+                require_published=False,
+            )
+            canonical = canonicalize_properties(value.properties, specs)
+            if canonical != value.properties:
+                raise RelationshipValidationError(
+                    "properties", "noncanonical_persisted_properties"
+                )
             views = relationship_views(value, definition)
         except (
+            ObjectValidationError,
+            PrimitiveValidationError,
             RelationshipDefinitionValidationError,
             RelationshipValidationError,
         ) as error:
@@ -176,7 +292,13 @@ class RelationshipService:
         return (
             value,
             definition,
-            RelationshipProjection(value.id, value.relationship_definition_id, views),
+            RelationshipProjection(
+                value.id,
+                value.relationship_definition_id,
+                value.relationship_definition_version,
+                value.properties,
+                views,
+            ),
         )
 
     async def _classify_exact_view_collision(
@@ -186,7 +308,7 @@ class RelationshipService:
         resolution_id: UUID,
         from_object_id: UUID,
         to_object_id: UUID,
-    ) -> RelationshipCreateResult:
+    ) -> NoReturn:
         """Classify a rolled-back collision under one protected owner set."""
         async with self._uow_factory() as uow:
             store = RuntimeRelationshipStore(uow.connection)
@@ -228,14 +350,18 @@ class RelationshipService:
                 resolution_id, from_object_id, to_object_id
             )
             if current_id is not None:
-                projection = projections.get(current_id)
-                if projection is None:
+                if current_id not in projections:
                     raise _RestartRelationshipCreate
-                return RelationshipCreateResult(projection, False)
+                raise _fact_conflict(current_id)
             raise _fact_conflict(protected_owner_ids[0])
 
     async def create(
-        self, resolution_id: UUID, from_object_id: UUID, to_object_id: UUID
+        self,
+        resolution_id: UUID,
+        from_object_id: UUID,
+        to_object_id: UUID,
+        relationship_definition_version: int | None = None,
+        properties: Mapping[str, object] | None = None,
     ) -> RelationshipCreateResult:
         for attempt_number in range(1, MAX_SEMANTIC_UOW_ATTEMPTS + 1):
             collision_keys: tuple[RuntimeRelationshipResolution, ...] | None = None
@@ -244,10 +370,31 @@ class RelationshipService:
                 definition = await definition_store.get_by_resolution(resolution_id)
                 if definition is None:
                     raise _referenced_resolution(resolution_id)
+                implicit = relationship_definition_version is None
+                selected_version = (
+                    definition.default_version
+                    if implicit
+                    else relationship_definition_version
+                )
+                if selected_version is None:
+                    raise _default_unavailable(definition.id)
+                version_store = RelationshipDefinitionVersionStore(uow.connection)
+                target = await version_store.get_version(
+                    definition.id, selected_version
+                )
+                if target is None:
+                    if implicit:
+                        raise _internal(
+                            "A persisted RelationshipDefinition default is missing."
+                        )
+                    raise _referenced_version(definition.id, selected_version)
+                if target.status is not VersionStatus.PUBLISHED:
+                    raise _dependency_not_admissible(definition.id, selected_version)
                 plan = await prepare_lock_plan(
                     uow.connection,
                     intents=(
-                        _definition_intent(definition.id),
+                        _definition_create_intent(definition.id, implicit=implicit),
+                        _definition_version_intent(definition.id, selected_version),
                         _object_intent(from_object_id),
                         _object_intent(to_object_id),
                     ),
@@ -261,6 +408,26 @@ class RelationshipService:
                 definition = await definition_store.get_by_resolution(resolution_id)
                 if definition is None:
                     raise _referenced_resolution(resolution_id)
+                fresh_selected_version = (
+                    definition.default_version
+                    if implicit
+                    else relationship_definition_version
+                )
+                if fresh_selected_version is None:
+                    raise _default_unavailable(definition.id)
+                if fresh_selected_version != selected_version:
+                    continue
+                target = await version_store.get_version(
+                    definition.id, selected_version
+                )
+                if target is None:
+                    if implicit:
+                        raise _internal(
+                            "A persisted RelationshipDefinition default is missing."
+                        )
+                    raise _referenced_version(definition.id, selected_version)
+                if target.status is not VersionStatus.PUBLISHED:
+                    raise _dependency_not_admissible(definition.id, selected_version)
                 try:
                     validate_definition(definition)
                 except RelationshipDefinitionValidationError as error:
@@ -297,6 +464,32 @@ class RelationshipService:
                         "The persisted Relationship model or lineage graph is invalid."
                     ) from error
 
+                try:
+                    canonical_properties = canonicalize_properties(
+                        {} if properties is None else properties,
+                        await self._relationship_specs(
+                            version_store,
+                            definition.id,
+                            selected_version,
+                            require_published=True,
+                        ),
+                    )
+                except (ObjectValidationError, PrimitiveValidationError) as error:
+                    raise ApplicationFailure(
+                        FailureClass.SEMANTIC_VALIDATION,
+                        "semantic_validation_failed",
+                        "The Relationship property candidate is not "
+                        "semantically valid.",
+                        {
+                            "violations": [
+                                {
+                                    "path": getattr(error, "path", "properties"),
+                                    "rule": getattr(error, "rule", "invalid_value"),
+                                }
+                            ]
+                        },
+                    ) from error
+
                 current_id = await store.exact_relationship_id(
                     resolution_id, from_object_id, to_object_id
                 )
@@ -311,7 +504,7 @@ class RelationshipService:
                     except _RestartRelationshipCreate:
                         pass
                     else:
-                        return RelationshipCreateResult(projection, False)
+                        raise _fact_conflict(projection.id)
 
                 conflicts = await store.current_candidate_relationship_ids(resolutions)
                 if conflicts:
@@ -330,7 +523,13 @@ class RelationshipService:
                     if surviving_conflicts:
                         raise _fact_conflict(surviving_conflicts[0])
 
-                relationship = Relationship(relationship_id, definition.id, resolutions)
+                relationship = Relationship(
+                    relationship_id,
+                    definition.id,
+                    resolutions,
+                    selected_version,
+                    canonical_properties,
+                )
                 plan.begin_dml()
                 try:
                     await store.insert(relationship)
@@ -368,6 +567,8 @@ class RelationshipService:
                         RelationshipProjection(
                             relationship.id,
                             relationship.relationship_definition_id,
+                            relationship.relationship_definition_version,
+                            relationship.properties,
                             expected,
                         ),
                         True,
@@ -403,7 +604,7 @@ class RelationshipService:
                 uow.connection, intents=(_relationship_intent(relationship_id),)
             )
             if await acquire_lock_plan(uow.connection, plan):
-                return
+                raise _not_found(relationship_id)
             relationship, definition, _ = await self._validated(
                 store, RelationshipDefinitionStore(uow.connection), relationship_id
             )

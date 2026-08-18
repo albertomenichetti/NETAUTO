@@ -23,6 +23,7 @@ from netauto.persistence.metadata import (
     object_template_versions,
     object_templates,
     objects,
+    relationship_definition_versions,
     relationship_definitions,
     relationships,
 )
@@ -456,6 +457,13 @@ _ROW_TARGETS: dict[RowLockClass, _RowTarget] = {
     RowLockClass.RELATIONSHIP_DEFINITION_HEADER: _RowTarget(
         relationship_definitions, (relationship_definitions.c.id,)
     ),
+    RowLockClass.RELATIONSHIP_DEFINITION_VERSION: _RowTarget(
+        relationship_definition_versions,
+        (
+            relationship_definition_versions.c.relationship_definition_id,
+            relationship_definition_versions.c.version,
+        ),
+    ),
     RowLockClass.OBJECT: _RowTarget(objects, (objects.c.id,)),
     RowLockClass.RELATIONSHIP: _RowTarget(relationships, (relationships.c.id,)),
 }
@@ -552,6 +560,9 @@ _KNOWN_UNIQUE_CONSTRAINTS = frozenset(
         "uq_object_template_properties_position",
         "uq_object_template_components_position",
         "relationship_definitions_pkey",
+        "relationship_definition_versions_pkey",
+        "relationship_definition_properties_pkey",
+        "uq_relationship_definition_properties_position",
         "relationship_resolutions_pkey",
         "uq_relationship_resolutions_id_definition",
         "objects_pkey",
@@ -578,10 +589,14 @@ _KNOWN_FOREIGN_KEY_CONSTRAINTS = frozenset(
         "fk_relationship_resolutions_definition",
         "fk_relationship_resolutions_from_template",
         "fk_relationship_resolutions_to_template",
+        "fk_relationship_definition_versions_definition",
+        "fk_relationship_definitions_default_version",
+        "fk_relationship_definition_properties_version",
+        "fk_relationship_definition_properties_datatype_version",
         "fk_objects_template_version",
         "fk_object_components_child",
         "fk_object_components_parent",
-        "fk_relationships_definition",
+        "fk_relationships_definition_version",
         "fk_runtime_resolutions_relationship_definition",
         "fk_runtime_resolutions_resolution_definition",
         "fk_runtime_resolutions_from_object",

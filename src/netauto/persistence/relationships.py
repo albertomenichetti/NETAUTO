@@ -9,11 +9,17 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objecttemplates import ValueMode
+from netauto.domain.primitives import JsonValue
 from netauto.domain.relationships import (
     ObjectRelationshipView,
     Relationship,
     RelationshipCapability,
     RelationshipDefinition,
+    RelationshipDefinitionProperty,
+    RelationshipDefinitionVersion,
+    RelationshipDefinitionVersionSummary,
     RelationshipLifecycleView,
     RelationshipResolution,
     RuntimeRelationshipResolution,
@@ -30,6 +36,8 @@ from netauto.persistence.metadata import (
     object_lifecycle_events,
     object_templates,
     objects,
+    relationship_definition_properties,
+    relationship_definition_versions,
     relationship_definitions,
     relationship_resolutions,
     relationships,
@@ -65,6 +73,7 @@ def _aggregate_statement():
     return select(
         relationship_definitions.c.id.label("definition_id"),
         relationship_definitions.c.symmetric,
+        relationship_definitions.c.default_version,
         relationship_resolutions.c.id.label("resolution_id"),
         relationship_resolutions.c.relationship_definition_id,
         relationship_resolutions.c.from_template_id,
@@ -85,13 +94,17 @@ def _decode_aggregates(
     definitions: list[RelationshipDefinition] = []
     current_id: UUID | None = None
     current_symmetric = False
+    current_default_version: int | None = None
     resolutions: list[RelationshipResolution] = []
 
     def append_current() -> None:
         if current_id is not None:
             definitions.append(
                 RelationshipDefinition(
-                    current_id, current_symmetric, tuple(resolutions)
+                    current_id,
+                    current_symmetric,
+                    tuple(resolutions),
+                    current_default_version,
                 )
             )
 
@@ -101,6 +114,7 @@ def _decode_aggregates(
             append_current()
             current_id = definition_id
             current_symmetric = cast(bool, row["symmetric"])
+            current_default_version = cast(int | None, row["default_version"])
             resolutions = []
         resolution_id = cast(UUID | None, row["resolution_id"])
         if resolution_id is not None:
@@ -117,14 +131,50 @@ def _decode_aggregates(
     return tuple(definitions)
 
 
+def _definition_property(row: RowMapping) -> RelationshipDefinitionProperty:
+    return RelationshipDefinitionProperty(
+        name=cast(str, row["name"]),
+        position=cast(int, row["position"]),
+        datatype_id=cast(UUID, row["datatype_id"]),
+        datatype_version=cast(int, row["datatype_version"]),
+        value_mode=ValueMode(cast(str, row["value_mode"])),
+    )
+
+
+def _definition_version_header(row: RowMapping) -> RelationshipDefinitionVersion:
+    return RelationshipDefinitionVersion(
+        relationship_definition_id=cast(UUID, row["relationship_definition_id"]),
+        version=cast(int, row["version"]),
+        revision=cast(int, row["revision"]),
+        status=VersionStatus(cast(str, row["status"])),
+        properties=(),
+    )
+
+
+def _definition_version_summary(
+    row: RowMapping,
+) -> RelationshipDefinitionVersionSummary:
+    header = _definition_version_header(row)
+    return RelationshipDefinitionVersionSummary(
+        header.relationship_definition_id,
+        header.version,
+        header.revision,
+        header.status,
+    )
+
+
 class RelationshipDefinitionStore:
     def __init__(self, connection: AsyncConnection) -> None:
         self.connection = connection
 
-    async def insert(self, value: RelationshipDefinition) -> None:
+    async def insert(
+        self,
+        value: RelationshipDefinition,
+        version: RelationshipDefinitionVersion,
+    ) -> None:
         await self.connection.execute(
             relationship_definitions.insert().values(
-                id=value.id, symmetric=value.symmetric
+                id=value.id, symmetric=value.symmetric, default_version=None
             )
         )
         for item in sorted(
@@ -152,6 +202,9 @@ class RelationshipDefinitionStore:
                         item.to_template_id
                     ) from error
                 raise
+        await RelationshipDefinitionVersionStore(self.connection).insert_version(
+            version
+        )
 
     async def get(self, definition_id: UUID) -> RelationshipDefinition | None:
         rows = (
@@ -276,13 +329,18 @@ class RelationshipDefinitionStore:
     async def delete(self, definition_id: UUID) -> None:
         try:
             await self.connection.execute(
+                relationship_definitions.update()
+                .where(relationship_definitions.c.id == definition_id)
+                .values(default_version=None)
+            )
+            await self.connection.execute(
                 relationship_definitions.delete().where(
                     relationship_definitions.c.id == definition_id
                 )
             )
         except IntegrityError as error:
             classified = classify_postgresql_failure(error)
-            if classified.constraint_name == ("fk_relationships_definition"):
+            if classified.constraint_name == "fk_relationships_definition_version":
                 raise RelationshipDefinitionDeleteReferenceError from error
             raise
 
@@ -305,15 +363,32 @@ class RelationshipDefinitionStore:
         after: UUID | None,
         limit: int,
     ) -> tuple[RelationshipCapability, ...]:
-        statement = select(
-            relationship_resolutions.c.id,
-            relationship_resolutions.c.relationship_definition_id,
-            relationship_resolutions.c.name,
-            relationship_resolutions.c.from_template_id,
-            relationship_resolutions.c.to_template_id,
-        ).where(
-            relationship_resolutions.c.from_template_id.in_(
-                tuple(applicable_from_template_ids)
+        statement = (
+            select(
+                relationship_resolutions.c.id,
+                relationship_resolutions.c.relationship_definition_id,
+                relationship_resolutions.c.name,
+                relationship_resolutions.c.from_template_id,
+                relationship_resolutions.c.to_template_id,
+                relationship_definitions.c.default_version,
+            )
+            .join(
+                relationship_definitions,
+                relationship_definitions.c.id
+                == relationship_resolutions.c.relationship_definition_id,
+            )
+            .where(
+                relationship_resolutions.c.from_template_id.in_(
+                    tuple(applicable_from_template_ids)
+                ),
+                select(relationship_definition_versions.c.version)
+                .where(
+                    relationship_definition_versions.c.relationship_definition_id
+                    == relationship_resolutions.c.relationship_definition_id,
+                    relationship_definition_versions.c.status
+                    == VersionStatus.PUBLISHED.value,
+                )
+                .exists(),
             )
         )
         if name is not None:
@@ -338,9 +413,306 @@ class RelationshipDefinitionStore:
                 name=cast(str, row["name"]),
                 from_template_id=cast(UUID, row["from_template_id"]),
                 to_template_id=cast(UUID, row["to_template_id"]),
+                default_version=cast(int | None, row["default_version"]),
             )
             for row in rows
         )
+
+
+class RelationshipDefinitionVersionStore:
+    """Persistence boundary for exact RelationshipDefinitionVersion state."""
+
+    def __init__(self, connection: AsyncConnection) -> None:
+        self.connection = connection
+
+    async def _insert_properties(
+        self,
+        definition_id: UUID,
+        version: int,
+        properties: tuple[RelationshipDefinitionProperty, ...],
+    ) -> None:
+        for item in sorted(properties, key=lambda value: value.name):
+            await self.connection.execute(
+                relationship_definition_properties.insert().values(
+                    relationship_definition_id=definition_id,
+                    relationship_definition_version=version,
+                    name=item.name,
+                    position=item.position,
+                    datatype_id=item.datatype_id,
+                    datatype_version=item.datatype_version,
+                    value_mode=item.value_mode.value,
+                )
+            )
+
+    async def insert_version(self, value: RelationshipDefinitionVersion) -> None:
+        await self.connection.execute(
+            relationship_definition_versions.insert().values(
+                relationship_definition_id=value.relationship_definition_id,
+                version=value.version,
+                revision=value.revision,
+                status=value.status.value,
+            )
+        )
+        await self._insert_properties(
+            value.relationship_definition_id, value.version, value.properties
+        )
+
+    async def get_header(
+        self, definition_id: UUID, version: int
+    ) -> RelationshipDefinitionVersion | None:
+        row = (
+            (
+                await self.connection.execute(
+                    select(relationship_definition_versions).where(
+                        relationship_definition_versions.c.relationship_definition_id
+                        == definition_id,
+                        relationship_definition_versions.c.version == version,
+                    )
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else _definition_version_header(row)
+
+    async def get_headers(
+        self, keys: Sequence[tuple[UUID, int]]
+    ) -> dict[tuple[UUID, int], RelationshipDefinitionVersion]:
+        if not keys:
+            return {}
+        ordered = tuple(sorted(set(keys), key=lambda item: (item[0].int, item[1])))
+        rows = (
+            (
+                await self.connection.execute(
+                    select(relationship_definition_versions).where(
+                        tuple_(
+                            relationship_definition_versions.c.relationship_definition_id,
+                            relationship_definition_versions.c.version,
+                        ).in_(ordered)
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        values = map(_definition_version_header, rows)
+        return {
+            (value.relationship_definition_id, value.version): value for value in values
+        }
+
+    async def get_properties(
+        self, definition_id: UUID, version: int
+    ) -> tuple[RelationshipDefinitionProperty, ...]:
+        rows = (
+            (
+                await self.connection.execute(
+                    select(relationship_definition_properties)
+                    .where(
+                        relationship_definition_properties.c.relationship_definition_id
+                        == definition_id,
+                        relationship_definition_properties.c.relationship_definition_version
+                        == version,
+                    )
+                    .order_by(relationship_definition_properties.c.position)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return tuple(_definition_property(row) for row in rows)
+
+    async def get_version(
+        self, definition_id: UUID, version: int
+    ) -> RelationshipDefinitionVersion | None:
+        header = await self.get_header(definition_id, version)
+        if header is None:
+            return None
+        return RelationshipDefinitionVersion(
+            header.relationship_definition_id,
+            header.version,
+            header.revision,
+            header.status,
+            await self.get_properties(definition_id, version),
+        )
+
+    async def next_version(self, definition_id: UUID) -> int:
+        maximum = await self.connection.scalar(
+            select(func.max(relationship_definition_versions.c.version)).where(
+                relationship_definition_versions.c.relationship_definition_id
+                == definition_id
+            )
+        )
+        return 1 if maximum is None else int(maximum) + 1
+
+    async def replace_candidate(self, value: RelationshipDefinitionVersion) -> None:
+        current = {
+            item.name: item
+            for item in await self.get_properties(
+                value.relationship_definition_id, value.version
+            )
+        }
+        desired = {item.name: item for item in value.properties}
+        deletes = sorted(
+            name for name, item in current.items() if desired.get(name) != item
+        )
+        inserts = tuple(
+            item for name, item in sorted(desired.items()) if current.get(name) != item
+        )
+        for name in deletes:
+            await self.connection.execute(
+                relationship_definition_properties.delete().where(
+                    relationship_definition_properties.c.relationship_definition_id
+                    == value.relationship_definition_id,
+                    relationship_definition_properties.c.relationship_definition_version
+                    == value.version,
+                    relationship_definition_properties.c.name == name,
+                )
+            )
+        await self._insert_properties(
+            value.relationship_definition_id, value.version, inserts
+        )
+        result = await self.connection.execute(
+            relationship_definition_versions.update()
+            .where(
+                relationship_definition_versions.c.relationship_definition_id
+                == value.relationship_definition_id,
+                relationship_definition_versions.c.version == value.version,
+            )
+            .values(revision=relationship_definition_versions.c.revision + 1)
+        )
+        if result.rowcount != 1:
+            raise RuntimeError("locked RelationshipDefinitionVersion disappeared")
+
+    async def set_status(
+        self, definition_id: UUID, version: int, status: VersionStatus
+    ) -> None:
+        result = await self.connection.execute(
+            relationship_definition_versions.update()
+            .where(
+                relationship_definition_versions.c.relationship_definition_id
+                == definition_id,
+                relationship_definition_versions.c.version == version,
+            )
+            .values(status=status.value)
+        )
+        if result.rowcount != 1:
+            raise RuntimeError("locked RelationshipDefinitionVersion disappeared")
+
+    async def set_default(
+        self, definition_id: UUID, version: int | None
+    ) -> RelationshipDefinition:
+        row = (
+            await self.connection.execute(
+                relationship_definitions.update()
+                .where(relationship_definitions.c.id == definition_id)
+                .values(default_version=version)
+                .returning(relationship_definitions.c.id)
+            )
+        ).first()
+        if row is None:
+            raise RuntimeError("locked RelationshipDefinition disappeared")
+        aggregate = await RelationshipDefinitionStore(self.connection).get(
+            definition_id
+        )
+        if aggregate is None:
+            raise RuntimeError("updated RelationshipDefinition disappeared")
+        return aggregate
+
+    async def published_history(
+        self, definition_id: UUID
+    ) -> tuple[RelationshipDefinitionVersion, ...]:
+        versions = (
+            await self.connection.scalars(
+                select(relationship_definition_versions.c.version)
+                .where(
+                    relationship_definition_versions.c.relationship_definition_id
+                    == definition_id,
+                    relationship_definition_versions.c.status.in_(
+                        (
+                            VersionStatus.PUBLISHED.value,
+                            VersionStatus.DEPRECATED.value,
+                        )
+                    ),
+                )
+                .order_by(relationship_definition_versions.c.version)
+            )
+        ).all()
+        result: list[RelationshipDefinitionVersion] = []
+        for version in versions:
+            value = await self.get_version(definition_id, cast(int, version))
+            if value is not None:
+                result.append(value)
+        return tuple(result)
+
+    async def has_published(self, definition_id: UUID) -> bool:
+        return bool(
+            await self.connection.scalar(
+                select(func.count())
+                .select_from(relationship_definition_versions)
+                .where(
+                    relationship_definition_versions.c.relationship_definition_id
+                    == definition_id,
+                    relationship_definition_versions.c.status
+                    == VersionStatus.PUBLISHED.value,
+                )
+            )
+        )
+
+    async def has_factual_reference(self, definition_id: UUID, version: int) -> bool:
+        return bool(
+            await self.connection.scalar(
+                select(func.count())
+                .select_from(relationships)
+                .where(
+                    relationships.c.relationship_definition_id == definition_id,
+                    relationships.c.relationship_definition_version == version,
+                )
+            )
+        )
+
+    async def delete_draft(self, definition_id: UUID, version: int) -> None:
+        result = await self.connection.execute(
+            relationship_definition_versions.delete().where(
+                relationship_definition_versions.c.relationship_definition_id
+                == definition_id,
+                relationship_definition_versions.c.version == version,
+            )
+        )
+        if result.rowcount != 1:
+            raise RuntimeError("locked RelationshipDefinitionVersion disappeared")
+
+    async def list_versions(
+        self,
+        definition_id: UUID,
+        *,
+        status: str | None,
+        after: int | None,
+        limit: int,
+    ) -> tuple[RelationshipDefinitionVersionSummary, ...]:
+        statement = select(relationship_definition_versions).where(
+            relationship_definition_versions.c.relationship_definition_id
+            == definition_id
+        )
+        if status is not None:
+            statement = statement.where(
+                relationship_definition_versions.c.status == status
+            )
+        if after is not None:
+            statement = statement.where(
+                relationship_definition_versions.c.version > after
+            )
+        rows = (
+            (
+                await self.connection.execute(
+                    statement.order_by(
+                        relationship_definition_versions.c.version
+                    ).limit(limit)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return tuple(_definition_version_summary(row) for row in rows)
 
 
 def _runtime_relationship(rows: Sequence[RowMapping]) -> Relationship | None:
@@ -348,6 +720,8 @@ def _runtime_relationship(rows: Sequence[RowMapping]) -> Relationship | None:
         return None
     relationship_id = cast(UUID, rows[0]["relationship_id"])
     definition_id = cast(UUID, rows[0]["relationship_definition_id"])
+    definition_version = cast(int, rows[0]["relationship_definition_version"])
+    properties = cast(dict[str, JsonValue], rows[0]["properties"])
     resolutions: list[RuntimeRelationshipResolution] = []
     for row in rows:
         resolution_id = cast(UUID | None, row["resolution_id"])
@@ -364,7 +738,13 @@ def _runtime_relationship(rows: Sequence[RowMapping]) -> Relationship | None:
                 to_object_id=cast(UUID, row["to_object_id"]),
             )
         )
-    return Relationship(relationship_id, definition_id, tuple(resolutions))
+    return Relationship(
+        relationship_id,
+        definition_id,
+        tuple(resolutions),
+        definition_version,
+        properties,
+    )
 
 
 class RuntimeRelationshipStore:
@@ -392,6 +772,8 @@ class RuntimeRelationshipStore:
                     select(
                         relationships.c.id.label("relationship_id"),
                         relationships.c.relationship_definition_id,
+                        relationships.c.relationship_definition_version,
+                        relationships.c.properties,
                         runtime_relationship_resolutions.c.relationship_definition_id.label(
                             "runtime_relationship_definition_id"
                         ),
@@ -473,11 +855,15 @@ class RuntimeRelationshipStore:
                 relationships.insert().values(
                     id=value.id,
                     relationship_definition_id=value.relationship_definition_id,
+                    relationship_definition_version=(
+                        value.relationship_definition_version
+                    ),
+                    properties=value.properties,
                 )
             )
         except IntegrityError as error:
             classified = classify_postgresql_failure(error)
-            if classified.constraint_name == ("fk_relationships_definition"):
+            if classified.constraint_name == "fk_relationships_definition_version":
                 raise RuntimeRelationshipModelReferenceError from error
             raise
         for item in sorted(
@@ -584,6 +970,20 @@ class RuntimeRelationshipStore:
     ) -> None:
         if not views:
             raise RuntimeError("Relationship lifecycle projection is incomplete")
+        factual_state: dict[str, JsonValue] = {
+            "relationship_definition_version": (
+                relationship.relationship_definition_version
+            ),
+            "properties": relationship.properties,
+        }
+        if kind == "RELATIONSHIP_CREATED":
+            before_state = None
+            after_state: dict[str, JsonValue] | None = factual_state
+        elif kind == "RELATIONSHIP_DELETED":
+            before_state = factual_state
+            after_state = None
+        else:
+            raise RuntimeError("unsupported Relationship lifecycle transition")
         await self.connection.execute(
             object_lifecycle_events.insert(),
             [
@@ -598,6 +998,8 @@ class RuntimeRelationshipStore:
                         relationship.relationship_definition_id
                     ),
                     "relationship_name": item.relationship_name,
+                    "before_state": before_state,
+                    "after_state": after_state,
                 }
                 for item in views
             ],
@@ -623,6 +1025,8 @@ class RuntimeRelationshipStore:
             select(
                 runtime_relationship_resolutions.c.relationship_id,
                 runtime_relationship_resolutions.c.relationship_definition_id,
+                relationships.c.relationship_definition_version,
+                relationships.c.properties,
                 runtime_relationship_resolutions.c.from_object_id,
                 runtime_relationship_resolutions.c.to_object_id,
                 relationship_resolutions.c.name,
@@ -631,6 +1035,11 @@ class RuntimeRelationshipStore:
                 relationship_resolutions,
                 relationship_resolutions.c.id
                 == runtime_relationship_resolutions.c.resolution_id,
+            )
+            .join(
+                relationships,
+                relationships.c.id
+                == runtime_relationship_resolutions.c.relationship_id,
             )
             .where(runtime_relationship_resolutions.c.from_object_id == object_id)
             .distinct()
@@ -659,6 +1068,10 @@ class RuntimeRelationshipStore:
                 object_id=cast(UUID, row.from_object_id),
                 destination_object_id=cast(UUID, row.to_object_id),
                 name=cast(str, row.name),
+                relationship_definition_version=cast(
+                    int, row.relationship_definition_version
+                ),
+                properties=cast(dict[str, JsonValue], row.properties),
             )
             for row in rows
         )

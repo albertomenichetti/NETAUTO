@@ -141,13 +141,17 @@ async def _seed(
     second_object = await objects.create(
         second_template.object_template.id, 1, f"{prefix}-second", {}
     )
-    definition = await RelationshipDefinitionService(factory).create_non_symmetric(
+    definitions = RelationshipDefinitionService(factory)
+    created_definition = await definitions.create_non_symmetric(
         (
             RelationshipPerspective(first_template.object_template.id, first_name),
             RelationshipPerspective(second_template.object_template.id, second_name),
         )
     )
-    return RelationshipSeed(definition, first_object, second_object)
+    await definitions.publish(created_definition.relationship_definition.id, 1, 1)
+    return RelationshipSeed(
+        created_definition.relationship_definition, first_object, second_object
+    )
 
 
 async def _symmetric_seed(
@@ -187,10 +191,14 @@ async def _symmetric_seed(
     second_object = await objects.create(
         endpoint_template_id, 1, f"{prefix}-second", {}
     )
-    definition = await RelationshipDefinitionService(factory).create_symmetric(
+    definitions = RelationshipDefinitionService(factory)
+    created_definition = await definitions.create_symmetric(
         definition_templates, f"{prefix}_link"
     )
-    return RelationshipSeed(definition, first_object, second_object)
+    await definitions.publish(created_definition.relationship_definition.id, 1, 1)
+    return RelationshipSeed(
+        created_definition.relationship_definition, first_object, second_object
+    )
 
 
 async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> RelationshipSeed:
@@ -245,7 +253,8 @@ async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> Relations
     second_object = await objects.create(
         second_template.object_template.id, 1, f"{prefix}-peer", {}
     )
-    definition = await RelationshipDefinitionService(factory).create_non_symmetric(
+    definitions = RelationshipDefinitionService(factory)
+    created_definition = await definitions.create_non_symmetric(
         (
             RelationshipPerspective(
                 first_template.object_template.id, "contains_mutable"
@@ -253,7 +262,10 @@ async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> Relations
             RelationshipPerspective(second_template.object_template.id, "in_mutable"),
         )
     )
-    return RelationshipSeed(definition, first_object, second_object)
+    await definitions.publish(created_definition.relationship_definition.id, 1, 1)
+    return RelationshipSeed(
+        created_definition.relationship_definition, first_object, second_object
+    )
 
 
 def _insert_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[Relationship]]:
@@ -374,7 +386,7 @@ def _failure_code(value: object) -> str | None:
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_arb_05_reciprocal_create_uses_pk_and_converges(
+async def test_arb_05_reciprocal_create_uses_pk_and_rejects_loser(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -399,10 +411,10 @@ async def test_arb_05_reciprocal_create_uses_pk_and_converges(
             ),
         )
         assert isinstance(winner, RelationshipCreateResult)
-        assert isinstance(loser, RelationshipCreateResult)
         assert winner.created is True
-        assert loser.created is False
-        assert winner.relationship.id == loser.relationship.id
+        assert isinstance(loser, ApplicationFailure)
+        assert loser.code == "relationship_fact_conflict"
+        assert loser.details == {"relationship_id": str(winner.relationship.id)}
         assert len(candidates) == 2
         assert candidates[0].id != candidates[1].id
         async with actors.t1_engine.connect() as connection:
@@ -433,7 +445,7 @@ async def test_arb_05_reciprocal_create_uses_pk_and_converges(
 @pytest.mark.postgresql
 @pytest.mark.concurrency
 @pytest.mark.parametrize("inheritance_overlap", [False, True])
-async def test_arb_05_symmetric_inverse_and_overlap_create_converge(
+async def test_arb_05_symmetric_inverse_and_overlap_create_reject_loser(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -465,10 +477,10 @@ async def test_arb_05_symmetric_inverse_and_overlap_create_converge(
             ),
         )
         assert isinstance(winner, RelationshipCreateResult)
-        assert isinstance(loser, RelationshipCreateResult)
         assert winner.created is True
-        assert loser.created is False
-        assert winner.relationship.id == loser.relationship.id
+        assert isinstance(loser, ApplicationFailure)
+        assert loser.code == "relationship_fact_conflict"
+        assert loser.details == {"relationship_id": str(winner.relationship.id)}
         expected_runtime_rows = 4 if inheritance_overlap else 2
         async with actors.t1_engine.connect() as connection:
             assert (
@@ -514,7 +526,8 @@ async def test_arb_06_same_id_delete_locks_and_emits_one_event_set(
             lambda: first.delete(initial.relationship.id),
             lambda: second.delete(initial.relationship.id),
         )
-        assert outcomes == [None, None]
+        assert outcomes[0] is None
+        assert _failure_code(outcomes[1]) == "resource_not_found"
         async with actors.t1_engine.connect() as connection:
             assert (
                 await connection.scalar(
@@ -554,7 +567,9 @@ async def test_arb_07a_late_delete_cannot_remove_recreated_fact(
         assert recreated.created is True
         assert recreated.relationship.id != original.relationship.id
 
-        await service.delete(original.relationship.id)
+        with pytest.raises(ApplicationFailure) as missing:
+            await service.delete(original.relationship.id)
+        assert missing.value.code == "resource_not_found"
 
         assert (
             await service.get(recreated.relationship.id)
@@ -738,9 +753,9 @@ async def test_arb_07c_delete_blocks_after_collision_owner_lifetime_lock(
 
         owner_locked_cut.release.set()
         loser, deleted = await asyncio.gather(loser_task, delete_task)
-        assert isinstance(loser, RelationshipCreateResult)
-        assert loser.created is False
-        assert loser.relationship.id == winner.relationship.id
+        assert isinstance(loser, ApplicationFailure)
+        assert loser.code == "relationship_fact_conflict"
+        assert loser.details == {"relationship_id": str(winner.relationship.id)}
         assert deleted is None
 
 
@@ -867,15 +882,16 @@ async def test_arb_07d_expanded_collision_owner_set_restarts_complete_plan(
         with pytest.raises(restart_error):
             await first_classification
 
-        converged = await classify_collision(
-            service,
-            collision_keys,
-            resolution_id=first_seed.first_resolution_id,
-            from_object_id=first_seed.first_object.id,
-            to_object_id=first_seed.second_object.id,
-        )
-        assert converged.created is False
-        assert converged.relationship.id == first.relationship.id
+        with pytest.raises(ApplicationFailure) as conflict:
+            await classify_collision(
+                service,
+                collision_keys,
+                resolution_id=first_seed.first_resolution_id,
+                from_object_id=first_seed.first_object.id,
+                to_object_id=first_seed.second_object.id,
+            )
+        assert conflict.value.code == "relationship_fact_conflict"
+        assert conflict.value.details == {"relationship_id": str(first.relationship.id)}
         assert acquired_owner_sets == [
             (first.relationship.id,),
             tuple(
@@ -1305,6 +1321,8 @@ async def test_atomic_02_later_closure_pk_collision_rolls_back_candidate(
                 relationships.insert().values(
                     id=blocker_id,
                     relationship_definition_id=seed.definition.id,
+                    relationship_definition_version=1,
+                    properties={},
                 )
             )
             await blocker.connection.execute(

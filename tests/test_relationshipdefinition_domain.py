@@ -1,13 +1,17 @@
 """Pure RelationshipDefinition aggregate and conflict semantics."""
 
 from dataclasses import replace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
+from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objecttemplates import ValueMode
 from netauto.domain.relationships import (
     RelationshipDefinition,
+    RelationshipDefinitionProperty,
     RelationshipDefinitionValidationError,
+    RelationshipDefinitionVersion,
     RelationshipPerspective,
     RelationshipResolution,
     ResolutionRename,
@@ -19,6 +23,8 @@ from netauto.domain.relationships import (
     semantic_signature,
     validate_definition,
     validate_lineage_graph,
+    validate_relationship_definition_version,
+    validate_relationship_property_history,
 )
 
 
@@ -204,3 +210,84 @@ def test_lineage_graph_corruption_is_rejected_defensively() -> None:
     with pytest.raises(RelationshipDefinitionValidationError) as missing:
         validate_lineage_graph({first: second})
     assert missing.value.rule == "persisted_lineage_dependency_missing"
+
+
+def _rdv_property(
+    name: str,
+    position: int,
+    datatype_id: UUID,
+    value_mode: ValueMode = ValueMode.SCALAR,
+) -> RelationshipDefinitionProperty:
+    return RelationshipDefinitionProperty(
+        name,
+        position,
+        datatype_id,
+        1,
+        value_mode,
+    )
+
+
+def test_rdv_declaration_shape_and_complete_history_rules() -> None:
+    definition_id = uuid4()
+    datatype_id = uuid4()
+    published = RelationshipDefinitionVersion(
+        definition_id,
+        1,
+        1,
+        VersionStatus.PUBLISHED,
+        (_rdv_property("value", 1, datatype_id),),
+    )
+    widened = RelationshipDefinitionVersion(
+        definition_id,
+        3,
+        2,
+        VersionStatus.DRAFT,
+        (_rdv_property("value", 2, datatype_id, ValueMode.LIST),),
+    )
+    validate_relationship_property_history(widened, (published,))
+
+    narrowed = RelationshipDefinitionVersion(
+        definition_id,
+        2,
+        1,
+        VersionStatus.DRAFT,
+        (_rdv_property("value", 1, datatype_id),),
+    )
+    with pytest.raises(RelationshipDefinitionValidationError) as narrowing:
+        validate_relationship_property_history(narrowed, (published, widened))
+    assert narrowing.value.rule == "list_to_scalar_forbidden"
+
+    rebound = RelationshipDefinitionVersion(
+        definition_id,
+        4,
+        1,
+        VersionStatus.DRAFT,
+        (_rdv_property("value", 1, uuid4()),),
+    )
+    with pytest.raises(RelationshipDefinitionValidationError) as lineage:
+        validate_relationship_property_history(rebound, (published,))
+    assert lineage.value.rule == "property_datatype_lineage_changed"
+
+
+@pytest.mark.parametrize(
+    "properties",
+    [
+        (
+            _rdv_property("duplicate", 1, uuid4()),
+            _rdv_property("duplicate", 2, uuid4()),
+        ),
+        (
+            _rdv_property("first", 1, uuid4()),
+            _rdv_property("second", 1, uuid4()),
+        ),
+        (_rdv_property("Invalid", 1, uuid4()),),
+    ],
+)
+def test_rdv_declaration_rejects_duplicate_and_noncanonical_identity(
+    properties: tuple[RelationshipDefinitionProperty, ...],
+) -> None:
+    candidate = RelationshipDefinitionVersion(
+        uuid4(), 1, 1, VersionStatus.DRAFT, properties
+    )
+    with pytest.raises(RelationshipDefinitionValidationError):
+        validate_relationship_definition_version(candidate)

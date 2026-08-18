@@ -4,17 +4,19 @@ from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
-from pydantic import BaseModel, BeforeValidator, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from netauto.application.cursors import Page
 from netauto.application.relationships import (
     RelationshipProjection,
     RelationshipService,
 )
+from netauto.domain.primitives import JsonValue
 from netauto.domain.relationships import ObjectRelationshipView, RelationshipView
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
+    PositiveInteger,
     StrictBody,
     validate_query,
 )
@@ -39,6 +41,23 @@ class RelationshipCreateBody(StrictBody):
     resolution_id: BodyUUID
     from_object_id: BodyUUID
     to_object_id: BodyUUID
+    relationship_definition_version: PositiveInteger | None = None
+    properties: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def preserve_omission(cls, value: object) -> object:
+        if isinstance(value, dict):
+            raw = cast(dict[object, object], value)
+            if (
+                "relationship_definition_version" in raw
+                and raw["relationship_definition_version"] is None
+            ):
+                raise ValueError("relationship_definition_version_null_forbidden")
+            if "properties" in raw and raw["properties"] is None:
+                raise ValueError("properties_null_forbidden")
+            return cast(object, raw)
+        return value
 
 
 class RelationshipViewDto(BaseModel):
@@ -52,6 +71,8 @@ class RelationshipViewDto(BaseModel):
 class RelationshipDto(BaseModel):
     id: UUID
     relationship_definition_id: UUID
+    relationship_definition_version: int
+    properties: dict[str, JsonValue]
     views: list[RelationshipViewDto]
 
 
@@ -60,9 +81,11 @@ class ObjectRelationshipViewDto(BaseModel):
 
     relationship_id: UUID
     relationship_definition_id: UUID
+    relationship_definition_version: int
     object_id: UUID
     destination_object_id: UUID
     name: str
+    properties: dict[str, JsonValue]
 
 
 class ObjectRelationshipPageDto(BaseModel):
@@ -83,6 +106,8 @@ def _relationship(value: RelationshipProjection) -> RelationshipDto:
     return RelationshipDto(
         id=value.id,
         relationship_definition_id=value.relationship_definition_id,
+        relationship_definition_version=value.relationship_definition_version,
+        properties=value.properties,
         views=[_view(item) for item in value.views],
     )
 
@@ -98,7 +123,11 @@ def _page(value: Page[ObjectRelationshipView]) -> ObjectRelationshipPageDto:
     )
 
 
-@router.post("/relationships", response_model=RelationshipDto)
+@router.post(
+    "/relationships",
+    response_model=RelationshipDto,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_relationship(
     body: RelationshipCreateBody,
     request: Request,
@@ -106,13 +135,15 @@ async def create_relationship(
 ) -> RelationshipDto:
     validate_query(request, ())
     result = await _service(request).create(
-        body.resolution_id, body.from_object_id, body.to_object_id
+        body.resolution_id,
+        body.from_object_id,
+        body.to_object_id,
+        body.relationship_definition_version,
+        body.properties,
     )
-    if result.created:
-        response.status_code = status.HTTP_201_CREATED
-        response.headers["Location"] = (
-            f"/api/v1/core/relationships/{result.relationship.id}"
-        )
+    response.headers["Location"] = (
+        f"/api/v1/core/relationships/{result.relationship.id}"
+    )
     return _relationship(result.relationship)
 
 

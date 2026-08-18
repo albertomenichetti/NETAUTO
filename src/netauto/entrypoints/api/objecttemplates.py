@@ -285,6 +285,7 @@ class RelationshipCapabilityDto(BaseModel):
     name: str
     from_template_id: UUID
     to_template_id: UUID
+    default_version: int | None
 
 
 class RelationshipCapabilityPageDto(BaseModel):

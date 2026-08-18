@@ -301,6 +301,29 @@ class ObjectTemplateStore:
         )
         return None if row is None else _header(row)
 
+    async def get_headers(
+        self, keys: Sequence[tuple[UUID, int]]
+    ) -> dict[tuple[UUID, int], ObjectTemplateVersion]:
+        if not keys:
+            return {}
+        ordered = tuple(sorted(set(keys), key=lambda item: (item[0].int, item[1])))
+        rows = (
+            (
+                await self.connection.execute(
+                    select(object_template_versions).where(
+                        tuple_(
+                            object_template_versions.c.template_id,
+                            object_template_versions.c.version,
+                        ).in_(ordered)
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        values = map(_header, rows)
+        return {(value.template_id, value.version): value for value in values}
+
     async def get_properties(
         self, template_id: UUID, version: int
     ) -> tuple[LocalProperty, ...]:

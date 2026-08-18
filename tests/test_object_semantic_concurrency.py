@@ -21,7 +21,12 @@ from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.failures import ApplicationFailure
 from netauto.persistence.locking import AdvisoryGate, RowLockClass, RowLockMode
-from netauto.persistence.objects import EventKind, ObjectStore, OwnershipLifecycleEvent
+from netauto.persistence.objects import (
+    EventKind,
+    IntrinsicLifecycleEvent,
+    ObjectStore,
+    OwnershipLifecycleEvent,
+)
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.semantic_concurrency import (
@@ -1040,6 +1045,7 @@ async def test_rename_and_data_change_share_non_key_object_owner(
                 limit=100,
             )
         ).items
+        assert isinstance(events[0], IntrinsicLifecycleEvent)
         assert events[0].before is not None
         assert events[0].before.canonical_name == "new"
 
