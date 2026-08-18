@@ -1,10 +1,9 @@
 """Strict public HTTP adapter for factual Relationship capabilities."""
 
-from typing import Annotated, Literal, cast
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from netauto.application.cursors import Page
 from netauto.application.relationships import (
@@ -12,118 +11,28 @@ from netauto.application.relationships import (
     RelationshipService,
 )
 from netauto.domain.objects import DataChangeKind, DataChangeOperation
-from netauto.domain.primitives import JsonValue
 from netauto.domain.relationships import ObjectRelationshipView, RelationshipView
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
-    PositiveInteger,
-    StrictBody,
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
+from netauto.transport.http.relationships import (
+    ObjectRelationshipPageDto,
+    ObjectRelationshipViewDto,
+    RelationshipCreateBody,
+    RelationshipDataChangeBody,
+    RelationshipDto,
+    RelationshipSchemaChangeBody,
+    RelationshipSetOperationBody,
+    RelationshipViewDto,
+)
 
 router = APIRouter(prefix="/api/v1/core", tags=["relationships"])
 
 
-def _uuid_carrier(value: object) -> UUID:
-    if isinstance(value, UUID):
-        return value
-    if not isinstance(value, str):
-        raise ValueError("uuid_required")
-    return UUID(value)
-
-
-BodyUUID = Annotated[UUID, BeforeValidator(_uuid_carrier)]
 RelationshipNameQuery = Annotated[str, Query(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
-
-
-class RelationshipCreateBody(StrictBody):
-    resolution_id: BodyUUID
-    from_object_id: BodyUUID
-    to_object_id: BodyUUID
-    relationship_definition_version: PositiveInteger | None = None
-    properties: dict[str, JsonValue] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def preserve_omission(cls, value: object) -> object:
-        if isinstance(value, dict):
-            raw = cast(dict[object, object], value)
-            if (
-                "relationship_definition_version" in raw
-                and raw["relationship_definition_version"] is None
-            ):
-                raise ValueError("relationship_definition_version_null_forbidden")
-            if "properties" in raw and raw["properties"] is None:
-                raise ValueError("properties_null_forbidden")
-            return cast(object, raw)
-        return value
-
-
-class RelationshipSetOperationBody(StrictBody):
-    op: Literal["SET"]
-    property: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
-    value: JsonValue
-
-
-class RelationshipRemoveOperationBody(StrictBody):
-    op: Literal["REMOVE"]
-    property: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
-
-
-RelationshipDataChangeOperationBody = Annotated[
-    RelationshipSetOperationBody | RelationshipRemoveOperationBody,
-    Field(discriminator="op"),
-]
-
-
-class RelationshipDataChangeBody(StrictBody):
-    operations: list[RelationshipDataChangeOperationBody] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def unique_properties(self) -> RelationshipDataChangeBody:
-        names = [operation.property for operation in self.operations]
-        if len(names) != len(set(names)):
-            raise ValueError("duplicate_relationship_property_operation")
-        return self
-
-
-class RelationshipSchemaChangeBody(StrictBody):
-    target_version: PositiveInteger
-
-
-class RelationshipViewDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    object_id: UUID
-    destination_object_id: UUID
-    name: str
-
-
-class RelationshipDto(BaseModel):
-    id: UUID
-    relationship_definition_id: UUID
-    relationship_definition_version: int
-    properties: dict[str, JsonValue]
-    views: list[RelationshipViewDto]
-
-
-class ObjectRelationshipViewDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    relationship_id: UUID
-    relationship_definition_id: UUID
-    relationship_definition_version: int
-    object_id: UUID
-    destination_object_id: UUID
-    name: str
-    properties: dict[str, JsonValue]
-
-
-class ObjectRelationshipPageDto(BaseModel):
-    items: list[ObjectRelationshipViewDto]
-    next_cursor: str | None
 
 
 def _service(request: Request) -> RelationshipService:

@@ -6,15 +6,11 @@ import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Protocol
 
+from netauto.health import HealthStatus
+
 CORE_DATABASE_HEALTH_TIMEOUT_SECONDS = 2.0
-
-
-class HealthStatus(StrEnum):
-    OK = "ok"
-    ERROR = "error"
 
 
 @dataclass(frozen=True, slots=True)

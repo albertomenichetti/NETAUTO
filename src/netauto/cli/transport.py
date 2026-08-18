@@ -1,0 +1,117 @@
+"""One-attempt HTTPX transport with transparent exchange tracing."""
+
+import time
+from collections.abc import Iterable
+from importlib.metadata import version
+from types import MappingProxyType
+from typing import cast
+
+import httpx
+
+from netauto.cli.model import (
+    HttpExchangeTrace,
+    HttpRequestTrace,
+    HttpResponseTrace,
+    JsonValue,
+    RequestPlan,
+)
+
+TIMEOUT = httpx.Timeout(connect=5.0, pool=5.0, read=30.0, write=30.0)
+
+
+class TransportFailure(Exception):
+    """A request attempt that received no HTTP response."""
+
+    def __init__(self, exchange: HttpExchangeTrace) -> None:
+        self.exchange = exchange
+        super().__init__("cli_transport_error")
+
+
+def _group(items: Iterable[tuple[str, str]]) -> MappingProxyType[str, tuple[str, ...]]:
+    grouped: dict[str, list[str]] = {}
+    for name, value in items:
+        grouped.setdefault(name.lower(), []).append(value)
+    return MappingProxyType({name: tuple(values) for name, values in grouped.items()})
+
+
+def _response_trace(response: httpx.Response) -> HttpResponseTrace:
+    if not response.content:
+        body_format = "none"
+        body: JsonValue | None = None
+    else:
+        try:
+            body = cast(JsonValue, response.json())
+            body_format = "json"
+        except ValueError:
+            body = response.text
+            body_format = "text"
+    return HttpResponseTrace(
+        response.status_code,
+        _group(response.headers.multi_items()),
+        body_format,
+        body,
+    )
+
+
+class HttpTransport:
+    """A scoped client reused for one non-interactive command."""
+
+    def __init__(
+        self,
+        endpoint_root: str,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._root = endpoint_root
+        self._client = httpx.AsyncClient(
+            timeout=TIMEOUT,
+            follow_redirects=False,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": f"netauto/{version('netauto')}",
+            },
+            transport=transport,
+        )
+
+    async def __aenter__(self) -> HttpTransport:
+        return self
+
+    async def __aexit__(
+        self,
+        exception_type: object,
+        exception: object,
+        traceback: object,
+    ) -> None:
+        await self._client.aclose()
+
+    async def exchange(
+        self, plan: RequestPlan
+    ) -> tuple[httpx.Response, HttpExchangeTrace]:
+        url = f"{self._root}{plan.path}"
+        self._client.cookies.clear()
+        if plan.body is None:
+            request = self._client.build_request(plan.method, url, params=plan.query)
+        else:
+            request = self._client.build_request(
+                plan.method, url, params=plan.query, json=plan.body
+            )
+        request_trace = HttpRequestTrace(
+            request.method,
+            str(request.url.copy_with(query=None)),
+            _group(request.url.params.multi_items()),
+            _group(request.headers.multi_items()),
+            plan.body,
+        )
+        started = time.monotonic()
+        try:
+            response = await self._client.send(request, follow_redirects=False)
+        except httpx.TransportError:
+            elapsed = max(0, int((time.monotonic() - started) * 1000))
+            raise TransportFailure(
+                HttpExchangeTrace(request_trace, None, elapsed)
+            ) from None
+        finally:
+            self._client.cookies.clear()
+        elapsed = max(0, int((time.monotonic() - started) * 1000))
+        exchange = HttpExchangeTrace(request_trace, _response_trace(response), elapsed)
+        return response, exchange

@@ -1,15 +1,13 @@
 """Strict HTTP adapter for RelationshipDefinition and exact RDV capabilities."""
 
-from typing import Annotated, Literal, Self, cast
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from netauto.application.cursors import Page
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.domain.datatypes import VersionStatus
-from netauto.domain.objecttemplates import ValueMode
 from netauto.domain.relationships import (
     CreateRelationshipDefinitionResult,
     RelationshipDefinition,
@@ -18,221 +16,36 @@ from netauto.domain.relationships import (
     RelationshipDefinitionVersionSummary,
     RelationshipPerspective,
     RelationshipPropertyCandidate,
-    RelationshipResolution,
     ResolutionRename,
 )
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
     PathPositiveInteger,
-    PositiveInteger,
     QueryPositiveInteger,
-    StrictBody,
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
+from netauto.transport.http.relationshipdefinitions import (
+    CreateNextBody,
+    CreateRelationshipDefinitionDto,
+    NonSymmetricCreateBody,
+    NonSymmetricRenameBody,
+    RelationshipDefinitionCreateBody,
+    RelationshipDefinitionDto,
+    RelationshipDefinitionPageDto,
+    RelationshipDefinitionPropertyDto,
+    RelationshipDefinitionRenameBody,
+    RelationshipDefinitionVersionDto,
+    RelationshipDefinitionVersionPageDto,
+    RelationshipDefinitionVersionSummaryDto,
+    RelationshipPropertyBody,
+    RelationshipResolutionDto,
+    ReviseBody,
+    SetDefaultBody,
+)
 
 router = APIRouter(prefix="/api/v1/core", tags=["relationship-definitions"])
-
-
-def _uuid_carrier(value: object) -> UUID:
-    if isinstance(value, UUID):
-        return value
-    if not isinstance(value, str):
-        raise ValueError("uuid_required")
-    return UUID(value)
-
-
-BodyUUID = Annotated[UUID, BeforeValidator(_uuid_carrier)]
-
-
-def _value_mode_carrier(value: object) -> ValueMode:
-    if isinstance(value, ValueMode):
-        return value
-    if not isinstance(value, str):
-        raise ValueError("value_mode_required")
-    return ValueMode(value)
-
-
-BodyValueMode = Annotated[ValueMode, BeforeValidator(_value_mode_carrier)]
-
-
-class RelationshipPropertyBody(StrictBody):
-    name: str
-    position: PositiveInteger
-    datatype_id: BodyUUID
-    datatype_version: PositiveInteger | None = None
-    value_mode: BodyValueMode
-
-    @model_validator(mode="before")
-    @classmethod
-    def null_is_not_omission(cls, value: object) -> object:
-        if isinstance(value, dict):
-            raw = cast(dict[object, object], value)
-            if "datatype_version" in raw and raw["datatype_version"] is None:
-                raise ValueError("datatype_version_null_forbidden")
-            return cast(object, raw)
-        return value
-
-
-class PerspectiveBody(StrictBody):
-    template_id: BodyUUID
-    name: str
-
-
-class NonSymmetricCreateBody(StrictBody):
-    symmetric: Literal[False]
-    perspectives: list[PerspectiveBody] = Field(min_length=2, max_length=2)
-    properties: list[RelationshipPropertyBody] = Field(
-        default_factory=lambda: list[RelationshipPropertyBody]()
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def symmetric_is_strict_boolean(cls, value: object) -> object:
-        if isinstance(value, dict):
-            raw = cast(dict[object, object], value)
-            if not isinstance(raw.get("symmetric"), bool):
-                raise ValueError("boolean_required")
-            if "properties" in raw and raw["properties"] is None:
-                raise ValueError("properties_null_forbidden")
-        return cast(object, value)
-
-
-class SymmetricCreateBody(StrictBody):
-    symmetric: Literal[True]
-    endpoint_template_ids: list[BodyUUID] = Field(min_length=2, max_length=2)
-    name: str
-    properties: list[RelationshipPropertyBody] = Field(
-        default_factory=lambda: list[RelationshipPropertyBody]()
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def symmetric_is_strict_boolean(cls, value: object) -> object:
-        if isinstance(value, dict):
-            raw = cast(dict[object, object], value)
-            if not isinstance(raw.get("symmetric"), bool):
-                raise ValueError("boolean_required")
-            if "properties" in raw and raw["properties"] is None:
-                raise ValueError("properties_null_forbidden")
-        return cast(object, value)
-
-
-type RelationshipDefinitionCreateBody = Annotated[
-    NonSymmetricCreateBody | SymmetricCreateBody, Field(discriminator="symmetric")
-]
-
-
-class ResolutionRenameBody(StrictBody):
-    resolution_id: BodyUUID
-    name: str
-
-
-class NonSymmetricRenameBody(StrictBody):
-    resolutions: list[ResolutionRenameBody] = Field(min_length=2, max_length=2)
-
-    @model_validator(mode="after")
-    def resolution_ids_are_unique(self) -> Self:
-        if len({item.resolution_id for item in self.resolutions}) != 2:
-            raise ValueError("duplicate_resolution_id")
-        return self
-
-
-class SymmetricRenameBody(StrictBody):
-    name: str
-
-
-type RelationshipDefinitionRenameBody = NonSymmetricRenameBody | SymmetricRenameBody
-
-
-class CreateNextBody(StrictBody):
-    source_version: PositiveInteger
-
-
-class ReviseBody(StrictBody):
-    properties: list[RelationshipPropertyBody]
-
-    @model_validator(mode="before")
-    @classmethod
-    def properties_are_required_and_non_null(cls, value: object) -> object:
-        if isinstance(value, dict):
-            raw = cast(dict[object, object], value)
-            if "properties" not in raw or raw["properties"] is None:
-                raise ValueError("properties_required")
-            return cast(object, raw)
-        return value
-
-
-class SetDefaultBody(StrictBody):
-    version: PositiveInteger
-
-
-class RelationshipResolutionDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    resolution_id: UUID
-    name: str
-    from_template_id: UUID
-    to_template_id: UUID
-
-    @classmethod
-    def from_domain(cls, value: RelationshipResolution) -> Self:
-        return cls(
-            resolution_id=value.id,
-            name=value.name,
-            from_template_id=value.from_template_id,
-            to_template_id=value.to_template_id,
-        )
-
-
-class RelationshipDefinitionDto(BaseModel):
-    id: UUID
-    symmetric: bool
-    default_version: int | None
-    resolutions: list[RelationshipResolutionDto]
-
-
-class RelationshipDefinitionPropertyDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    name: str
-    position: int
-    datatype_id: UUID
-    datatype_version: int
-    value_mode: ValueMode
-
-
-class RelationshipDefinitionVersionDto(BaseModel):
-    relationship_definition_id: UUID
-    version: int
-    revision: int
-    status: VersionStatus
-    properties: list[RelationshipDefinitionPropertyDto]
-
-
-class RelationshipDefinitionVersionSummaryDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    relationship_definition_id: UUID
-    version: int
-    revision: int
-    status: VersionStatus
-
-
-class CreateRelationshipDefinitionDto(BaseModel):
-    relationship_definition: RelationshipDefinitionDto
-    version: RelationshipDefinitionVersionDto
-
-
-class RelationshipDefinitionPageDto(BaseModel):
-    items: list[RelationshipDefinitionDto]
-    next_cursor: str | None
-
-
-class RelationshipDefinitionVersionPageDto(BaseModel):
-    items: list[RelationshipDefinitionVersionSummaryDto]
-    next_cursor: str | None
 
 
 def _service(request: Request) -> RelationshipDefinitionService:
@@ -246,7 +59,12 @@ def _definition(value: RelationshipDefinition) -> RelationshipDefinitionDto:
         symmetric=value.symmetric,
         default_version=value.default_version,
         resolutions=[
-            RelationshipResolutionDto.from_domain(item)
+            RelationshipResolutionDto(
+                resolution_id=item.id,
+                name=item.name,
+                from_template_id=item.from_template_id,
+                to_template_id=item.to_template_id,
+            )
             for item in sorted(value.resolutions, key=lambda item: item.id)
         ],
     )

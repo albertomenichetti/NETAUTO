@@ -11,6 +11,7 @@ from typing import cast
 
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.application.relationships import RelationshipService
+from netauto.cli.registry import BUSINESS_OPERATION_SET, COMMAND_REGISTRY
 from netauto.persistence.locking import AdvisoryGate, RowLockMode
 from tests.test_m1_traceability import PGTEST_SCENARIOS
 from tests.test_m2_s00_traceability import (
@@ -969,6 +970,135 @@ S04_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
         }
     ),
 }
+S05_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-27": frozenset(
+        {
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_is_exactly_the_server_business_openapi_inventory",
+            "tests/test_m2_s05_registry.py::"
+            "test_every_registry_spec_is_complete_and_path_metadata_is_closed",
+            "tests/test_m2_s05_registry.py::"
+            "test_fastapi_routes_use_the_neutral_wire_dto_identity",
+            "tests/test_m2_s05_registry.py::"
+            "test_cli_import_closure_has_no_server_or_database_boundary",
+            "tests/test_m2_s05_registry.py::"
+            "test_s05_has_no_repl_or_insecure_option_surface",
+            "tests/test_m2_s05_registry.py::"
+            "test_httpx_is_runtime_dependency_and_console_entrypoint_is_exact",
+            "tests/test_m2_s05_parser.py::test_endpoint_root_normalization",
+            "tests/test_m2_s05_parser.py::"
+            "test_endpoint_root_rejects_non_root_or_credential_surface",
+            "tests/test_m2_s05_parser.py::"
+            "test_parser_preserves_original_typed_human_intent",
+            "tests/test_m2_s05_parser.py::test_json_file_is_read_as_utf8_once",
+            "tests/test_m2_s05_parser.py::test_simple_carrier_and_closed_enum_matrix",
+            "tests/test_m2_s05_parser.py::"
+            "test_structured_parameter_failures_are_finite",
+            "tests/test_m2_s05_parser.py::test_finite_local_parse_failures",
+            "tests/test_m2_s05_parser.py::"
+            "test_nullable_string_distinguishes_null_from_literal_null",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_deduplication_cookie_isolation_and_primary_trace",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_lookup_zero_stops_before_primary_request",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_ambiguity_is_bounded_to_two_ids",
+            "tests/test_m2_s05_http_client.py::"
+            "test_nested_selector_plan_is_ordered_and_deduplicated",
+            "tests/test_m2_s05_http_client.py::"
+            "test_human_selector_families_cover_zero_one_many",
+            "tests/test_m2_s05_http_client.py::"
+            "test_uuid_only_selector_families_accept_uuid_and_reject_names",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_cache_never_survives_one_command",
+            "tests/test_m2_s05_http_client.py::"
+            "test_uuid_top_level_selector_has_precedence_and_no_lookup",
+            "tests/test_m2_s05_http_client.py::"
+            "test_remote_business_error_is_preserved_exactly",
+            "tests/test_m2_s05_http_client.py::test_protocol_failures_are_not_remapped",
+            "tests/test_m2_s05_http_client.py::"
+            "test_created_location_is_validated_exactly",
+            "tests/test_m2_s05_http_client.py::test_204_with_body_is_protocol_error",
+            "tests/test_m2_s05_http_client.py::"
+            "test_transport_failure_is_one_attempt_with_response_null",
+            "tests/test_m2_s05_http_client.py::"
+            "test_registry_uuid_only_selector_is_canonical",
+            "tests/test_m2_s05_http_client.py::test_http_timeout_policy_is_exact",
+            "tests/test_m2_s05_process.py::"
+            "test_console_process_emits_one_json_line_and_needs_no_database_url",
+            "tests/test_m2_s05_process.py::"
+            "test_console_local_failure_has_exact_output_channels_and_exit",
+            "tests/test_m2_s05_process.py::"
+            "test_console_selector_sequence_has_no_health_preflight",
+            "tests/test_m2_s05_process.py::"
+            "test_console_remote_and_protocol_failures_use_structured_stdout",
+            "tests/test_m2_s05_process.py::"
+            "test_console_transport_failure_is_structured_and_single_attempt",
+            "tests/test_m2_s05_tls.py::"
+            "test_default_tls_verification_trust_and_hostname_matrix",
+            "tests/test_m2_s05_installed.py::"
+            "test_installed_candidate_wheel_exposes_working_netauto_console",
+        }
+    )
+}
+S05_SUPPORTING_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-24": frozenset(
+        {
+            "tests/test_m2_s05_registry.py::"
+            "test_httpx_is_runtime_dependency_and_console_entrypoint_is_exact",
+            "tests/test_m2_s05_process.py::"
+            "test_console_process_emits_one_json_line_and_needs_no_database_url",
+            "tests/test_m2_s05_process.py::"
+            "test_console_local_failure_has_exact_output_channels_and_exit",
+            "tests/test_m2_s05_process.py::"
+            "test_console_selector_sequence_has_no_health_preflight",
+            "tests/test_m2_s05_process.py::"
+            "test_console_remote_and_protocol_failures_use_structured_stdout",
+            "tests/test_m2_s05_process.py::"
+            "test_console_transport_failure_is_structured_and_single_attempt",
+            "tests/test_m2_s05_installed.py::"
+            "test_installed_candidate_wheel_exposes_working_netauto_console",
+        }
+    ),
+    "M2-VER-28": frozenset(
+        {
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_is_exactly_the_server_business_openapi_inventory",
+            "tests/test_m2_s05_registry.py::"
+            "test_every_registry_spec_is_complete_and_path_metadata_is_closed",
+            "tests/test_m2_s05_registry.py::"
+            "test_cli_import_closure_has_no_server_or_database_boundary",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_deduplication_cookie_isolation_and_primary_trace",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_lookup_zero_stops_before_primary_request",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_ambiguity_is_bounded_to_two_ids",
+            "tests/test_m2_s05_http_client.py::"
+            "test_nested_selector_plan_is_ordered_and_deduplicated",
+            "tests/test_m2_s05_http_client.py::"
+            "test_uuid_top_level_selector_has_precedence_and_no_lookup",
+            "tests/test_m2_s05_http_client.py::"
+            "test_human_selector_families_cover_zero_one_many",
+            "tests/test_m2_s05_http_client.py::"
+            "test_uuid_only_selector_families_accept_uuid_and_reject_names",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_cache_never_survives_one_command",
+        }
+    ),
+    "M2-VER-30": frozenset(
+        {
+            "tests/test_m2_s05_registry.py::"
+            "test_s05_has_no_repl_or_insecure_option_surface",
+            "tests/test_m2_s05_parser.py::"
+            "test_endpoint_root_rejects_non_root_or_credential_surface",
+            "tests/test_m2_s05_http_client.py::"
+            "test_selector_deduplication_cookie_isolation_and_primary_trace",
+            "tests/test_m2_s05_tls.py::"
+            "test_default_tls_verification_trust_and_hostname_matrix",
+        }
+    ),
+}
 S04_REVIEW_FIX_TARGETS = {
     "S04-RF-01": frozenset(
         {
@@ -1019,11 +1149,15 @@ M2_EVIDENCE_TO_TARGETS = {
         or bundle_id in S02_BUNDLE_TARGETS
         or bundle_id in S03_BUNDLE_TARGETS
         or bundle_id in S04_BUNDLE_TARGETS
+        or bundle_id in S05_PRIMARY_BUNDLE_TARGETS
+        or bundle_id in S05_SUPPORTING_BUNDLE_TARGETS
         else "DESIGNED",
         S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S02_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S03_BUNDLE_TARGETS.get(bundle_id, frozenset())
-        | S04_BUNDLE_TARGETS.get(bundle_id, frozenset()),
+        | S04_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S05_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S05_SUPPORTING_BUNDLE_TARGETS.get(bundle_id, frozenset()),
     )
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
@@ -1221,6 +1355,8 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
             or bundle_id in S02_BUNDLE_TARGETS
             or bundle_id in S03_BUNDLE_TARGETS
             or bundle_id in S04_BUNDLE_TARGETS
+            or bundle_id in S05_PRIMARY_BUNDLE_TARGETS
+            or bundle_id in S05_SUPPORTING_BUNDLE_TARGETS
         ):
             assert evidence.state == "IMPLEMENTED"
             assert evidence.targets
@@ -1333,6 +1469,49 @@ def test_s04_bundle_states_and_targets_are_honest_and_resolvable() -> None:
         assert evidence.targets == targets
         for target in targets:
             _assert_target_exists(target)
+
+
+def test_s05_primary_and_supporting_bundle_targets_are_honest() -> None:
+    assert set(S05_PRIMARY_BUNDLE_TARGETS) == {"M2-VER-27"}
+    assert set(S05_SUPPORTING_BUNDLE_TARGETS) == {
+        "M2-VER-24",
+        "M2-VER-28",
+        "M2-VER-30",
+    }
+    for bundle_id, targets in {
+        **S05_PRIMARY_BUNDLE_TARGETS,
+        **S05_SUPPORTING_BUNDLE_TARGETS,
+    }.items():
+        evidence = M2_EVIDENCE_TO_TARGETS[bundle_id]
+        assert evidence.state == "IMPLEMENTED"
+        assert targets <= evidence.targets
+        for target in targets:
+            _assert_target_exists(target)
+    assert (
+        M2_EVIDENCE_TO_TARGETS["M2-VER-27"].targets
+        == (S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"])
+    )
+    defined_s05_targets = {
+        f"{path.as_posix()}::{node.name}"
+        for path in sorted(Path("tests").glob("test_m2_s05_*.py"))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    assert S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"] == defined_s05_targets
+    for designed in ("M2-VER-25", "M2-VER-26", "M2-VER-29", "M2-VER-31", "M2-VER-32"):
+        assert M2_EVIDENCE_TO_TARGETS[designed] == EvidenceBundle(
+            "DESIGNED", frozenset()
+        )
+
+
+def test_s05_preserves_exact_business_and_cli_operation_inventories() -> None:
+    assert len(M2_MUTATIONS) == 41
+    assert sum(spec.method == "GET" for spec in COMMAND_REGISTRY.values()) == 22
+    assert len(BUSINESS_OPERATION_SET) == 63
+    assert len(COMMAND_REGISTRY) == 63
+    assert len(S04_PUBLIC_ROUTE_DELTA) == 1
+    assert len(BUSINESS_OPERATION_SET | S04_PUBLIC_ROUTE_DELTA) == 64
 
 
 def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
@@ -1492,12 +1671,17 @@ def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
         for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
         if evidence.state == "IMPLEMENTED"
     }
-    assert implemented == {f"M2-VER-{number:02d}" for number in range(1, 24)}
+    assert implemented == {
+        *(f"M2-VER-{number:02d}" for number in range(1, 25)),
+        "M2-VER-27",
+        "M2-VER-28",
+        "M2-VER-30",
+    }
     assert {
         bundle_id
         for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
         if evidence.state == "DESIGNED"
-    } == {f"M2-VER-{number:02d}" for number in range(24, 33)}
+    } == {"M2-VER-25", "M2-VER-26", "M2-VER-29", "M2-VER-31", "M2-VER-32"}
 
 
 def test_s03_mutation_registry_is_exact_central_and_executable() -> None:

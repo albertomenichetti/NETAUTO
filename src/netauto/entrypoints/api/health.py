@@ -1,29 +1,14 @@
 """Strict operational HTTP adapter for Core readiness."""
 
-from typing import Annotated, cast
+from typing import cast
 
 from fastapi import APIRouter, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
 
-from netauto.application.health import CoreHealthService, HealthStatus
+from netauto.application.health import CoreHealthService
 from netauto.entrypoints.api.common import NoBody, validate_query
+from netauto.transport.http.health import ComponentHealthDTO, CoreHealthDTO
 
 router = APIRouter(prefix="/health", tags=["health"])
-
-
-class ComponentHealthDTO(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: HealthStatus
-    message: str | None = None
-
-
-class CoreHealthDTO(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    app_status: ComponentHealthDTO
-    db_status: ComponentHealthDTO
-    execution_time_ms: Annotated[int, Field(ge=0)]
 
 
 @router.get(
