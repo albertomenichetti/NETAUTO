@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S00 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S01 READY
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S00 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the published M2-S00 corrective candidate
+current slice   M2-S01 — READY
+current task    prepare the M2-S01 Codex implementation prompt and execute the authorized slice
 blockers        none
 ```
 
@@ -30,7 +30,7 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S00` ONLY |
+| Implementation | AUTHORIZED — `M2-S01` ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -39,8 +39,8 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 
 | Slice | State | Dependency |
 |---|---|---|
-| `M2-S00` | CANDIDATE READY FOR REVIEW | none |
-| `M2-S01` | BLOCKED | `M2-S00 COMPLETED` |
+| `M2-S00` | COMPLETED | none |
+| `M2-S01` | READY | `M2-S00 COMPLETED` |
 | `M2-S02` | BLOCKED | `M2-S01 COMPLETED` |
 | `M2-S03` | BLOCKED | `M2-S02 COMPLETED` |
 | `M2-S04` | BLOCKED | `M2-S03 COMPLETED` |
@@ -50,27 +50,30 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
-No implementation slice is reviewer-owned `COMPLETED`.
+`M2-S00` is reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification
-blocker is open. The externally supplied `TEST_DATABASE_URL` was available for the
-mandatory focused and full real-PostgreSQL gates; no fallback database or alternate
-environment variable was used.
+No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S01`.
+
+`M2-S01` requires an externally supplied real PostgreSQL target through `TEST_DATABASE_URL` for its mandatory migration, schema, persistence and concurrency evidence. No fallback database, local credentials or alternate environment variable is authorized.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
-## M2-S00 corrective candidate evidence
+## M2-S00 completion record
+
+Reviewer result:
 
 ```text
-corrective code/test commit   7950fc041fb8fdb62bfaf72bdcfe40fff2af8dab
-publication                   pushed to origin/M2
-CPython                       3.14.7
-PostgreSQL                    16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+M2-S00                         COMPLETED
+initial implementation         328fe179dade3a30168cb2e14dbbb5042a82e463
+corrective implementation      7950fc041fb8fdb62bfaf72bdcfe40fff2af8dab
+candidate evidence/status      8168aeb3a8a3e1dedd97afcd22f9da314d689333
+CPython                        3.14.7
+PostgreSQL                     16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 ```
 
-Verified gates:
+Accepted verification:
 
 ```text
 uv lock --check                                             PASS
@@ -88,17 +91,37 @@ uv run pytest -q -m "not postgresql" -ra                    PASS (160)
 uv run pytest -q -ra                                        PASS (314)
 ```
 
-The machine registry resolves exact targets for `PLAN-01 ... PLAN-06`. The focused
-evidence covers real lock-mode execution and missing keys, canonical planning and
-targeted ancestry, a real stale-plan restart with fresh transaction identity, real
-`23505`/`23503` classification after rollback, the exact restart/no-retry policy,
-and real gate-before-row blocking. No supported path returned `40P01`; no test was
-skipped, xfailed or rerun. No schema, migration, dependency or lockfile changed.
+Reviewer inspection confirmed:
+
+```text
+all 32 delivered mutation paths use or are proven compatible with the central planner
+PLAN-01 ... PLAN-06 have machine-resolvable pure/static and PostgreSQL targets
+post-collision REL.CREATE classification is rollback-first and lifetime-safe
+factual collision owners are locked canonically with Relationship KS
+owner disappearance or set expansion causes a bounded whole-UoW restart
+planner ancestry loading is skipped for non-ObjectTemplate plans
+targeted ObjectTemplate ancestry uses one recursive CTE and excludes unrelated lineages
+differential ObjectTemplate declaration DML and rollback evidence remain intact
+three advisory gates and four row-lock modes match the frozen registry
+no supported scenario produced SQLSTATE 40P01
+no test was skipped, xfailed or rerun
+no public M1 behavior changed outside the frozen M2 delta
+no schema, migration, dependency or lockfile changed
+no M2-S01 business capability was introduced
+obsolete GitHub Actions and encoded payload material remain absent
+```
+
+No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Review the published M2-S00 corrective candidate. The reviewer alone may mark
-`M2-S00` `COMPLETED` and open `M2-S01`.
+Prepare the non-normative Codex implementation prompt for:
+
+```text
+M2-S01 — Durable relational baseline and versioned Relationship model plane
+```
+
+Before implementation, execute the mandatory repository-based pre-flight for `M2-S01`, including verification that `TEST_DATABASE_URL` is available for the required real-PostgreSQL gates. Do not start `M2-S02`.
 
 ## Current status vocabulary
 
