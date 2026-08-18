@@ -1,14 +1,18 @@
 """Deterministic real-PostgreSQL M2-S02 Relationship scenarios."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from datetime import datetime
 from functools import partial
+from types import ModuleType
 from typing import cast
 from uuid import UUID
 
 import pytest
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, event, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+import netauto.application.relationshipdefinitions as definition_application
 import netauto.application.relationships as relationship_application
 from netauto.application.cursors import Page
 from netauto.application.objects import ObjectService
@@ -18,12 +22,15 @@ from netauto.application.relationships import (
     RelationshipProjection,
     RelationshipService,
 )
+from netauto.domain.datatypes import VersionStatus
 from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.domain.primitives import JsonValue
 from netauto.domain.relationships import (
     Relationship,
     RelationshipDefinition,
+    RelationshipDefinitionProperty,
+    RelationshipDefinitionVersion,
     RelationshipLifecycleView,
     RelationshipPerspective,
     RelationshipPropertyCandidate,
@@ -35,13 +42,23 @@ from netauto.persistence.lifecycle import (
     LifecycleStore,
     RelationshipLifecycleEvent,
 )
-from netauto.persistence.locking import RowLockClass, RowLockMode
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockKey,
+    RowLockMode,
+)
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     relationships,
     runtime_relationship_resolutions,
 )
-from netauto.persistence.relationships import RuntimeRelationshipStore
+from netauto.persistence.relationships import (
+    RelationshipDefinitionStore,
+    RelationshipDefinitionVersionStore,
+    RuntimeRelationshipStore,
+)
 from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.semantic_concurrency import (
     ObservedUnitOfWorkFactory,
@@ -54,6 +71,9 @@ from tests.support.semantic_concurrency import (
 )
 
 type Operation = Callable[[], Awaitable[object]]
+type AcquireLockPlan = Callable[
+    [AsyncConnection, LockPlan], Awaitable[tuple[RowLockKey, ...]]
+]
 
 
 class RelationshipSeed:
@@ -242,6 +262,112 @@ async def _closure_keys(
         return tuple((row[0], row[1], row[2]) for row in rows)
 
 
+async def _transition_history(
+    actors: SemanticActors, relationship_id: UUID
+) -> list[tuple[datetime, str, object, object]]:
+    async with actors.t1_engine.connect() as connection:
+        rows = (
+            await connection.execute(
+                select(
+                    object_lifecycle_events.c.occurred_at,
+                    object_lifecycle_events.c.kind,
+                    object_lifecycle_events.c.before_state,
+                    object_lifecycle_events.c.after_state,
+                )
+                .where(
+                    object_lifecycle_events.c.relationship_id == relationship_id,
+                    object_lifecycle_events.c.kind.in_(
+                        (
+                            EventKind.RELATIONSHIP_DATA_CHANGE.value,
+                            EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+                        )
+                    ),
+                )
+                .order_by(
+                    object_lifecycle_events.c.occurred_at,
+                    object_lifecycle_events.c.id,
+                )
+            )
+        ).all()
+    result: list[tuple[datetime, str, object, object]] = []
+    for row in rows:
+        transition = (row.occurred_at, row.kind, row.before_state, row.after_state)
+        if result and result[-1] == transition:
+            continue
+        fanout = [
+            item
+            for item in rows
+            if (item.occurred_at, item.kind) == (row.occurred_at, row.kind)
+        ]
+        assert len(fanout) == 2
+        assert all(
+            item.before_state == row.before_state
+            and item.after_state == row.after_state
+            for item in fanout
+        )
+        result.append(transition)
+    return result
+
+
+def _observe_t2_lock_plan(
+    monkeypatch: pytest.MonkeyPatch, application_module: ModuleType
+) -> tuple[asyncio.Event, list[LockPlan]]:
+    completed = asyncio.Event()
+    plans: list[LockPlan] = []
+    original = cast(AcquireLockPlan, application_module.acquire_lock_plan)
+
+    async def intercepted(
+        connection: AsyncConnection, plan: LockPlan
+    ) -> tuple[RowLockKey, ...]:
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T2":
+            plans.append(plan)
+        missing = await original(connection, plan)
+        if task is not None and task.get_name() == "T2":
+            completed.set()
+        return missing
+
+    monkeypatch.setattr(application_module, "acquire_lock_plan", intercepted)
+    return completed, plans
+
+
+def _capture_t1_lock_plans(
+    monkeypatch: pytest.MonkeyPatch, application_module: ModuleType
+) -> list[LockPlan]:
+    plans: list[LockPlan] = []
+    original = cast(AcquireLockPlan, application_module.acquire_lock_plan)
+
+    async def intercepted(
+        connection: AsyncConnection, plan: LockPlan
+    ) -> tuple[RowLockKey, ...]:
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1":
+            plans.append(plan)
+        return await original(connection, plan)
+
+    monkeypatch.setattr(application_module, "acquire_lock_plan", intercepted)
+    return plans
+
+
+def _assert_schema_waits_before_factual_owner(
+    completed: asyncio.Event,
+    plans: list[LockPlan],
+    definition_id: UUID,
+    target_version: int,
+    relationship_id: UUID,
+) -> None:
+    assert not completed.is_set()
+    assert len(plans) == 1
+    keys = [intent.key for intent in plans[0].rows]
+    assert keys.index(
+        RowLockKey(
+            RowLockClass.RELATIONSHIP_DEFINITION_VERSION,
+            definition_id,
+            target_version,
+        )
+    ) < keys.index(RowLockKey(RowLockClass.RELATIONSHIP, relationship_id))
+
+
 @pytest.mark.postgresql
 @pytest.mark.concurrency
 async def test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop(
@@ -260,6 +386,7 @@ async def test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop(
             1,
             {"metric": 0, "other": 0},
         )
+        closure_before = await _closure_keys(actors, created.relationship.id)
         first, second = _services(actors)
         with monkeypatch.context() as context:
             cut = install_lock_plan_cut(
@@ -280,11 +407,12 @@ async def test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop(
                     (DataChangeOperation(DataChangeKind.SET, "other", 2),),
                 ),
             )
-        assert all(not isinstance(item, ApplicationFailure) for item in outcomes)
-        assert (await reader.get(created.relationship.id)).properties == {
-            "metric": 1,
-            "other": 2,
-        }
+        assert isinstance(outcomes[0], RelationshipProjection)
+        assert outcomes[0].relationship_definition_version == 1
+        assert outcomes[0].properties == {"metric": 1, "other": 0}
+        assert isinstance(outcomes[1], RelationshipProjection)
+        assert outcomes[1].relationship_definition_version == 1
+        assert outcomes[1].properties == {"metric": 1, "other": 2}
         before_count = (await _event_kinds(actors, created.relationship.id)).count(
             EventKind.RELATIONSHIP_DATA_CHANGE.value
         )
@@ -310,7 +438,7 @@ async def test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop(
                 RowLockClass.RELATIONSHIP,
                 RowLockMode.NKU,
             )
-            await blocked_race(
+            outcomes = await blocked_race(
                 actors,
                 cut,
                 lambda: first.data_change(
@@ -327,80 +455,162 @@ async def test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop(
         )
         assert after_count - before_count == 2
         assert update_calls == 1
-        assert (await reader.get(created.relationship.id)).properties["metric"] == 3
+        assert all(isinstance(item, RelationshipProjection) for item in outcomes)
+        assert all(
+            cast(RelationshipProjection, item).relationship_definition_version == 1
+            and cast(RelationshipProjection, item).properties
+            == {"metric": 3, "other": 2}
+            for item in outcomes
+        )
+        current = await reader.get(created.relationship.id)
+        assert current.relationship_definition_version == 1
+        assert current.properties == {"metric": 3, "other": 2}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        history = await _transition_history(actors, created.relationship.id)
+        assert [(kind, before, after) for _, kind, before, after in history] == [
+            (
+                EventKind.RELATIONSHIP_DATA_CHANGE.value,
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 0, "other": 0},
+                },
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1, "other": 0},
+                },
+            ),
+            (
+                EventKind.RELATIONSHIP_DATA_CHANGE.value,
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1, "other": 0},
+                },
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1, "other": 2},
+                },
+            ),
+            (
+                EventKind.RELATIONSHIP_DATA_CHANGE.value,
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1, "other": 2},
+                },
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 3, "other": 2},
+                },
+            ),
+        ]
 
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
+@pytest.mark.parametrize("winner", ["data-first", "schema-first"])
 async def test_row_27_data_and_schema_change_have_serial_factual_history(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
+    winner: str,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "ROW-27") as actors:
-        for prefix, schema_first in (("row27_data", False), ("row27_schema", True)):
-            seed = await _property_seed(actors, prefix, versions=2)
-            created = await _reader(actors).create(
-                seed.first_resolution_id,
-                seed.first_object.id,
-                seed.second_object.id,
-                1,
-                {"metric": 0},
+    async with semantic_actors(test_database_url, f"ROW-27-{winner}") as actors:
+        seed = await _property_seed(
+            actors, f"row27_{winner.replace('-', '_')}", versions=2
+        )
+        created = await _reader(actors).create(
+            seed.first_resolution_id,
+            seed.first_object.id,
+            seed.second_object.id,
+            1,
+            {"metric": 0},
+        )
+        closure_before = await _closure_keys(actors, created.relationship.id)
+        first, second = _services(actors)
+        if winner == "schema-first":
+            first_operation: Operation = partial(
+                first.schema_change, created.relationship.id, 2
             )
-            closure_before = await _closure_keys(actors, created.relationship.id)
-            first, second = _services(actors)
-            with monkeypatch.context() as context:
-                cut = install_lock_plan_cut(
-                    context,
-                    relationship_application,
-                    RowLockClass.RELATIONSHIP,
-                    RowLockMode.NKU,
-                )
-                data: Operation = partial(
-                    second.data_change,
-                    created.relationship.id,
-                    (DataChangeOperation(DataChangeKind.SET, "metric", 7),),
-                )
-                schema: Operation = partial(
-                    first.schema_change, created.relationship.id, 2
-                )
-                outcomes = await blocked_race(
-                    actors,
-                    cut,
-                    schema
-                    if schema_first
-                    else partial(
-                        first.data_change,
-                        created.relationship.id,
-                        (DataChangeOperation(DataChangeKind.SET, "metric", 7),),
-                    ),
-                    data
-                    if schema_first
-                    else partial(second.schema_change, created.relationship.id, 2),
-                )
-            assert all(not isinstance(item, ApplicationFailure) for item in outcomes)
-            current = await _reader(actors).get(created.relationship.id)
-            assert current.relationship_definition_version == 2
-            assert current.properties == {"metric": 7}
-            assert (
-                await _closure_keys(actors, created.relationship.id) == closure_before
+            second_operation: Operation = partial(
+                second.data_change,
+                created.relationship.id,
+                (DataChangeOperation(DataChangeKind.SET, "metric", 7),),
             )
-            kinds = await _event_kinds(actors, created.relationship.id)
-            assert kinds.count(EventKind.RELATIONSHIP_DATA_CHANGE.value) == 2
-            assert kinds.count(EventKind.RELATIONSHIP_SCHEMA_CHANGE.value) == 2
+        else:
+            first_operation = partial(
+                first.data_change,
+                created.relationship.id,
+                (DataChangeOperation(DataChangeKind.SET, "metric", 7),),
+            )
+            second_operation = partial(second.schema_change, created.relationship.id, 2)
+        with monkeypatch.context() as context:
+            cut = install_lock_plan_cut(
+                context,
+                relationship_application,
+                RowLockClass.RELATIONSHIP,
+                RowLockMode.NKU,
+            )
+            outcomes = await blocked_race(
+                actors, cut, first_operation, second_operation
+            )
+        assert all(isinstance(item, RelationshipProjection) for item in outcomes)
+        current = await _reader(actors).get(created.relationship.id)
+        assert current.relationship_definition_version == 2
+        assert current.properties == {"metric": 7}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        initial = {
+            "relationship_definition_version": 1,
+            "properties": {"metric": 0},
+        }
+        data_v1 = {
+            "relationship_definition_version": 1,
+            "properties": {"metric": 7},
+        }
+        schema_v2_before_data = {
+            "relationship_definition_version": 2,
+            "properties": {"metric": 0},
+        }
+        final = {
+            "relationship_definition_version": 2,
+            "properties": {"metric": 7},
+        }
+        expected = (
+            [
+                (
+                    EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+                    initial,
+                    schema_v2_before_data,
+                ),
+                (
+                    EventKind.RELATIONSHIP_DATA_CHANGE.value,
+                    schema_v2_before_data,
+                    final,
+                ),
+            ]
+            if winner == "schema-first"
+            else [
+                (EventKind.RELATIONSHIP_DATA_CHANGE.value, initial, data_v1),
+                (EventKind.RELATIONSHIP_SCHEMA_CHANGE.value, data_v1, final),
+            ]
+        )
+        history = await _transition_history(actors, created.relationship.id)
+        assert [(kind, before, after) for _, kind, before, after in history] == expected
 
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
+@pytest.mark.parametrize("winner", ["lower-first", "higher-first"])
 async def test_row_28_schema_changes_recheck_forward_target_after_wait(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
+    winner: str,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "ROW-28") as actors:
-        seed = await _property_seed(actors, "row28_serial", versions=3)
+    async with semantic_actors(test_database_url, f"ROW-28-{winner}") as actors:
+        seed = await _property_seed(
+            actors, f"row28_{winner.replace('-', '_')}", versions=3
+        )
         created = await _reader(actors).create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -408,6 +618,7 @@ async def test_row_28_schema_changes_recheck_forward_target_after_wait(
             1,
             {"metric": 1},
         )
+        closure_before = await _closure_keys(actors, created.relationship.id)
         first, second = _services(actors)
         with monkeypatch.context() as context:
             cut = install_lock_plan_cut(
@@ -419,39 +630,51 @@ async def test_row_28_schema_changes_recheck_forward_target_after_wait(
             outcomes = await blocked_race(
                 actors,
                 cut,
-                lambda: first.schema_change(created.relationship.id, 2),
-                lambda: second.schema_change(created.relationship.id, 3),
+                lambda: first.schema_change(
+                    created.relationship.id, 2 if winner == "lower-first" else 3
+                ),
+                lambda: second.schema_change(
+                    created.relationship.id, 3 if winner == "lower-first" else 2
+                ),
             )
-        assert all(not isinstance(item, ApplicationFailure) for item in outcomes)
-        assert (
-            await _reader(actors).get(created.relationship.id)
-        ).relationship_definition_version == 3
-
-        seed = await _property_seed(actors, "row28_stale", versions=3)
-        created = await _reader(actors).create(
-            seed.first_resolution_id,
-            seed.first_object.id,
-            seed.second_object.id,
-            1,
-            {"metric": 1},
+        assert isinstance(outcomes[0], RelationshipProjection)
+        if winner == "lower-first":
+            assert isinstance(outcomes[1], RelationshipProjection)
+        else:
+            assert isinstance(outcomes[1], ApplicationFailure)
+            assert outcomes[1].failure_class is FailureClass.SEMANTIC_VALIDATION
+            assert outcomes[1].code == "semantic_validation_failed"
+            assert outcomes[1].details == {
+                "violations": [
+                    {"path": "target_version", "rule": "forward_version_required"}
+                ]
+            }
+        current = await _reader(actors).get(created.relationship.id)
+        assert current.relationship_definition_version == 3
+        assert current.properties == {"metric": 1}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        state_v1 = {
+            "relationship_definition_version": 1,
+            "properties": {"metric": 1},
+        }
+        state_v2 = {
+            "relationship_definition_version": 2,
+            "properties": {"metric": 1},
+        }
+        state_v3 = {
+            "relationship_definition_version": 3,
+            "properties": {"metric": 1},
+        }
+        expected = (
+            [
+                (EventKind.RELATIONSHIP_SCHEMA_CHANGE.value, state_v1, state_v2),
+                (EventKind.RELATIONSHIP_SCHEMA_CHANGE.value, state_v2, state_v3),
+            ]
+            if winner == "lower-first"
+            else [(EventKind.RELATIONSHIP_SCHEMA_CHANGE.value, state_v1, state_v3)]
         )
-        first, second = _services(actors)
-        with monkeypatch.context() as context:
-            cut = install_lock_plan_cut(
-                context,
-                relationship_application,
-                RowLockClass.RELATIONSHIP,
-                RowLockMode.NKU,
-            )
-            outcomes = await blocked_race(
-                actors,
-                cut,
-                lambda: first.schema_change(created.relationship.id, 3),
-                lambda: second.schema_change(created.relationship.id, 2),
-            )
-        assert not isinstance(outcomes[0], ApplicationFailure)
-        assert isinstance(outcomes[1], ApplicationFailure)
-        assert outcomes[1].code == "semantic_validation_failed"
+        history = await _transition_history(actors, created.relationship.id)
+        assert [(kind, before, after) for _, kind, before, after in history] == expected
 
 
 @pytest.mark.parametrize("mutation", ["data", "schema"])
@@ -573,14 +796,14 @@ async def test_row_29_mutation_delete_both_winner_orders(
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_row_30_schema_target_admission_is_stable_through_commit(
+async def test_row_30_schema_change_first_blocks_target_deprecation(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "ROW-30-SCHEMA") as actors:
-        seed = await _property_seed(actors, "row30_schema", versions=2)
+    async with semantic_actors(test_database_url, "ROW-30-SCHEMA-FIRST") as actors:
+        seed = await _property_seed(actors, "row30_schema_first", versions=2)
         created = await _reader(actors).create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -588,6 +811,7 @@ async def test_row_30_schema_target_admission_is_stable_through_commit(
             1,
             {"metric": 1},
         )
+        closure_before = await _closure_keys(actors, created.relationship.id)
         first = RelationshipService(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
@@ -601,22 +825,66 @@ async def test_row_30_schema_target_admission_is_stable_through_commit(
                 RowLockClass.RELATIONSHIP,
                 RowLockMode.NKU,
             )
+            t2_completed, t2_plans = _observe_t2_lock_plan(
+                context, definition_application
+            )
+
+            async def observe_blocked(_: int, __: int) -> None:
+                assert not t2_completed.is_set()
+                assert len(t2_plans) == 1
+                assert any(
+                    intent.key
+                    == RowLockKey(
+                        RowLockClass.RELATIONSHIP_DEFINITION_VERSION,
+                        seed.definition.id,
+                        2,
+                    )
+                    and intent.mode is RowLockMode.NKU
+                    for intent in t2_plans[0].rows
+                )
+
             outcomes = await blocked_race(
                 actors,
                 cut,
                 lambda: first.schema_change(created.relationship.id, 2),
                 lambda: definitions.deprecate(seed.definition.id, 2),
+                observe_blocked=observe_blocked,
             )
-        assert not isinstance(outcomes[0], ApplicationFailure)
-        assert not isinstance(outcomes[1], ApplicationFailure)
-        assert (
-            await _reader(actors).get(created.relationship.id)
-        ).relationship_definition_version == 2
+        assert isinstance(outcomes[0], RelationshipProjection)
+        assert outcomes[0].relationship_definition_version == 2
+        assert outcomes[0].properties == {"metric": 1}
+        assert isinstance(outcomes[1], RelationshipDefinitionVersion)
+        assert outcomes[1].status is VersionStatus.DEPRECATED
+        current = await _reader(actors).get(created.relationship.id)
+        assert current.relationship_definition_version == 2
+        assert current.properties == {"metric": 1}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        history = await _transition_history(actors, created.relationship.id)
+        assert [(kind, before, after) for _, kind, before, after in history] == [
+            (
+                EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1},
+                },
+                {
+                    "relationship_definition_version": 2,
+                    "properties": {"metric": 1},
+                },
+            )
+        ]
 
-        seed = await _property_seed(actors, "row30_deprecated", versions=2)
-        await RelationshipDefinitionService(
-            UnitOfWorkFactory(actors.t1_engine)
-        ).deprecate(seed.definition.id, 2)
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_row_30_target_deprecation_first_blocks_schema_change(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ROW-30-DEPRECATE-FIRST") as actors:
+        seed = await _property_seed(actors, "row30_deprecate_first", versions=2)
         created = await _reader(actors).create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -624,10 +892,62 @@ async def test_row_30_schema_target_admission_is_stable_through_commit(
             1,
             {"metric": 1},
         )
-        with pytest.raises(ApplicationFailure) as blocked:
-            await _reader(actors).schema_change(created.relationship.id, 2)
-        assert blocked.value.code == "dependency_not_admissible"
+        closure_before = await _closure_keys(actors, created.relationship.id)
+        definitions = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        writer = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        with monkeypatch.context() as context:
+            cut = install_lock_plan_cut(
+                context,
+                definition_application,
+                RowLockClass.RELATIONSHIP_DEFINITION_VERSION,
+                RowLockMode.NKU,
+            )
+            t2_completed, t2_plans = _observe_t2_lock_plan(
+                context, relationship_application
+            )
 
+            async def observe_blocked(_: int, __: int) -> None:
+                _assert_schema_waits_before_factual_owner(
+                    t2_completed,
+                    t2_plans,
+                    seed.definition.id,
+                    2,
+                    created.relationship.id,
+                )
+
+            outcomes = await blocked_race(
+                actors,
+                cut,
+                lambda: definitions.deprecate(seed.definition.id, 2),
+                lambda: writer.schema_change(created.relationship.id, 2),
+                observe_blocked=observe_blocked,
+            )
+        assert isinstance(outcomes[0], RelationshipDefinitionVersion)
+        assert outcomes[0].status is VersionStatus.DEPRECATED
+        assert isinstance(outcomes[1], ApplicationFailure)
+        assert outcomes[1].failure_class is FailureClass.STATE_CONFLICT
+        assert outcomes[1].code == "dependency_not_admissible"
+        assert outcomes[1].details == {"id": str(seed.definition.id), "version": 2}
+        current = await _reader(actors).get(created.relationship.id)
+        assert current.relationship_definition_version == 1
+        assert current.properties == {"metric": 1}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        assert await _transition_history(actors, created.relationship.id) == []
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_row_30_definition_default_change_is_independent(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ROW-30-DEFAULT") as actors:
         seed = await _property_seed(actors, "row30_default", versions=2)
         created = await _reader(actors).create(
             seed.first_resolution_id,
@@ -661,15 +981,288 @@ async def test_row_30_schema_target_admission_is_stable_through_commit(
 
 
 @pytest.mark.postgresql
-@pytest.mark.concurrency
-async def test_ref_10_schema_rebind_target_before_owner_has_no_deadlock(
+async def test_object_relationship_page_batches_only_represented_definitions(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "REF-10-REL-SCHEMA") as actors:
-        seed = await _property_seed(actors, "ref10_schema", versions=2)
+    async with semantic_actors(test_database_url, "S02-PAGE-BATCH") as actors:
+        factory = UnitOfWorkFactory(actors.t1_engine)
+        templates = ObjectTemplateService(factory)
+        template = await templates.create(
+            "relationship_s02", "page_batch_endpoint", False, None, None, None, (), ()
+        )
+        await templates.publish(template.object_template.id, 1, 1)
+        objects_service = ObjectService(factory)
+        source = await objects_service.create(
+            template.object_template.id, 1, "page-batch-source", {}
+        )
+        destinations = tuple(
+            [
+                await objects_service.create(
+                    template.object_template.id,
+                    1,
+                    f"page-batch-destination-{index}",
+                    {},
+                )
+                for index in range(3)
+            ]
+        )
+        definitions_service = RelationshipDefinitionService(factory)
+        reader = RelationshipService(factory)
+        represented_definition_ids: set[UUID] = set()
+        relationship_ids: set[UUID] = set()
+        all_definition_ids: set[UUID] = set()
+        for index in range(5):
+            definition = await definitions_service.create_symmetric(
+                (template.object_template.id, template.object_template.id),
+                f"page_batch_link_{index}",
+                (),
+            )
+            definition_id = definition.relationship_definition.id
+            all_definition_ids.add(definition_id)
+            await definitions_service.publish(definition_id, 1, 1)
+            if index < len(destinations):
+                represented_definition_ids.add(definition_id)
+                relationship = await reader.create(
+                    definition.relationship_definition.resolutions[0].id,
+                    source.id,
+                    destinations[index].id,
+                    1,
+                    {},
+                )
+                relationship_ids.add(relationship.relationship.id)
+
+        statements: list[str] = []
+        loaded_definition_sets: list[set[UUID]] = []
+        parent_graph_calls = 0
+        original_get_many = RelationshipDefinitionStore.get_many
+        original_lineage_parents = RelationshipDefinitionStore.lineage_parents
+
+        def observe_statement(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            del connection, cursor, parameters, context, executemany
+            statements.append(statement.lower())
+
+        async def observed_get_many(
+            store: RelationshipDefinitionStore, definition_ids: Iterable[UUID]
+        ) -> dict[UUID, RelationshipDefinition]:
+            requested = set(definition_ids)
+            loaded_definition_sets.append(requested)
+            return await original_get_many(store, requested)
+
+        async def forbidden_certified_set(
+            store: RelationshipDefinitionStore,
+        ) -> tuple[RelationshipDefinition, ...]:
+            del store
+            raise AssertionError("page reads must not load the certified global set")
+
+        async def observed_lineage_parents(
+            store: RelationshipDefinitionStore,
+        ) -> dict[UUID, UUID | None]:
+            nonlocal parent_graph_calls
+            parent_graph_calls += 1
+            return await original_lineage_parents(store)
+
+        event.listen(
+            actors.t1_engine.sync_engine,
+            "before_cursor_execute",
+            observe_statement,
+        )
+        try:
+            async with actors.t1_engine.connect() as connection:
+                assert await RelationshipDefinitionStore(connection).get_many(()) == {}
+            assert statements == []
+            with monkeypatch.context() as context:
+                context.setattr(
+                    RelationshipDefinitionStore, "get_many", observed_get_many
+                )
+                context.setattr(
+                    RelationshipDefinitionStore,
+                    "certified_set",
+                    forbidden_certified_set,
+                )
+                context.setattr(
+                    RelationshipDefinitionStore,
+                    "lineage_parents",
+                    observed_lineage_parents,
+                )
+                page = await reader.list_for_object(
+                    source.id,
+                    relationship_definition_id=None,
+                    name=None,
+                    cursor=None,
+                    limit=10,
+                )
+        finally:
+            event.remove(
+                actors.t1_engine.sync_engine,
+                "before_cursor_execute",
+                observe_statement,
+            )
+
+        assert {item.relationship_id for item in page.items} == relationship_ids
+        assert loaded_definition_sets == [represented_definition_ids]
+        assert represented_definition_ids < all_definition_ids
+        assert parent_graph_calls == 1
+        definition_statements = [
+            statement
+            for statement in statements
+            if "from relationship_definitions" in statement
+            and "relationship_resolutions" in statement
+        ]
+        assert len(definition_statements) == 1
+
+
+@pytest.mark.postgresql
+async def test_published_relationship_history_is_set_based_and_schema_change_uses_it(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "S02-HISTORY-BATCH") as actors:
+        single = await _property_seed(actors, "history_batch_single")
+        multiple = await _property_seed(actors, "history_batch_multiple", versions=4)
+        reader = _reader(actors)
+        relationship = await reader.create(
+            multiple.first_resolution_id,
+            multiple.first_object.id,
+            multiple.second_object.id,
+            1,
+            {"metric": 1},
+        )
+        definitions = RelationshipDefinitionService(UnitOfWorkFactory(actors.t1_engine))
+        await definitions.clear_default(multiple.definition.id)
+        await definitions.deprecate(multiple.definition.id, 1)
+        draft = await definitions.create_next(multiple.definition.id, 4)
+        assert draft.version == 5
+        assert draft.status is VersionStatus.DRAFT
+
+        statements: list[str] = []
+
+        def observe_statement(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            del connection, cursor, parameters, context, executemany
+            statements.append(statement.lower())
+
+        async def forbidden_get_version(
+            store: RelationshipDefinitionVersionStore,
+            definition_id: UUID,
+            version: int,
+        ) -> RelationshipDefinitionVersion | None:
+            del store, definition_id, version
+            raise AssertionError("published history must not perform per-version reads")
+
+        async def read_history(
+            definition_id: UUID,
+        ) -> tuple[
+            list[
+                tuple[
+                    int,
+                    VersionStatus,
+                    tuple[RelationshipDefinitionProperty, ...],
+                ]
+            ],
+            int,
+        ]:
+            statements.clear()
+            async with actors.t1_engine.connect() as connection:
+                values = await RelationshipDefinitionVersionStore(
+                    connection
+                ).published_history(definition_id)
+            statement_count = len(statements)
+            return (
+                [(value.version, value.status, value.properties) for value in values],
+                statement_count,
+            )
+
+        event.listen(
+            actors.t1_engine.sync_engine,
+            "before_cursor_execute",
+            observe_statement,
+        )
+        try:
+            with monkeypatch.context() as context:
+                context.setattr(
+                    RelationshipDefinitionVersionStore,
+                    "get_version",
+                    forbidden_get_version,
+                )
+                single_history, single_count = await read_history(single.definition.id)
+                multiple_history, multiple_count = await read_history(
+                    multiple.definition.id
+                )
+        finally:
+            event.remove(
+                actors.t1_engine.sync_engine,
+                "before_cursor_execute",
+                observe_statement,
+            )
+
+        assert single_count == multiple_count == 2
+        assert [
+            (version, status) for version, status, _properties in single_history
+        ] == [(1, VersionStatus.PUBLISHED)]
+        assert tuple(item.name for item in single_history[0][2]) == ("metric",)
+        assert [
+            (version, status) for version, status, _properties in multiple_history
+        ] == [
+            (1, VersionStatus.DEPRECATED),
+            (2, VersionStatus.PUBLISHED),
+            (3, VersionStatus.PUBLISHED),
+            (4, VersionStatus.PUBLISHED),
+        ]
+        expected_properties = multiple_history[0][2]
+        assert tuple(item.name for item in expected_properties) == ("metric",)
+        assert all(
+            properties == expected_properties for _, _, properties in multiple_history
+        )
+        history_calls = 0
+        original_history = RelationshipDefinitionVersionStore.published_history
+
+        async def observed_history(
+            store: RelationshipDefinitionVersionStore, definition_id: UUID
+        ) -> tuple[RelationshipDefinitionVersion, ...]:
+            nonlocal history_calls
+            history_calls += 1
+            return await original_history(store, definition_id)
+
+        with monkeypatch.context() as context:
+            context.setattr(
+                RelationshipDefinitionVersionStore,
+                "published_history",
+                observed_history,
+            )
+            changed = await reader.schema_change(relationship.relationship.id, 2)
+        assert history_calls == 1
+        assert changed.relationship_definition_version == 2
+        assert changed.properties == {"metric": 1}
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_10_schema_change_first_blocks_definition_delete(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REF-10-SCHEMA-FIRST") as actors:
+        seed = await _property_seed(actors, "ref10_schema_first", versions=2)
         created = await _reader(actors).create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -677,6 +1270,7 @@ async def test_ref_10_schema_rebind_target_before_owner_has_no_deadlock(
             1,
             {"metric": 1},
         )
+        closure_before = await _closure_keys(actors, created.relationship.id)
         writer = RelationshipService(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
@@ -690,19 +1284,68 @@ async def test_ref_10_schema_rebind_target_before_owner_has_no_deadlock(
                 RowLockClass.RELATIONSHIP,
                 RowLockMode.NKU,
             )
+            t2_completed, t2_plans = _observe_t2_lock_plan(
+                context, definition_application
+            )
+
+            async def observe_blocked(_: int, __: int) -> None:
+                assert not t2_completed.is_set()
+                assert len(t2_plans) == 1
+                assert t2_plans[0].rows == (t2_plans[0].rows[0],)
+                assert t2_plans[0].rows[0].key == RowLockKey(
+                    RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+                    seed.definition.id,
+                )
+                assert t2_plans[0].rows[0].mode is RowLockMode.U
+
             outcomes = await blocked_race(
                 actors,
                 cut,
                 lambda: writer.schema_change(created.relationship.id, 2),
                 lambda: deleter.delete(seed.definition.id),
+                observe_blocked=observe_blocked,
             )
-        assert not isinstance(outcomes[0], ApplicationFailure)
+        assert isinstance(outcomes[0], RelationshipProjection)
         assert isinstance(outcomes[1], ApplicationFailure)
+        assert outcomes[1].failure_class is FailureClass.STATE_CONFLICT
         assert outcomes[1].code == "delete_blocked"
-        assert (
-            await _reader(actors).get(created.relationship.id)
-        ).relationship_definition_version == 2
+        assert outcomes[1].details == {
+            "resource_type": "relationship_definition",
+            "id": str(seed.definition.id),
+            "blockers": [{"type": "relationship", "count": 1}],
+        }
+        verifier = RelationshipDefinitionService(UnitOfWorkFactory(actors.t1_engine))
+        assert (await verifier.get(seed.definition.id)).id == seed.definition.id
+        assert (await verifier.get_version(seed.definition.id, 2)).version == 2
+        current = await _reader(actors).get(created.relationship.id)
+        assert current.relationship_definition_version == 2
+        assert current.properties == {"metric": 1}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        history = await _transition_history(actors, created.relationship.id)
+        assert [(kind, before, after) for _, kind, before, after in history] == [
+            (
+                EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1},
+                },
+                {
+                    "relationship_definition_version": 2,
+                    "properties": {"metric": 1},
+                },
+            )
+        ]
 
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_10_definition_delete_first_rolls_back_then_schema_changes(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "REF-10-DELETE-FIRST") as actors:
         seed = await _property_seed(actors, "ref10_delete_first", versions=2)
         created = await _reader(actors).create(
             seed.first_resolution_id,
@@ -711,13 +1354,80 @@ async def test_ref_10_schema_rebind_target_before_owner_has_no_deadlock(
             1,
             {"metric": 1},
         )
-        with pytest.raises(ApplicationFailure) as delete_blocked:
-            await RelationshipDefinitionService(
-                UnitOfWorkFactory(actors.t2_engine)
-            ).delete(seed.definition.id)
-        assert delete_blocked.value.code == "delete_blocked"
-        changed = await _reader(actors).schema_change(created.relationship.id, 2)
-        assert changed.relationship_definition_version == 2
+        closure_before = await _closure_keys(actors, created.relationship.id)
+        deleter = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        writer = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        with monkeypatch.context() as context:
+            t1_plans = _capture_t1_lock_plans(context, definition_application)
+            cut = install_lock_plan_cut(
+                context,
+                definition_application,
+                RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+                RowLockMode.U,
+            )
+            t2_completed, t2_plans = _observe_t2_lock_plan(
+                context, relationship_application
+            )
+
+            async def observe_blocked(_: int, __: int) -> None:
+                assert len(t1_plans) == 1
+                assert t1_plans[0].gate is AdvisoryGate.MODEL_ROOT_DELETE_GATE
+                assert t1_plans[0].rows[0].key == RowLockKey(
+                    RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+                    seed.definition.id,
+                )
+                assert t1_plans[0].rows[0].mode is RowLockMode.U
+                _assert_schema_waits_before_factual_owner(
+                    t2_completed,
+                    t2_plans,
+                    seed.definition.id,
+                    2,
+                    created.relationship.id,
+                )
+
+            outcomes = await blocked_race(
+                actors,
+                cut,
+                lambda: deleter.delete(seed.definition.id),
+                lambda: writer.schema_change(created.relationship.id, 2),
+                observe_blocked=observe_blocked,
+            )
+        assert isinstance(outcomes[0], ApplicationFailure)
+        assert outcomes[0].failure_class is FailureClass.STATE_CONFLICT
+        assert outcomes[0].code == "delete_blocked"
+        assert outcomes[0].details == {
+            "resource_type": "relationship_definition",
+            "id": str(seed.definition.id),
+            "blockers": [{"type": "relationship", "count": 1}],
+        }
+        assert isinstance(outcomes[1], RelationshipProjection)
+        assert outcomes[1].relationship_definition_version == 2
+        assert outcomes[1].properties == {"metric": 1}
+        verifier = RelationshipDefinitionService(UnitOfWorkFactory(actors.t1_engine))
+        assert (await verifier.get(seed.definition.id)).id == seed.definition.id
+        assert (await verifier.get_version(seed.definition.id, 2)).version == 2
+        current = await _reader(actors).get(created.relationship.id)
+        assert current.relationship_definition_version == 2
+        assert current.properties == {"metric": 1}
+        assert await _closure_keys(actors, created.relationship.id) == closure_before
+        history = await _transition_history(actors, created.relationship.id)
+        assert [(kind, before, after) for _, kind, before, after in history] == [
+            (
+                EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+                {
+                    "relationship_definition_version": 1,
+                    "properties": {"metric": 1},
+                },
+                {
+                    "relationship_definition_version": 2,
+                    "properties": {"metric": 1},
+                },
+            )
+        ]
 
 
 def _metadata_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:

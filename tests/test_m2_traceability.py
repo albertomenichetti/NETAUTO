@@ -1,7 +1,10 @@
 """Frozen M2 census with honest S01 evidence and future-bundle states."""
 
 import ast
+import subprocess
+import sys
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from tests.test_m2_s00_traceability import PLAN_EVIDENCE_TARGETS
@@ -76,6 +79,34 @@ S02_ROW_29_TARGETS = frozenset(
     + f"[{delete_first}-{mutation}]"
     for delete_first in (False, True)
     for mutation in ("data", "schema")
+)
+S02_ROW_27_TARGETS = frozenset(
+    _S02_SEMANTIC_PATH
+    + "test_row_27_data_and_schema_change_have_serial_factual_history"
+    + f"[{winner}]"
+    for winner in ("data-first", "schema-first")
+)
+S02_ROW_28_TARGETS = frozenset(
+    _S02_SEMANTIC_PATH
+    + "test_row_28_schema_changes_recheck_forward_target_after_wait"
+    + f"[{winner}]"
+    for winner in ("lower-first", "higher-first")
+)
+S02_ROW_30_TARGETS = frozenset(
+    {
+        _S02_SEMANTIC_PATH
+        + "test_row_30_schema_change_first_blocks_target_deprecation",
+        _S02_SEMANTIC_PATH
+        + "test_row_30_target_deprecation_first_blocks_schema_change",
+        _S02_SEMANTIC_PATH + "test_row_30_definition_default_change_is_independent",
+    }
+)
+S02_REF_10_TARGETS = frozenset(
+    {
+        _S02_SEMANTIC_PATH + "test_ref_10_schema_change_first_blocks_definition_delete",
+        _S02_SEMANTIC_PATH
+        + "test_ref_10_definition_delete_first_rolls_back_then_schema_changes",
+    }
 )
 S02_SNAP_05_TARGETS = frozenset(
     _S02_SEMANTIC_PATH
@@ -286,14 +317,10 @@ S02_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_m2_s02_schema_migration_preserves_removes_and_blocks_by_member",
             "tests/test_relationship_api.py::"
             "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_row_27_data_and_schema_change_have_serial_factual_history",
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_row_28_schema_changes_recheck_forward_target_after_wait",
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_row_30_schema_target_admission_is_stable_through_commit",
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_ref_10_schema_rebind_target_before_owner_has_no_deadlock",
+            *S02_ROW_27_TARGETS,
+            *S02_ROW_28_TARGETS,
+            *S02_ROW_30_TARGETS,
+            *S02_REF_10_TARGETS,
             "tests/test_m2_s02_semantic_concurrency.py::"
             "test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails",
         }
@@ -316,6 +343,8 @@ S02_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_m2_s02_relationship_domain.py::"
             "test_m2_s02_relationship_writer_rejects_invalid_transition_shapes",
             "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+            "tests/test_relationship_api.py::"
             "test_m2_s02_corrupt_relationship_transition_fails_complete_page",
         }
     ),
@@ -334,6 +363,8 @@ S02_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
         {
             "tests/test_m2_s02_relationship_domain.py::"
             "test_m2_s02_lifecycle_store_is_the_sole_event_table_sql_owner",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
             "tests/test_relationship_api.py::"
             "test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock",
             "tests/test_m2_s02_semantic_concurrency.py::"
@@ -426,31 +457,11 @@ S02_SCENARIO_TARGETS = {
             "test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop"
         }
     ),
-    "ROW-27": frozenset(
-        {
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_row_27_data_and_schema_change_have_serial_factual_history"
-        }
-    ),
-    "ROW-28": frozenset(
-        {
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_row_28_schema_changes_recheck_forward_target_after_wait"
-        }
-    ),
+    "ROW-27": S02_ROW_27_TARGETS,
+    "ROW-28": S02_ROW_28_TARGETS,
     "ROW-29": frozenset(S02_ROW_29_TARGETS),
-    "ROW-30": frozenset(
-        {
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_row_30_schema_target_admission_is_stable_through_commit"
-        }
-    ),
-    "REF-10": frozenset(
-        {
-            "tests/test_m2_s02_semantic_concurrency.py::"
-            "test_ref_10_schema_rebind_target_before_owner_has_no_deadlock"
-        }
-    ),
+    "ROW-30": S02_ROW_30_TARGETS,
+    "REF-10": S02_REF_10_TARGETS,
     "SNAP-05": frozenset(
         {
             "tests/test_m2_s02_semantic_concurrency.py::"
@@ -515,6 +526,32 @@ S01_REVIEW_FIX_TARGETS = {
     ),
 }
 
+S02_REVIEW_FIX_TARGETS = {
+    "S02-RF-01": frozenset(
+        {
+            *S02_SCENARIO_TARGETS["ROW-26"],
+            *S02_ROW_27_TARGETS,
+            *S02_ROW_28_TARGETS,
+            *S02_ROW_30_TARGETS,
+            *S02_REF_10_TARGETS,
+        }
+    ),
+    "S02-RF-02": frozenset(
+        {
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract"
+        }
+    ),
+    "S02-RF-03": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_object_relationship_page_batches_only_represented_definitions",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_published_relationship_history_is_set_based_and_schema_change_uses_it",
+        }
+    ),
+}
+
 S01_PUBLIC_ROUTE_DELTA = frozenset(
     {
         ("POST", "/api/v1/core/relationship-definitions/{id}/create-next"),
@@ -560,6 +597,26 @@ def _assert_target_exists(target: str) -> None:
         and node.name.startswith("test_")
     }
     assert function_name in collected_names, target
+    collected = _collected_test_nodes()
+    assert target in collected or any(
+        node.startswith(f"{target}[") for node in collected
+    ), target
+
+
+@cache
+def _collected_test_nodes() -> frozenset[str]:
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return frozenset(
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.startswith("tests/") and "::test_" in line
+    )
 
 
 def test_m2_frozen_identifier_census_is_exact() -> None:
@@ -637,6 +694,10 @@ def test_s02_scenario_map_is_exact_and_every_target_resolves() -> None:
         S01_SCENARIO_TARGETS["ROW-30"] | S02_SCENARIO_TARGETS["ROW-30"]
     )
     assert len(S02_ROW_29_TARGETS) == 4
+    assert len(S02_ROW_27_TARGETS) == 2
+    assert len(S02_ROW_28_TARGETS) == 2
+    assert len(S02_ROW_30_TARGETS) == 3
+    assert len(S02_REF_10_TARGETS) == 2
     assert len(S02_SNAP_05_TARGETS) == 8
 
 
@@ -648,6 +709,23 @@ def test_s01_review_fix_registry_is_exact_resolvable_and_scenario_mapped() -> No
             _assert_target_exists(target)
     assert S01_REVIEW_FIX_TARGETS["S01-RF-03"] <= (
         S01_SCENARIO_TARGETS["ROW-24"] | S01_SCENARIO_TARGETS["REF-09"]
+    )
+
+
+def test_s02_review_fix_registry_is_exact_resolvable_and_scenario_mapped() -> None:
+    assert set(S02_REVIEW_FIX_TARGETS) == {"S02-RF-01", "S02-RF-02", "S02-RF-03"}
+    for targets in S02_REVIEW_FIX_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+    assert S02_REVIEW_FIX_TARGETS["S02-RF-01"] == frozenset(
+        {
+            *S02_SCENARIO_TARGETS["ROW-26"],
+            *S02_SCENARIO_TARGETS["ROW-27"],
+            *S02_SCENARIO_TARGETS["ROW-28"],
+            *S02_SCENARIO_TARGETS["ROW-30"],
+            *S02_SCENARIO_TARGETS["REF-10"],
+        }
     )
 
 

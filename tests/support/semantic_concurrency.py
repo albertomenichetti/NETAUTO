@@ -23,6 +23,7 @@ from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
 
 type Operation = Callable[[], Awaitable[object]]
+type BlockedObservation = Callable[[int, int], Awaitable[None]]
 type AcquireLockPlan = Callable[
     [AsyncConnection, LockPlan], Awaitable[tuple[RowLockKey, ...]]
 ]
@@ -161,6 +162,8 @@ async def blocked_race(
     cut: PhaseCut,
     first: Operation,
     second: Operation,
+    *,
+    observe_blocked: BlockedObservation | None = None,
 ) -> tuple[object, object]:
     actors.tracker.reset()
     first_task = asyncio.create_task(capture(first), name="T1")
@@ -172,6 +175,8 @@ async def blocked_race(
     second_pid = actors.tracker.pids["T2"]
     blockers = await wait_for_blocker(actors.observer, second_pid, first_pid)
     assert first_pid in blockers
+    if observe_blocked is not None:
+        await observe_blocked(first_pid, second_pid)
     cut.release.set()
     async with asyncio.timeout(5):
         return await asyncio.gather(first_task, second_task)

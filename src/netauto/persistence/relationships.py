@@ -230,6 +230,29 @@ class RelationshipDefinitionStore:
         decoded = _decode_aggregates(rows)
         return None if not decoded else decoded[0]
 
+    async def get_many(
+        self, definition_ids: Iterable[UUID]
+    ) -> dict[UUID, RelationshipDefinition]:
+        """Load only the requested aggregate set in one deterministic statement."""
+        ordered = tuple(sorted(set(definition_ids), key=lambda item: item.int))
+        if not ordered:
+            return {}
+        rows = (
+            (
+                await self.connection.execute(
+                    _aggregate_statement()
+                    .where(relationship_definitions.c.id.in_(ordered))
+                    .order_by(
+                        relationship_definitions.c.id,
+                        relationship_resolutions.c.id,
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return {value.id: value for value in _decode_aggregates(rows)}
+
     async def get_by_resolution(
         self, resolution_id: UUID
     ) -> RelationshipDefinition | None:
@@ -672,28 +695,64 @@ class RelationshipDefinitionVersionStore:
     async def published_history(
         self, definition_id: UUID
     ) -> tuple[RelationshipDefinitionVersion, ...]:
-        versions = (
-            await self.connection.scalars(
-                select(relationship_definition_versions.c.version)
-                .where(
-                    relationship_definition_versions.c.relationship_definition_id
-                    == definition_id,
-                    relationship_definition_versions.c.status.in_(
-                        (
-                            VersionStatus.PUBLISHED.value,
-                            VersionStatus.DEPRECATED.value,
-                        )
-                    ),
+        header_rows = (
+            (
+                await self.connection.execute(
+                    select(relationship_definition_versions)
+                    .where(
+                        relationship_definition_versions.c.relationship_definition_id
+                        == definition_id,
+                        relationship_definition_versions.c.status.in_(
+                            (
+                                VersionStatus.PUBLISHED.value,
+                                VersionStatus.DEPRECATED.value,
+                            )
+                        ),
+                    )
+                    .order_by(relationship_definition_versions.c.version)
                 )
-                .order_by(relationship_definition_versions.c.version)
             )
-        ).all()
-        result: list[RelationshipDefinitionVersion] = []
-        for version in versions:
-            value = await self.get_version(definition_id, cast(int, version))
-            if value is not None:
-                result.append(value)
-        return tuple(result)
+            .mappings()
+            .all()
+        )
+        headers = tuple(_definition_version_header(row) for row in header_rows)
+        if not headers:
+            return ()
+        versions = tuple(header.version for header in headers)
+        property_rows = (
+            (
+                await self.connection.execute(
+                    select(relationship_definition_properties)
+                    .where(
+                        relationship_definition_properties.c.relationship_definition_id
+                        == definition_id,
+                        relationship_definition_properties.c.relationship_definition_version.in_(
+                            versions
+                        ),
+                    )
+                    .order_by(
+                        relationship_definition_properties.c.relationship_definition_version,
+                        relationship_definition_properties.c.position,
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        properties: dict[int, list[RelationshipDefinitionProperty]] = {}
+        for row in property_rows:
+            version = cast(int, row["relationship_definition_version"])
+            properties.setdefault(version, []).append(_definition_property(row))
+        return tuple(
+            RelationshipDefinitionVersion(
+                header.relationship_definition_id,
+                header.version,
+                header.revision,
+                header.status,
+                tuple(properties.get(header.version, ())),
+            )
+            for header in headers
+        )
 
     async def has_published(self, definition_id: UUID) -> bool:
         return bool(

@@ -412,9 +412,10 @@ class RelationshipService:
             ) from error
         if set(values) != relationship_ids:
             raise _internal("A referenced factual Relationship aggregate is missing.")
-        definitions = {
-            value.id: value for value in await definition_store.certified_set()
-        }
+        definition_ids = {value.relationship_definition_id for value in values.values()}
+        definitions = await definition_store.get_many(definition_ids)
+        if set(definitions) != definition_ids:
+            raise _internal("A referenced RelationshipDefinition aggregate is missing.")
         endpoint_ids = {
             endpoint_id
             for value in values.values()

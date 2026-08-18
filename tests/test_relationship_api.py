@@ -994,6 +994,16 @@ async def test_m2_s02_data_schema_change_lifecycle_and_strict_contract(
         assert deleted_object.status_code == 204, deleted_object.text
     deleted_datatype = await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
     assert deleted_datatype.status_code == 204, deleted_datatype.text
+    assert (
+        await client.get(f"/api/v1/core/relationship-definitions/{definition_id}")
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/core/datatypes/{datatype_id}")
+    ).status_code == 404
+    for object_id in (first_object, second_object):
+        assert (
+            await client.get(f"/api/v1/core/objects/{object_id}")
+        ).status_code == 404
     historical = await client.get(
         "/api/v1/core/lifecycle-events",
         params={"relationship_id": relationship_id},
@@ -1001,12 +1011,81 @@ async def test_m2_s02_data_schema_change_lifecycle_and_strict_contract(
     assert historical.status_code == 200, historical.text
     historical_items = historical.json()["items"]
     assert len(historical_items) == 12
-    assert {
-        EventKind.RELATIONSHIP_CREATED.value,
-        EventKind.RELATIONSHIP_DATA_CHANGE.value,
-        EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
-        EventKind.RELATIONSHIP_DELETED.value,
-    } == {item["kind"] for item in historical_items}
+    expected_transitions: tuple[
+        tuple[str, dict[str, JsonValue] | None, dict[str, JsonValue] | None], ...
+    ] = (
+        (
+            EventKind.RELATIONSHIP_CREATED.value,
+            None,
+            {"relationship_definition_version": 1, "properties": {"metric": 1}},
+        ),
+        (
+            EventKind.RELATIONSHIP_DATA_CHANGE.value,
+            {"relationship_definition_version": 1, "properties": {"metric": 1}},
+            {"relationship_definition_version": 1, "properties": {"metric": 99}},
+        ),
+        (
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+            {"relationship_definition_version": 1, "properties": {"metric": 99}},
+            {
+                "relationship_definition_version": 2,
+                "properties": {"metric": [99]},
+            },
+        ),
+        (
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+            {
+                "relationship_definition_version": 2,
+                "properties": {"metric": [99]},
+            },
+            {
+                "relationship_definition_version": 3,
+                "properties": {"metric": [99]},
+            },
+        ),
+        (
+            EventKind.RELATIONSHIP_DATA_CHANGE.value,
+            {
+                "relationship_definition_version": 3,
+                "properties": {"metric": [99]},
+            },
+            {"relationship_definition_version": 3, "properties": {}},
+        ),
+        (
+            EventKind.RELATIONSHIP_DELETED.value,
+            {"relationship_definition_version": 3, "properties": {}},
+            None,
+        ),
+    )
+    for kind, before, after in expected_transitions:
+        assert (
+            sum(
+                item["kind"] == kind
+                and item["before"] == before
+                and item["after"] == after
+                for item in historical_items
+            )
+            == 2
+        )
+    assert {item["relationship_id"] for item in historical_items} == {relationship_id}
+    assert {item["relationship_definition_id"] for item in historical_items} == {
+        definition_id
+    }
+    assert {item["object_id"] for item in historical_items} == {
+        first_object,
+        second_object,
+    }
+    assert {item["destination_object_id"] for item in historical_items} == {
+        first_object,
+        second_object,
+    }
+    assert {item["relationship_name"] for item in historical_items} == {
+        "measures",
+        "measured_by",
+    }
+    assert (
+        await client.get(f"/api/v1/core/objects/{first_object}/lifecycle-events")
+    ).status_code == 404
 
 
 @pytest.mark.api
