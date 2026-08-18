@@ -34,10 +34,10 @@ def discover_unique_shipped_head() -> str:
         script = ScriptDirectory.from_config(config)
         bases = tuple(script.get_bases())
         heads = tuple(script.get_heads())
-    except (CommandError, ImportError, OSError, ValueError) as error:
-        raise MigrationGraphInvalid(
-            "installed migration graph is unreadable"
-        ) from error
+    except TimeoutError:
+        raise
+    except CommandError, ImportError, OSError, ValueError:
+        raise MigrationGraphInvalid("installed migration graph is unreadable") from None
     if len(bases) != 1 or len(heads) != 1:
         raise MigrationGraphInvalid(
             "installed migration graph must contain exactly one base and one head"
@@ -63,10 +63,10 @@ async def load_current_database_heads(engine: AsyncEngine) -> tuple[str, ...]:
             return await connection.run_sync(_current_heads)
     except SchemaGuardUnavailable:
         raise
-    except (DBAPIError, DisconnectionError, SQLAlchemyError) as error:
+    except DBAPIError, DisconnectionError, SQLAlchemyError:
         raise SchemaGuardUnavailable(
             "database revision state could not be inspected"
-        ) from error
+        ) from None
 
 
 async def _check_exact_schema_revision(engine: AsyncEngine) -> None:
@@ -82,8 +82,11 @@ async def _check_exact_schema_revision(engine: AsyncEngine) -> None:
 
 async def require_exact_schema_revision(engine: AsyncEngine) -> None:
     """Require exact singleton revision equality under the fixed startup deadline."""
+    deadline = asyncio.timeout(CORE_STARTUP_SCHEMA_GUARD_TIMEOUT_SECONDS)
     try:
-        async with asyncio.timeout(CORE_STARTUP_SCHEMA_GUARD_TIMEOUT_SECONDS):
+        async with deadline:
             await _check_exact_schema_revision(engine)
-    except TimeoutError as error:
-        raise SchemaGuardUnavailable("database revision check timed out") from error
+    except TimeoutError:
+        if not deadline.expired():
+            raise
+        raise SchemaGuardUnavailable("database revision check timed out") from None

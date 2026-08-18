@@ -80,11 +80,60 @@ with patch.object(
     assert '/health/core' in factory_app.openapi()['paths']
 
 database_url = __import__('os').environ['TEST_DATABASE_URL']
-healthy = build_app(Settings(database_url=database_url))
+original_build_runtime_context = http_module.build_runtime_context
+original_guard = http_module.require_exact_schema_revision
+calls = {'runtime': 0, 'guard': 0}
+
+def counting_runtime(settings):
+    calls['runtime'] += 1
+    return original_build_runtime_context(settings)
+
+async def counting_guard(engine):
+    calls['guard'] += 1
+    await original_guard(engine)
+
+http_module.build_runtime_context = counting_runtime
+http_module.require_exact_schema_revision = counting_guard
+healthy = build_app(
+    Settings(
+        database_url=database_url,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=5.0,
+    )
+)
 with TestClient(healthy) as client:
     response = client.get('/health/core')
     assert response.status_code == 200
     assert response.json()['db_status'] == {'status': 'ok'}
+    assert response.headers['cache-control'] == 'no-store'
+    runtime_engine = healthy.state.runtime.engine
+    assert calls == {'runtime': 1, 'guard': 1}
+
+    held_connection = client.portal.call(runtime_engine.connect)
+    try:
+        unavailable = client.get('/health/core')
+    finally:
+        client.portal.call(held_connection.close)
+
+    assert unavailable.status_code == 503
+    assert unavailable.headers['cache-control'] == 'no-store'
+    unavailable_body = unavailable.json()
+    assert unavailable_body['app_status'] == {'status': 'ok'}
+    assert unavailable_body['db_status'] == {
+        'status': 'error',
+        'message': 'database readiness check timed out',
+    }
+    assert type(unavailable_body['execution_time_ms']) is int
+    assert healthy.state.runtime.engine is runtime_engine
+    assert calls == {'runtime': 1, 'guard': 1}
+
+    recovered = client.get('/health/core')
+    assert recovered.status_code == 200
+    assert recovered.headers['cache-control'] == 'no-store'
+    assert recovered.json()['db_status'] == {'status': 'ok'}
+    assert healthy.state.runtime.engine is runtime_engine
+    assert calls == {'runtime': 1, 'guard': 1}
 
 async def reject(_engine):
     raise SchemaRevisionMismatch('controlled mismatch')

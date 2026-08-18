@@ -8,13 +8,14 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationError, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
+from pydantic_settings.exceptions import SettingsError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
@@ -92,6 +93,7 @@ class Settings(BaseSettings):
         extra="forbid",
         frozen=True,
         populate_by_name=True,
+        hide_input_in_errors=True,
     )
 
     database_url: str = Field(validation_alias="NETAUTO_DATABASE_URL")
@@ -161,16 +163,29 @@ class Settings(BaseSettings):
 
 def load_settings() -> Settings:
     """Load one production Settings value with an explicit secret-dir selector."""
-    selected = os.environ.get("NETAUTO_SECRETS_DIR")
-    secrets_dir: Path | None = None
-    if selected is not None:
-        candidate = Path(selected)
-        if not candidate.is_absolute():
-            raise SettingsBootstrapError("NETAUTO_SECRETS_DIR must be absolute")
-        if not candidate.exists():
-            raise SettingsBootstrapError("NETAUTO_SECRETS_DIR does not exist")
-        if not candidate.is_dir():
-            raise SettingsBootstrapError("NETAUTO_SECRETS_DIR is not a directory")
-        secrets_dir = candidate
+    try:
+        selected = os.environ.get("NETAUTO_SECRETS_DIR")
+        secrets_dir: Path | None = None
+        if selected is not None:
+            candidate = Path(selected)
+            if not candidate.is_absolute():
+                raise SettingsBootstrapError(
+                    "NETAUTO_SECRETS_DIR must be absolute"
+                ) from None
+            if not candidate.exists():
+                raise SettingsBootstrapError(
+                    "NETAUTO_SECRETS_DIR does not exist"
+                ) from None
+            if not candidate.is_dir():
+                raise SettingsBootstrapError(
+                    "NETAUTO_SECRETS_DIR is not a directory"
+                ) from None
+            secrets_dir = candidate
 
-    return Settings(_secrets_dir=secrets_dir)  # pyright: ignore[reportCallIssue]
+        return Settings(
+            _secrets_dir=secrets_dir,  # pyright: ignore[reportCallIssue]
+        )
+    except SettingsBootstrapError:
+        raise
+    except ValidationError, SettingsError, OSError, UnicodeError:
+        raise SettingsBootstrapError("runtime settings are invalid") from None

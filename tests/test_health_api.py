@@ -1,12 +1,21 @@
 """Exact strict HTTP and OpenAPI contract for Core Health."""
 
+import asyncio
 from typing import cast
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from netauto.application.health import ComponentHealth, CoreHealthResult, HealthStatus
+import netauto.application.health as health_module
+from netauto.application.health import (
+    ComponentHealth,
+    CoreHealthResult,
+    CoreHealthService,
+    DatabaseProbeTimedOut,
+    DatabaseProbeUnavailable,
+    HealthStatus,
+)
 from netauto.entrypoints.http import build_app
 from netauto.settings import Settings
 
@@ -39,10 +48,21 @@ def result(db: ComponentHealth) -> CoreHealthResult:
     )
 
 
-def client_for(service: FakeHealthService) -> TestClient:
+def client_for(service: object) -> TestClient:
     app = build_app(Settings(database_url=RUNTIME_DATABASE_URL))
     app.state.core_health_service = service
     return TestClient(app, raise_server_exceptions=False)
+
+
+class RaisingProbe:
+    def __init__(self, error: BaseException | None = None) -> None:
+        self.error = error
+        self.calls = 0
+
+    async def check(self) -> None:
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
 
 
 def test_health_healthy_response_is_exact_and_non_cacheable() -> None:
@@ -141,6 +161,83 @@ def test_health_unexpected_service_failure_uses_safe_canonical_500() -> None:
     }
     assert "sensitive" not in response.text
     assert service.calls == 1
+
+
+def test_health_inner_timeout_is_canonical_safe_500() -> None:
+    raw_message = "unexpected-inner-timeout-sentinel"
+    probe = RaisingProbe(TimeoutError(raw_message))
+
+    response = cast(
+        httpx.Response,
+        client_for(CoreHealthService(probe)).get(  # pyright: ignore[reportUnknownMemberType]
+            "/health/core"
+        ),
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "code": "internal_error",
+        "message": "An unexpected internal failure occurred.",
+        "details": {},
+    }
+    assert raw_message not in response.text
+    assert probe.calls == 1
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [
+        (DatabaseProbeTimedOut(), "database readiness check timed out"),
+        (DatabaseProbeUnavailable(), "database readiness check failed"),
+    ],
+)
+def test_health_owned_probe_failures_are_exact_503(
+    error: BaseException, message: str
+) -> None:
+    probe = RaisingProbe(error)
+
+    response = cast(
+        httpx.Response,
+        client_for(CoreHealthService(probe)).get(  # pyright: ignore[reportUnknownMemberType]
+            "/health/core"
+        ),
+    )
+
+    body = response.json()
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert body["app_status"] == {"status": "ok"}
+    assert body["db_status"] == {"status": "error", "message": message}
+    assert type(body["execution_time_ms"]) is int
+    assert probe.calls == 1
+
+
+def test_health_owned_outer_timeout_is_exact_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = asyncio.Event()
+
+    class BlockingProbe:
+        async def check(self) -> None:
+            started.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(health_module, "CORE_DATABASE_HEALTH_TIMEOUT_SECONDS", 0.01)
+
+    response = cast(
+        httpx.Response,
+        client_for(CoreHealthService(BlockingProbe())).get(  # pyright: ignore[reportUnknownMemberType]
+            "/health/core"
+        ),
+    )
+
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["db_status"] == {
+        "status": "error",
+        "message": "database readiness check timed out",
+    }
+    assert started.is_set()
 
 
 def test_health_openapi_uses_one_dto_for_200_and_503() -> None:

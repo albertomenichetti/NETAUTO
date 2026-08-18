@@ -67,14 +67,17 @@ class CoreHealthService:
     async def check(self) -> CoreHealthResult:
         started_ns = self._monotonic_ns()
         app_status = ComponentHealth(HealthStatus.OK)
+        deadline = asyncio.timeout(CORE_DATABASE_HEALTH_TIMEOUT_SECONDS)
         try:
-            async with asyncio.timeout(CORE_DATABASE_HEALTH_TIMEOUT_SECONDS):
+            async with deadline:
                 await self._probe.check()
         except DatabaseProbeTimedOut:
             db_status = ComponentHealth(
                 HealthStatus.ERROR, "database readiness check timed out"
             )
         except TimeoutError:
+            if not deadline.expired():
+                raise
             db_status = ComponentHealth(
                 HealthStatus.ERROR, "database readiness check timed out"
             )

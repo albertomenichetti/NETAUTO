@@ -71,6 +71,8 @@ def test_installed_graph_rejects_unreadable_package_safely() -> None:
         with pytest.raises(MigrationGraphInvalid) as captured:
             discover_unique_shipped_head()
     assert "sensitive" not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__suppress_context__
 
 
 @pytest.mark.asyncio
@@ -104,8 +106,26 @@ async def test_guard_timeout_is_one_safe_owned_failure(
     monkeypatch.setattr(guard_module, "_check_exact_schema_revision", blocked)
     monkeypatch.setattr(guard_module, "CORE_STARTUP_SCHEMA_GUARD_TIMEOUT_SECONDS", 0.01)
 
-    with pytest.raises(SchemaGuardUnavailable, match="timed out"):
+    with pytest.raises(SchemaGuardUnavailable, match="timed out") as captured:
         await require_exact_schema_revision(object())  # pyright: ignore[reportArgumentType]
+    assert captured.value.__cause__ is None
+    assert captured.value.__suppress_context__
+
+
+@pytest.mark.asyncio
+async def test_inner_guard_timeout_error_is_not_misclassified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error = TimeoutError("unexpected guard timeout sentinel")
+
+    async def fail(_engine: object) -> None:
+        raise error
+
+    monkeypatch.setattr(guard_module, "_check_exact_schema_revision", fail)
+
+    with pytest.raises(TimeoutError) as captured:
+        await require_exact_schema_revision(object())  # pyright: ignore[reportArgumentType]
+    assert captured.value is error
 
 
 class UnreachableEngine:
@@ -118,6 +138,39 @@ async def test_current_head_inspection_translates_unreachable_database_safely() 
     with pytest.raises(SchemaGuardUnavailable) as captured:
         await load_current_database_heads(cast(AsyncEngine, UnreachableEngine()))
     assert "sensitive" not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__suppress_context__
+
+
+@pytest.mark.asyncio
+async def test_malformed_current_head_result_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MalformedContext:
+        def get_current_heads(self) -> list[str]:
+            return ["not-a-tuple"]
+
+    class MalformedConnection:
+        async def __aenter__(self) -> MalformedConnection:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            del args
+
+        async def run_sync(self, function: Any) -> object:
+            return function(object())
+
+    class MalformedEngine:
+        def connect(self) -> MalformedConnection:
+            return MalformedConnection()
+
+    def configure(_connection: object) -> MalformedContext:
+        return MalformedContext()
+
+    monkeypatch.setattr(guard_module.MigrationContext, "configure", configure)
+
+    with pytest.raises(SchemaGuardUnavailable, match="malformed"):
+        await load_current_database_heads(cast(AsyncEngine, MalformedEngine()))
 
 
 def _set_revision_state(engine: Engine, state: str) -> None:

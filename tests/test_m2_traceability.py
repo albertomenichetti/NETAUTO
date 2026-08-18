@@ -881,17 +881,43 @@ S04_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_runtime_schema_guard.py::"
             "test_installed_graph_rejects_non_unique_base_or_head",
             "tests/test_runtime_schema_guard.py::"
+            "test_installed_graph_rejects_unreadable_package_safely",
+            "tests/test_runtime_schema_guard.py::"
+            "test_guard_requires_exact_singleton_revision",
+            "tests/test_runtime_schema_guard.py::"
             "test_real_postgresql_exact_head_uses_runtime_engine",
             "tests/test_runtime_schema_guard.py::"
             "test_real_postgresql_rejects_every_non_exact_revision_state_and_restores",
             "tests/test_runtime_schema_guard.py::"
             "test_guard_timeout_is_one_safe_owned_failure",
+            "tests/test_runtime_schema_guard.py::"
+            "test_inner_guard_timeout_error_is_not_misclassified",
+            "tests/test_runtime_schema_guard.py::"
+            "test_current_head_inspection_translates_unreachable_database_safely",
+            "tests/test_runtime_schema_guard.py::"
+            "test_malformed_current_head_result_is_rejected",
+            "tests/test_runtime_schema_guard.py::"
+            "test_startup_guard_source_has_no_revision_constant_migration_or_repair",
             "tests/test_http_composition.py::"
             "test_guard_failure_prevents_publication_and_disposes_engine",
+            "tests/test_http_composition.py::"
+            "test_composition_failure_after_guard_disposes_engine",
+            "tests/test_http_composition.py::"
+            "test_cancelled_startup_disposes_engine_and_propagates",
             "tests/test_http_composition.py::"
             "test_every_app_lifespan_executes_its_own_guard",
             "tests/test_http_composition.py::"
             "test_fastapi_lifespan_does_not_execute_migrations",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_factory_settings_failure_diagnostic_sanitizes_credentials",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_secret_selector_and_source_diagnostics_hide_selected_path",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_asgi_lifespan_expected_guard_diagnostics_are_sanitized",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_uvicorn_lifespan_logging_sanitizes_expected_guard_failure",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_bootstrap_unexpected_defects_are_not_normalized",
             "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
         }
     ),
@@ -901,6 +927,22 @@ S04_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_health_exact_vocabulary_classification_and_one_attempt",
             "tests/test_health.py::"
             "test_health_outer_timeout_waits_for_cleanup_before_measurement",
+            "tests/test_health.py::test_health_monotonic_conversion_is_exact",
+            "tests/test_health.py::test_health_result_rejects_negative_execution_time",
+            "tests/test_health.py::"
+            "test_health_unexpected_programming_failure_propagates",
+            "tests/test_health.py::test_health_inner_timeout_error_propagates_once",
+            "tests/test_health.py::"
+            "test_health_cancellation_propagates_after_probe_cleanup",
+            "tests/test_health_probe.py::"
+            "test_probe_executes_exact_select_one_and_requires_exact_integer",
+            "tests/test_health_probe.py::test_probe_rejects_non_exact_scalar",
+            "tests/test_health_probe.py::"
+            "test_probe_translates_pool_timeout_without_raw_message",
+            "tests/test_health_probe.py::"
+            "test_probe_translates_expected_database_failure_after_cleanup",
+            "tests/test_health_probe.py::"
+            "test_probe_does_not_normalize_unexpected_failure",
             "tests/test_health_postgresql.py::"
             "test_real_health_uses_same_engine_exact_select_and_returns_connection",
             "tests/test_health_postgresql.py::"
@@ -913,8 +955,59 @@ S04_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_health_invalid_request_is_canonical_400_without_probe",
             "tests/test_health_api.py::"
             "test_health_unexpected_service_failure_uses_safe_canonical_500",
+            "tests/test_health_api.py::test_health_inner_timeout_is_canonical_safe_500",
+            "tests/test_health_api.py::test_health_owned_probe_failures_are_exact_503",
+            "tests/test_health_api.py::test_health_owned_outer_timeout_is_exact_503",
             "tests/test_health_api.py::"
             "test_health_openapi_uses_one_dto_for_200_and_503",
+            "tests/test_health_api.py::test_health_is_the_only_operational_route",
+            "tests/test_m2_s04_scope.py::"
+            "test_s04_runtime_and_health_have_no_forbidden_parallel_mechanisms",
+            "tests/test_m2_s04_scope.py::"
+            "test_health_route_reads_only_precomposed_service",
+            "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
+        }
+    ),
+}
+S04_REVIEW_FIX_TARGETS = {
+    "S04-RF-01": frozenset(
+        {
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_factory_settings_failure_diagnostic_sanitizes_credentials",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_secret_selector_and_source_diagnostics_hide_selected_path",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_asgi_lifespan_expected_guard_diagnostics_are_sanitized",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_uvicorn_lifespan_logging_sanitizes_expected_guard_failure",
+            "tests/test_bootstrap_diagnostics.py::"
+            "test_bootstrap_unexpected_defects_are_not_normalized",
+            "tests/test_runtime_schema_guard.py::"
+            "test_installed_graph_rejects_unreadable_package_safely",
+            "tests/test_runtime_schema_guard.py::"
+            "test_current_head_inspection_translates_unreachable_database_safely",
+        }
+    ),
+    "S04-RF-02": frozenset(
+        {
+            "tests/test_health.py::test_health_inner_timeout_error_propagates_once",
+            "tests/test_health.py::"
+            "test_health_outer_timeout_waits_for_cleanup_before_measurement",
+            "tests/test_health_api.py::test_health_inner_timeout_is_canonical_safe_500",
+            "tests/test_health_api.py::test_health_owned_probe_failures_are_exact_503",
+            "tests/test_health_api.py::test_health_owned_outer_timeout_is_exact_503",
+            "tests/test_runtime_schema_guard.py::"
+            "test_guard_timeout_is_one_safe_owned_failure",
+            "tests/test_runtime_schema_guard.py::"
+            "test_inner_guard_timeout_error_is_not_misclassified",
+            "tests/test_health_postgresql.py::"
+            "test_real_pool_starvation_times_out_then_recovers_on_same_engine",
+        }
+    ),
+    "S04-RF-03": frozenset(
+        {
+            "tests/test_m2_traceability.py::"
+            "test_s04_review_fix_registry_and_exact_bundle_membership",
             "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
         }
     ),
@@ -1240,6 +1333,171 @@ def test_s04_bundle_states_and_targets_are_honest_and_resolvable() -> None:
         assert evidence.targets == targets
         for target in targets:
             _assert_target_exists(target)
+
+
+def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
+    assert S04_BUNDLE_TARGETS == {
+        "M2-VER-22": frozenset(
+            {
+                "tests/test_runtime_schema_guard.py::"
+                "test_installed_graph_discovers_one_base_and_head_without_alembic_ini",
+                "tests/test_runtime_schema_guard.py::"
+                "test_installed_graph_rejects_non_unique_base_or_head",
+                "tests/test_runtime_schema_guard.py::"
+                "test_installed_graph_rejects_unreadable_package_safely",
+                "tests/test_runtime_schema_guard.py::"
+                "test_guard_requires_exact_singleton_revision",
+                "tests/test_runtime_schema_guard.py::"
+                "test_real_postgresql_exact_head_uses_runtime_engine",
+                "tests/test_runtime_schema_guard.py::"
+                "test_real_postgresql_rejects_every_non_exact_revision_state_and_restores",
+                "tests/test_runtime_schema_guard.py::"
+                "test_guard_timeout_is_one_safe_owned_failure",
+                "tests/test_runtime_schema_guard.py::"
+                "test_inner_guard_timeout_error_is_not_misclassified",
+                "tests/test_runtime_schema_guard.py::"
+                "test_current_head_inspection_translates_unreachable_database_safely",
+                "tests/test_runtime_schema_guard.py::"
+                "test_malformed_current_head_result_is_rejected",
+                "tests/test_runtime_schema_guard.py::"
+                "test_startup_guard_source_has_no_revision_constant_migration_or_repair",
+                "tests/test_http_composition.py::"
+                "test_guard_failure_prevents_publication_and_disposes_engine",
+                "tests/test_http_composition.py::"
+                "test_composition_failure_after_guard_disposes_engine",
+                "tests/test_http_composition.py::"
+                "test_cancelled_startup_disposes_engine_and_propagates",
+                "tests/test_http_composition.py::"
+                "test_every_app_lifespan_executes_its_own_guard",
+                "tests/test_http_composition.py::"
+                "test_fastapi_lifespan_does_not_execute_migrations",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_factory_settings_failure_diagnostic_sanitizes_credentials",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_secret_selector_and_source_diagnostics_hide_selected_path",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_asgi_lifespan_expected_guard_diagnostics_are_sanitized",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_uvicorn_lifespan_logging_sanitizes_expected_guard_failure",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_bootstrap_unexpected_defects_are_not_normalized",
+                "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
+            }
+        ),
+        "M2-VER-23": frozenset(
+            {
+                "tests/test_health.py::"
+                "test_health_exact_vocabulary_classification_and_one_attempt",
+                "tests/test_health.py::"
+                "test_health_outer_timeout_waits_for_cleanup_before_measurement",
+                "tests/test_health.py::test_health_monotonic_conversion_is_exact",
+                "tests/test_health.py::"
+                "test_health_result_rejects_negative_execution_time",
+                "tests/test_health.py::"
+                "test_health_unexpected_programming_failure_propagates",
+                "tests/test_health.py::test_health_inner_timeout_error_propagates_once",
+                "tests/test_health.py::"
+                "test_health_cancellation_propagates_after_probe_cleanup",
+                "tests/test_health_probe.py::"
+                "test_probe_executes_exact_select_one_and_requires_exact_integer",
+                "tests/test_health_probe.py::test_probe_rejects_non_exact_scalar",
+                "tests/test_health_probe.py::"
+                "test_probe_translates_pool_timeout_without_raw_message",
+                "tests/test_health_probe.py::"
+                "test_probe_translates_expected_database_failure_after_cleanup",
+                "tests/test_health_probe.py::"
+                "test_probe_does_not_normalize_unexpected_failure",
+                "tests/test_health_postgresql.py::"
+                "test_real_health_uses_same_engine_exact_select_and_returns_connection",
+                "tests/test_health_postgresql.py::"
+                "test_real_pool_starvation_times_out_then_recovers_on_same_engine",
+                "tests/test_health_api.py::"
+                "test_health_healthy_response_is_exact_and_non_cacheable",
+                "tests/test_health_api.py::"
+                "test_health_unready_response_is_exact_safe_and_non_cacheable",
+                "tests/test_health_api.py::"
+                "test_health_invalid_request_is_canonical_400_without_probe",
+                "tests/test_health_api.py::"
+                "test_health_unexpected_service_failure_uses_safe_canonical_500",
+                "tests/test_health_api.py::"
+                "test_health_inner_timeout_is_canonical_safe_500",
+                "tests/test_health_api.py::"
+                "test_health_owned_probe_failures_are_exact_503",
+                "tests/test_health_api.py::"
+                "test_health_owned_outer_timeout_is_exact_503",
+                "tests/test_health_api.py::"
+                "test_health_openapi_uses_one_dto_for_200_and_503",
+                "tests/test_health_api.py::test_health_is_the_only_operational_route",
+                "tests/test_m2_s04_scope.py::"
+                "test_s04_runtime_and_health_have_no_forbidden_parallel_mechanisms",
+                "tests/test_m2_s04_scope.py::"
+                "test_health_route_reads_only_precomposed_service",
+                "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
+            }
+        ),
+    }
+    assert S04_REVIEW_FIX_TARGETS == {
+        "S04-RF-01": frozenset(
+            {
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_factory_settings_failure_diagnostic_sanitizes_credentials",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_secret_selector_and_source_diagnostics_hide_selected_path",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_asgi_lifespan_expected_guard_diagnostics_are_sanitized",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_uvicorn_lifespan_logging_sanitizes_expected_guard_failure",
+                "tests/test_bootstrap_diagnostics.py::"
+                "test_bootstrap_unexpected_defects_are_not_normalized",
+                "tests/test_runtime_schema_guard.py::"
+                "test_installed_graph_rejects_unreadable_package_safely",
+                "tests/test_runtime_schema_guard.py::"
+                "test_current_head_inspection_translates_unreachable_database_safely",
+            }
+        ),
+        "S04-RF-02": frozenset(
+            {
+                "tests/test_health.py::test_health_inner_timeout_error_propagates_once",
+                "tests/test_health.py::"
+                "test_health_outer_timeout_waits_for_cleanup_before_measurement",
+                "tests/test_health_api.py::"
+                "test_health_inner_timeout_is_canonical_safe_500",
+                "tests/test_health_api.py::"
+                "test_health_owned_probe_failures_are_exact_503",
+                "tests/test_health_api.py::"
+                "test_health_owned_outer_timeout_is_exact_503",
+                "tests/test_runtime_schema_guard.py::"
+                "test_guard_timeout_is_one_safe_owned_failure",
+                "tests/test_runtime_schema_guard.py::"
+                "test_inner_guard_timeout_error_is_not_misclassified",
+                "tests/test_health_postgresql.py::"
+                "test_real_pool_starvation_times_out_then_recovers_on_same_engine",
+            }
+        ),
+        "S04-RF-03": frozenset(
+            {
+                "tests/test_m2_traceability.py::"
+                "test_s04_review_fix_registry_and_exact_bundle_membership",
+                "tests/test_m2_s04_installed.py::"
+                "test_installed_wheel_s04_runtime_smoke",
+            }
+        ),
+    }
+    for targets in S04_REVIEW_FIX_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+    implemented = {
+        bundle_id
+        for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
+        if evidence.state == "IMPLEMENTED"
+    }
+    assert implemented == {f"M2-VER-{number:02d}" for number in range(1, 24)}
+    assert {
+        bundle_id
+        for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
+        if evidence.state == "DESIGNED"
+    } == {f"M2-VER-{number:02d}" for number in range(24, 33)}
 
 
 def test_s03_mutation_registry_is_exact_central_and_executable() -> None:

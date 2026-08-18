@@ -129,6 +129,18 @@ async def test_health_unexpected_programming_failure_propagates() -> None:
 
 
 @pytest.mark.asyncio
+async def test_health_inner_timeout_error_propagates_once() -> None:
+    error = TimeoutError("unexpected inner timeout sentinel")
+    probe = ControlledProbe(error)
+
+    with pytest.raises(TimeoutError) as captured:
+        await CoreHealthService(probe).check()
+
+    assert captured.value is error
+    assert probe.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_health_cancellation_propagates_after_probe_cleanup() -> None:
     started = asyncio.Event()
     cleaned = asyncio.Event()

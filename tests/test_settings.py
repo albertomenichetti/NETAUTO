@@ -218,7 +218,7 @@ def test_no_dotenv_or_implicit_secret_directory_discovery(
     (implicit / "NETAUTO_DATABASE_URL").write_text(SECRET_DATABASE_URL)
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(ValidationError, match="NETAUTO_DATABASE_URL"):
+    with pytest.raises(SettingsBootstrapError, match="runtime settings are invalid"):
         load_settings()
 
 
