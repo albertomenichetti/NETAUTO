@@ -30,6 +30,7 @@ from netauto.domain.relationships import (
     derive_runtime_closure,
 )
 from netauto.failures import ApplicationFailure, FailureClass
+from netauto.persistence.lifecycle import EventKind, LifecycleStore
 from netauto.persistence.locking import (
     AdvisoryGate,
     LockPlan,
@@ -365,10 +366,10 @@ def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 def _metadata_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[int]]:
     cut = PhaseCut()
     observations: list[int] = []
-    original = RuntimeRelationshipStore.lifecycle_views
+    original = LifecycleStore.relationship_views
 
-    async def intercepted(store: RuntimeRelationshipStore, relationship_id: UUID):
-        value = await original(store, relationship_id)
+    async def intercepted(store: LifecycleStore, relationship: Relationship):
+        value = await original(store, relationship)
         observations.append(len(value))
         task = asyncio.current_task()
         if task is not None and task.get_name() == "T1":
@@ -376,7 +377,7 @@ def _metadata_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[int]]
             await cut.release.wait()
         return value
 
-    monkeypatch.setattr(RuntimeRelationshipStore, "lifecycle_views", intercepted)
+    monkeypatch.setattr(LifecycleStore, "relationship_views", intercepted)
     return cut, observations
 
 
@@ -1412,17 +1413,20 @@ async def test_create_event_failure_rolls_back_header_and_complete_closure(
     ) as actors:
         seed = await _seed(actors, "create_event_rollback")
         service = _reader(actors)
-        original = RuntimeRelationshipStore.insert_lifecycle_events
+        original = LifecycleStore.insert_relationship_events
         candidate_ids: list[UUID] = []
 
         async def failed_creation_events(
-            store: RuntimeRelationshipStore,
+            store: LifecycleStore,
             *,
-            kind: str,
-            relationship: Relationship,
+            kind: EventKind,
+            before: Relationship | None,
+            after: Relationship | None,
             views: Sequence[RelationshipLifecycleView],
         ) -> None:
-            if kind == "RELATIONSHIP_CREATED":
+            if kind is EventKind.RELATIONSHIP_CREATED:
+                assert after is not None
+                relationship = after
                 candidate_ids.append(relationship.id)
                 assert (
                     await store.connection.scalar(
@@ -1445,11 +1449,11 @@ async def test_create_event_failure_rolls_back_header_and_complete_closure(
                     "internal_error",
                     "forced creation event failure",
                 )
-            await original(store, kind=kind, relationship=relationship, views=views)
+            await original(store, kind=kind, before=before, after=after, views=views)
 
         monkeypatch.setattr(
-            RuntimeRelationshipStore,
-            "insert_lifecycle_events",
+            LifecycleStore,
+            "insert_relationship_events",
             failed_creation_events,
         )
         with pytest.raises(ApplicationFailure) as caught:
@@ -1510,26 +1514,25 @@ async def test_atomic_03_delete_event_failure_rolls_back_complete_fact(
             seed.first_object.id,
             seed.second_object.id,
         )
-        original = RuntimeRelationshipStore.insert_lifecycle_events
+        original = LifecycleStore.insert_relationship_events
 
         async def failed_events(
-            store: RuntimeRelationshipStore,
+            store: LifecycleStore,
             *,
-            kind: str,
-            relationship: Relationship,
+            kind: EventKind,
+            before: Relationship | None,
+            after: Relationship | None,
             views: Sequence[RelationshipLifecycleView],
         ) -> None:
-            if kind == "RELATIONSHIP_DELETED":
+            if kind is EventKind.RELATIONSHIP_DELETED:
                 raise ApplicationFailure(
                     FailureClass.INTERNAL_FAILURE,
                     "internal_error",
                     "forced deletion event failure",
                 )
-            await original(store, kind=kind, relationship=relationship, views=views)
+            await original(store, kind=kind, before=before, after=after, views=views)
 
-        monkeypatch.setattr(
-            RuntimeRelationshipStore, "insert_lifecycle_events", failed_events
-        )
+        monkeypatch.setattr(LifecycleStore, "insert_relationship_events", failed_events)
         with pytest.raises(ApplicationFailure) as caught:
             await service.delete(created.relationship.id)
         assert caught.value.code == "internal_error"

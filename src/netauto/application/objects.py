@@ -36,6 +36,7 @@ from netauto.domain.primitives import (
 )
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.datatypes import DataTypeStore
+from netauto.persistence.lifecycle import EventKind, LifecycleEvent, LifecycleStore
 from netauto.persistence.locking import (
     AdvisoryGate,
     LockPlan,
@@ -49,8 +50,6 @@ from netauto.persistence.locking import (
     run_semantic_uow_attempts,
 )
 from netauto.persistence.objects import (
-    EventKind,
-    LifecycleEvent,
     ObjectDeleteReferenceError,
     ObjectStore,
     ObjectTemplateReferenceError,
@@ -386,7 +385,9 @@ class ObjectService:
                 await store.insert(result)
             except ObjectTemplateReferenceError as error:
                 raise _referenced(template_id, selected_version) from error
-            await store.insert_intrinsic_event(EventKind.CREATED, result, None, result)
+            await LifecycleStore(uow.connection).insert_intrinsic_event(
+                EventKind.CREATED, result, None, result
+            )
             await uow.commit()
             return result
 
@@ -448,7 +449,9 @@ class ObjectService:
                         "blockers": [{"type": error.blocker_type, "count": 1}],
                     },
                 ) from error
-            await store.insert_intrinsic_event(EventKind.DELETED, before, before, None)
+            await LifecycleStore(uow.connection).insert_intrinsic_event(
+                EventKind.DELETED, before, before, None
+            )
             await uow.commit()
 
     async def rename(self, object_id: UUID, canonical_name: str) -> Object:
@@ -478,7 +481,9 @@ class ObjectService:
             )
             plan.begin_dml()
             await store.update_name(object_id, canonical_name)
-            await store.insert_intrinsic_event(EventKind.RENAME, after, before, after)
+            await LifecycleStore(uow.connection).insert_intrinsic_event(
+                EventKind.RENAME, after, before, after
+            )
             await uow.commit()
             return after
 
@@ -513,7 +518,7 @@ class ObjectService:
             )
             plan.begin_dml()
             await store.update_properties(object_id, properties)
-            await store.insert_intrinsic_event(
+            await LifecycleStore(uow.connection).insert_intrinsic_event(
                 EventKind.DATA_CHANGE, after, before, after
             )
             await uow.commit()
@@ -651,7 +656,7 @@ class ObjectService:
             )
             plan.begin_dml()
             await store.update_schema(object_id, target_version, properties)
-            await store.insert_intrinsic_event(
+            await LifecycleStore(uow.connection).insert_intrinsic_event(
                 EventKind.SCHEMA_CHANGE, after, before, after
             )
             await uow.commit()
@@ -756,7 +761,7 @@ class ObjectService:
                 ) from error
             except OwnershipReferenceError as error:
                 raise _referenced_object(child_object_id) from error
-            await store.insert_ownership_event(
+            await LifecycleStore(uow.connection).insert_ownership_event(
                 EventKind.ATTACH_TO,
                 child=child,
                 parent=parent,
@@ -812,7 +817,7 @@ class ObjectService:
             plan.begin_dml()
             if not await store.delete_ownership(current):
                 raise _internal("The current ownership edge disappeared unexpectedly.")
-            await store.insert_ownership_event(
+            await LifecycleStore(uow.connection).insert_ownership_event(
                 EventKind.DETACH_FROM,
                 child=child,
                 parent=parent,
@@ -1028,14 +1033,14 @@ class ObjectService:
                     "invalid_cursor",
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
-        async with self._uow_factory() as uow:
+        async with self._uow_factory.coherent_read() as uow:
             store = ObjectStore(uow.connection)
             if involving_object_id is not None:
                 if await store.get(involving_object_id) is None:
                     raise _not_found(involving_object_id)
             try:
                 rows = list(
-                    await store.list_events(
+                    await LifecycleStore(uow.connection).list_events(
                         kind=kind,
                         object_id=object_id,
                         destination_object_id=destination_object_id,

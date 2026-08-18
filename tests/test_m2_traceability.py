@@ -69,6 +69,53 @@ class EvidenceBundle:
     targets: frozenset[str]
 
 
+_S02_SEMANTIC_PATH = "tests/test_m2_s02_semantic_concurrency.py::"
+S02_ROW_29_TARGETS = frozenset(
+    _S02_SEMANTIC_PATH
+    + "test_row_29_mutation_delete_both_winner_orders"
+    + f"[{delete_first}-{mutation}]"
+    for delete_first in (False, True)
+    for mutation in ("data", "schema")
+)
+S02_SNAP_05_TARGETS = frozenset(
+    _S02_SEMANTIC_PATH
+    + "test_snap_05_each_mutation_observes_each_independent_rename_cut"
+    + f"[{rename_case}-{transition}]"
+    for rename_case in ("from", "to", "both", "definition")
+    for transition in ("data", "schema")
+)
+S02_FANOUT_TARGETS = frozenset(
+    {
+        _S02_SEMANTIC_PATH
+        + "test_m2_s02_all_transition_families_use_distinct_semantic_fanout"
+        + "[symmetric_distinct-False-False-2-2]",
+        _S02_SEMANTIC_PATH
+        + "test_m2_s02_all_transition_families_use_distinct_semantic_fanout"
+        + "[symmetric_self-True-False-1-1]",
+        _S02_SEMANTIC_PATH
+        + "test_m2_s02_all_transition_families_use_distinct_semantic_fanout"
+        + "[inheritance_overlap-False-True-4-2]",
+    }
+)
+S02_READ_CUT_TARGETS = frozenset(
+    {
+        *(
+            _S02_SEMANTIC_PATH
+            + "test_relationship_read_cuts_expose_only_committed_before_or_after"
+            + f"[{transition}]"
+            for transition in ("data", "schema", "delete")
+        ),
+        *(
+            _S02_SEMANTIC_PATH
+            + "test_relationship_snapshot_cut_commits_between_physical_reads"
+            + f"[{transition}-{read_shape}]"
+            for transition in ("data", "schema", "delete")
+            for read_shape in ("get", "page")
+        ),
+    }
+)
+
+
 S01_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     "M2-VER-01": frozenset(
         {
@@ -214,10 +261,98 @@ S01_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     ),
 }
 
+S02_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-08": frozenset(
+        {
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_data_change_complete_state_and_noop",
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_unique_operation_order_is_nonsemantic",
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_application_rejects_empty_and_duplicate_operations",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails",
+        }
+    ),
+    "M2-VER-09": frozenset(
+        {
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_scalar_to_list_migration_is_canonical",
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_schema_migration_preserves_removes_and_blocks_by_member",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_27_data_and_schema_change_have_serial_factual_history",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_28_schema_changes_recheck_forward_target_after_wait",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_30_schema_target_admission_is_stable_through_commit",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_ref_10_schema_rebind_target_before_owner_has_no_deadlock",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails",
+        }
+    ),
+    "M2-VER-11": frozenset(
+        {
+            *S02_READ_CUT_TARGETS,
+            "tests/test_relationship_api.py::"
+            "test_db_valid_incomplete_runtime_aggregate_maps_to_internal_error",
+        }
+    ),
+    "M2-VER-12": frozenset(
+        {
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_historical_property_codec_rejects_invalid_carriers",
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_historical_property_codec_accepts_exact_carriers",
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_relationship_factual_state_requires_exact_shape",
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_relationship_writer_rejects_invalid_transition_shapes",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_corrupt_relationship_transition_fails_complete_page",
+        }
+    ),
+    "M2-VER-13": frozenset(
+        {
+            "tests/test_relationship_domain.py::"
+            "test_symmetric_disjoint_and_inheritance_overlap_closure_shapes",
+            "tests/test_relationship_api.py::"
+            "test_strict_operands_missing_resources_incompatibility_and_self_loop",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+            *S02_FANOUT_TARGETS,
+        }
+    ),
+    "M2-VER-14": frozenset(
+        {
+            "tests/test_m2_s02_relationship_domain.py::"
+            "test_m2_s02_lifecycle_store_is_the_sole_event_table_sql_owner",
+            "tests/test_relationship_api.py::"
+            "test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock",
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails",
+            "tests/test_relationship_semantic_concurrency.py::"
+            "test_create_event_failure_rolls_back_header_and_complete_closure",
+            "tests/test_relationship_semantic_concurrency.py::"
+            "test_atomic_03_delete_event_failure_rolls_back_complete_fact",
+        }
+    ),
+}
+
 M2_EVIDENCE_TO_TARGETS = {
     bundle_id: EvidenceBundle(
-        "IMPLEMENTED" if bundle_id in S01_BUNDLE_TARGETS else "DESIGNED",
-        S01_BUNDLE_TARGETS.get(bundle_id, frozenset()),
+        "IMPLEMENTED"
+        if bundle_id in S01_BUNDLE_TARGETS or bundle_id in S02_BUNDLE_TARGETS
+        else "DESIGNED",
+        S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S02_BUNDLE_TARGETS.get(bundle_id, frozenset()),
     )
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
@@ -284,6 +419,65 @@ S01_SCENARIO_TARGETS["REF-09"] |= frozenset(
     }
 )
 
+S02_SCENARIO_TARGETS = {
+    "ROW-26": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_26_data_changes_reread_fresh_state_and_waiter_can_be_noop"
+        }
+    ),
+    "ROW-27": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_27_data_and_schema_change_have_serial_factual_history"
+        }
+    ),
+    "ROW-28": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_28_schema_changes_recheck_forward_target_after_wait"
+        }
+    ),
+    "ROW-29": frozenset(S02_ROW_29_TARGETS),
+    "ROW-30": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_row_30_schema_target_admission_is_stable_through_commit"
+        }
+    ),
+    "REF-10": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_ref_10_schema_rebind_target_before_owner_has_no_deadlock"
+        }
+    ),
+    "SNAP-05": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_snap_05_relationship_mutations_capture_one_metadata_statement",
+            *S02_SNAP_05_TARGETS,
+        }
+    ),
+    "ATOMIC-06": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails"
+        }
+    ),
+    "ATOMIC-07": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails"
+        }
+    ),
+}
+
+M2_IMPLEMENTED_SCENARIO_TARGETS = {
+    scenario_id: S01_SCENARIO_TARGETS.get(scenario_id, frozenset())
+    | S02_SCENARIO_TARGETS.get(scenario_id, frozenset())
+    for scenario_id in set(S01_SCENARIO_TARGETS) | set(S02_SCENARIO_TARGETS)
+}
+
 S01_REVIEW_FIX_TARGETS = {
     "S01-RF-01": frozenset(
         {
@@ -344,10 +538,18 @@ S01_PUBLIC_ROUTE_DELTA = frozenset(
     }
 )
 
+S02_PUBLIC_ROUTE_DELTA = frozenset(
+    {
+        ("POST", "/api/v1/core/relationships/{relationship_id}/data-change"),
+        ("POST", "/api/v1/core/relationships/{relationship_id}/schema-change"),
+    }
+)
+
 
 def _assert_target_exists(target: str) -> None:
     path_text, separator, test_name = target.partition("::")
     assert separator and test_name.startswith("test_"), target
+    function_name = test_name.partition("[")[0]
     path = Path(path_text)
     assert path.is_file(), target
     tree = ast.parse(path.read_text())
@@ -357,7 +559,7 @@ def _assert_target_exists(target: str) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name.startswith("test_")
     }
-    assert test_name in collected_names, target
+    assert function_name in collected_names, target
 
 
 def test_m2_frozen_identifier_census_is_exact() -> None:
@@ -380,7 +582,7 @@ def test_m2_frozen_identifier_census_is_exact() -> None:
     assert set(M2_ACCEPTANCE_TO_EVIDENCE.values()) == M2_EVIDENCE_BUNDLES
 
 
-def test_s01_bundle_states_and_targets_are_honest_and_resolvable() -> None:
+def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
     assert set(M2_EVIDENCE_TO_TARGETS) == M2_EVIDENCE_BUNDLES
     assert set(S01_BUNDLE_TARGETS) == {
         *(f"M2-VER-{number:02d}" for number in range(1, 8)),
@@ -389,7 +591,7 @@ def test_s01_bundle_states_and_targets_are_honest_and_resolvable() -> None:
         "M2-VER-21",
     }
     for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items():
-        if bundle_id in S01_BUNDLE_TARGETS:
+        if bundle_id in S01_BUNDLE_TARGETS or bundle_id in S02_BUNDLE_TARGETS:
             assert evidence.state == "IMPLEMENTED"
             assert evidence.targets
         else:
@@ -418,6 +620,26 @@ def test_s01_scenario_map_is_exact_and_every_target_resolves() -> None:
             _assert_target_exists(target)
 
 
+def test_s02_scenario_map_is_exact_and_every_target_resolves() -> None:
+    assert set(S02_SCENARIO_TARGETS) == {
+        *(f"ROW-{number:02d}" for number in range(26, 31)),
+        "REF-10",
+        "SNAP-05",
+        "ATOMIC-06",
+        "ATOMIC-07",
+    }
+    assert set(S02_SCENARIO_TARGETS) <= M2_CONCURRENCY_SCENARIOS
+    for targets in S02_SCENARIO_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+    assert M2_IMPLEMENTED_SCENARIO_TARGETS["ROW-30"] == (
+        S01_SCENARIO_TARGETS["ROW-30"] | S02_SCENARIO_TARGETS["ROW-30"]
+    )
+    assert len(S02_ROW_29_TARGETS) == 4
+    assert len(S02_SNAP_05_TARGETS) == 8
+
+
 def test_s01_review_fix_registry_is_exact_resolvable_and_scenario_mapped() -> None:
     assert set(S01_REVIEW_FIX_TARGETS) == {"S01-RF-01", "S01-RF-02", "S01-RF-03"}
     for targets in S01_REVIEW_FIX_TARGETS.values():
@@ -429,13 +651,11 @@ def test_s01_review_fix_registry_is_exact_resolvable_and_scenario_mapped() -> No
     )
 
 
-def test_s01_route_delta_and_s00_plan_registry_remain_exact() -> None:
+def test_s02_route_delta_and_preserved_registries_remain_exact() -> None:
     assert len(S01_PUBLIC_ROUTE_DELTA) == 9
     assert all(path.startswith("/api/v1/core/") for _, path in S01_PUBLIC_ROUTE_DELTA)
-    assert {
-        ("POST", "/api/v1/core/relationships/{relationship_id}/data-change"),
-        ("POST", "/api/v1/core/relationships/{relationship_id}/schema-change"),
-    }.isdisjoint(S01_PUBLIC_ROUTE_DELTA)
+    assert S02_PUBLIC_ROUTE_DELTA.isdisjoint(S01_PUBLIC_ROUTE_DELTA)
+    assert len(S02_PUBLIC_ROUTE_DELTA) == 2
     assert set(PLAN_EVIDENCE_TARGETS) == {
         *(f"PLAN-{number:02d}" for number in range(1, 7))
     }

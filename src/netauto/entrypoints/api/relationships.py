@@ -1,6 +1,6 @@
 """Strict public HTTP adapter for factual Relationship capabilities."""
 
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
@@ -11,6 +11,7 @@ from netauto.application.relationships import (
     RelationshipProjection,
     RelationshipService,
 )
+from netauto.domain.objects import DataChangeKind, DataChangeOperation
 from netauto.domain.primitives import JsonValue
 from netauto.domain.relationships import ObjectRelationshipView, RelationshipView
 from netauto.entrypoints.api.common import (
@@ -58,6 +59,38 @@ class RelationshipCreateBody(StrictBody):
                 raise ValueError("properties_null_forbidden")
             return cast(object, raw)
         return value
+
+
+class RelationshipSetOperationBody(StrictBody):
+    op: Literal["SET"]
+    property: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    value: JsonValue
+
+
+class RelationshipRemoveOperationBody(StrictBody):
+    op: Literal["REMOVE"]
+    property: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+
+
+RelationshipDataChangeOperationBody = Annotated[
+    RelationshipSetOperationBody | RelationshipRemoveOperationBody,
+    Field(discriminator="op"),
+]
+
+
+class RelationshipDataChangeBody(StrictBody):
+    operations: list[RelationshipDataChangeOperationBody] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def unique_properties(self) -> RelationshipDataChangeBody:
+        names = [operation.property for operation in self.operations]
+        if len(names) != len(set(names)):
+            raise ValueError("duplicate_relationship_property_operation")
+        return self
+
+
+class RelationshipSchemaChangeBody(StrictBody):
+    target_version: PositiveInteger
 
 
 class RelationshipViewDto(BaseModel):
@@ -151,6 +184,46 @@ async def create_relationship(
 async def get_relationship(relationship_id: UUID, request: Request) -> RelationshipDto:
     validate_query(request, ())
     return _relationship(await _service(request).get(relationship_id))
+
+
+@router.post(
+    "/relationships/{relationship_id}/data-change",
+    response_model=RelationshipDto,
+)
+async def data_change_relationship(
+    relationship_id: UUID,
+    body: RelationshipDataChangeBody,
+    request: Request,
+) -> RelationshipDto:
+    validate_query(request, ())
+    operations = tuple(
+        DataChangeOperation(
+            DataChangeKind(operation.op),
+            operation.property,
+            operation.value
+            if isinstance(operation, RelationshipSetOperationBody)
+            else None,
+        )
+        for operation in body.operations
+    )
+    return _relationship(
+        await _service(request).data_change(relationship_id, operations)
+    )
+
+
+@router.post(
+    "/relationships/{relationship_id}/schema-change",
+    response_model=RelationshipDto,
+)
+async def schema_change_relationship(
+    relationship_id: UUID,
+    body: RelationshipSchemaChangeBody,
+    request: Request,
+) -> RelationshipDto:
+    validate_query(request, ())
+    return _relationship(
+        await _service(request).schema_change(relationship_id, body.target_version)
+    )
 
 
 @router.delete(

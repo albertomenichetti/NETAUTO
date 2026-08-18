@@ -20,12 +20,14 @@ from netauto.application.objecttemplates import (
 from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.failures import ApplicationFailure
-from netauto.persistence.locking import AdvisoryGate, RowLockClass, RowLockMode
-from netauto.persistence.objects import (
+from netauto.persistence.lifecycle import (
     EventKind,
     IntrinsicLifecycleEvent,
-    ObjectStore,
     OwnershipLifecycleEvent,
+)
+from netauto.persistence.locking import AdvisoryGate, RowLockClass, RowLockMode
+from netauto.persistence.objects import (
+    ObjectStore,
 )
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory

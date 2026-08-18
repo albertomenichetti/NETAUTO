@@ -35,7 +35,7 @@ from netauto.entrypoints.api.common import (
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
-from netauto.persistence.objects import (
+from netauto.persistence.lifecycle import (
     EventKind,
     LifecycleEvent,
     OwnershipLifecycleEvent,

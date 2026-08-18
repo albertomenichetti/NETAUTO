@@ -1,6 +1,7 @@
 """SQLAlchemy Core persistence for RelationshipDefinition aggregates."""
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
@@ -20,7 +21,6 @@ from netauto.domain.relationships import (
     RelationshipDefinitionProperty,
     RelationshipDefinitionVersion,
     RelationshipDefinitionVersionSummary,
-    RelationshipLifecycleView,
     RelationshipResolution,
     RuntimeRelationshipResolution,
 )
@@ -33,7 +33,6 @@ from netauto.persistence.locking import (
     row_lock_statement,
 )
 from netauto.persistence.metadata import (
-    object_lifecycle_events,
     object_templates,
     objects,
     relationship_definition_properties,
@@ -67,6 +66,13 @@ class RuntimeRelationshipObjectReferenceError(Exception):
     def __init__(self, object_id: UUID) -> None:
         self.object_id = object_id
         super().__init__("Relationship endpoint Object disappeared")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeRelationshipHeader:
+    id: UUID
+    relationship_definition_id: UUID
+    relationship_definition_version: int
 
 
 def _aggregate_statement():
@@ -535,6 +541,51 @@ class RelationshipDefinitionVersionStore:
             await self.get_properties(definition_id, version),
         )
 
+    async def get_versions(
+        self, keys: Sequence[tuple[UUID, int]]
+    ) -> dict[tuple[UUID, int], RelationshipDefinitionVersion]:
+        ordered = tuple(sorted(set(keys), key=lambda item: (item[0].int, item[1])))
+        if not ordered:
+            return {}
+        headers = await self.get_headers(ordered)
+        property_rows = (
+            (
+                await self.connection.execute(
+                    select(relationship_definition_properties)
+                    .where(
+                        tuple_(
+                            relationship_definition_properties.c.relationship_definition_id,
+                            relationship_definition_properties.c.relationship_definition_version,
+                        ).in_(ordered)
+                    )
+                    .order_by(
+                        relationship_definition_properties.c.relationship_definition_id,
+                        relationship_definition_properties.c.relationship_definition_version,
+                        relationship_definition_properties.c.position,
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        properties: dict[tuple[UUID, int], list[RelationshipDefinitionProperty]] = {}
+        for row in property_rows:
+            key = (
+                cast(UUID, row["relationship_definition_id"]),
+                cast(int, row["relationship_definition_version"]),
+            )
+            properties.setdefault(key, []).append(_definition_property(row))
+        return {
+            key: RelationshipDefinitionVersion(
+                header.relationship_definition_id,
+                header.version,
+                header.revision,
+                header.status,
+                tuple(properties.get(key, ())),
+            )
+            for key, header in headers.items()
+        }
+
     async def next_version(self, definition_id: UUID) -> int:
         maximum = await self.connection.scalar(
             select(func.max(relationship_definition_versions.c.version)).where(
@@ -721,9 +772,22 @@ def _runtime_relationship(rows: Sequence[RowMapping]) -> Relationship | None:
     relationship_id = cast(UUID, rows[0]["relationship_id"])
     definition_id = cast(UUID, rows[0]["relationship_definition_id"])
     definition_version = cast(int, rows[0]["relationship_definition_version"])
-    properties = cast(dict[str, JsonValue], rows[0]["properties"])
+    raw_properties = cast(object, rows[0]["properties"])
+    if not isinstance(raw_properties, dict):
+        raise RuntimeError("persisted Relationship properties are invalid")
+    raw_property_map = cast(dict[object, object], raw_properties)
+    if not all(isinstance(key, str) for key in raw_property_map):
+        raise RuntimeError("persisted Relationship properties are invalid")
+    properties = cast(dict[str, JsonValue], raw_property_map)
     resolutions: list[RuntimeRelationshipResolution] = []
     for row in rows:
+        if (
+            row["relationship_id"] != relationship_id
+            or row["relationship_definition_id"] != definition_id
+            or row["relationship_definition_version"] != definition_version
+            or row["properties"] != properties
+        ):
+            raise RuntimeError("persisted Relationship aggregate is incoherent")
         resolution_id = cast(UUID | None, row["resolution_id"])
         if resolution_id is None:
             continue
@@ -753,6 +817,51 @@ class RuntimeRelationshipStore:
     def __init__(self, connection: AsyncConnection) -> None:
         self.connection = connection
 
+    @staticmethod
+    def _aggregate_statement():
+        return select(
+            relationships.c.id.label("relationship_id"),
+            relationships.c.relationship_definition_id,
+            relationships.c.relationship_definition_version,
+            relationships.c.properties,
+            runtime_relationship_resolutions.c.relationship_definition_id.label(
+                "runtime_relationship_definition_id"
+            ),
+            runtime_relationship_resolutions.c.resolution_id,
+            runtime_relationship_resolutions.c.from_object_id,
+            runtime_relationship_resolutions.c.to_object_id,
+        ).select_from(
+            relationships.outerjoin(
+                runtime_relationship_resolutions,
+                runtime_relationship_resolutions.c.relationship_id
+                == relationships.c.id,
+            )
+        )
+
+    async def get_header(
+        self, relationship_id: UUID
+    ) -> RuntimeRelationshipHeader | None:
+        row = (
+            (
+                await self.connection.execute(
+                    select(
+                        relationships.c.id,
+                        relationships.c.relationship_definition_id,
+                        relationships.c.relationship_definition_version,
+                    ).where(relationships.c.id == relationship_id)
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            return None
+        return RuntimeRelationshipHeader(
+            cast(UUID, row["id"]),
+            cast(UUID, row["relationship_definition_id"]),
+            cast(int, row["relationship_definition_version"]),
+        )
+
     async def exact_relationship_id(
         self, resolution_id: UUID, from_object_id: UUID, to_object_id: UUID
     ) -> UUID | None:
@@ -769,25 +878,7 @@ class RuntimeRelationshipStore:
         rows = (
             (
                 await self.connection.execute(
-                    select(
-                        relationships.c.id.label("relationship_id"),
-                        relationships.c.relationship_definition_id,
-                        relationships.c.relationship_definition_version,
-                        relationships.c.properties,
-                        runtime_relationship_resolutions.c.relationship_definition_id.label(
-                            "runtime_relationship_definition_id"
-                        ),
-                        runtime_relationship_resolutions.c.resolution_id,
-                        runtime_relationship_resolutions.c.from_object_id,
-                        runtime_relationship_resolutions.c.to_object_id,
-                    )
-                    .select_from(
-                        relationships.outerjoin(
-                            runtime_relationship_resolutions,
-                            runtime_relationship_resolutions.c.relationship_id
-                            == relationships.c.id,
-                        )
-                    )
+                    self._aggregate_statement()
                     .where(relationships.c.id == relationship_id)
                     .order_by(
                         runtime_relationship_resolutions.c.resolution_id,
@@ -800,6 +891,38 @@ class RuntimeRelationshipStore:
             .all()
         )
         return _runtime_relationship(rows)
+
+    async def get_many(
+        self, relationship_ids: Iterable[UUID]
+    ) -> dict[UUID, Relationship]:
+        ids = tuple(sorted(set(relationship_ids), key=lambda value: value.int))
+        if not ids:
+            return {}
+        rows = (
+            (
+                await self.connection.execute(
+                    self._aggregate_statement()
+                    .where(relationships.c.id.in_(ids))
+                    .order_by(
+                        relationships.c.id,
+                        runtime_relationship_resolutions.c.resolution_id,
+                        runtime_relationship_resolutions.c.from_object_id,
+                        runtime_relationship_resolutions.c.to_object_id,
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        by_id: dict[UUID, list[RowMapping]] = {}
+        for row in rows:
+            by_id.setdefault(cast(UUID, row["relationship_id"]), []).append(row)
+        result: dict[UUID, Relationship] = {}
+        for relationship_id, aggregate_rows in by_id.items():
+            value = _runtime_relationship(aggregate_rows)
+            if value is not None:
+                result[relationship_id] = value
+        return result
 
     async def lock_update(self, relationship_id: UUID) -> bool:
         return (
@@ -903,107 +1026,45 @@ class RuntimeRelationshipStore:
                     ) from error
                 raise
 
-    async def lifecycle_views(
-        self, relationship_id: UUID
-    ) -> tuple[RelationshipLifecycleView, ...]:
-        from_objects = objects.alias("relationship_from_objects")
-        to_objects = objects.alias("relationship_to_objects")
-        rows = (
-            await self.connection.execute(
-                select(
-                    runtime_relationship_resolutions.c.from_object_id,
-                    from_objects.c.canonical_name.label("from_canonical_name"),
-                    runtime_relationship_resolutions.c.to_object_id,
-                    to_objects.c.canonical_name.label("to_canonical_name"),
-                    relationship_resolutions.c.name,
-                )
-                .select_from(
-                    runtime_relationship_resolutions.join(
-                        relationship_resolutions,
-                        relationship_resolutions.c.id
-                        == runtime_relationship_resolutions.c.resolution_id,
-                    )
-                    .join(
-                        from_objects,
-                        from_objects.c.id
-                        == runtime_relationship_resolutions.c.from_object_id,
-                    )
-                    .join(
-                        to_objects,
-                        to_objects.c.id
-                        == runtime_relationship_resolutions.c.to_object_id,
-                    )
-                )
-                .where(
-                    runtime_relationship_resolutions.c.relationship_id
-                    == relationship_id
-                )
-            )
-        ).all()
-        views = {
-            RelationshipLifecycleView(
-                object_id=cast(UUID, row.from_object_id),
-                canonical_name=cast(str, row.from_canonical_name),
-                destination_object_id=cast(UUID, row.to_object_id),
-                destination_canonical_name=cast(str, row.to_canonical_name),
-                relationship_name=cast(str, row.name),
-            )
-            for row in rows
-        }
-        return tuple(
-            sorted(
-                views,
-                key=lambda item: (
-                    item.object_id.int,
-                    item.destination_object_id.int,
-                    item.relationship_name,
-                ),
-            )
-        )
-
-    async def insert_lifecycle_events(
-        self,
-        *,
-        kind: str,
-        relationship: Relationship,
-        views: Sequence[RelationshipLifecycleView],
+    async def update_properties(
+        self, relationship_id: UUID, properties: dict[str, JsonValue]
     ) -> None:
-        if not views:
-            raise RuntimeError("Relationship lifecycle projection is incomplete")
-        factual_state: dict[str, JsonValue] = {
-            "relationship_definition_version": (
-                relationship.relationship_definition_version
-            ),
-            "properties": relationship.properties,
-        }
-        if kind == "RELATIONSHIP_CREATED":
-            before_state = None
-            after_state: dict[str, JsonValue] | None = factual_state
-        elif kind == "RELATIONSHIP_DELETED":
-            before_state = factual_state
-            after_state = None
-        else:
-            raise RuntimeError("unsupported Relationship lifecycle transition")
-        await self.connection.execute(
-            object_lifecycle_events.insert(),
-            [
-                {
-                    "kind": kind,
-                    "object_id": item.object_id,
-                    "canonical_name": item.canonical_name,
-                    "destination_object_id": item.destination_object_id,
-                    "destination_canonical_name": item.destination_canonical_name,
-                    "relationship_id": relationship.id,
-                    "relationship_definition_id": (
-                        relationship.relationship_definition_id
-                    ),
-                    "relationship_name": item.relationship_name,
-                    "before_state": before_state,
-                    "after_state": after_state,
-                }
-                for item in views
-            ],
+        result = await self.connection.execute(
+            relationships.update()
+            .where(relationships.c.id == relationship_id)
+            .values(properties=properties)
         )
+        if result.rowcount != 1:
+            raise RuntimeError("locked Relationship disappeared before update")
+
+    async def update_schema(
+        self,
+        relationship_id: UUID,
+        definition_id: UUID,
+        target_version: int,
+        properties: dict[str, JsonValue],
+    ) -> None:
+        try:
+            result = await self.connection.execute(
+                relationships.update()
+                .where(
+                    relationships.c.id == relationship_id,
+                    relationships.c.relationship_definition_id == definition_id,
+                )
+                .values(
+                    relationship_definition_version=target_version,
+                    properties=properties,
+                )
+            )
+        except IntegrityError as error:
+            if (
+                classify_postgresql_failure(error).constraint_name
+                == "fk_relationships_definition_version"
+            ):
+                raise RuntimeRelationshipModelReferenceError from error
+            raise
+        if result.rowcount != 1:
+            raise RuntimeError("locked Relationship disappeared before schema update")
 
     async def delete(self, relationship_id: UUID) -> None:
         result = await self.connection.execute(

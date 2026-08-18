@@ -9,12 +9,12 @@ import pytest
 from sqlalchemy import Engine, select
 
 from netauto.entrypoints.http import build_app
+from netauto.persistence.lifecycle import EventKind, LifecycleStore
 from netauto.persistence.metadata import (
     object_components,
     object_lifecycle_events,
     objects,
 )
-from netauto.persistence.objects import EventKind, ObjectStore
 from netauto.settings import Settings
 
 
@@ -529,10 +529,10 @@ async def test_s05_ownership_schema_change_reads_and_lifecycle(
     assert (
         await object_client.get(f"/api/v1/core/objects/{child_id}/owner")
     ).json() is None
-    original_event = ObjectStore.insert_intrinsic_event
+    original_event = LifecycleStore.insert_intrinsic_event
 
     async def fail_schema_event(
-        store: ObjectStore, kind: EventKind, *args: object
+        store: LifecycleStore, kind: EventKind, *args: object
     ) -> object:
         if kind is EventKind.SCHEMA_CHANGE:
             raise RuntimeError("forced schema-change event failure")
@@ -541,7 +541,7 @@ async def test_s05_ownership_schema_change_reads_and_lifecycle(
         )
 
     with monkeypatch.context() as context:
-        context.setattr(ObjectStore, "insert_intrinsic_event", fail_schema_event)
+        context.setattr(LifecycleStore, "insert_intrinsic_event", fail_schema_event)
         failed_schema = await object_client.post(
             f"/api/v1/core/objects/{parent_id}/schema-change",
             json={"target_version": 3},
@@ -653,12 +653,14 @@ async def test_s05_ownership_failures_cycle_and_atomic_event(
     assert mismatch.status_code == 409
     assert mismatch.json()["code"] == "ownership_mismatch"
 
-    async def fail_event(store: ObjectStore, *args: object, **kwargs: object) -> object:
+    async def fail_event(
+        store: LifecycleStore, *args: object, **kwargs: object
+    ) -> object:
         del store, args, kwargs
         raise RuntimeError("forced ownership event failure")
 
     with monkeypatch.context() as context:
-        context.setattr(ObjectStore, "insert_ownership_event", fail_event)
+        context.setattr(LifecycleStore, "insert_ownership_event", fail_event)
         failed = await object_client.post(
             f"/api/v1/core/objects/{a}/attach",
             json={"slot_name": "children", "child_object_id": c},
@@ -670,7 +672,7 @@ async def test_s05_ownership_failures_cycle_and_atomic_event(
         json={"slot_name": "children", "child_object_id": c},
     )
     with monkeypatch.context() as context:
-        context.setattr(ObjectStore, "insert_ownership_event", fail_event)
+        context.setattr(LifecycleStore, "insert_ownership_event", fail_event)
         failed = await object_client.post(
             f"/api/v1/core/objects/{a}/attach",
             json={"slot_name": "children", "child_object_id": c},
@@ -758,9 +760,11 @@ async def test_intrinsic_state_event_atomic_rollback(
 ) -> None:
     del migrated_database_engine
     _, template_id = await _runtime_schema(object_client)
-    original = ObjectStore.insert_intrinsic_event
+    original = LifecycleStore.insert_intrinsic_event
 
-    async def fail_create(store: ObjectStore, kind: EventKind, *args: object) -> object:
+    async def fail_create(
+        store: LifecycleStore, kind: EventKind, *args: object
+    ) -> object:
         if kind is EventKind.CREATED:
             raise RuntimeError("forced created-event failure")
         return await cast(Callable[..., Awaitable[object]], original)(
@@ -768,7 +772,7 @@ async def test_intrinsic_state_event_atomic_rollback(
         )
 
     with monkeypatch.context() as context:
-        context.setattr(ObjectStore, "insert_intrinsic_event", fail_create)
+        context.setattr(LifecycleStore, "insert_intrinsic_event", fail_create)
         failed_create = await object_client.post(
             "/api/v1/core/objects",
             json={
@@ -789,14 +793,16 @@ async def test_intrinsic_state_event_atomic_rollback(
     )
     object_id = created.json()["id"]
 
-    async def fail_rename(store: ObjectStore, kind: EventKind, *args: object) -> object:
+    async def fail_rename(
+        store: LifecycleStore, kind: EventKind, *args: object
+    ) -> object:
         if kind is EventKind.RENAME:
             raise RuntimeError("forced event failure")
         return await cast(Callable[..., Awaitable[object]], original)(
             store, kind, *args
         )
 
-    monkeypatch.setattr(ObjectStore, "insert_intrinsic_event", fail_rename)
+    monkeypatch.setattr(LifecycleStore, "insert_intrinsic_event", fail_rename)
     failed = await object_client.post(
         f"/api/v1/core/objects/{object_id}/rename",
         json={"canonical_name": "must-rollback"},
@@ -880,10 +886,10 @@ async def test_object_delete_isolated_historical_and_atomic(
         )
         assert detached.status_code == 204
 
-    original = ObjectStore.insert_intrinsic_event
+    original = LifecycleStore.insert_intrinsic_event
 
     async def fail_deleted(
-        store: ObjectStore, kind: EventKind, *args: object
+        store: LifecycleStore, kind: EventKind, *args: object
     ) -> object:
         if kind is EventKind.DELETED:
             raise RuntimeError("forced deleted-event failure")
@@ -892,7 +898,7 @@ async def test_object_delete_isolated_historical_and_atomic(
         )
 
     with monkeypatch.context() as context:
-        context.setattr(ObjectStore, "insert_intrinsic_event", fail_deleted)
+        context.setattr(LifecycleStore, "insert_intrinsic_event", fail_deleted)
         failed = await object_client.delete(f"/api/v1/core/objects/{parent_id}")
     assert failed.status_code == 500
     assert failed.json()["code"] == "internal_error"

@@ -242,8 +242,10 @@ def test_s08_public_route_and_error_catalog_closure() -> None:
         ),
         ("POST", "/api/v1/core/relationships"),
         ("DELETE", "/api/v1/core/relationships/{relationship_id}"),
+        ("POST", "/api/v1/core/relationships/{relationship_id}/data-change"),
+        ("POST", "/api/v1/core/relationships/{relationship_id}/schema-change"),
     }
-    assert len(expected_mutations) == 39
+    assert len(expected_mutations) == 41
     assert actual_mutations == expected_mutations
 
     expected_reads = {
@@ -288,7 +290,9 @@ def test_s08_public_route_and_error_catalog_closure() -> None:
     actual_reads = {
         ("GET", path) for path, methods in paths.items() if "get" in _mapping(methods)
     }
+    assert len(expected_reads) == 22
     assert actual_reads == expected_reads
+    assert len(actual_mutations | actual_reads) == 63
     assert all(
         method not in {"put", "patch"}
         for methods in paths.values()

@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objects import (
+    ObjectValidationError,
+    RuntimePropertySpec,
+    canonicalize_properties,
+)
 from netauto.domain.objecttemplates import ValueMode
 from netauto.domain.primitives import JsonValue
 
@@ -142,6 +147,21 @@ class RelationshipLifecycleView:
     destination_object_id: UUID
     destination_canonical_name: str
     relationship_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipSchemaPropertySpec:
+    """Resolved factual property declaration with its stable semantic identity."""
+
+    position: int
+    datatype_id: UUID
+    runtime: RuntimePropertySpec
+
+
+class RelationshipSchemaChangeBlocked(ValueError):
+    def __init__(self, property_name: str) -> None:
+        self.property_name = property_name
+        super().__init__(property_name)
 
 
 class RelationshipDefinitionValidationError(ValueError):
@@ -649,3 +669,51 @@ def relationship_views(
             ),
         )
     )
+
+
+def migrate_relationship_properties(
+    current: Mapping[str, object],
+    source: tuple[RelationshipSchemaPropertySpec, ...],
+    target: tuple[RelationshipSchemaPropertySpec, ...],
+) -> dict[str, JsonValue]:
+    """Apply the frozen Relationship preserve-or-fail schema migration."""
+    source_by_name = {item.runtime.name: item for item in source}
+    candidate: dict[str, object] = {}
+    carried_names: set[str] = set()
+    for target_item in sorted(target, key=lambda item: item.position):
+        target_spec = target_item.runtime
+        source_item = source_by_name.get(target_spec.name)
+        if source_item is None:
+            continue
+        if source_item.datatype_id != target_item.datatype_id:
+            raise RelationshipValidationError(
+                f"properties.{target_spec.name}", "property_datatype_lineage_changed"
+            )
+        if (
+            source_item.runtime.value_mode is ValueMode.LIST
+            and target_spec.value_mode is ValueMode.SCALAR
+        ):
+            raise RelationshipValidationError(
+                f"properties.{target_spec.name}", "list_to_scalar_forbidden"
+            )
+        if target_spec.name not in current:
+            continue
+        value = current[target_spec.name]
+        if (
+            source_item.runtime.value_mode is ValueMode.SCALAR
+            and target_spec.value_mode is ValueMode.LIST
+        ):
+            value = [value]
+        elif source_item.runtime.value_mode is not target_spec.value_mode:
+            raise RelationshipSchemaChangeBlocked(target_spec.name)
+        candidate[target_spec.name] = value
+        carried_names.add(target_spec.name)
+    try:
+        return canonicalize_properties(
+            candidate, tuple(item.runtime for item in target)
+        )
+    except (ObjectValidationError, ValueError) as error:
+        name = getattr(error, "path", "").removeprefix("properties.").split(".")[0]
+        if name in carried_names:
+            raise RelationshipSchemaChangeBlocked(name) from error
+        raise
