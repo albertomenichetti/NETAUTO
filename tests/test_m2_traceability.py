@@ -1,13 +1,23 @@
-"""Frozen M2 census with honest S01 evidence and future-bundle states."""
+"""Singular machine-checkable M2 census, evidence and concurrency registry."""
 
 import ast
+import inspect
 import subprocess
 import sys
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+from typing import cast
 
-from tests.test_m2_s00_traceability import PLAN_EVIDENCE_TARGETS
+from netauto.application.relationshipdefinitions import RelationshipDefinitionService
+from netauto.application.relationships import RelationshipService
+from netauto.persistence.locking import AdvisoryGate, RowLockMode
+from tests.test_m1_traceability import PGTEST_SCENARIOS
+from tests.test_m2_s00_traceability import (
+    DELIVERED_MUTATION_PLANS,
+    PLAN_EVIDENCE_TARGETS,
+    Mutation,
+)
 
 M2_OUTCOMES = frozenset(f"M2-OUT-{number:02d}" for number in range(1, 17))
 M2_ACCEPTANCE_CRITERIA = frozenset(f"M2-AC-{number:02d}" for number in range(1, 33))
@@ -70,6 +80,70 @@ M2_ACCEPTANCE_TO_EVIDENCE = {
 class EvidenceBundle:
     state: str
     targets: frozenset[str]
+
+
+M2_MUTATION_TO_CALLABLE: dict[str, Mutation] = {
+    **{
+        mutation_id: owner
+        for mutation_id, (owner, _) in DELIVERED_MUTATION_PLANS.items()
+    },
+    "RD.CN": RelationshipDefinitionService.create_next,
+    "RD.R": RelationshipDefinitionService.revise,
+    "RD.P": RelationshipDefinitionService.publish,
+    "RD.SD": RelationshipDefinitionService.set_default,
+    "RD.CD": RelationshipDefinitionService.clear_default,
+    "RD.D": RelationshipDefinitionService.deprecate,
+    "RD.DD": RelationshipDefinitionService.delete_draft,
+    "REL.DC": RelationshipService.data_change,
+    "REL.SC": cast(Mutation, RelationshipService.__dict__["_schema_change_attempt"]),
+}
+M2_MUTATIONS = frozenset(M2_MUTATION_TO_CALLABLE)
+M2_MUTATION_TO_GATE: dict[str, AdvisoryGate | None] = {
+    mutation_id: gate for mutation_id, (_, gate) in DELIVERED_MUTATION_PLANS.items()
+} | {mutation_id: None for mutation_id in M2_MUTATIONS - set(DELIVERED_MUTATION_PLANS)}
+
+_FAMILY_EXECUTION_TARGETS = {
+    "DT": frozenset(
+        {
+            "tests/test_datatype_api.py::test_datatype_full_public_lifecycle",
+            "tests/test_datatype_api.py::"
+            "test_datatype_active_consumers_and_lineage_delete_authority",
+        }
+    ),
+    "OT": frozenset(
+        {
+            "tests/test_objecttemplate_api.py::test_objecttemplate_full_lifecycle_and_effective_schema",
+            "tests/test_objecttemplate_api.py::"
+            "test_objecttemplate_binding_clone_and_publish_recertification",
+        }
+    ),
+    "OBJ": frozenset(
+        {
+            "tests/test_object_api.py::test_object_create_mutations_reads_lists_and_lifecycle",
+            "tests/test_object_api.py::test_s05_ownership_schema_change_reads_and_lifecycle",
+        }
+    ),
+    "RD": frozenset(
+        {
+            "tests/test_relationshipdefinition_api.py::"
+            "test_relationship_definition_complete_crud_and_capability_projection",
+            "tests/test_relationshipdefinition_api.py::"
+            "test_m2_s01_rdv_properties_versions_defaults_and_factual_pin",
+        }
+    ),
+    "REL": frozenset(
+        {
+            "tests/test_relationship_api.py::"
+            "test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+        }
+    ),
+}
+M2_MUTATION_TO_EVIDENCE = {
+    mutation_id: _FAMILY_EXECUTION_TARGETS[mutation_id.partition(".")[0]]
+    for mutation_id in M2_MUTATIONS
+}
 
 
 _S02_SEMANTIC_PATH = "tests/test_m2_s02_semantic_concurrency.py::"
@@ -377,17 +451,6 @@ S02_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     ),
 }
 
-M2_EVIDENCE_TO_TARGETS = {
-    bundle_id: EvidenceBundle(
-        "IMPLEMENTED"
-        if bundle_id in S01_BUNDLE_TARGETS or bundle_id in S02_BUNDLE_TARGETS
-        else "DESIGNED",
-        S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
-        | S02_BUNDLE_TARGETS.get(bundle_id, frozenset()),
-    )
-    for bundle_id in M2_EVIDENCE_BUNDLES
-}
-
 _S01_PRIMARY_SCENARIO_TARGETS = {
     "ROW-18": "tests/test_m2_s01_semantic_concurrency.py::"
     "test_row_18_create_next_allocates_serial_distinct_versions",
@@ -483,10 +546,310 @@ S02_SCENARIO_TARGETS = {
     ),
 }
 
-M2_IMPLEMENTED_SCENARIO_TARGETS = {
-    scenario_id: S01_SCENARIO_TARGETS.get(scenario_id, frozenset())
+DELIVERED_SCENARIO_TARGETS = {
+    scenario_id: frozenset(f"{target.module}::{target.function}" for target in targets)
+    for scenario_id, targets in PGTEST_SCENARIOS.items()
+}
+
+_S03_SEMANTIC_PATH = "tests/test_m2_s03_semantic_concurrency.py::"
+S03_SCENARIO_TARGETS: dict[str, frozenset[str]] = {
+    "ROW-03": frozenset(
+        {
+            "tests/test_objecttemplate_semantic_concurrency.py::"
+            "test_row_03_ot_revise_same_generation_has_one_stale_loser"
+        }
+    ),
+    "ROW-04": frozenset(
+        {
+            "tests/test_objecttemplate_semantic_concurrency.py::"
+            "test_row_04a_ot_revise_serializes_publish_and_forces_fresh_revision",
+            "tests/test_objecttemplate_semantic_concurrency.py::"
+            "test_row_04b_ot_publish_serializes_delete_draft",
+        }
+    ),
+    "ROW-16": frozenset(
+        {
+            "tests/test_objecttemplate_semantic_concurrency.py::"
+            "test_row_16_revise_serializes_whole_lineage_delete",
+            *(
+                _S03_SEMANTIC_PATH
+                + "test_row_16_relationship_definition_internal_and_root_delete_"
+                + "both_orders"
+                + f"[{order}]"
+                for order in ("internal-first", "delete-first")
+            ),
+        }
+    ),
+    "REF-08": frozenset(
+        _S03_SEMANTIC_PATH
+        + "test_ref_08_clone_reference_lifetimes"
+        + f"[{order}-{shape}]"
+        for order in ("clone-first", "delete-first")
+        for shape in ("parent", "component", "property")
+    ),
+    "REF-09": frozenset(
+        {
+            *(
+                _S03_SEMANTIC_PATH
+                + "test_ref_09_differential_rebind_lifetimes"
+                + f"[{order}-{family}]"
+                for order in ("rebind-first", "delete-first")
+                for family in ("object-template-component", "rdv-property")
+            ),
+            *(
+                _S03_SEMANTIC_PATH
+                + "test_ref_09_same_target_unchanged_and_removed_plan_variants"
+                + f"[{family}]"
+                for family in ("object-template", "rdv")
+            ),
+        }
+    ),
+    "REF-10": frozenset(
+        _S03_SEMANTIC_PATH
+        + "test_ref_10_direct_owner_rebinds_target_before_owner"
+        + f"[{order}-{family}]"
+        for order in ("rebind-first", "delete-first")
+        for family in ("object-template-parent", "object-schema")
+    ),
+    "REF-11": frozenset(
+        {
+            _S03_SEMANTIC_PATH
+            + "test_ref_11_mutual_roots_serialize_through_model_delete_gate"
+        }
+    ),
+    "GATE-07": frozenset(
+        {
+            _S03_SEMANTIC_PATH
+            + "test_gate_07_independent_root_deletes_wait_before_rows_and_reread"
+        }
+    ),
+    "SNAP-01": frozenset(
+        _S02_SEMANTIC_PATH
+        + "test_snap_05_each_mutation_observes_each_independent_rename_cut"
+        + f"[definition-{transition}]"
+        for transition in ("data", "schema")
+    ),
+    "SNAP-02": frozenset(
+        _S02_SEMANTIC_PATH
+        + "test_snap_05_each_mutation_observes_each_independent_rename_cut"
+        + f"[{rename_case}-{transition}]"
+        for rename_case in ("from", "to", "both")
+        for transition in ("data", "schema")
+    ),
+    "PAR-06": frozenset(
+        {
+            "tests/test_objecttemplate_semantic_concurrency.py::"
+            "test_par_06_ot_deprecates_distinct_versions_without_lineage_contention"
+        }
+    ),
+    "PAR-07": frozenset(
+        {
+            "tests/test_objecttemplate_semantic_concurrency.py::"
+            "test_row_15_and_par_07_description_lock_topology"
+        }
+    ),
+    "PAR-08": frozenset(
+        _S03_SEMANTIC_PATH
+        + "test_par_08_definition_rename_compatible_operations_progress"
+        + f"[{operation}]"
+        for operation in (
+            "revise",
+            "set-default",
+            "deprecate",
+            "relationship-create",
+        )
+    ),
+    "PAR-09": frozenset(
+        _S03_SEMANTIC_PATH
+        + "test_par_09_distinct_rdv_operations_make_progress"
+        + f"[{operation}]"
+        for operation in ("deprecate", "revise")
+    ),
+}
+
+PLAN_SCENARIO_TARGETS: dict[str, frozenset[str]] = {
+    scenario_id: frozenset(
+        target for targets in categories.values() for target in targets
+    )
+    for scenario_id, categories in PLAN_EVIDENCE_TARGETS.items()
+}
+M2_SCENARIO_TO_TARGETS: dict[str, frozenset[str]] = {
+    scenario_id: DELIVERED_SCENARIO_TARGETS.get(scenario_id, frozenset())
+    | S01_SCENARIO_TARGETS.get(scenario_id, frozenset())
     | S02_SCENARIO_TARGETS.get(scenario_id, frozenset())
-    for scenario_id in set(S01_SCENARIO_TARGETS) | set(S02_SCENARIO_TARGETS)
+    | S03_SCENARIO_TARGETS.get(scenario_id, frozenset())
+    | PLAN_SCENARIO_TARGETS.get(scenario_id, frozenset())
+    for scenario_id in M2_CONCURRENCY_SCENARIOS
+}
+M2_IMPLEMENTED_SCENARIO_TARGETS = M2_SCENARIO_TO_TARGETS
+
+
+def _scenario_evidence(*scenario_ids: str) -> frozenset[str]:
+    return frozenset(
+        target
+        for scenario_id in scenario_ids
+        for target in M2_SCENARIO_TO_TARGETS[scenario_id]
+    )
+
+
+M2_MUTATION_TO_EVIDENCE.update(
+    {
+        "OT.C": M2_MUTATION_TO_EVIDENCE["OT.C"]
+        | _scenario_evidence("ROW-07", "ROW-08", "REF-01"),
+        "OT.CN": M2_MUTATION_TO_EVIDENCE["OT.CN"] | _scenario_evidence("REF-08"),
+        "OT.R": M2_MUTATION_TO_EVIDENCE["OT.R"]
+        | _scenario_evidence("REF-09", "REF-10"),
+        "OT.P": M2_MUTATION_TO_EVIDENCE["OT.P"]
+        | _scenario_evidence("ROW-09", "ROW-22"),
+        "OBJ.C": M2_MUTATION_TO_EVIDENCE["OBJ.C"] | _scenario_evidence("ROW-24"),
+        "OBJ.SC": M2_MUTATION_TO_EVIDENCE["OBJ.SC"]
+        | _scenario_evidence("ROW-12", "REF-10"),
+        "OBJ.A": M2_MUTATION_TO_EVIDENCE["OBJ.A"]
+        | _scenario_evidence("GATE-01", "GATE-02", "GATE-03"),
+        "RD.C": M2_MUTATION_TO_EVIDENCE["RD.C"]
+        | _scenario_evidence("ROW-24", "GATE-04"),
+        "RD.CN": M2_MUTATION_TO_EVIDENCE["RD.CN"] | _scenario_evidence("REF-07"),
+        "RD.R": M2_MUTATION_TO_EVIDENCE["RD.R"]
+        | _scenario_evidence("REF-09", "PAR-08", "PAR-09"),
+        "RD.P": M2_MUTATION_TO_EVIDENCE["RD.P"]
+        | _scenario_evidence("ROW-23", "ROW-25"),
+        "REL.C": M2_MUTATION_TO_EVIDENCE["REL.C"]
+        | _scenario_evidence("ROW-30", "ARB-05", "ARB-08", "PAR-08"),
+        "REL.SC": M2_MUTATION_TO_EVIDENCE["REL.SC"]
+        | _scenario_evidence("ROW-27", "ROW-28", "ROW-30", "REF-10"),
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioRecipes:
+    primary: str
+    secondary: frozenset[str] = frozenset()
+
+
+M2_RECIPES = frozenset(
+    {
+        "REC-LOCK",
+        "REC-UNIQUE",
+        "REC-FK",
+        "REC-GATE",
+        "REC-CUT",
+        "REC-ROLLBACK",
+        "REC-PROGRESS",
+        "REC-ABA",
+        "REC-PLAN",
+        "REC-CLASSIFY",
+        "REC-RESTART",
+    }
+)
+M2_SCENARIO_TO_RECIPES = {
+    scenario_id: ScenarioRecipes(
+        {
+            "ROW": "REC-LOCK",
+            "ARB": "REC-UNIQUE",
+            "REF": "REC-FK",
+            "GATE": "REC-GATE",
+            "SNAP": "REC-CUT",
+            "ATOMIC": "REC-ROLLBACK",
+            "PAR": "REC-PROGRESS",
+        }[scenario_id.partition("-")[0]]
+    )
+    for scenario_id in M2_CONCURRENCY_SCENARIOS
+    if not scenario_id.startswith("PLAN-")
+}
+M2_SCENARIO_TO_RECIPES.update(
+    {
+        "ARB-05": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
+        "ARB-06": ScenarioRecipes("REC-ABA", frozenset({"REC-LOCK"})),
+        "ARB-07": ScenarioRecipes("REC-ABA", frozenset({"REC-RESTART"})),
+        "ARB-08": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
+        "REF-11": ScenarioRecipes("REC-GATE", frozenset({"REC-FK"})),
+        "PLAN-01": ScenarioRecipes("REC-PLAN"),
+        "PLAN-02": ScenarioRecipes("REC-PLAN"),
+        "PLAN-03": ScenarioRecipes("REC-RESTART"),
+        "PLAN-04": ScenarioRecipes("REC-CLASSIFY"),
+        "PLAN-05": ScenarioRecipes("REC-RESTART"),
+        "PLAN-06": ScenarioRecipes("REC-PLAN"),
+    }
+)
+
+M2_PREDICATE_TO_SCENARIOS: dict[str, frozenset[str]] = {
+    "NU": frozenset({"ARB-01"}),
+    "VS": frozenset({"ROW-01", "ROW-02", "ROW-18", "ROW-19"}),
+    "DG": frozenset({"ROW-03", "ROW-04", "ROW-20", "ATOMIC-01", "ATOMIC-05"}),
+    "LS": frozenset({"ROW-04", "ROW-06", "ROW-20", "ROW-21"}),
+    "DV": frozenset(
+        {"ROW-05", "ROW-06", "ROW-08", "ROW-21", "ROW-23", "ROW-24", "ROW-30"}
+    ),
+    "VH": frozenset({"ROW-22", "ROW-23"}),
+    "BA": frozenset({"ROW-07", "ROW-08", "ROW-12", "ROW-24", "ROW-28", "ROW-30"}),
+    "AM": frozenset({"ROW-09", "ROW-10", "ROW-25"}),
+    "RL": frozenset(f"REF-{number:02d}" for number in range(1, 12)),
+    "AL": frozenset({"ROW-16", "ROW-17"}),
+    "ML": frozenset({"ROW-15"}),
+    "OS": frozenset({"ROW-11", "ROW-12", "ATOMIC-04"}),
+    "RS": frozenset({"ROW-26", "ROW-27", "ROW-28", "ROW-29", "ATOMIC-06", "ATOMIC-07"}),
+    "PO": frozenset({"ROW-13", "ROW-14"}),
+    "OF": frozenset({"ARB-03", "ARB-04", "ATOMIC-04"}),
+    "SO": frozenset({"ARB-02"}),
+    "OC": frozenset({"GATE-01", "GATE-02", "GATE-03", "PAR-04"}),
+    "RC": frozenset({"GATE-04", "GATE-05", "GATE-06", "ATOMIC-04"}),
+    "RF": frozenset({"ARB-05", "ARB-07", "ARB-08", "ATOMIC-02"}),
+    "RA": frozenset({"ARB-06", "ARB-07", "ATOMIC-03"}),
+    "ES": frozenset(
+        {
+            "SNAP-01",
+            "SNAP-02",
+            "SNAP-03",
+            "SNAP-04",
+            "SNAP-05",
+            "PAR-01",
+            "PAR-02",
+            "PAR-08",
+        }
+    ),
+}
+
+S03_BUNDLE_SCENARIOS = {
+    "M2-VER-15": frozenset({"ROW-03", "ROW-04", "ROW-20", "ATOMIC-01", "ATOMIC-05"}),
+    "M2-VER-16": frozenset(
+        {
+            *(f"ROW-{number:02d}" for number in range(7, 11)),
+            *(f"ROW-{number:02d}" for number in range(21, 26)),
+            "ROW-30",
+        }
+    ),
+    "M2-VER-17": frozenset({"ARB-05", "ARB-07", "ARB-08", "ATOMIC-02", "PLAN-05"}),
+    "M2-VER-18": frozenset({"ROW-26", "ROW-27", "ROW-28", "ROW-29", "ARB-06"}),
+    "M2-VER-19": frozenset(
+        {
+            *(f"SNAP-{number:02d}" for number in range(1, 6)),
+            "PAR-01",
+            "PAR-02",
+            "PAR-08",
+        }
+    ),
+}
+S03_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    bundle_id: frozenset(
+        target
+        for scenario_id in scenario_ids
+        for target in M2_SCENARIO_TO_TARGETS[scenario_id]
+    )
+    for bundle_id, scenario_ids in S03_BUNDLE_SCENARIOS.items()
+}
+M2_EVIDENCE_TO_TARGETS = {
+    bundle_id: EvidenceBundle(
+        "IMPLEMENTED"
+        if bundle_id in S01_BUNDLE_TARGETS
+        or bundle_id in S02_BUNDLE_TARGETS
+        or bundle_id in S03_BUNDLE_TARGETS
+        else "DESIGNED",
+        S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S02_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S03_BUNDLE_TARGETS.get(bundle_id, frozenset()),
+    )
+    for bundle_id in M2_EVIDENCE_BUNDLES
 }
 
 S01_REVIEW_FIX_TARGETS = {
@@ -648,7 +1011,11 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
         "M2-VER-21",
     }
     for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items():
-        if bundle_id in S01_BUNDLE_TARGETS or bundle_id in S02_BUNDLE_TARGETS:
+        if (
+            bundle_id in S01_BUNDLE_TARGETS
+            or bundle_id in S02_BUNDLE_TARGETS
+            or bundle_id in S03_BUNDLE_TARGETS
+        ):
             assert evidence.state == "IMPLEMENTED"
             assert evidence.targets
         else:
@@ -737,3 +1104,119 @@ def test_s02_route_delta_and_preserved_registries_remain_exact() -> None:
     assert set(PLAN_EVIDENCE_TARGETS) == {
         *(f"PLAN-{number:02d}" for number in range(1, 7))
     }
+
+
+def test_s03_mutation_registry_is_exact_central_and_executable() -> None:
+    assert len(M2_MUTATIONS) == 41
+    assert sum(item.startswith("DT.") for item in M2_MUTATIONS) == 10
+    assert sum(item.startswith("OT.") for item in M2_MUTATIONS) == 10
+    assert sum(item.startswith("OBJ.") for item in M2_MUTATIONS) == 7
+    assert sum(item.startswith("RD.") for item in M2_MUTATIONS) == 10
+    assert sum(item.startswith("REL.") for item in M2_MUTATIONS) == 4
+    assert set(M2_MUTATION_TO_CALLABLE) == M2_MUTATIONS
+    assert set(M2_MUTATION_TO_GATE) == M2_MUTATIONS
+    assert set(M2_MUTATION_TO_EVIDENCE) == M2_MUTATIONS
+    assert {
+        mutation_id: gate
+        for mutation_id, gate in M2_MUTATION_TO_GATE.items()
+        if gate is not None
+    } == {
+        "OBJ.A": AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE,
+        "RD.C": AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
+        "RD.RN": AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
+        "DT.DL": AdvisoryGate.MODEL_ROOT_DELETE_GATE,
+        "OT.DL": AdvisoryGate.MODEL_ROOT_DELETE_GATE,
+        "RD.DL": AdvisoryGate.MODEL_ROOT_DELETE_GATE,
+    }
+    assert len(set(AdvisoryGate)) == 3
+    assert set(RowLockMode) == {
+        RowLockMode.KS,
+        RowLockMode.S,
+        RowLockMode.NKU,
+        RowLockMode.U,
+    }
+    for mutation_id, owner in M2_MUTATION_TO_CALLABLE.items():
+        source = inspect.getsource(owner)
+        assert "_acquire(" in source or "prepare_lock_plan(" in source, mutation_id
+        assert "begin_dml()" in source, mutation_id
+        assert M2_MUTATION_TO_EVIDENCE[mutation_id]
+        for target in M2_MUTATION_TO_EVIDENCE[mutation_id]:
+            _assert_target_exists(target)
+
+
+def test_s03_scenario_registry_targets_and_recipes_are_exact() -> None:
+    assert set(M2_SCENARIO_TO_TARGETS) == M2_CONCURRENCY_SCENARIOS
+    assert set(M2_SCENARIO_TO_RECIPES) == M2_CONCURRENCY_SCENARIOS
+    assert set(M2_SCENARIO_TO_RECIPES.values())
+    assert M2_RECIPES == {
+        "REC-LOCK",
+        "REC-UNIQUE",
+        "REC-FK",
+        "REC-GATE",
+        "REC-CUT",
+        "REC-ROLLBACK",
+        "REC-PROGRESS",
+        "REC-ABA",
+        "REC-PLAN",
+        "REC-CLASSIFY",
+        "REC-RESTART",
+    }
+    for scenario_id, targets in M2_SCENARIO_TO_TARGETS.items():
+        assert targets, scenario_id
+        for target in targets:
+            _assert_target_exists(target)
+        recipes = M2_SCENARIO_TO_RECIPES[scenario_id]
+        assert recipes.primary in M2_RECIPES
+        assert recipes.primary not in recipes.secondary
+        assert recipes.secondary <= M2_RECIPES
+
+
+def test_s03_predicate_registry_is_the_exact_frozen_map() -> None:
+    assert set(M2_PREDICATE_TO_SCENARIOS) == {
+        "NU",
+        "VS",
+        "DG",
+        "LS",
+        "DV",
+        "VH",
+        "BA",
+        "AM",
+        "RL",
+        "AL",
+        "ML",
+        "OS",
+        "RS",
+        "PO",
+        "OF",
+        "SO",
+        "OC",
+        "RC",
+        "RF",
+        "RA",
+        "ES",
+    }
+    assert len(M2_PREDICATE_TO_SCENARIOS) == 21
+    for predicate, scenario_ids in M2_PREDICATE_TO_SCENARIOS.items():
+        assert scenario_ids, predicate
+        assert scenario_ids <= M2_CONCURRENCY_SCENARIOS
+        assert frozenset().union(
+            *(M2_SCENARIO_TO_TARGETS[item] for item in scenario_ids)
+        )
+
+
+def test_s03_primary_bundles_are_implemented_with_exact_scenario_membership() -> None:
+    assert set(S03_BUNDLE_SCENARIOS) == {
+        "M2-VER-15",
+        "M2-VER-16",
+        "M2-VER-17",
+        "M2-VER-18",
+        "M2-VER-19",
+    }
+    for bundle_id, scenario_ids in S03_BUNDLE_SCENARIOS.items():
+        evidence = M2_EVIDENCE_TO_TARGETS[bundle_id]
+        assert evidence.state == "IMPLEMENTED"
+        assert evidence.targets == frozenset().union(
+            *(M2_SCENARIO_TO_TARGETS[item] for item in scenario_ids)
+        )
+        for target in evidence.targets:
+            _assert_target_exists(target)

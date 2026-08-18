@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from types import ModuleType
+from types import ModuleType, TracebackType
 from typing import cast
 
 import pytest
@@ -38,9 +38,16 @@ class ConnectionTracker:
     ready: dict[str, asyncio.Event] = field(
         default_factory=lambda: {"T1": asyncio.Event(), "T2": asyncio.Event()}
     )
+    last_phase: dict[str, str] = field(default_factory=lambda: dict[str, str]())
+    transaction_outcomes: dict[str, list[str]] = field(
+        default_factory=lambda: dict[str, list[str]]()
+    )
 
     def reset(self) -> None:
         self.ready = {"T1": asyncio.Event(), "T2": asyncio.Event()}
+
+    def mark(self, role: str, phase: str) -> None:
+        self.last_phase[role] = phase
 
 
 class ObservedUnitOfWork(UnitOfWork):
@@ -58,8 +65,31 @@ class ObservedUnitOfWork(UnitOfWork):
         identity = (int(pid), int(transaction_id))
         self._tracker.pids[self._role] = identity[0]
         self._tracker.transactions.setdefault(self._role, []).append(identity)
+        self._tracker.mark(self._role, "UOW_STARTED")
         self._tracker.ready.setdefault(self._role, asyncio.Event()).set()
         return entered
+
+    async def commit(self) -> None:
+        await super().commit()
+        self._tracker.mark(self._role, "COMMITTED")
+        self._tracker.transaction_outcomes.setdefault(self._role, []).append(
+            "COMMITTED"
+        )
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        transaction = self._transaction
+        rolled_back = transaction is not None and transaction.is_active
+        await super().__aexit__(exc_type, exc_value, traceback)
+        if rolled_back:
+            self._tracker.mark(self._role, "ROLLED_BACK")
+            self._tracker.transaction_outcomes.setdefault(self._role, []).append(
+                "ROLLED_BACK"
+            )
 
 
 class ObservedUnitOfWorkFactory(UnitOfWorkFactory):
@@ -89,6 +119,54 @@ class SemanticActors:
 class PhaseCut:
     reached: asyncio.Event = field(default_factory=asyncio.Event)
     release: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerOutcome:
+    """One complete test-harness observation of a semantic worker."""
+
+    returned: object | None
+    application_failure: ApplicationFailure | None
+    unexpected_exception_type: str | None
+    sqlstate: str | None
+    last_phase: str
+    transaction_outcome: str
+
+
+def _sqlstate(error: BaseException) -> str | None:
+    original = getattr(error, "orig", error)
+    value = getattr(original, "sqlstate", None)
+    return value if isinstance(value, str) else None
+
+
+async def capture_worker_outcome(
+    operation: Operation,
+    tracker: ConnectionTracker,
+    role: str,
+) -> WorkerOutcome:
+    """Capture semantic, unexpected, SQLSTATE, phase and transaction material."""
+    returned: object | None = None
+    failure: ApplicationFailure | None = None
+    unexpected_type: str | None = None
+    sqlstate: str | None = None
+    try:
+        returned = await operation()
+    except ApplicationFailure as error:
+        failure = error
+        sqlstate = _sqlstate(error)
+    except BaseException as error:  # test boundary must retain unexpected DB material
+        unexpected_type = type(error).__name__
+        sqlstate = _sqlstate(error)
+    outcomes = tracker.transaction_outcomes.get(role, [])
+    transaction_outcome = outcomes[-1] if outcomes else "UNKNOWN"
+    return WorkerOutcome(
+        returned,
+        failure,
+        unexpected_type,
+        sqlstate,
+        tracker.last_phase.get(role, "UOW_STARTED"),
+        transaction_outcome,
+    )
 
 
 def install_lock_plan_cut(
