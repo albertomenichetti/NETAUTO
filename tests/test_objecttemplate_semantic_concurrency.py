@@ -44,6 +44,7 @@ from tests.support.semantic_concurrency import (
     capture,
     install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -1108,22 +1109,26 @@ async def test_atomic_01_failed_multirow_revise_rolls_back_complete_generation(
             ObjectTemplateStore, "_insert_declarations", fail_after_real_insert
         )
         with pytest.raises(RuntimeError, match="forced persistence phase failure"):
-            await first.revise(
-                template_id,
-                1,
-                1,
-                None,
-                (
-                    PropertyCandidate(
-                        "value",
-                        1,
-                        datatype_id,
-                        1,
-                        ValueMode.SCALAR,
-                        False,
+            await run_worker(
+                lambda: first.revise(
+                    template_id,
+                    1,
+                    1,
+                    None,
+                    (
+                        PropertyCandidate(
+                            "value",
+                            1,
+                            datatype_id,
+                            1,
+                            ValueMode.SCALAR,
+                            False,
+                        ),
                     ),
+                    (),
                 ),
-                (),
+                actors.tracker,
+                "T1",
             )
         monkeypatch.undo()
         current = await _reader(actors).get_version(template_id, 1)

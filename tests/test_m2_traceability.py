@@ -742,35 +742,70 @@ M2_RECIPES = frozenset(
         "REC-RESTART",
     }
 )
-M2_SCENARIO_TO_RECIPES = {
-    scenario_id: ScenarioRecipes(
-        {
-            "ROW": "REC-LOCK",
-            "ARB": "REC-UNIQUE",
-            "REF": "REC-FK",
-            "GATE": "REC-GATE",
-            "SNAP": "REC-CUT",
-            "ATOMIC": "REC-ROLLBACK",
-            "PAR": "REC-PROGRESS",
-        }[scenario_id.partition("-")[0]]
-    )
-    for scenario_id in M2_CONCURRENCY_SCENARIOS
-    if not scenario_id.startswith("PLAN-")
+DELIVERED_SCENARIO_TO_RECIPES: dict[str, ScenarioRecipes] = {
+    **{
+        scenario_id: ScenarioRecipes("REC-LOCK")
+        for scenario_id in (
+            *(f"ROW-{number:02d}" for number in range(1, 10)),
+            *(f"ROW-{number:02d}" for number in range(11, 18)),
+        )
+    },
+    "ROW-10": ScenarioRecipes("REC-CUT"),
+    "ARB-01": ScenarioRecipes("REC-UNIQUE"),
+    "ARB-02": ScenarioRecipes("REC-UNIQUE"),
+    "ARB-03": ScenarioRecipes("REC-LOCK"),
+    "ARB-04": ScenarioRecipes("REC-LOCK"),
+    "ARB-05": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ABA"})),
+    "ARB-06": ScenarioRecipes("REC-LOCK"),
+    "ARB-07": ScenarioRecipes("REC-ABA", frozenset({"REC-UNIQUE"})),
+    **{f"REF-{number:02d}": ScenarioRecipes("REC-FK") for number in range(1, 7)},
+    "GATE-01": ScenarioRecipes("REC-GATE"),
+    "GATE-02": ScenarioRecipes("REC-GATE", frozenset({"REC-CUT"})),
+    "GATE-03": ScenarioRecipes("REC-GATE"),
+    "GATE-04": ScenarioRecipes("REC-GATE"),
+    "GATE-05": ScenarioRecipes("REC-GATE"),
+    "GATE-06": ScenarioRecipes("REC-GATE", frozenset({"REC-CUT"})),
+    **{f"SNAP-{number:02d}": ScenarioRecipes("REC-CUT") for number in range(1, 5)},
+    "ATOMIC-01": ScenarioRecipes("REC-ROLLBACK"),
+    "ATOMIC-02": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
+    "ATOMIC-03": ScenarioRecipes("REC-ROLLBACK"),
+    "ATOMIC-04": ScenarioRecipes("REC-ROLLBACK"),
+    "PAR-01": ScenarioRecipes("REC-PROGRESS"),
+    "PAR-02": ScenarioRecipes("REC-PROGRESS"),
+    "PAR-03": ScenarioRecipes("REC-LOCK"),
+    "PAR-04": ScenarioRecipes("REC-GATE"),
+    "PAR-05": ScenarioRecipes("REC-PROGRESS"),
+    "PAR-06": ScenarioRecipes("REC-PROGRESS"),
+    "PAR-07": ScenarioRecipes("REC-LOCK", frozenset({"REC-PROGRESS"})),
 }
-M2_SCENARIO_TO_RECIPES.update(
-    {
-        "ARB-05": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
-        "ARB-06": ScenarioRecipes("REC-ABA", frozenset({"REC-LOCK"})),
-        "ARB-07": ScenarioRecipes("REC-ABA", frozenset({"REC-RESTART"})),
-        "ARB-08": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
-        "REF-11": ScenarioRecipes("REC-GATE", frozenset({"REC-FK"})),
-        "PLAN-01": ScenarioRecipes("REC-PLAN"),
-        "PLAN-02": ScenarioRecipes("REC-PLAN"),
-        "PLAN-03": ScenarioRecipes("REC-RESTART"),
-        "PLAN-04": ScenarioRecipes("REC-CLASSIFY"),
-        "PLAN-05": ScenarioRecipes("REC-RESTART"),
-        "PLAN-06": ScenarioRecipes("REC-PLAN"),
-    }
+
+M2_ADDED_SCENARIO_TO_RECIPES: dict[str, ScenarioRecipes] = {
+    **{f"ROW-{number:02d}": ScenarioRecipes("REC-LOCK") for number in range(18, 31)},
+    "ARB-08": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
+    **{f"REF-{number:02d}": ScenarioRecipes("REC-FK") for number in range(7, 11)},
+    "REF-11": ScenarioRecipes("REC-GATE", frozenset({"REC-FK"})),
+    "GATE-07": ScenarioRecipes("REC-GATE"),
+    "SNAP-05": ScenarioRecipes("REC-CUT"),
+    **{
+        f"ATOMIC-{number:02d}": ScenarioRecipes("REC-ROLLBACK")
+        for number in range(5, 8)
+    },
+    "PAR-08": ScenarioRecipes("REC-PROGRESS"),
+    "PAR-09": ScenarioRecipes("REC-PROGRESS"),
+    "PLAN-01": ScenarioRecipes("REC-PLAN"),
+    "PLAN-02": ScenarioRecipes("REC-PLAN"),
+    "PLAN-03": ScenarioRecipes("REC-RESTART"),
+    "PLAN-04": ScenarioRecipes("REC-CLASSIFY"),
+    "PLAN-05": ScenarioRecipes("REC-RESTART"),
+    "PLAN-06": ScenarioRecipes("REC-PLAN"),
+}
+
+M2_RECIPE_DELTAS: dict[str, ScenarioRecipes] = {
+    "ARB-07": ScenarioRecipes("REC-ABA", frozenset({"REC-UNIQUE", "REC-RESTART"}))
+}
+
+M2_SCENARIO_TO_RECIPES: dict[str, ScenarioRecipes] = (
+    DELIVERED_SCENARIO_TO_RECIPES | M2_ADDED_SCENARIO_TO_RECIPES | M2_RECIPE_DELTAS
 )
 
 M2_PREDICATE_TO_SCENARIOS: dict[str, frozenset[str]] = {
@@ -913,6 +948,33 @@ S02_REVIEW_FIX_TARGETS = {
             "test_published_relationship_history_is_set_based_and_schema_change_uses_it",
         }
     ),
+}
+
+S03_REVIEW_FIX_TARGETS = {
+    "S03-RF-01": frozenset(
+        {
+            "tests/test_m2_traceability.py::"
+            "test_s03_scenario_registry_targets_and_recipes_are_exact"
+        }
+    ),
+    "S03-RF-02": frozenset(
+        {
+            "tests/test_m2_s03_semantic_concurrency.py::"
+            "test_s03_sqlstate_extraction_is_structural_nested_and_cycle_safe",
+            "tests/test_m2_s03_semantic_concurrency.py::"
+            "test_s03_worker_outcome_captures_semantic_and_wrapped_database_results",
+            "tests/test_m2_s03_semantic_concurrency.py::"
+            "test_s03_forbidden_sqlstates_fail_immediately_and_are_never_retried",
+            "tests/test_m2_s03_semantic_concurrency.py::"
+            "test_gate_07_independent_root_deletes_wait_before_rows_and_reread",
+            "tests/test_m2_locking.py::test_plan_05_does_not_retry_unapproved_failures",
+            *S03_SCENARIO_TARGETS["REF-08"],
+            *S03_SCENARIO_TARGETS["PAR-08"],
+            *S01_SCENARIO_TARGETS["ARB-07"],
+            *PLAN_SCENARIO_TARGETS["PLAN-03"],
+        }
+    ),
+    "S03-RF-03": S03_SCENARIO_TARGETS["REF-08"],
 }
 
 S01_PUBLIC_ROUTE_DELTA = frozenset(
@@ -1096,6 +1158,15 @@ def test_s02_review_fix_registry_is_exact_resolvable_and_scenario_mapped() -> No
     )
 
 
+def test_s03_review_fix_registry_is_exact_and_resolvable() -> None:
+    assert set(S03_REVIEW_FIX_TARGETS) == {"S03-RF-01", "S03-RF-02", "S03-RF-03"}
+    for targets in S03_REVIEW_FIX_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+    assert S03_REVIEW_FIX_TARGETS["S03-RF-03"] == M2_SCENARIO_TO_TARGETS["REF-08"]
+
+
 def test_s02_route_delta_and_preserved_registries_remain_exact() -> None:
     assert len(S01_PUBLIC_ROUTE_DELTA) == 9
     assert all(path.startswith("/api/v1/core/") for _, path in S01_PUBLIC_ROUTE_DELTA)
@@ -1161,6 +1232,64 @@ def test_s03_scenario_registry_targets_and_recipes_are_exact() -> None:
         "REC-CLASSIFY",
         "REC-RESTART",
     }
+    expected: dict[str, ScenarioRecipes] = {
+        **{
+            scenario_id: ScenarioRecipes("REC-LOCK")
+            for scenario_id in (
+                *(f"ROW-{number:02d}" for number in range(1, 10)),
+                *(f"ROW-{number:02d}" for number in range(11, 31)),
+            )
+        },
+        "ROW-10": ScenarioRecipes("REC-CUT"),
+        "ARB-01": ScenarioRecipes("REC-UNIQUE"),
+        "ARB-02": ScenarioRecipes("REC-UNIQUE"),
+        "ARB-03": ScenarioRecipes("REC-LOCK"),
+        "ARB-04": ScenarioRecipes("REC-LOCK"),
+        "ARB-05": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ABA"})),
+        "ARB-06": ScenarioRecipes("REC-LOCK"),
+        "ARB-07": ScenarioRecipes("REC-ABA", frozenset({"REC-UNIQUE", "REC-RESTART"})),
+        "ARB-08": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
+        **{f"REF-{number:02d}": ScenarioRecipes("REC-FK") for number in range(1, 11)},
+        "REF-11": ScenarioRecipes("REC-GATE", frozenset({"REC-FK"})),
+        **{
+            f"GATE-{number:02d}": ScenarioRecipes("REC-GATE")
+            for number in (1, 3, 4, 5, 7)
+        },
+        "GATE-02": ScenarioRecipes("REC-GATE", frozenset({"REC-CUT"})),
+        "GATE-06": ScenarioRecipes("REC-GATE", frozenset({"REC-CUT"})),
+        **{f"SNAP-{number:02d}": ScenarioRecipes("REC-CUT") for number in range(1, 6)},
+        **{
+            f"ATOMIC-{number:02d}": ScenarioRecipes("REC-ROLLBACK")
+            for number in (1, 3, 4, 5, 6, 7)
+        },
+        "ATOMIC-02": ScenarioRecipes("REC-UNIQUE", frozenset({"REC-ROLLBACK"})),
+        **{
+            f"PAR-{number:02d}": ScenarioRecipes("REC-PROGRESS")
+            for number in (1, 2, 5, 6, 8, 9)
+        },
+        "PAR-03": ScenarioRecipes("REC-LOCK"),
+        "PAR-04": ScenarioRecipes("REC-GATE"),
+        "PAR-07": ScenarioRecipes("REC-LOCK", frozenset({"REC-PROGRESS"})),
+        "PLAN-01": ScenarioRecipes("REC-PLAN"),
+        "PLAN-02": ScenarioRecipes("REC-PLAN"),
+        "PLAN-03": ScenarioRecipes("REC-RESTART"),
+        "PLAN-04": ScenarioRecipes("REC-CLASSIFY"),
+        "PLAN-05": ScenarioRecipes("REC-RESTART"),
+        "PLAN-06": ScenarioRecipes("REC-PLAN"),
+    }
+    assert len(expected) == 83
+    assert M2_SCENARIO_TO_RECIPES == expected
+    assert set(DELIVERED_SCENARIO_TO_RECIPES) == {
+        *(f"ROW-{number:02d}" for number in range(1, 18)),
+        *(f"ARB-{number:02d}" for number in range(1, 8)),
+        *(f"REF-{number:02d}" for number in range(1, 7)),
+        *(f"GATE-{number:02d}" for number in range(1, 7)),
+        *(f"SNAP-{number:02d}" for number in range(1, 5)),
+        *(f"ATOMIC-{number:02d}" for number in range(1, 5)),
+        *(f"PAR-{number:02d}" for number in range(1, 8)),
+    }
+    assert set(M2_ADDED_SCENARIO_TO_RECIPES).isdisjoint(DELIVERED_SCENARIO_TO_RECIPES)
+    assert set(M2_RECIPE_DELTAS) == {"ARB-07"}
     for scenario_id, targets in M2_SCENARIO_TO_TARGETS.items():
         assert targets, scenario_id
         for target in targets:

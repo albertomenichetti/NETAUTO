@@ -30,6 +30,7 @@ from tests.support.semantic_concurrency import (
     SemanticActors,
     blocked_race,
     install_lock_plan_cut,
+    run_worker,
     semantic_actors,
 )
 
@@ -177,7 +178,7 @@ async def test_gate_04a_and_gate_06a_equivalent_create_reads_fresh_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "GATE-04A-06A-RD-EQUIV") as actors:
+    async with semantic_actors(test_database_url, "GATE-04-GATE-06-RD-EQUIV") as actors:
         first_template_id = await _template(actors, "gate04a_first")
         second_template_id = await _template(actors, "gate04a_second")
         first, second = _definition_services(actors)
@@ -250,7 +251,9 @@ async def test_gate_05a_create_and_rename_preserve_conflict_free_set(
     async with semantic_actors(test_database_url, "GATE-05A-CREATE-RENAME") as actors:
         first_template_id = await _template(actors, "gate05a_first")
         second_template_id = await _template(actors, "gate05a_second")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         existing = await _non_symmetric(
             reader,
             first_template_id,
@@ -290,7 +293,9 @@ async def test_gate_05b_different_definition_renames_serialize_globally(
     async with semantic_actors(test_database_url, "GATE-05B-RENAME-RENAME") as actors:
         first_template_id = await _template(actors, "gate05b_first")
         second_template_id = await _template(actors, "gate05b_second")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         first_definition = await _non_symmetric(
             reader,
             first_template_id,
@@ -472,7 +477,9 @@ async def test_gate_06b_delete_commits_while_candidate_waits_then_unblocks_it(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "GATE-06B-DELETE-BLOCKER") as actors:
         template_id = await _template(actors, "gate06b")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         blocker = await _symmetric(
             reader, (template_id, template_id), "available_after_delete"
         )
@@ -486,10 +493,14 @@ async def test_gate_06b_delete_commits_while_candidate_waits_then_unblocks_it(
             )
             holder_pid = int(await holder.scalar(text("SELECT pg_backend_pid()")))
             candidate_task = asyncio.create_task(
-                _symmetric(
-                    candidate_service,
-                    (template_id, template_id),
-                    "available_after_delete",
+                run_worker(
+                    lambda: _symmetric(
+                        candidate_service,
+                        (template_id, template_id),
+                        "available_after_delete",
+                    ),
+                    actors.tracker,
+                    "T2",
                 ),
                 name="T2",
             )
@@ -500,7 +511,9 @@ async def test_gate_06b_delete_commits_while_candidate_waits_then_unblocks_it(
             )
             assert holder_pid in blockers
             async with asyncio.timeout(5):
-                await reader.delete(blocker.id)
+                await run_worker(
+                    lambda: reader.delete(blocker.id), actors.tracker, "T1"
+                )
             assert not candidate_task.done()
             await transaction.commit()
             async with asyncio.timeout(5):
@@ -607,7 +620,9 @@ async def test_atomic_04c_rename_rollback_and_symmetric_two_row_update(
     async with semantic_actors(test_database_url, "ATOMIC-04C-RD-RENAME") as actors:
         first_template_id = await _template(actors, "atomic_first")
         second_template_id = await _template(actors, "atomic_second")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         non_symmetric = await _non_symmetric(
             reader,
             first_template_id,
@@ -632,9 +647,13 @@ async def test_atomic_04c_rename_rollback_and_symmetric_two_row_update(
                 RelationshipDefinitionStore, "update_names", fail_after_update
             )
             with pytest.raises(ApplicationFailure) as caught:
-                await reader.rename_non_symmetric(
-                    non_symmetric.id,
-                    _renames(non_symmetric, "after_first", "after_second"),
+                await run_worker(
+                    lambda: reader.rename_non_symmetric(
+                        non_symmetric.id,
+                        _renames(non_symmetric, "after_first", "after_second"),
+                    ),
+                    actors.tracker,
+                    "T1",
                 )
             assert caught.value.code == "internal_error"
         unchanged = await reader.get(non_symmetric.id)
@@ -646,6 +665,11 @@ async def test_atomic_04c_rename_rollback_and_symmetric_two_row_update(
         symmetric = await _symmetric(
             reader, (first_template_id, second_template_id), "symmetric_before"
         )
-        renamed = await reader.rename_symmetric(symmetric.id, "symmetric_after")
+        renamed = await run_worker(
+            lambda: reader.rename_symmetric(symmetric.id, "symmetric_after"),
+            actors.tracker,
+            "T1",
+        )
+        assert isinstance(renamed, RelationshipDefinition)
         assert len(renamed.resolutions) == 2
         assert {item.name for item in renamed.resolutions} == {"symmetric_after"}

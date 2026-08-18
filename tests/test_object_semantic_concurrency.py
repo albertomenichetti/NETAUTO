@@ -38,6 +38,7 @@ from tests.support.semantic_concurrency import (
     blocked_race,
     install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -255,7 +256,9 @@ async def test_row_11_data_change_serializes_and_rereads_fresh_state(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ROW-11-OBJECT") as actors:
         template_id = await _template(actors, "row11", two_properties=True)
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await reader.create(template_id, 1, "row11", {"a": 0, "b": 0})
         first, second = _object_services(actors)
         cut = _object_owner_cut(monkeypatch)
@@ -310,7 +313,9 @@ async def test_row_12_data_change_and_schema_change_share_object_owner(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ROW-12-DATA-SCHEMA") as actors:
         template_id = await _schema_change_template(actors, "row12")
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await reader.create(template_id, 1, "row12", {"a": 0})
         first, second = _object_services(actors)
         cut = _object_owner_cut(monkeypatch)
@@ -428,7 +433,7 @@ async def test_gate_01_opposite_attach_uses_fresh_protected_graph(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "GATE-01-OPPOSITE") as actors:
+    async with semantic_actors(test_database_url, "GATE-01-GATE-03-OPPOSITE") as actors:
         template_id = await _ownership_template(actors, "gate01")
         reader = _object_reader(actors)
         first_node = await reader.create(template_id, 2, "first", {})
@@ -456,7 +461,9 @@ async def test_gate_02a_rejects_longer_cycle_without_mutating_graph(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "GATE-02A-LONG-CYCLE") as actors:
         template_id = await _ownership_template(actors, "gate02a")
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         first_node = await reader.create(template_id, 2, "a", {})
         second_node = await reader.create(template_id, 2, "b", {})
         third_node = await reader.create(template_id, 2, "c", {})
@@ -464,7 +471,11 @@ async def test_gate_02a_rejects_longer_cycle_without_mutating_graph(
         await reader.attach(second_node.id, "children", third_node.id)
 
         with pytest.raises(ApplicationFailure) as caught:
-            await reader.attach(third_node.id, "children", first_node.id)
+            await run_worker(
+                lambda: reader.attach(third_node.id, "children", first_node.id),
+                actors.tracker,
+                "T1",
+            )
 
         assert caught.value.code == "ownership_cycle"
         assert await reader.get_owner(first_node.id) is None
@@ -1342,16 +1353,22 @@ async def test_ref_05_detach_removes_final_object_delete_blocker(
         test_database_url, f"REF-05-DETACH-{deleted_role}"
     ) as actors:
         template_id = await _ownership_template(actors, f"ref05_{deleted_role}")
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         parent = await reader.create(template_id, 2, "parent", {})
         child = await reader.create(template_id, 2, "child", {})
         await reader.attach(parent.id, "children", child.id)
         target = parent if deleted_role == "parent" else child
         with pytest.raises(ApplicationFailure) as conservative:
-            await reader.delete(target.id)
+            await run_worker(lambda: reader.delete(target.id), actors.tracker, "T1")
         assert conservative.value.code == "delete_blocked"
-        await reader.detach(parent.id, "children", child.id)
-        await reader.delete(target.id)
+        await run_worker(
+            lambda: reader.detach(parent.id, "children", child.id),
+            actors.tracker,
+            "T1",
+        )
+        await run_worker(lambda: reader.delete(target.id), actors.tracker, "T1")
         with pytest.raises(ApplicationFailure) as missing:
             await reader.get(target.id)
         assert missing.value.code == "resource_not_found"

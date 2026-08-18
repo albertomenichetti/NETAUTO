@@ -3,12 +3,12 @@
 import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, func, select, text
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from sqlalchemy import Engine, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 import netauto.application.datatypes as datatype_application
 from netauto.application.datatypes import DataTypeService
@@ -25,9 +25,20 @@ from netauto.persistence.locking import (
     RowLockMode,
 )
 from netauto.persistence.metadata import datatype_versions, datatypes
-from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
+from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
-from tests.support.semantic_concurrency import PhaseCut, install_lock_plan_cut
+from tests.support.semantic_concurrency import (
+    ConnectionTracker,
+    ObservedUnitOfWorkFactory,
+    PhaseCut,
+    activate_outcome_context,
+    capture,
+    capture_worker_outcome,
+    install_lock_plan_cut,
+    reset_outcome_context,
+    service_engine,
+    unwrap_worker_outcome,
+)
 
 Operation = Callable[[], Awaitable[object]]
 
@@ -39,67 +50,18 @@ class Actors:
     t1_engine: AsyncEngine
     t2_engine: AsyncEngine
     observer: PgWorker
-    t1_name: str
-    t2_name: str
     tracker: ConnectionTracker
-
-
-@dataclass(slots=True)
-class ConnectionTracker:
-    pids: dict[str, int] = field(default_factory=lambda: {})
-    ready: dict[str, asyncio.Event] = field(
-        default_factory=lambda: {"T1": asyncio.Event(), "T2": asyncio.Event()}
-    )
-
-    def reset(self) -> None:
-        self.ready = {"T1": asyncio.Event(), "T2": asyncio.Event()}
-
-
-class ObservedUnitOfWork(UnitOfWork):
-    def __init__(
-        self, engine: AsyncEngine, tracker: ConnectionTracker, role: str
-    ) -> None:
-        super().__init__(engine)
-        self._tracker = tracker
-        self._role = role
-
-    async def __aenter__(self) -> UnitOfWork:
-        entered = await super().__aenter__()
-        pid = await self.connection.scalar(text("SELECT pg_backend_pid()"))
-        self._tracker.pids[self._role] = int(pid)
-        self._tracker.ready[self._role].set()
-        return entered
-
-
-class ObservedUnitOfWorkFactory(UnitOfWorkFactory):
-    def __init__(
-        self, engine: AsyncEngine, tracker: ConnectionTracker, role: str
-    ) -> None:
-        super().__init__(engine)
-        self._observed_engine = engine
-        self._tracker = tracker
-        self._role = role
-
-    def __call__(self) -> UnitOfWork:
-        return ObservedUnitOfWork(self._observed_engine, self._tracker, self._role)
-
-
-def _service_engine(database_url: str, application_name: str) -> AsyncEngine:
-    return create_async_engine(
-        database_url,
-        isolation_level="READ COMMITTED",
-        connect_args={"application_name": application_name},
-    )
 
 
 @asynccontextmanager
 async def _actors(database_url: str, scenario_id: str) -> AsyncGenerator[Actors]:
     t1_name = f"netauto-semantic:{scenario_id}:T1"
     t2_name = f"netauto-semantic:{scenario_id}:T2"
-    t1_engine = _service_engine(database_url, t1_name)
-    t2_engine = _service_engine(database_url, t2_name)
-    observer = await PgWorker.open(database_url, scenario_id, WorkerRole.OBS)
     tracker = ConnectionTracker()
+    t1_engine = service_engine(database_url, t1_name, tracker, "T1")
+    t2_engine = service_engine(database_url, t2_name, tracker, "T2")
+    observer = await PgWorker.open(database_url, scenario_id, WorkerRole.OBS)
+    tokens = activate_outcome_context(tracker, scenario_id)
     try:
         yield Actors(
             DataTypeService(ObservedUnitOfWorkFactory(t1_engine, tracker, "T1")),
@@ -107,21 +69,17 @@ async def _actors(database_url: str, scenario_id: str) -> AsyncGenerator[Actors]
             t1_engine,
             t2_engine,
             observer,
-            t1_name,
-            t2_name,
             tracker,
         )
     finally:
+        reset_outcome_context(tokens)
         await observer.close()
         await t1_engine.dispose()
         await t2_engine.dispose()
 
 
 async def _capture(operation: Operation) -> object:
-    try:
-        return await operation()
-    except ApplicationFailure as failure:
-        return failure
+    return await capture(operation)
 
 
 async def _blocked_race(
@@ -146,15 +104,18 @@ async def _blocked_race(
 async def _progress_race(
     cut: PhaseCut, first: Operation, second: Operation
 ) -> tuple[object, object]:
-    t1 = asyncio.create_task(_capture(first), name="T1")
+    t1 = asyncio.create_task(capture_worker_outcome(first, role="T1"), name="T1")
     await cut.reached.wait()
     async with asyncio.timeout(5):
-        second_outcome = await _capture(second)
+        second_outcome = await capture_worker_outcome(second, role="T2")
     assert not t1.done()
     cut.release.set()
     async with asyncio.timeout(5):
         first_outcome = await t1
-    return first_outcome, second_outcome
+    return (
+        unwrap_worker_outcome(first_outcome),
+        unwrap_worker_outcome(second_outcome),
+    )
 
 
 def _install_lineage_no_key_cut(
@@ -501,8 +462,10 @@ async def test_row_16_revise_then_delete_has_no_partial_aggregate(
             lambda: actors.t2.delete_lineage(datatype_id),
         )
         assert all(not isinstance(outcome, ApplicationFailure) for outcome in outcomes)
-        absent = await _capture(lambda: actors.t1.get_lineage(datatype_id))
-        assert _failure_code(absent) == "resource_not_found"
+        absent = await capture_worker_outcome(
+            lambda: actors.t1.get_lineage(datatype_id), actors.tracker, "T3"
+        )
+        assert _failure_code(absent.application_failure) == "resource_not_found"
 
 
 @pytest.mark.postgresql

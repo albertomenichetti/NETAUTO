@@ -60,6 +60,7 @@ from tests.support.semantic_concurrency import (
     capture,
     install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -553,23 +554,41 @@ async def test_arb_07a_late_delete_cannot_remove_recreated_fact(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ARB-07A-REL") as actors:
         seed = await _seed(actors, "arb07a")
-        service = _reader(actors)
-        original = await service.create(
-            seed.first_resolution_id,
-            seed.first_object.id,
-            seed.second_object.id,
+        service = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
-        await service.delete(original.relationship.id)
-        recreated = await service.create(
-            seed.first_resolution_id,
-            seed.first_object.id,
-            seed.second_object.id,
+        original = await run_worker(
+            lambda: service.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+            actors.tracker,
+            "T1",
         )
+        assert isinstance(original, RelationshipCreateResult)
+        await run_worker(
+            lambda: service.delete(original.relationship.id), actors.tracker, "T1"
+        )
+        recreated = await run_worker(
+            lambda: service.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+            actors.tracker,
+            "T1",
+        )
+        assert isinstance(recreated, RelationshipCreateResult)
         assert recreated.created is True
         assert recreated.relationship.id != original.relationship.id
 
         with pytest.raises(ApplicationFailure) as missing:
-            await service.delete(original.relationship.id)
+            await run_worker(
+                lambda: service.delete(original.relationship.id),
+                actors.tracker,
+                "T1",
+            )
         assert missing.value.code == "resource_not_found"
 
         assert (
@@ -585,7 +604,7 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "ARB-07B-REL") as actors:
+    async with semantic_actors(test_database_url, "ARB-07-PLAN-05-B-REL") as actors:
         seed = await _seed(actors, "arb07b")
         first, second = _relationship_services(actors)
         insert_cut, candidates = _insert_cut(monkeypatch)
@@ -677,7 +696,7 @@ async def test_arb_07c_delete_blocks_after_collision_owner_lifetime_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "ARB-07C-REL") as actors:
+    async with semantic_actors(test_database_url, "ARB-07-PLAN-05-C-REL") as actors:
         seed = await _seed(actors, "arb07c")
         first, second = _relationship_services(actors)
         insert_cut, _ = _insert_cut(monkeypatch)
@@ -972,7 +991,7 @@ async def test_ref_03_and_ref_05_relationship_object_lifetime_arbitration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "REF-03-05-REL-OBJECT") as actors:
+    async with semantic_actors(test_database_url, "REF-03-REF-05-REL-OBJECT") as actors:
         seed = await _seed(actors, "ref03_reference_first")
         relationship = RelationshipService(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
@@ -1118,18 +1137,28 @@ async def test_snap_01_delete_event_keeps_one_pre_rename_name_snapshot(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
         delete_task = asyncio.create_task(
-            delete_service.delete(created.relationship.id), name="T1"
+            run_worker(
+                lambda: delete_service.delete(created.relationship.id),
+                actors.tracker,
+                "T1",
+            ),
+            name="T1",
         )
         await cut.reached.wait()
         first_resolution, second_resolution = seed.definition.resolutions
-        await RelationshipDefinitionService(
-            UnitOfWorkFactory(actors.t2_engine)
-        ).rename_non_symmetric(
-            seed.definition.id,
-            (
-                ResolutionRename(first_resolution.id, "new_a"),
-                ResolutionRename(second_resolution.id, "new_b"),
+        definitions = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        await run_worker(
+            lambda: definitions.rename_non_symmetric(
+                seed.definition.id,
+                (
+                    ResolutionRename(first_resolution.id, "new_a"),
+                    ResolutionRename(second_resolution.id, "new_b"),
+                ),
             ),
+            actors.tracker,
+            "T2",
         )
         cut.release.set()
         await delete_task
@@ -1168,11 +1197,21 @@ async def test_snap_02_delete_event_keeps_one_pre_rename_object_snapshot(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
         delete_task = asyncio.create_task(
-            delete_service.delete(created.relationship.id), name="T1"
+            run_worker(
+                lambda: delete_service.delete(created.relationship.id),
+                actors.tracker,
+                "T1",
+            ),
+            name="T1",
         )
         await cut.reached.wait()
-        await ObjectService(UnitOfWorkFactory(actors.t2_engine)).rename(
-            seed.first_object.id, "snap02-renamed-first"
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        await run_worker(
+            lambda: objects.rename(seed.first_object.id, "snap02-renamed-first"),
+            actors.tracker,
+            "T2",
         )
         cut.release.set()
         await delete_task
@@ -1215,19 +1254,33 @@ async def test_snap_03_create_observes_one_real_two_endpoint_name_generation(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
         create_task = asyncio.create_task(
-            service.create(
-                seed.first_resolution_id,
-                seed.first_object.id,
-                seed.second_object.id,
+            run_worker(
+                lambda: service.create(
+                    seed.first_resolution_id,
+                    seed.first_object.id,
+                    seed.second_object.id,
+                ),
+                actors.tracker,
+                "T1",
             ),
             name="T1",
         )
         await insert_cut.reached.wait()
-        objects = ObjectService(UnitOfWorkFactory(actors.t2_engine))
-        await objects.rename(seed.first_object.id, "snap03-renamed-first")
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        await run_worker(
+            lambda: objects.rename(seed.first_object.id, "snap03-renamed-first"),
+            actors.tracker,
+            "T2",
+        )
         insert_cut.release.set()
         await metadata_cut.reached.wait()
-        await objects.rename(seed.second_object.id, "snap03-renamed-second")
+        await run_worker(
+            lambda: objects.rename(seed.second_object.id, "snap03-renamed-second"),
+            actors.tracker,
+            "T2",
+        )
         metadata_cut.release.set()
         created = await create_task
         assert isinstance(created, RelationshipCreateResult)
@@ -1412,7 +1465,9 @@ async def test_create_event_failure_rolls_back_header_and_complete_closure(
         test_database_url, "REL-CREATE-EVENT-ROLLBACK"
     ) as actors:
         seed = await _seed(actors, "create_event_rollback")
-        service = _reader(actors)
+        service = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         original = LifecycleStore.insert_relationship_events
         candidate_ids: list[UUID] = []
 
@@ -1508,7 +1563,9 @@ async def test_atomic_03_delete_event_failure_rolls_back_complete_fact(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ATOMIC-03-REL") as actors:
         seed = await _seed(actors, "atomic03")
-        service = _reader(actors)
+        service = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await service.create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -1534,7 +1591,11 @@ async def test_atomic_03_delete_event_failure_rolls_back_complete_fact(
 
         monkeypatch.setattr(LifecycleStore, "insert_relationship_events", failed_events)
         with pytest.raises(ApplicationFailure) as caught:
-            await service.delete(created.relationship.id)
+            await run_worker(
+                lambda: service.delete(created.relationship.id),
+                actors.tracker,
+                "T1",
+            )
         assert caught.value.code == "internal_error"
         assert (
             await service.get(created.relationship.id)
@@ -1562,7 +1623,9 @@ async def test_par_01_and_snap_02_create_progresses_during_object_rename(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "PAR-01-REL-OBJ-RENAME") as actors:
+    async with semantic_actors(
+        test_database_url, "PAR-01-SNAP-02-REL-OBJ-RENAME"
+    ) as actors:
         seed = await _seed(actors, "par01")
         cut = PhaseCut()
         original = ObjectStore.update_name
@@ -1685,7 +1748,9 @@ async def test_par_02_and_snap_01_create_progresses_during_definition_rename(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "PAR-02-REL-RD-RENAME") as actors:
+    async with semantic_actors(
+        test_database_url, "PAR-02-SNAP-01-REL-RD-RENAME"
+    ) as actors:
         seed = await _seed(actors, "par02")
         cut = PhaseCut()
         original = RelationshipDefinitionStore.update_names

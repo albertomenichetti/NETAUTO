@@ -20,7 +20,7 @@ from netauto.application.objecttemplates import (
 )
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.application.relationships import RelationshipService
-from netauto.domain.objects import DataChangeKind, DataChangeOperation
+from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.domain.relationships import RelationshipPerspective, ResolutionRename
 from netauto.failures import ApplicationFailure, FailureClass
@@ -52,6 +52,7 @@ from tests.support.semantic_concurrency import (
     ConnectionTracker,
     ObservedUnitOfWorkFactory,
     PhaseCut,
+    run_worker,
 )
 
 
@@ -363,7 +364,12 @@ async def test_plan_03_real_application_stale_plan_uses_fresh_uow(
     monkeypatch.setattr(object_application, "prepare_lock_plan", intercepted_prepare)
     objects_service = ObjectService(ObservedUnitOfWorkFactory(engine, tracker, "T1"))
     task = asyncio.create_task(
-        objects_service.create(template_id, None, "stale-plan-object", {}),
+        run_worker(
+            lambda: objects_service.create(template_id, None, "stale-plan-object", {}),
+            tracker,
+            "T1",
+            scenario_ids=frozenset({"PLAN-03"}),
+        ),
         name="T1",
     )
     try:
@@ -373,10 +379,16 @@ async def test_plan_03_real_application_stale_plan_uses_fresh_uow(
         cut.release.set()
     created = await task
     try:
+        assert isinstance(created, Object)
         assert created.template_version == 2
         identities = tracker.transactions["T1"]
         assert len(identities) == 2
         assert len({transaction_id for _, transaction_id in identities}) == 2
+        assert len(tracker.worker_outcomes) == 1
+        restart_outcome = tracker.worker_outcomes[0]
+        assert restart_outcome.uow_identities == tuple(identities)
+        assert restart_outcome.transaction_outcomes == ("ROLLED_BACK", "COMMITTED")
+        assert restart_outcome.transaction_outcome == "COMMITTED"
         async with engine.connect() as connection:
             assert (
                 await connection.scalar(select(func.count()).select_from(objects)) == 1
@@ -606,6 +618,7 @@ async def test_plan_06_real_gate_waiter_holds_no_planned_row_lock(
     t2 = await PgWorker.open(test_database_url, scenario, WorkerRole.T2)
     t3 = await PgWorker.open(test_database_url, scenario, WorkerRole.T3)
     observer = await PgWorker.open(test_database_url, scenario, WorkerRole.OBS)
+    tracker = ConnectionTracker()
     t2_read_after_acquire = False
 
     async def acquire_second() -> None:
@@ -636,7 +649,15 @@ async def test_plan_06_real_gate_waiter_holds_no_planned_row_lock(
         )
         assert await acquire_lock_plan(t1.connection, first_plan) == ()
 
-        second_task = asyncio.create_task(acquire_second(), name="T2")
+        second_task = asyncio.create_task(
+            run_worker(
+                acquire_second,
+                tracker,
+                "T2",
+                scenario_ids=frozenset({"PLAN-06"}),
+            ),
+            name="T2",
+        )
         assert t1.backend_pid in await wait_for_blocker(
             observer, t2.backend_pid, t1.backend_pid
         )

@@ -60,6 +60,7 @@ from tests.support.semantic_concurrency import (
     capture,
     install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -922,7 +923,9 @@ async def test_atomic_05_differential_failure_rolls_back_revision_and_children(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ATOMIC-05-RDV") as actors:
         seed = await _seed(actors, "atomic05")
-        service = RelationshipDefinitionService(UnitOfWorkFactory(actors.t1_engine))
+        service = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         await service.create_next(seed.definition.id, 1)
         original = RelationshipDefinitionVersionStore.replace_candidate
 
@@ -943,19 +946,23 @@ async def test_atomic_05_differential_failure_rolls_back_revision_and_children(
             fail_after_real_child_dml,
         )
         with pytest.raises(ApplicationFailure) as failed:
-            await service.revise(
-                seed.definition.id,
-                2,
-                1,
-                (
-                    RelationshipPropertyCandidate(
-                        "replacement",
-                        2,
-                        seed.datatype.datatype.id,
-                        1,
-                        ValueMode.LIST,
+            await run_worker(
+                lambda: service.revise(
+                    seed.definition.id,
+                    2,
+                    1,
+                    (
+                        RelationshipPropertyCandidate(
+                            "replacement",
+                            2,
+                            seed.datatype.datatype.id,
+                            1,
+                            ValueMode.LIST,
+                        ),
                     ),
                 ),
+                actors.tracker,
+                "T1",
             )
         assert failed.value.code == "internal_error"
         current = await service.get_version(seed.definition.id, 2)

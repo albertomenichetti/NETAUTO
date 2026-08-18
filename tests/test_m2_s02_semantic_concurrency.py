@@ -67,6 +67,7 @@ from tests.support.semantic_concurrency import (
     blocked_race,
     install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -1465,21 +1466,38 @@ async def test_snap_05_relationship_mutations_capture_one_metadata_statement(
             1,
             {"metric": 0},
         )
-        writer = RelationshipService(UnitOfWorkFactory(actors.t1_engine))
-        objects = ObjectService(UnitOfWorkFactory(actors.t2_engine))
+        writer = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
         cut = _metadata_cut(monkeypatch)
         first_task = asyncio.create_task(
-            writer.data_change(
-                relationship.relationship.id,
-                (DataChangeOperation(DataChangeKind.SET, "metric", 1),),
+            run_worker(
+                lambda: writer.data_change(
+                    relationship.relationship.id,
+                    (DataChangeOperation(DataChangeKind.SET, "metric", 1),),
+                ),
+                actors.tracker,
+                "T1",
             ),
             name="T1",
         )
         await cut.reached.wait()
-        await objects.rename(seed.first_object.id, "snap05-renamed-object")
-        await objects.rename(seed.second_object.id, "snap05-renamed-destination")
+        await run_worker(
+            lambda: objects.rename(seed.first_object.id, "snap05-renamed-object"),
+            actors.tracker,
+            "T2",
+        )
+        await run_worker(
+            lambda: objects.rename(seed.second_object.id, "snap05-renamed-destination"),
+            actors.tracker,
+            "T2",
+        )
         cut.release.set()
         data_result = await first_task
+        assert isinstance(data_result, RelationshipProjection)
         assert {view.name for view in data_result.views} == {
             item.name for item in seed.definition.resolutions
         }
@@ -1511,20 +1529,32 @@ async def test_snap_05_relationship_mutations_capture_one_metadata_statement(
         )
         cut = _metadata_cut(monkeypatch)
         first_task = asyncio.create_task(
-            writer.schema_change(relationship.relationship.id, 2), name="T1"
+            run_worker(
+                lambda: writer.schema_change(relationship.relationship.id, 2),
+                actors.tracker,
+                "T1",
+            ),
+            name="T1",
         )
         await cut.reached.wait()
-        definitions = RelationshipDefinitionService(UnitOfWorkFactory(actors.t2_engine))
+        definitions = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
         renamed = tuple(
             ResolutionRename(item.id, f"snap05_{index}")
             for index, item in enumerate(seed.definition.resolutions, start=1)
         )
-        await definitions.rename_non_symmetric(
-            seed.definition.id,
-            cast(tuple[ResolutionRename, ResolutionRename], renamed),
+        await run_worker(
+            lambda: definitions.rename_non_symmetric(
+                seed.definition.id,
+                cast(tuple[ResolutionRename, ResolutionRename], renamed),
+            ),
+            actors.tracker,
+            "T2",
         )
         cut.release.set()
         schema_result = await first_task
+        assert isinstance(schema_result, RelationshipProjection)
         assert {view.name for view in schema_result.views} == {
             item.name for item in seed.definition.resolutions
         }
@@ -1543,9 +1573,16 @@ async def test_snap_05_each_mutation_observes_each_independent_rename_cut(
 ) -> None:
     del migrated_database_engine
     prefix = f"snap05_{transition}_{rename_case}"
-    async with semantic_actors(test_database_url, prefix.upper()) as actors:
+    represented_scenarios = frozenset(
+        {"SNAP-05", "SNAP-01" if rename_case == "definition" else "SNAP-02"}
+    )
+    async with semantic_actors(
+        test_database_url, f"SNAP-05-{prefix.upper()}"
+    ) as actors:
         seed = await _property_seed(actors, prefix, versions=2)
-        reader = _reader(actors)
+        reader = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await reader.create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -1561,37 +1598,76 @@ async def test_snap_05_each_mutation_observes_each_independent_rename_cut(
             item.name for item in seed.definition.resolutions
         }
         cut = _metadata_cut(monkeypatch)
-        operation: Awaitable[RelationshipProjection]
+        operation: Operation
         if transition == "data":
-            operation = reader.data_change(
-                created.relationship.id,
-                (DataChangeOperation(DataChangeKind.SET, "metric", 1),),
-            )
+
+            async def data_change() -> object:
+                return await reader.data_change(
+                    created.relationship.id,
+                    (DataChangeOperation(DataChangeKind.SET, "metric", 1),),
+                )
+
+            operation = data_change
             event_kind = EventKind.RELATIONSHIP_DATA_CHANGE
         else:
-            operation = reader.schema_change(created.relationship.id, 2)
+
+            async def schema_change() -> object:
+                return await reader.schema_change(created.relationship.id, 2)
+
+            operation = schema_change
             event_kind = EventKind.RELATIONSHIP_SCHEMA_CHANGE
-        mutation = asyncio.create_task(operation, name="T1")
+        mutation = asyncio.create_task(
+            run_worker(
+                operation,
+                actors.tracker,
+                "T1",
+                scenario_ids=represented_scenarios,
+            ),
+            name="T1",
+        )
         await cut.reached.wait()
         if rename_case == "definition":
             renamed = tuple(
                 ResolutionRename(item.id, f"{prefix}_{index}")
                 for index, item in enumerate(seed.definition.resolutions, start=1)
             )
-            await RelationshipDefinitionService(
-                UnitOfWorkFactory(actors.t2_engine)
-            ).rename_non_symmetric(
-                seed.definition.id,
-                cast(tuple[ResolutionRename, ResolutionRename], renamed),
+            definitions = RelationshipDefinitionService(
+                ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+            )
+            await run_worker(
+                lambda: definitions.rename_non_symmetric(
+                    seed.definition.id,
+                    cast(tuple[ResolutionRename, ResolutionRename], renamed),
+                ),
+                actors.tracker,
+                "T2",
+                scenario_ids=represented_scenarios,
             )
         else:
-            objects = ObjectService(UnitOfWorkFactory(actors.t2_engine))
+            objects = ObjectService(
+                ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+            )
             if rename_case in {"from", "both"}:
-                await objects.rename(seed.first_object.id, f"{prefix}-renamed-from")
+                await run_worker(
+                    lambda: objects.rename(
+                        seed.first_object.id, f"{prefix}-renamed-from"
+                    ),
+                    actors.tracker,
+                    "T2",
+                    scenario_ids=represented_scenarios,
+                )
             if rename_case in {"to", "both"}:
-                await objects.rename(seed.second_object.id, f"{prefix}-renamed-to")
+                await run_worker(
+                    lambda: objects.rename(
+                        seed.second_object.id, f"{prefix}-renamed-to"
+                    ),
+                    actors.tracker,
+                    "T2",
+                    scenario_ids=represented_scenarios,
+                )
         cut.release.set()
         result = await mutation
+        assert isinstance(result, RelationshipProjection)
         assert {view.name for view in result.views} == original_relationship_names
         events = await ObjectService(UnitOfWorkFactory(actors.t1_engine)).list_events(
             kind=event_kind,
@@ -1632,7 +1708,9 @@ async def test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ATOMIC-06-07") as actors:
         seed = await _property_seed(actors, "atomic06", versions=2)
-        reader = _reader(actors)
+        reader = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         first = await reader.create(
             seed.first_resolution_id,
             seed.first_object.id,
@@ -1672,9 +1750,14 @@ async def test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails(
                 fail_after_data_dml,
             )
             with pytest.raises(ApplicationFailure):
-                await reader.data_change(
-                    first.relationship.id,
-                    (DataChangeOperation(DataChangeKind.SET, "metric", 1),),
+                await run_worker(
+                    lambda: reader.data_change(
+                        first.relationship.id,
+                        (DataChangeOperation(DataChangeKind.SET, "metric", 1),),
+                    ),
+                    actors.tracker,
+                    "T1",
+                    scenario_ids=frozenset({"ATOMIC-06", "ATOMIC-07"}),
                 )
         assert (await reader.get(first.relationship.id)).properties == {"metric": 0}
         assert EventKind.RELATIONSHIP_DATA_CHANGE.value not in await _event_kinds(
@@ -1720,7 +1803,12 @@ async def test_atomic_06_07_real_dml_rolls_back_when_shared_writer_fails(
                 fail_after_schema_dml,
             )
             with pytest.raises(ApplicationFailure):
-                await reader.schema_change(second.relationship.id, 2)
+                await run_worker(
+                    lambda: reader.schema_change(second.relationship.id, 2),
+                    actors.tracker,
+                    "T1",
+                    scenario_ids=frozenset({"ATOMIC-06", "ATOMIC-07"}),
+                )
         current = await reader.get(second.relationship.id)
         assert current.relationship_definition_version == 1
         assert current.properties == {"metric": 0}

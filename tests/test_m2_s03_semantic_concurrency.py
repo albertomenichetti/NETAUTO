@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from types import ModuleType
 from typing import cast
@@ -36,7 +36,7 @@ from netauto.domain.relationships import (
     RelationshipPropertyCandidate,
     ResolutionRename,
 )
-from netauto.failures import ApplicationFailure
+from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.datatypes import DataTypeStore
 from netauto.persistence.locking import (
     LockPlan,
@@ -60,12 +60,14 @@ from netauto.persistence.relationships import (
 from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
 from tests.support.semantic_concurrency import (
+    ConnectionTracker,
     ObservedUnitOfWorkFactory,
     PhaseCut,
     SemanticActors,
     blocked_race,
     capture,
     capture_worker_outcome,
+    extract_sqlstate,
     progress_race,
     semantic_actors,
 )
@@ -265,6 +267,19 @@ async def test_ref_08_clone_reference_lifetimes(
             components=components,
             publish=True,
         )
+        reader = ObjectTemplateService(_factory(actors))
+        source_before = await reader.get_version(consumer_id, 1)
+        target_lineage_before: object
+        target_version_before: object | None
+        if shape == "property":
+            datatype_reader = DataTypeService(_factory(actors))
+            target_lineage_before = await datatype_reader.get_lineage(datatype_id)
+            target_version_before = await datatype_reader.get_version(datatype_id, 1)
+        else:
+            target_lineage_before = await reader.get_lineage(target_id)
+            target_version_before = (
+                await reader.get_version(target_id, 1) if shape == "parent" else None
+            )
         first_template, second_template = _templates(actors)
         plans = _record_plans(monkeypatch, object_template_application)
 
@@ -319,8 +334,40 @@ async def test_ref_08_clone_reference_lifetimes(
             )
 
         assert isinstance(clone, ObjectTemplateVersion)
-        assert clone.version == 2
+        assert clone == replace(
+            source_before,
+            version=2,
+            revision=1,
+            status=VersionStatus.DRAFT,
+        )
         _failure(deletion, "delete_blocked")
+        source_after = await reader.get_version(consumer_id, 1)
+        clone_after = await reader.get_version(consumer_id, 2)
+        assert source_after == source_before
+        assert clone_after == clone
+        versions = await reader.list_versions(
+            consumer_id, status=None, cursor=None, limit=10
+        )
+        assert [
+            (item.version, item.revision, item.status) for item in versions.items
+        ] == [
+            (1, source_before.revision, source_before.status),
+            (2, 1, VersionStatus.DRAFT),
+        ]
+        assert versions.next_cursor is None
+        if shape == "property":
+            datatype_reader = DataTypeService(_factory(actors))
+            assert (
+                await datatype_reader.get_lineage(datatype_id) == target_lineage_before
+            )
+            assert (
+                await datatype_reader.get_version(datatype_id, 1)
+                == target_version_before
+            )
+        else:
+            assert await reader.get_lineage(target_id) == target_lineage_before
+            if shape == "parent":
+                assert await reader.get_version(target_id, 1) == target_version_before
         clone_plan = next(
             plan
             for plan in plans
@@ -1040,3 +1087,138 @@ def test_m2_harness_phase_vocabulary_and_outcome_boundary_are_exact() -> None:
         "UOW_RESTARTED",
     }
     assert HarnessPhase.OWNER_STABILIZED is HarnessPhase.DEPENDENCIES_STABILIZED
+
+
+class _SqlstateError(Exception):
+    def __init__(self, sqlstate: str) -> None:
+        self.sqlstate = sqlstate
+        super().__init__("safe synthetic database failure")
+
+
+class _PgcodeError(Exception):
+    def __init__(self, pgcode: str) -> None:
+        self.pgcode = pgcode
+        super().__init__("safe synthetic driver failure")
+
+
+class _WrappedError(Exception):
+    def __init__(self, attribute: str, error: BaseException) -> None:
+        setattr(self, attribute, error)
+        super().__init__("safe synthetic wrapper")
+
+
+def test_s03_sqlstate_extraction_is_structural_nested_and_cycle_safe() -> None:
+    direct = _SqlstateError("23505")
+    assert extract_sqlstate(direct) == "23505"
+    assert extract_sqlstate(_PgcodeError("23503")) == "23503"
+    assert extract_sqlstate(_WrappedError("orig", direct)) == "23505"
+    assert (
+        extract_sqlstate(
+            _WrappedError(
+                "driver_exception", _WrappedError("orig", _PgcodeError("23503"))
+            )
+        )
+        == "23503"
+    )
+    caused = RuntimeError("mapped")
+    caused.__cause__ = direct
+    assert extract_sqlstate(caused) == "23505"
+    contextual = RuntimeError("contextual")
+    contextual.__context__ = _PgcodeError("23503")
+    assert extract_sqlstate(contextual) == "23503"
+    cycle = RuntimeError("cycle")
+    cycle.__cause__ = cycle
+    assert extract_sqlstate(cycle) is None
+
+
+@pytest.mark.asyncio
+async def test_s03_worker_outcome_captures_semantic_and_wrapped_database_results() -> (
+    None
+):
+    tracker = ConnectionTracker()
+
+    async def commit_value() -> int:
+        tracker.transactions.setdefault("T1", []).append((101, 201))
+        tracker.transaction_outcomes.setdefault("T1", []).append("COMMITTED")
+        tracker.mark("T1", "COMMITTED")
+        return 7
+
+    committed = await capture_worker_outcome(commit_value, tracker, "T1")
+    assert committed.returned == 7
+    assert committed.transaction_outcome == "COMMITTED"
+    assert committed.transaction_outcomes == ("COMMITTED",)
+    assert committed.uow_identities == ((101, 201),)
+
+    failure = ApplicationFailure(
+        FailureClass.STATE_CONFLICT,
+        "relationship_fact_conflict",
+        "The fact already exists.",
+    )
+    failure.__cause__ = _WrappedError("orig", _SqlstateError("23505"))
+
+    async def mapped_failure() -> None:
+        tracker.transaction_outcomes.setdefault("T2", []).append("ROLLED_BACK")
+        raise failure
+
+    rolled_back = await capture_worker_outcome(mapped_failure, tracker, "T2")
+    assert rolled_back.application_failure is failure
+    assert rolled_back.sqlstate == "23505"
+    assert rolled_back.transaction_outcome == "ROLLED_BACK"
+    assert rolled_back.unexpected_exception is None
+
+    reference_failure = ApplicationFailure(
+        FailureClass.STATE_CONFLICT,
+        "object_template_referenced",
+        "The template is still referenced.",
+    )
+    reference_failure.__cause__ = _WrappedError("orig", _PgcodeError("23503"))
+
+    async def mapped_reference_failure() -> None:
+        tracker.transaction_outcomes.setdefault("T3", []).append("ROLLED_BACK")
+        raise reference_failure
+
+    reference_rollback = await capture_worker_outcome(
+        mapped_reference_failure, tracker, "T3"
+    )
+    assert reference_rollback.application_failure is reference_failure
+    assert reference_rollback.sqlstate == "23503"
+    assert reference_rollback.transaction_outcome == "ROLLED_BACK"
+    assert reference_rollback.unexpected_exception is None
+
+
+@pytest.mark.asyncio
+async def test_s03_forbidden_sqlstates_fail_immediately_and_are_never_retried() -> None:
+    for sqlstate in ("40P01", "40001"):
+        tracker = ConnectionTracker()
+        attempts = 0
+
+        async def fail_once(sqlstate_to_raise: str = sqlstate) -> None:
+            nonlocal attempts
+            attempts += 1
+            raise _SqlstateError(sqlstate_to_raise)
+
+        with pytest.raises(AssertionError, match=sqlstate):
+            await capture_worker_outcome(
+                fail_once, tracker, "T1", negative_control=True
+            )
+        assert attempts == 1
+        assert tracker.worker_outcomes[-1].sqlstate == sqlstate
+
+    tracker = ConnectionTracker()
+    attempts = 0
+
+    async def negative_control() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise _SqlstateError("40001")
+
+    outcome = await capture_worker_outcome(
+        negative_control,
+        tracker,
+        "T1",
+        allow_forbidden_sqlstates=frozenset({"40001"}),
+        negative_control=True,
+    )
+    assert attempts == 1
+    assert outcome.sqlstate == "40001"
+    assert outcome.unexpected_exception_type == "_SqlstateError"
