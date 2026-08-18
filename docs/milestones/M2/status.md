@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S01 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S01 REVIEW CHANGES REQUIRED
 
 ## Cycle identity
 
@@ -14,14 +14,14 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S01 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the published M2-S01 candidate
-blockers        none
+current slice   M2-S01 — REVIEW CHANGES REQUIRED
+current task    prepare and execute the bounded M2-S01 Codex review-fix prompt
+blockers        S01-RF-01, S01-RF-02, S01-RF-03
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
 
-Implementation is authorized only for the exact slice marked `READY` or `IN PROGRESS` here. No later slice may begin before its predecessor is reviewer-owned `COMPLETED`.
+Implementation is authorized only for the exact slice marked `READY`, `IN PROGRESS` or `REVIEW CHANGES REQUIRED` here. `REVIEW CHANGES REQUIRED` authorizes only bounded corrective work for the recorded reviewer findings inside the same slice. No later slice may begin before its predecessor is reviewer-owned `COMPLETED`.
 
 ## Design and delivery gates
 
@@ -30,7 +30,7 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S01` ONLY |
+| Implementation | AUTHORIZED — `M2-S01` REVIEW FIX ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -40,7 +40,7 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 | Slice | State | Dependency |
 |---|---|---|
 | `M2-S00` | COMPLETED | none |
-| `M2-S01` | CANDIDATE READY FOR REVIEW | `M2-S00 COMPLETED` |
+| `M2-S01` | REVIEW CHANGES REQUIRED | `M2-S00 COMPLETED` |
 | `M2-S02` | BLOCKED | `M2-S01 COMPLETED` |
 | `M2-S03` | BLOCKED | `M2-S02 COMPLETED` |
 | `M2-S04` | BLOCKED | `M2-S03 COMPLETED` |
@@ -54,30 +54,78 @@ Implementation is authorized only for the exact slice marked `READY` or `IN PROG
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for reviewer inspection of `M2-S01`.
+No contract, architecture, implementation-planning or technology contradiction is open. The M2-S01 reviewer inspection identified three implementation/evidence defects. They do not require architecture reopening and must be corrected inside `M2-S01`.
 
-`M2-S01` requires an externally supplied real PostgreSQL target through `TEST_DATABASE_URL` for its mandatory migration, schema, persistence and concurrency evidence. No fallback database, local credentials or alternate environment variable is authorized.
+### S01-RF-01 — DataType delete diagnostics do not distinguish RDV property references
 
-Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+The new `relationship_definition_properties` rows correctly retain exact DataTypeVersion lifetime and are included in the DataType root-delete precheck count. The current application result nevertheless reports the combined ObjectTemplate-property and RelationshipDefinition-property count entirely as:
+
+```text
+object_template_property
+```
+
+This makes RDV-only and mixed blocker diagnostics semantically false. The defensive final-FK translation also recognizes only `fk_object_template_properties_datatype_version`; the new `fk_relationship_definition_properties_datatype_version` authority is not translated into bounded `delete_blocked` diagnostics.
+
+Required correction:
+
+```text
+preserve separate bounded semantic blocker categories and exact counts
+handle RDV-only and mixed blocker sets deterministically
+translate every known DataType property-reference FK through the bounded delete result
+never expose SQLSTATE, constraint, table or driver details
+add normal-precheck and deterministic final-arbitration regression evidence
+```
+
+### S01-RF-02 — factual exact version is still synthesized as implicit v1 in domain/projection constructors
+
+`Relationship` and `ObjectRelationshipView` currently default `relationship_definition_version` to `1`. Pure/domain call sites therefore remain valid without supplying the new exact pin, even though M2 factual state has no implicit v1/latest/default representation and version `1` may be DRAFT, DEPRECATED or unrelated to the selected fact.
+
+Required correction:
+
+```text
+make the factual exact RDV pin an explicit required value
+validate its positive exact identity at the appropriate pure/application boundary
+update every production and evidence construction site to supply the observed/selected pin
+remove compatibility-style constructor behavior that can manufacture v1 state
+retain {} only as an explicit canonical factual property state, not as schema selection
+add pure/static regression evidence preventing reintroduction of an implicit pin
+```
+
+### S01-RF-03 — delete-first exact DataTypeVersion loss can omit the requested version selector
+
+RD CREATE/REVISE plans contain both a DataType header and an exact DataTypeVersion row. Canonical acquisition reports the header before the version. Current missing-row handling maps the first non-RD/OT missing key to `resource_type = datatype_version` and forwards `key.version`; when the complete DataType lineage disappeared, the first key has `version = None`, so an explicitly requested exact DataTypeVersion can produce `referenced_resource_not_found` without the known `details.version` selector.
+
+Required correction:
+
+```text
+classify missing rows from the semantic command operand/candidate, not only the first physical missing key
+preserve id + version for an explicitly selected exact DataTypeVersion
+preserve the owning implicit-selector outcome when default-based discovery becomes stale
+add deterministic delete-first RD CREATE and RD REVISE reference-lifetime evidence
+assert the exact bounded public details and absence of internal leakage
+```
+
+`M2-S02` remains blocked until all three findings are corrected, the mandatory real-PostgreSQL and full gates pass, and a new candidate is published for reviewer inspection.
 
 ## M2-S01 candidate record
 
-Published implementation candidate:
+Published candidate reviewed:
 
 ```text
-M2-S01 state                   CANDIDATE READY FOR REVIEW
-implementation commit         c019cada4152e9798e25476d35b0cec5127d6135
-branch                        M2
-remote                        origin/M2
-durable revision              0001_m2_kernel
-Alembic graph                 one base / one head
-authoritative table census    15
-metadata drift                compare_metadata == []
-CPython                       3.14.7
-PostgreSQL                    16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+candidate state                 CANDIDATE READY FOR REVIEW
+reviewer result                 REVIEW CHANGES REQUIRED
+implementation commit           c019cada4152e9798e25476d35b0cec5127d6135
+candidate status commit         63c0e772df4c73c439b7b4baed67b3d11fc809b9
+branch                          M2
+durable revision                0001_m2_kernel
+Alembic graph                   one base / one head
+authoritative table census      15
+metadata drift                  compare_metadata == []
+CPython                         3.14.7
+PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 ```
 
-Verified candidate gates:
+Candidate verification reported:
 
 ```text
 uv lock --check                                             PASS
@@ -94,9 +142,9 @@ uv run pytest -q -m "not postgresql" -ra                    PASS (168)
 uv run pytest -q -ra                                        PASS (337)
 ```
 
-The full suite reported no skip, xfail or rerun. Every concrete target mapped by `M2-VER-01 ... 07`, `M2-VER-10`, `M2-VER-20` and `M2-VER-21` passed. The assigned `ROW-18 ... 25`, factual-CREATE `ROW-30`, `ARB-05 ... 08`, `REF-03`, `REF-04`, `REF-07`, `REF-09`, `ATOMIC-02`, `ATOMIC-03` and `ATOMIC-05` targets passed. No supported scenario produced SQLSTATE `40P01`.
+The candidate reported no skip, xfail, rerun or supported-path SQLSTATE `40P01`. Its migration, schema, RDV, factual CREATE/GET/DELETE and assigned concurrency evidence remains useful and must be preserved unless a reviewer finding requires a focused correction. Passing existing targets does not close the three uncovered findings above; permanent regression targets must be added.
 
-No dependency or lockfile changed. No M1 bridge, backfill, stamp path or dual lifecycle decoder was added. M2-S02 factual DATA_CHANGE/SCHEMA_CHANGE routes and commands, Health, CLI and startup-revision capability remain absent. The obsolete S00 Actions/payload material remains absent.
+No dependency or lockfile changed. No M1 database bridge, backfill, stamp path or dual lifecycle decoder was added. M2-S02 factual DATA_CHANGE/SCHEMA_CHANGE routes and commands, Health, CLI and startup-revision capability remain absent. The obsolete S00 Actions/payload material remains absent.
 
 ## M2-S00 completion record
 
@@ -129,37 +177,17 @@ uv run pytest -q -m "not postgresql" -ra                    PASS (160)
 uv run pytest -q -ra                                        PASS (314)
 ```
 
-Reviewer inspection confirmed:
-
-```text
-all 32 delivered mutation paths use or are proven compatible with the central planner
-PLAN-01 ... PLAN-06 have machine-resolvable pure/static and PostgreSQL targets
-post-collision REL.CREATE classification is rollback-first and lifetime-safe
-factual collision owners are locked canonically with Relationship KS
-owner disappearance or set expansion causes a bounded whole-UoW restart
-planner ancestry loading is skipped for non-ObjectTemplate plans
-targeted ObjectTemplate ancestry uses one recursive CTE and excludes unrelated lineages
-differential ObjectTemplate declaration DML and rollback evidence remain intact
-three advisory gates and four row-lock modes match the frozen registry
-no supported scenario produced SQLSTATE 40P01
-no test was skipped, xfailed or rerun
-no public M1 behavior changed outside the frozen M2 delta
-no schema, migration, dependency or lockfile changed
-no M2-S01 business capability was introduced
-obsolete GitHub Actions and encoded payload material remain absent
-```
-
 No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Review the published candidate for:
+Prepare and execute one non-normative Codex review-fix prompt for:
 
 ```text
-M2-S01 — Durable relational baseline and versioned Relationship model plane
+M2-S01 — S01-RF-01, S01-RF-02 and S01-RF-03
 ```
 
-The reviewer decision is pending. Do not mark `M2-S01` completed and do not start `M2-S02` before reviewer-owned acceptance.
+The correction remains in the same slice. Preserve the accepted candidate scope, add focused permanent evidence, rerun every affected PostgreSQL/API/domain target and the complete repository gate, then publish a new `CANDIDATE READY FOR REVIEW`. Do not start `M2-S02`.
 
 ## Current status vocabulary
 
@@ -174,7 +202,7 @@ CANDIDATE READY FOR REVIEW
     -> implementation/evidence candidate published; reviewer decision pending
 
 REVIEW CHANGES REQUIRED
-    -> reviewer-owned result; corrections remain in the same slice
+    -> reviewer-owned result; bounded corrections remain in the same slice
 
 COMPLETED
     -> reviewer-owned acceptance of the slice
