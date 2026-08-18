@@ -160,7 +160,7 @@ reviewer result                 pending
 original implementation         c019cada4152e9798e25476d35b0cec5127d6135
 original candidate status       63c0e772df4c73c439b7b4baed67b3d11fc809b9
 corrective implementation       46afa3341d292fb1790612456b28689eafb5b694
-corrective evidence/status       recorded by the follow-up provenance commit
+corrective evidence/status       6d8a0838530f2b449c598dc545a0a2ad3577c5d3
 branch                          M2
 remote                          origin/M2
 durable revision                0001_m2_kernel
