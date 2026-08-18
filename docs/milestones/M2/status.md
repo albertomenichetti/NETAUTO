@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S04 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S04 REVIEW CHANGES REQUIRED
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S04 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the published M2-S04 candidate
-blockers        none; reviewer decision pending
+current slice   M2-S04 — REVIEW CHANGES REQUIRED
+current task    prepare and execute the bounded M2-S04 review-fix prompt
+blockers        S04-RF-01, S04-RF-02 and S04-RF-03
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S04` ONLY |
+| Implementation | `M2-S04` REVIEW CHANGES REQUIRED — bounded fixes only |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -43,7 +43,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S01` | COMPLETED | `M2-S00 COMPLETED` |
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
-| `M2-S04` | CANDIDATE READY FOR REVIEW | `M2-S03 COMPLETED` |
+| `M2-S04` | REVIEW CHANGES REQUIRED | `M2-S03 COMPLETED` |
 | `M2-S05` | BLOCKED | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
@@ -52,28 +52,109 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 `M2-S00`, `M2-S01`, `M2-S02` and `M2-S03` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
-## Current blockers and findings
+## Current blockers and reviewed findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for the `M2-S04` candidate.
+No contract, architecture, implementation-planning or technology contradiction is open. The published S04 candidate implements the principal runtime and Health capability, but three bounded implementation/evidence defects remain. They are corrected inside `M2-S04`; no architecture reopen is required.
 
-The required externally supplied real PostgreSQL, runtime/lifespan and installed-wheel evidence passed. No fallback database, invented credential, automatic migration path or alternate public behavior was used.
+### `S04-RF-01` — expected bootstrap failures retain sensitive raw causes
 
-Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
-
-## M2-S04 candidate record
-
-Implementation result:
+Reviewed implementation:
 
 ```text
-M2-S04                         CANDIDATE READY FOR REVIEW
-reviewer decision              pending
-starting baseline              43b2c42188af35db650b1e7badecf39038987566
-implementation and evidence    dc18d5dcca586b6c64ae6912921448318db8e27c
-candidate evidence/status      recorded by the commit containing this status
+Settings
+    validation errors are allowed to retain the original input carrier
+
+schema guard
+    MigrationGraphInvalid / SchemaGuardUnavailable / timeout wrappers
+    are raised with explicit raw causes
+```
+
+The top-level messages are bounded, but that is not the complete startup diagnostic boundary. Starlette formats the complete lifespan exception traceback and Uvicorn logs the `lifespan.startup.failed` message. A Pydantic validation failure may therefore include the input database URL, and an expected graph/DB failure may include a chained filesystem, SQLAlchemy or driver exception containing DSN, host, SQL or protocol material.
+
+This violates the frozen requirement that ordinary startup diagnostics do not disclose database URLs, credentials, host/port, raw SQL, driver internals or unbounded exception detail.
+
+Required correction:
+
+```text
+production Settings loading
+    -> invalid values produce one bounded bootstrap exception
+    -> validation rendering/traceback does not include input values
+    -> credential-bearing database_url is absent from str/repr/traceback/log output
+
+expected graph / database / timeout failures
+    -> bounded bootstrap exceptions only
+    -> no outward raw __cause__ / unsuppressed __context__
+    -> no leakage through the real ASGI lifespan failure message or Uvicorn logging
+
+unexpected programming defects
+    -> remain unexpected and are not silently normalized
+```
+
+Permanent evidence must exercise the real production composition boundary, not merely `str(top_level_exception)`. It must capture the actual lifespan/startup diagnostic for credential-bearing invalid Settings, unreadable graph, unreachable/query failure and timeout, and assert that secrets, URL/host, SQL, SQLSTATE and raw driver text are absent.
+
+### `S04-RF-02` — an inner `TimeoutError` is misclassified as database not-ready
+
+`CoreHealthService.check()` currently catches bare `TimeoutError` around the complete probe call. This correctly handles expiration of the owned `asyncio.timeout(2.0)` context, but it also catches a `TimeoutError` raised directly by an unexpected probe/programming path before the owned deadline expires.
+
+The latter is not an ordinary readiness outcome. Under the frozen Health boundary it must propagate to the existing unexpected-failure handler and produce the canonical safe HTTP `500`, not a false `503` with `"database readiness check timed out"`.
+
+Required correction:
+
+```text
+owned outer two-second deadline expires
+    -> bounded Health 503 timeout result
+
+PostgreSQLHealthProbe raises DatabaseProbeTimedOut
+    -> bounded Health 503 timeout result
+
+unexpected inner/raw TimeoutError while the owned deadline did not expire
+    -> propagate
+    -> canonical safe HTTP 500
+```
+
+The implementation may use the timeout context's expiration state or another equally explicit owned-timeout discriminator. It must preserve cancellation propagation, one attempt, cleanup-before-measurement and the real pool-starvation behavior already passing.
+
+### `S04-RF-03` — M2-VER-22/23 traceability and installed evidence overstate closure
+
+The singular registry correctly marks only `M2-VER-22` and `M2-VER-23` as newly implemented, but their current target sets omit mandatory parts of the frozen evidence.
+
+At minimum, the exact bundle membership must include permanent targets for:
+
+```text
+M2-VER-22
+    unreadable installed graph
+    unreachable / query-failing database
+    malformed or indeterminate current-head result
+    cancelled and post-engine composition-failure disposal
+    complete safe lifespan diagnostic boundary from S04-RF-01
+
+M2-VER-23
+    unexpected inner TimeoutError -> safe 500 from S04-RF-02
+    unexpected failure and cancellation propagation
+    finite probe translation / no raw-message leakage
+    negative no-Alembic/no-second-engine/no-UoW Health surface
+    installed-wheel runtime not-ready 503 after successful startup,
+        followed by recovery on the same installed runtime engine
+```
+
+Existing tests may be reused when they prove the exact assertion, but they must be explicitly linked in `S04_BUNDLE_TARGETS`; missing assertions require new deterministic targets. Every target must resolve against the actual pytest collection and be executed in the corrected candidate gate.
+
+Bundles `M2-VER-24` and later remain `DESIGNED`. The 63-operation business registry remains separate from the single operational Health route.
+
+## M2-S04 reviewed candidate record
+
+Reviewer result:
+
+```text
+M2-S04                         REVIEW CHANGES REQUIRED
+review baseline                43b2c42188af35db650b1e7badecf39038987566
+implementation/evidence        dc18d5dcca586b6c64ae6912921448318db8e27c
+candidate status               765ef4bb356776555f89fe98e5387ed6b1b7de49
+open findings                  S04-RF-01, S04-RF-02, S04-RF-03
 M2-S05                         BLOCKED / not started
 ```
 
-Candidate scope:
+Conforming material to preserve:
 
 ```text
 Settings fields                 7 exact immutable runtime values
@@ -83,14 +164,17 @@ runtime engine                  one bounded lazy AsyncEngine per app/worker
 engine consumers                mutation/read UoW, startup guard and Health share identity
 startup guard                   installed netauto:migrations head == actual singleton head
 guard timeout                   fixed 10.0 seconds; no retry, migration, stamp or repair
+lifespan order                  guard before state publication/serving
+engine cleanup                  normal, failed, post-composition and cancelled paths
 Health probe                    exact SELECT 1 on the shared engine
 Health timeout                  fixed 2.0 seconds including checkout and cleanup
-operational API                 GET /health/core only; exact 200/503/400/500 boundaries
-installed artifact              wheel import/graph/lifespan/Health/fail-closed smoke outside checkout
-M2-VER-22 / M2-VER-23           IMPLEMENTED with resolvable permanent targets
+operational API                 GET /health/core only
+HTTP result families            exact 200 / 503 / 400 / canonical 500
+route inventory                 63 business + 1 operational = 64
+schema/dependencies             unchanged
 ```
 
-Candidate verification:
+Candidate-reported verification:
 
 ```text
 uv lock --check                                      PASS — 0.03 s
@@ -108,6 +192,7 @@ non-PostgreSQL                                       292 passed — 19.18 s
 full repository suite                                543 passed — 185.19 s
 skip / xfail / rerun                                   0 / 0 / 0
 supported-path 40P01 / unexpected 40001                0 / 0
+installed-wheel smoke                                PASS
 ```
 
 Environment and unchanged boundaries:
@@ -129,7 +214,9 @@ CLI / packaging / S05 surface   none introduced
 GitHub Actions/encoded payloads absent
 ```
 
-The full suite emitted one dependency deprecation warning for the existing FastAPI/Starlette test-client compatibility path. It caused no skip, xfail, rerun or failure and is not a candidate blocker. No architecture or normative-document finding is open. The non-normative S04 prompt remains in `wip/` for reviewer acceptance.
+The reported runs remain useful candidate evidence. The reviewer did not independently re-execute the 543-test suite during this inspection. The three findings identify paths not exercised or not represented by the current mandatory target set.
+
+The non-normative S04 prompt remains in `wip/` while the slice is open.
 
 ## M2-S03 completion record
 
@@ -137,7 +224,6 @@ Reviewer result:
 
 ```text
 M2-S03                         COMPLETED
-review acceptance              recorded by the commit containing this status
 original prompt                29e490087b24f1ff17d1e4be1abc629b0be3a962
 initial implementation         f70ec8968ddef3bd106749b14def0e5cde9688e3
 partial evidence/status        1c2dd13b6e5e57310db6f12f0a6d8307c35bda67
@@ -146,116 +232,11 @@ review-fix prompt              96145aa7621bac760b0ce57c21f62e9c9f4df0fd
 corrective implementation      2e8edb707c7f9f0c343532cf18426b70ae215ad4
 corrected evidence/status      33803f1c50ced716490541099357e2d74eb742a8
 corrected provenance           5f28678fd762fb0c3945747cc7c8d9ffbfa4be19
-M2-S04                         READY / not started
+review acceptance              2b89f4ce79272554721ff694dd8ae8e32e7fab25
+full suite                     PASS (446)
 ```
-
-Closed findings:
-
-```text
-S03-FINDING-01
-    resolved as a non-normative execution-aid defect; no architecture reopen.
-    REF-08 delete-starts-first preserves the frozen RESTRICT lifetime result:
-    delete_blocked followed by one complete historical clone under KS holds.
-
-S03-RF-01
-    the exact 83-entry recipe registry now composes the delivered map,
-    explicit M2 additions and the sole ARB-07 M2 recipe delta.
-    Every primary and required secondary recipe has permanent exact-equality evidence.
-
-S03-RF-02
-    all mapped canonical semantic workers use one structured outcome ledger.
-    The ledger retains node/scenario/role, semantic result, failure or exception,
-    SQLSTATE, phase, transaction outcome and UoW identities; raw driver states are
-    observed before production mapping. Supported 40P01 and unexpected 40001 fail.
-
-S03-RF-03
-    all six REF-08 variants compare complete persisted source and clone projections,
-    exact version/declaration sets, target survival, delete_blocked and KS/no-S modes.
-```
-
-Accepted concurrency closure:
-
-```text
-mutation plans                 41 / 41
-mutation families              10 DT + 10 OT + 7 OBJ + 10 RD + 4 REL
-advisory gates                 3 exact keys; 6 gated mutations; all others ungated
-row-lock modes                 KS / S / NKU / U
-canonical ordering             exact and regression-protected
-
-scenario registry              83 / 83
-family census                  ROW 30; ARB 8; REF 11; GATE 7; SNAP 5;
-                               ATOMIC 7; PAR 9; PLAN 6
-scenario target ledger         165 selectors; 189 collected/executed/passed
-scenario recipe registry       83 / 83 exact primary/secondary entries
-predicate registry             21 / 21
-predicate target ledger        136 selectors; 140 passed
-M2-VER-15 ... M2-VER-19        5 / 5; 62 selectors; 67 passed
-
-structured canonical outcomes 314
-transaction outcomes           215 COMMITTED; 93 ROLLED_BACK; 6 no semantic UoW
-semantic scenario coverage     80 scenario IDs;
-                               PLAN-01, PLAN-02 and PLAN-04 are non-semantic evidence
-```
-
-Accepted canonical SQLSTATE census:
-
-```text
-23505                           8
-23503                           1
-supported-path 40P01            0
-unexpected 40001                0
-```
-
-Separate negative controls produced one `40P01` and two `40001` observations, each with exactly one attempt and no retry. They are not supported-path outcomes.
-
-Accepted verification:
-
-```text
-uv lock --check                                      PASS
-uv sync --locked                                     PASS
-uv build                                             PASS
-Ruff format/check                                    PASS
-Pyright                                              PASS — 0 errors
-pytest collection                                    446 tests
-traceability                                         19 passed
-complete semantic concurrency modules                189 passed
-M2 locking pure/PostgreSQL                            40 passed
-schema metadata / migrations                          5 passed
-PostgreSQL concurrency marker                        182 passed
-non-PostgreSQL                                       205 passed
-full repository suite                                446 passed
-post-push full rerun on exact remote candidate       446 passed — 172.21 s
-skip / xfail / rerun                                   0 / 0 / 0
-```
-
-Environment and unchanged boundaries:
-
-```text
-CPython                         3.14.7
-PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
-uv                              0.12.3
-authoritative tables            15
-Alembic graph                   one base / one head
-root revision                   0001_m2_kernel
-metadata drift                  compare_metadata == []
-schema / migration diff         none
-dependency / uv.lock diff       none
-business HTTP operations        41 mutations + 22 reads = 63 exact
-production/public surface       unchanged
-Health/startup/CLI/packaging    no S04-or-later surface introduced
-GitHub Actions/encoded payloads absent
-```
-
-Reviewer inspection verified the published commit chain, real delta, exact recipe map, structured outcome integration, SQLSTATE observation boundary, REF-08 aggregate assertions, traceability and unchanged surfaces. The reviewer did not independently re-execute the 446-test suite in this inspection; the accepted execution results are those produced and recorded by the corrected candidate.
 
 No blocking review finding remains open for `M2-S03`.
-
-The concluded execution aids were retired from the working tree by the same reviewer-owned acceptance commit:
-
-```text
-docs/milestones/M2/wip/M2-S03-codex-prompt.md
-docs/milestones/M2/wip/M2-S03-review-fixes-codex-prompt.md
-```
 
 ## M2-S02 completion record
 
@@ -272,6 +253,7 @@ review-fix prompt              98e8a092b27afeb50cbadd07c6356349958ddf88
 corrective implementation      f27d13c6d8366e46c9ad3fb2b07ede735be0ff3e
 corrected candidate evidence   6eb21c0fbc58728f075ff3674f039b68bb626ef0
 corrected provenance           39d4b6b0a6fb0fae86525ec8bd56cad6df0ccbeb
+review acceptance              850abd97ece1aadeae65aa090d86c7ec4982751f
 full suite                     PASS (411)
 ```
 
@@ -290,6 +272,7 @@ corrective prompt              4a35581769feb0791a9eca1aa795c1fd0f95aa5c
 corrective implementation      46afa3341d292fb1790612456b28689eafb5b694
 corrective evidence/status     6d8a0838530f2b449c598dc545a0a2ad3577c5d3
 publication provenance         63e7be04d8880ec5ea79289fd6b0462babe5ab40
+review acceptance              24e7b788b6b7f54d96614ef2c37bffbeb25ebd8b
 full suite                     PASS (349)
 ```
 
@@ -304,6 +287,7 @@ M2-S00                         COMPLETED
 initial implementation         328fe179dade3a30168cb2e14dbbb5042a82e463
 corrective implementation      7950fc041fb8fdb62bfaf72bdcfe40fff2af8dab
 candidate evidence/status      8168aeb3a8a3e1dedd97afcd22f9da314d689333
+review acceptance              d225faee6faf5fbebd36ce68db6c3b2c537323d0
 full suite                     PASS (314)
 ```
 
@@ -311,13 +295,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Review the published candidate for:
+Prepare the non-normative corrective execution aid:
 
 ```text
-M2-S04 — Runtime settings, startup revision guard and Core Health
+docs/milestones/M2/wip/M2-S04-review-fixes-codex-prompt.md
 ```
 
-Do not mark `M2-S04 COMPLETED` or start `M2-S05` without the reviewer-owned acceptance decision.
+The correction remains inside `M2-S04` and is limited to `S04-RF-01`, `S04-RF-02` and `S04-RF-03`. Do not start `M2-S05`.
 
 ## Current status vocabulary
 
