@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S03 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S03 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S03 — REVIEW CHANGES REQUIRED
-current task    prepare and execute the bounded M2-S03 Codex review-fix prompt
-blockers        S03-RF-01, S03-RF-02, S03-RF-03
+current slice   M2-S03 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published corrected candidate
+blockers        reviewer decision pending; M2-S04 remains blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S03` REVIEW FIX ONLY |
+| Implementation | `M2-S03` CANDIDATE READY FOR REVIEW |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -42,7 +42,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S00` | COMPLETED | none |
 | `M2-S01` | COMPLETED | `M2-S00 COMPLETED` |
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
-| `M2-S03` | REVIEW CHANGES REQUIRED | `M2-S02 COMPLETED` |
+| `M2-S03` | CANDIDATE READY FOR REVIEW | `M2-S02 COMPLETED` |
 | `M2-S04` | BLOCKED | `M2-S03 COMPLETED` |
 | `M2-S05` | BLOCKED | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
@@ -52,9 +52,11 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 `M2-S00`, `M2-S01` and `M2-S02` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
-## Current blockers and findings
+## Reviewed findings and corrected-candidate disposition
 
-No contract, architecture, implementation-planning or technology contradiction is open. The reviewer inspection resolved the implementer-raised execution-aid finding and identified three bounded implementation/evidence defects. They do not require architecture reopening and must be corrected inside `M2-S03`.
+No contract, architecture, implementation-planning, technology or infrastructure contradiction is open. The reviewer inspection resolved the implementer-raised execution-aid finding and identified three bounded implementation/evidence defects. Corrective commit `2e8edb707c7f9f0c343532cf18426b70ae215ad4` implements all three inside `M2-S03`; reviewer acceptance remains pending.
+
+The detailed findings below remain preserved as reviewer-owned history. Their candidate dispositions do not self-assign `COMPLETED` or reviewer acceptance.
 
 ### Resolution of `S03-FINDING-01` — REF-08 target-delete-first outcome
 
@@ -83,9 +85,11 @@ valid delete-starts-first interleaving
 
 The sentence in `M2-S03-codex-prompt.md` requiring the target to disappear and the clone to fail is superseded for `REF-08`. It cannot override the frozen matrix, persistence model or verification registry. The implemented `delete_blocked` outcome is authority-compatible. The review-fix execution aid must preserve that outcome rather than reopening schema or weakening FK lifetime.
 
-### `S03-RF-01` — scenario-to-recipe registry is not frozen-exact
+### `S03-RF-01` — exact scenario-to-recipe registry
 
-The candidate provides all 83 scenario IDs and non-empty collected target sets, but `M2_SCENARIO_TO_RECIPES` is derived primarily from one generic recipe per family and only a small override set. This silently changes the delivered canonical orchestration ownership instead of composing the current AS-IS registry with the explicit M2 additions.
+Candidate disposition: one delivered projection, one explicit M2 addition projection and the sole `ARB-07` M2 delta now compose an exact 83-entry registry. Permanent equality evidence covers every primary and secondary recipe; every former mismatch listed below is corrected.
+
+Prior reviewed state: the original candidate provided all 83 scenario IDs and non-empty collected target sets, but `M2_SCENARIO_TO_RECIPES` was derived primarily from one generic recipe per family and only a small override set. This silently changed the delivered canonical orchestration ownership instead of composing the current AS-IS registry with the explicit M2 additions.
 
 Observed mismatches include, at minimum:
 
@@ -136,9 +140,11 @@ retain stable scenario IDs and all currently passing concrete targets
 
 A registry that merely checks that recipe names belong to the allowed vocabulary is insufficient.
 
-### `S03-RF-02` — complete T3 SQLSTATE/outcome capture is not yet realized
+### `S03-RF-02` — complete T3 SQLSTATE/outcome capture
 
-The candidate introduces `WorkerOutcome` and `capture_worker_outcome`, but the shared `blocked_race()` and `progress_race()` helpers still execute workers through the legacy `capture()` boundary. Almost all canonical T3 targets therefore do not pass through the new structured capture path; the new boundary is exercised only by a narrow subset of S03 evidence.
+Candidate disposition: the shared blocking/progress helpers and all custom canonical semantic-worker paths now use one structured, SQLSTATE-aware outcome ledger. Runtime collection fails mapped targets on a bypass, incomplete scenario representation, invalid worker role, missing transaction outcome, `40P01` or unexpected `40001`. Structural extraction, raw driver observation, no-retry controls and restart identities have permanent focused evidence.
+
+Prior reviewed state: the original candidate introduced `WorkerOutcome` and `capture_worker_outcome`, but the shared `blocked_race()` and `progress_race()` helpers still executed workers through the legacy `capture()` boundary. Almost all canonical T3 targets therefore did not pass through the new structured capture path; the boundary was exercised only by a narrow subset of S03 evidence.
 
 The frozen verification contract requires every T3 worker result to retain PostgreSQL SQLSTATE when present. A full-suite pass does not by itself prove the reported all-scenario SQLSTATE census, especially when a database failure can be translated into an `ApplicationFailure` before the outer harness observes it.
 
@@ -165,9 +171,11 @@ SQLSTATE-aware boundary and report every observed SQLSTATE value
 
 Compatibility helpers may preserve existing convenient return shapes, but they must not bypass the authoritative outcome ledger.
 
-### `S03-RF-03` — REF-08 does not prove complete cloned state
+### `S03-RF-03` — complete REF-08 cloned-state evidence
 
-The six real-PostgreSQL `REF-08` variants correctly prove both physical operation orders, `delete_blocked`, version allocation and KS rather than SHARE lifetime modes. They do not, however, assert the cloned parent/component/property content.
+Candidate disposition: all six variants compare the complete persisted source and clone domain projections, exact two-version set, complete declarations, target root/exact target survival, KS lifetime modes and absence of PUBLISHED-admission SHARE.
+
+Prior reviewed state: the six real-PostgreSQL `REF-08` variants correctly proved both physical operation orders, `delete_blocked`, version allocation and KS rather than SHARE lifetime modes. They did not, however, assert the cloned parent/component/property content.
 
 As written, a defect that creates version 2 but omits one or all cloned declarations could still satisfy the target. This leaves the scenario's complete-clone and no-partial-aggregate obligation unproved.
 
@@ -194,7 +202,140 @@ all variants
 
 The correct delete-starts-first result remains `delete_blocked` followed by a complete clone; no schema or production-semantic change is authorized.
 
-`M2-S04` remains blocked until these three findings are corrected, all focused and complete real-PostgreSQL gates pass, and a corrected `M2-S03 CANDIDATE READY FOR REVIEW` is published.
+`M2-S04` remains blocked pending reviewer acceptance of this corrected `M2-S03 CANDIDATE READY FOR REVIEW`.
+
+## M2-S03 corrected candidate record
+
+Candidate state:
+
+```text
+M2-S03                         CANDIDATE READY FOR REVIEW
+reviewer decision              pending
+corrective baseline            8ddcfdca85e73b64c5e3bc603d8611d0ffb2eb1c
+review-fix prompt              96145aa7621bac760b0ce57c21f62e9c9f4df0fd
+corrective implementation      2e8edb707c7f9f0c343532cf18426b70ae215ad4
+candidate evidence/status      recorded by the following status commit
+M2-S04                         BLOCKED / not started
+```
+
+Corrective dispositions:
+
+```text
+S03-RF-01
+    83 / 83 exact recipe entries
+    delivered projection + explicit M2 additions + one ARB-07 delta
+    former mismatches corrected exactly:
+        ROW-10 CUT
+        ARB-03/04 LOCK
+        ARB-05 UNIQUE + ABA
+        ARB-06 LOCK
+        ARB-07 ABA + UNIQUE + RESTART
+        GATE-02/06 GATE + CUT
+        ATOMIC-02 UNIQUE + ROLLBACK
+        PAR-03 LOCK; PAR-04 GATE; PAR-07 LOCK + PROGRESS
+
+S03-RF-02
+    shared blocked/progress compatibility helpers delegate to structured forms
+    all mapped semantic-worker paths are runtime-checked for ledger coverage
+    structural SQLSTATE traversal covers sqlstate, pgcode, orig,
+        driver_exception, cause/context and cycles
+    raw SQLAlchemy/DBAPI SQLSTATE is observed before production mapping
+    every canonical outcome retains node, scenario IDs, role, semantic result,
+        failure/exception material, phase, transaction result and UoW identities
+    PLAN-03 outcome records two distinct UoWs and ROLLED_BACK -> COMMITTED
+    40P01 / 40001 no-retry controls execute exactly one attempt
+
+S03-RF-03
+    six REF-08 variants pass: parent/component/property x clone/delete first
+    source is unchanged; clone is complete v2 DRAFT revision 1
+    exact version set is source v1 + clone v2; no extra declaration survives
+    parent/component/property values compare as complete domain projections
+    referenced root and exact version, where applicable, remain present
+    delete result is delete_blocked; clone targets use KS and never SHARE
+```
+
+Exact registry execution:
+
+```text
+S03 review-fix registry        19 selectors; 22 passed; 13.57s
+41-mutation ledger             41 / 41; 72 selectors; 74 passed; 47.92s
+83-scenario ledger             83 / 83; 165 selectors; 189 passed; 102.69s
+semantic-worker outcomes       314 exact
+transaction outcomes           215 COMMITTED; 93 ROLLED_BACK; 6 no-UoW
+semantic scenario IDs          80 with semantic workers;
+                               PLAN-01/02/04 are non-semantic planner evidence
+21-predicate ledger            21 / 21; 136 selectors; 140 passed; 90.74s
+M2-VER-15 ... M2-VER-19        5 / 5; 62 selectors; 67 passed; 41.38s
+```
+
+Canonical supported-path SQLSTATE census from the exact 83-scenario ledger:
+
+```text
+23505                           8
+23503                           1
+40P01                           0
+unexpected 40001                0
+
+ARB-01 / datatype semantic create / T1                         23505 x1
+ARB-05 / reciprocal create / T2                                23505 x1
+ARB-05 / symmetric inverse-overlap [False] / T2                23505 x1
+ARB-05 / symmetric inverse-overlap [True] / T2                 23505 x1
+ARB-07 + PLAN-05 / winner disappears / T2                      23505 x1
+ARB-07 + PLAN-05 / collision-owner delete block / T2           23505 x1
+ARB-08 + ROW-30 / factual partial-owner conflict / T2           23505 x1
+ATOMIC-02 / later closure collision / T1                       23505 x1
+REF-06 / definition cascade versus relationship RESTRICT / T1  23503 x1
+```
+
+The focused negative-control census is separate from supported paths:
+
+```text
+negative-control outcomes      3
+40P01                           1; immediate harness failure; one attempt
+40001                           2; immediate/no-retry and intentional capture;
+                                one attempt each
+```
+
+Mandatory verification:
+
+```text
+uv lock --check                                             PASS
+uv sync --locked                                            PASS
+uv build                                                    PASS
+uv run ruff format --check .                                PASS (173 files)
+uv run ruff check .                                         PASS
+uv run pyright                                              PASS (0 errors)
+uv run pytest --collect-only -q                             PASS (446; 1.60s)
+focused S03 review-fix registry                             PASS (22; 13.57s)
+M1/S00/M2 traceability                                      PASS (19; 13.08s)
+complete semantic concurrency modules                       PASS (189; 120.07s)
+M2 locking pure/PostgreSQL                                  PASS (40; 5.25s)
+schema metadata / migrations                                PASS (5; 1.98s)
+exact 63-operation object-scope boundary                    PASS (5; 2.83s)
+PLAN-03 structured restart identities                       PASS (1; 1.86s)
+uv run pytest -q -m "postgresql and concurrency" -ra        PASS (182; 264 deselected;
+                                                                  114.04s)
+uv run pytest -q -m "not postgresql" -ra                    PASS (205; 241 deselected;
+                                                                  16.85s)
+uv run pytest -q -ra                                        PASS (446; 182.83s)
+```
+
+All reported runs have zero skips, xfails and reruns. Runtime versions were CPython `3.14.7`, PostgreSQL `16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)` and uv `0.12.3`.
+
+Unchanged boundaries:
+
+```text
+authoritative tables         15
+Alembic graph                one base / one head: 0001_m2_kernel
+metadata drift               compare_metadata == []
+schema / migration diff      none
+dependency / uv.lock diff    none
+business HTTP operations     41 mutations + 22 reads = 63 exact
+production/public surface    unchanged
+Health/startup/CLI/packaging no new surface
+M2-S04                       not started
+Actions/encoded payloads     absent
+```
 
 ## M2-S03 reviewed implementation record
 
@@ -330,13 +471,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare and execute one non-normative Codex review-fix prompt for:
+Reviewer inspection of the published corrected candidate for:
 
 ```text
 M2-S03 — S03-RF-01, S03-RF-02 and S03-RF-03
 ```
 
-The correction remains inside the same slice. Preserve the 41-mutation, 83-scenario, 21-predicate, REF/PAR/GATE and M2-VER-15 ... 19 work; repair exact recipe ownership, complete SQLSTATE-aware T3 outcome capture, strengthen REF-08 complete-clone evidence, rerun the exact ledgers and the full repository gate, then publish a corrected `CANDIDATE READY FOR REVIEW`. Do not start `M2-S04`.
+The correction remains inside the same slice. The reviewer decides whether the candidate closes `S03-RF-01`, `S03-RF-02` and `S03-RF-03`. Do not start `M2-S04` unless `M2-S03 COMPLETED` is authoritatively recorded by the reviewer.
 
 ## Current status vocabulary
 
