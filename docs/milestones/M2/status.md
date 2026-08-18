@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S05 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S05 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S05 — IN PROGRESS
-current task    implement the authorized M2-S05 HTTP-only CLI slice
+current slice   M2-S05 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published M2-S05 candidate
 blockers        none
 ```
 
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | IN PROGRESS — `M2-S05` ONLY |
+| Implementation | `M2-S05` CANDIDATE READY FOR REVIEW |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -44,7 +44,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
-| `M2-S05` | IN PROGRESS | `M2-S04 COMPLETED` |
+| `M2-S05` | CANDIDATE READY FOR REVIEW | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
@@ -54,11 +54,98 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S05`.
+No contract, architecture, implementation-planning, technology or verification blocker is open on the `M2-S05` candidate.
 
 `M2-S05` is limited to the official CLI HTTP core and non-interactive mode. It must preserve the completed runtime/startup/Health capability and must not begin `M2-S06` interactive REPL work before reviewer-owned completion.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+
+## M2-S05 candidate record
+
+Candidate state:
+
+```text
+M2-S05                         CANDIDATE READY FOR REVIEW
+starting baseline              24f65b11afe72f2882a796e1c0daf6aef80bda05
+implementation-start status    c8ac18e1dfcd33beb9a20468c393ba0266a20d23
+implementation                 3d02fce9fe9c456e26100c3dbbbabce75bf90caf
+candidate evidence/status      recorded by the commit containing this status
+review result                  reviewer-owned / pending
+M2-S06                         BLOCKED / not started
+```
+
+Implemented candidate:
+
+```text
+neutral wire boundary          shared request/success/page/lifecycle/error/Health DTOs
+server adapters                reuse neutral DTO identities; 63 business routes unchanged
+runtime dependency             HTTPX >=0.28,<1 promoted from dev to project dependency
+console entrypoint             netauto = netauto.cli.main:main
+CLI execution                  HTTP-only exact -n non-interactive process
+remote registry                immutable 63 CommandSpec values
+family census                  14 / 16 / 13 / 14 / 5 / 1
+selectors                      DataType, ObjectTemplate, Object and UUID-only families
+transport                      verified TLS, no redirect/retry/auth/cookie persistence
+protocol                       exact 200/201/204, DTO/error/Location validation
+trace                          every actual lookup and primary exchange once and ordered
+process result                 one stdout JSON line; stderr empty; exit 0/1
+interactive REPL/FORMATTED     not introduced; owned by blocked M2-S06
+```
+
+Candidate verification:
+
+```text
+uv lock                                               PASS — 44 packages
+uv lock --check                                       PASS — 44 packages
+uv sync --locked                                      PASS — 42 checked packages
+uv build                                              PASS — sdist + wheel 0.1.0
+Ruff format/check                                     PASS — 213 files
+Ruff lint                                             PASS
+Pyright                                               PASS — 0 errors
+pytest collection                                     630 tests
+M2-VER-27 primary S05 targets                         67 passed — 11.64 s
+M2-VER-24 bounded supporting targets                   7 passed — 8.69 s
+M2-VER-28 registry/selector supporting targets        19 passed — 1.53 s
+M2-VER-30 transport-security supporting targets        9 passed — 3.72 s
+DTO/API/S04 affected regressions                     115 passed — 39.54 s
+schema metadata / migrations                           5 passed — 2.17 s
+M1 / S00 / M2 traceability                            23 passed — 14.13 s
+PostgreSQL concurrency marker                        182 passed — 116.69 s
+non-PostgreSQL                                       379 passed — 31.68 s
+full repository suite                                630 passed — 197.59 s
+skip / xfail / rerun                                   0 / 0 / 0
+warning census                                         1 locked FastAPI/Starlette deprecation
+supported-path 40P01 / unexpected 40001                0 / 0
+```
+
+Environment and unchanged boundaries:
+
+```text
+CPython                         3.14.7
+PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+uv                              0.12.3
+authoritative tables            15
+Alembic graph                   one base / one head
+root migration                  0001_m2_kernel unchanged
+metadata/schema/index diff      none
+project version                 0.1.0 unchanged
+dependency / lock delta         HTTPX promotion only; no package version churn
+business HTTP operations        41 mutations + 22 reads = 63 exact
+operational HTTP operations      1 Health; total public HTTP = 64
+CLI remote operations           63 exact; Health excluded
+scenario / predicate registries 83 / 21 unchanged
+GitHub Actions/PR               not used / not created
+```
+
+`M2-VER-27` is candidate `PASS`. The `M2-VER-24`, `M2-VER-28` and
+`M2-VER-30` entries are bounded S05 supporting evidence only; their primary
+slice ownership remains S07, S06 and S07 respectively. `M2-VER-25/26/29/31/32`
+remain `DESIGNED`. No S06 capability was started.
+
+The sole warning is the already known deprecation emitted by the locked
+FastAPI/Starlette test-client path. It caused no skip, xfail, rerun or failure.
+No blocking implementation, architecture or documentation finding remains open
+on the candidate. M2-S05 is not `COMPLETED`; reviewer inspection is pending.
 
 ## M2-S04 completion record
 
