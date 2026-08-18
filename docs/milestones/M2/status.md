@@ -214,7 +214,7 @@ reviewer decision              pending
 corrective baseline            8ddcfdca85e73b64c5e3bc603d8611d0ffb2eb1c
 review-fix prompt              96145aa7621bac760b0ce57c21f62e9c9f4df0fd
 corrective implementation      2e8edb707c7f9f0c343532cf18426b70ae215ad4
-candidate evidence/status      recorded by the following status commit
+candidate evidence/status      33803f1c50ced716490541099357e2d74eb742a8
 M2-S04                         BLOCKED / not started
 ```
 
