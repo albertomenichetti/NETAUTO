@@ -204,8 +204,8 @@ reviewer decision              pending
 review finding record          4c1ae6905295ed1f7f69f71ecd9af7e76d1ca47f
 review-fix prompt               98e8a092b27afeb50cbadd07c6356349958ddf88
 corrective implementation      f27d13c6d8366e46c9ad3fb2b07ede735be0ff3e
-candidate evidence/status      recorded by the commit containing this record
-publication provenance         pending normal push to origin/M2
+candidate evidence/status      6eb21c0fbc58728f075ff3674f039b68bb626ef0
+publication provenance         recorded by the commit containing this update
 branch                          M2
 durable revision                0001_m2_kernel (unchanged)
 Alembic graph                   one base / one head
