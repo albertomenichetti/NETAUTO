@@ -16,7 +16,7 @@ from netauto.application.objecttemplates import ObjectTemplateService, PropertyC
 from netauto.domain.datatypes import DataTypeVersion, VersionStatus
 from netauto.domain.objecttemplates import CreateObjectTemplateResult, ValueMode
 from netauto.failures import ApplicationFailure
-from netauto.persistence.datatypes import DataTypeStore
+from netauto.persistence.datatypes import DataTypeReferenceCounts, DataTypeStore
 from netauto.persistence.locking import (
     AdvisoryGate,
     LockPlan,
@@ -206,11 +206,11 @@ def _install_description_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 
 def _install_reference_precheck_cut(
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[PhaseCut, list[int]]:
+) -> tuple[PhaseCut, list[DataTypeReferenceCounts]]:
     cut = PhaseCut()
-    observations: list[int] = []
+    observations: list[DataTypeReferenceCounts] = []
     original_prepare = datatype_application.prepare_lock_plan
-    original_count = DataTypeStore.external_reference_count
+    original_count = DataTypeStore.external_reference_counts
 
     async def intercepted_prepare(
         connection: AsyncConnection,
@@ -234,13 +234,15 @@ def _install_reference_precheck_cut(
             await cut.release.wait()
         return await original_prepare(connection, intents=requested, gate=gate)
 
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> int:
+    async def intercepted(
+        store: DataTypeStore, datatype_id: UUID
+    ) -> DataTypeReferenceCounts:
         result = await original_count(store, datatype_id)
         observations.append(result)
         return result
 
     monkeypatch.setattr(datatype_application, "prepare_lock_plan", intercepted_prepare)
-    monkeypatch.setattr(DataTypeStore, "external_reference_count", intercepted)
+    monkeypatch.setattr(DataTypeStore, "external_reference_counts", intercepted)
     return cut, observations
 
 
@@ -688,7 +690,12 @@ async def test_ref_06a_datatype_cascade_loses_to_external_property_restrict(
                 (),
             ),
         )
-        assert precheck_counts == [1]
+        assert precheck_counts == [
+            DataTypeReferenceCounts(
+                object_template_property_count=1,
+                relationship_definition_property_count=0,
+            )
+        ]
         assert isinstance(created, CreateObjectTemplateResult)
         assert isinstance(deleted, ApplicationFailure)
         assert deleted.code == "delete_blocked"

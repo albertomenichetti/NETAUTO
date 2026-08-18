@@ -387,17 +387,30 @@ class DataTypeService:
             )
             if missing:
                 raise _not_found(datatype_id)
-            count = await store.external_reference_count(datatype_id)
-            if count:
+            counts = await store.external_reference_counts(datatype_id)
+            blockers: list[JsonValue] = []
+            if counts.object_template_property_count:
+                blockers.append(
+                    {
+                        "type": "object_template_property",
+                        "count": counts.object_template_property_count,
+                    }
+                )
+            if counts.relationship_definition_property_count:
+                blockers.append(
+                    {
+                        "type": "relationship_definition_property",
+                        "count": counts.relationship_definition_property_count,
+                    }
+                )
+            if blockers:
                 raise _state(
                     "delete_blocked",
                     "Current references prevent DataType deletion.",
                     {
                         "resource_type": "datatype",
                         "id": str(datatype_id),
-                        "blockers": [
-                            {"type": "object_template_property", "count": count}
-                        ],
+                        "blockers": blockers,
                     },
                 )
             plan.begin_dml()
@@ -410,7 +423,7 @@ class DataTypeService:
                     {
                         "resource_type": "datatype",
                         "id": str(datatype_id),
-                        "blockers": [{"type": "object_template_property", "count": 1}],
+                        "blockers": [{"type": error.blocker_type, "count": 1}],
                     },
                 ) from error
             await uow.commit()

@@ -78,6 +78,8 @@ S01_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_relationship_definition_complete_crud_and_capability_projection",
             "tests/test_relationshipdefinition_api.py::"
             "test_m2_s01_rdv_properties_versions_defaults_and_factual_pin",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_row_24_explicit_create_delete_first_preserves_exact_selector",
         }
     ),
     "M2-VER-02": frozenset(
@@ -124,6 +126,18 @@ S01_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_ref_07_clone_reference_blocks_datatype_root_delete",
             "tests/test_m2_s01_semantic_concurrency.py::"
             "test_ref_09_rebound_reference_blocks_target_delete",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_reports_rdv_only_and_mixed_property_blockers",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_ot_property_fk_is_bounded",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_rdv_property_fk_is_bounded",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_row_24_explicit_create_delete_first_preserves_exact_selector",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_ref_09_explicit_revise_delete_first_preserves_exact_selector",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_row_24_implicit_create_delete_first_identifies_lineage",
         }
     ),
     "M2-VER-05": frozenset(
@@ -132,12 +146,20 @@ S01_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_relationship_definition_complete_crud_and_capability_projection",
             "tests/test_relationshipdefinition_api.py::"
             "test_m2_s01_rdv_properties_versions_defaults_and_factual_pin",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_ot_property_fk_is_bounded",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_rdv_property_fk_is_bounded",
         }
     ),
     "M2-VER-06": frozenset(
         {
             "tests/test_relationshipdefinition_api.py::"
             "test_m2_s01_rdv_properties_versions_defaults_and_factual_pin",
+            "tests/test_relationship_domain.py::"
+            "test_factual_relationship_constructors_require_an_exact_version_pin",
+            "tests/test_relationship_domain.py::"
+            "test_factual_relationship_rejects_non_positive_or_boolean_exact_pin",
             "tests/test_m2_s01_semantic_concurrency.py::"
             "test_row_30_and_arb_08_factual_selection_and_partial_owner_conflict",
             "tests/test_relationship_semantic_concurrency.py::"
@@ -200,7 +222,7 @@ M2_EVIDENCE_TO_TARGETS = {
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
 
-S01_SCENARIO_TARGETS = {
+_S01_PRIMARY_SCENARIO_TARGETS = {
     "ROW-18": "tests/test_m2_s01_semantic_concurrency.py::"
     "test_row_18_create_next_allocates_serial_distinct_versions",
     "ROW-19": "tests/test_m2_s01_semantic_concurrency.py::"
@@ -241,6 +263,62 @@ S01_SCENARIO_TARGETS = {
     "test_atomic_03_delete_event_failure_rolls_back_complete_fact",
     "ATOMIC-05": "tests/test_m2_s01_semantic_concurrency.py::"
     "test_atomic_05_differential_failure_rolls_back_revision_and_children",
+}
+
+S01_SCENARIO_TARGETS = {
+    scenario_id: frozenset({target})
+    for scenario_id, target in _S01_PRIMARY_SCENARIO_TARGETS.items()
+}
+S01_SCENARIO_TARGETS["ROW-24"] |= frozenset(
+    {
+        "tests/test_m2_s01_semantic_concurrency.py::"
+        "test_row_24_explicit_create_delete_first_preserves_exact_selector",
+        "tests/test_m2_s01_semantic_concurrency.py::"
+        "test_row_24_implicit_create_delete_first_identifies_lineage",
+    }
+)
+S01_SCENARIO_TARGETS["REF-09"] |= frozenset(
+    {
+        "tests/test_m2_s01_semantic_concurrency.py::"
+        "test_ref_09_explicit_revise_delete_first_preserves_exact_selector"
+    }
+)
+
+S01_REVIEW_FIX_TARGETS = {
+    "S01-RF-01": frozenset(
+        {
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_reports_rdv_only_and_mixed_property_blockers",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_ot_property_fk_is_bounded",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_rdv_property_fk_is_bounded",
+            "tests/test_s08_persistence_error_mapping.py::"
+            "test_datatype_delete_maps_exact_property_reference_constraints",
+        }
+    ),
+    "S01-RF-02": frozenset(
+        {
+            "tests/test_relationship_domain.py::"
+            "test_factual_relationship_constructors_require_an_exact_version_pin",
+            "tests/test_relationship_domain.py::"
+            "test_factual_relationship_rejects_non_positive_or_boolean_exact_pin",
+            "tests/test_relationshipdefinition_api.py::"
+            "test_m2_s01_rdv_properties_versions_defaults_and_factual_pin",
+        }
+    ),
+    "S01-RF-03": frozenset(
+        {
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_row_24_explicit_create_delete_first_preserves_exact_selector",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_ref_09_explicit_revise_delete_first_preserves_exact_selector",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_row_24_implicit_create_delete_first_identifies_lineage",
+            "tests/test_m2_s01_semantic_concurrency.py::"
+            "test_row_24_implicit_dtv_binding_is_stable_through_commit",
+        }
+    ),
 }
 
 S01_PUBLIC_ROUTE_DELTA = frozenset(
@@ -334,8 +412,21 @@ def test_s01_scenario_map_is_exact_and_every_target_resolves() -> None:
         "ATOMIC-05",
     }
     assert set(S01_SCENARIO_TARGETS) <= M2_CONCURRENCY_SCENARIOS
-    for target in S01_SCENARIO_TARGETS.values():
-        _assert_target_exists(target)
+    for targets in S01_SCENARIO_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+
+
+def test_s01_review_fix_registry_is_exact_resolvable_and_scenario_mapped() -> None:
+    assert set(S01_REVIEW_FIX_TARGETS) == {"S01-RF-01", "S01-RF-02", "S01-RF-03"}
+    for targets in S01_REVIEW_FIX_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+    assert S01_REVIEW_FIX_TARGETS["S01-RF-03"] <= (
+        S01_SCENARIO_TARGETS["ROW-24"] | S01_SCENARIO_TARGETS["REF-09"]
+    )
 
 
 def test_s01_route_delta_and_s00_plan_registry_remain_exact() -> None:

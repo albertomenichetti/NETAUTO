@@ -1,7 +1,8 @@
 """SQLAlchemy Core persistence operations for the DataType capability."""
 
 from collections.abc import Sequence
-from typing import cast
+from dataclasses import dataclass
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, select, tuple_, update
@@ -38,8 +39,21 @@ class QualifiedNameArbitrationError(Exception):
     pass
 
 
+type DataTypeDeleteBlockerType = Literal[
+    "object_template_property", "relationship_definition_property"
+]
+
+
+@dataclass(frozen=True, slots=True)
+class DataTypeReferenceCounts:
+    object_template_property_count: int
+    relationship_definition_property_count: int
+
+
 class DeleteReferenceError(Exception):
-    pass
+    def __init__(self, blocker_type: DataTypeDeleteBlockerType) -> None:
+        self.blocker_type = blocker_type
+        super().__init__(blocker_type)
 
 
 def _lineage(mapping: RowMapping) -> DataType:
@@ -353,7 +367,9 @@ class DataTypeStore:
         )
         return bool(relationship_value)
 
-    async def external_reference_count(self, datatype_id: UUID) -> int:
+    async def external_reference_counts(
+        self, datatype_id: UUID
+    ) -> DataTypeReferenceCounts:
         object_value = await self.connection.scalar(
             select(func.count())
             .select_from(object_template_properties)
@@ -364,7 +380,10 @@ class DataTypeStore:
             .select_from(relationship_definition_properties)
             .where(relationship_definition_properties.c.datatype_id == datatype_id)
         )
-        return int(object_value or 0) + int(relationship_value or 0)
+        return DataTypeReferenceCounts(
+            object_template_property_count=int(object_value or 0),
+            relationship_definition_property_count=int(relationship_value or 0),
+        )
 
     async def delete_draft(self, datatype_id: UUID, version: int) -> None:
         await self.connection.execute(
@@ -386,10 +405,18 @@ class DataTypeStore:
             )
         except IntegrityError as error:
             classified = classify_postgresql_failure(error)
-            if classified.constraint_name == (
-                "fk_object_template_properties_datatype_version"
+            if (
+                classified.constraint_name
+                == "fk_object_template_properties_datatype_version"
             ):
-                raise DeleteReferenceError from error
+                raise DeleteReferenceError("object_template_property") from error
+            if (
+                classified.constraint_name
+                == "fk_relationship_definition_properties_datatype_version"
+            ):
+                raise DeleteReferenceError(
+                    "relationship_definition_property"
+                ) from error
             raise
 
     async def list_lineages(

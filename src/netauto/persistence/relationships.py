@@ -739,11 +739,11 @@ def _runtime_relationship(rows: Sequence[RowMapping]) -> Relationship | None:
             )
         )
     return Relationship(
-        relationship_id,
-        definition_id,
-        tuple(resolutions),
-        definition_version,
-        properties,
+        id=relationship_id,
+        relationship_definition_id=definition_id,
+        resolutions=tuple(resolutions),
+        relationship_definition_version=definition_version,
+        properties=properties,
     )
 
 

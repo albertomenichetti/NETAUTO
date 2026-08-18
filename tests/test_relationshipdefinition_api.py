@@ -696,6 +696,14 @@ async def test_m2_s01_rdv_properties_versions_defaults_and_factual_pin(
     assert fact_value["properties"] == {"measurements": [3, 1, 3]}
     exact_fact = await client.get(f"/api/v1/core/relationships/{fact_value['id']}")
     assert exact_fact.json() == fact_value
+    object_relative = await client.get(
+        f"/api/v1/core/objects/{first_object_id}/relationships"
+    )
+    assert object_relative.status_code == 200, object_relative.text
+    relative_items = object_relative.json()["items"]
+    assert len(relative_items) == 1
+    assert relative_items[0]["relationship_definition_version"] == 2
+    assert relative_items[0]["properties"] == {"measurements": [3, 1, 3]}
 
     created_events = await client.get(
         "/api/v1/core/lifecycle-events",

@@ -1,5 +1,6 @@
 """RelationshipDefinition model-plane application capability."""
 
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -178,6 +179,23 @@ def _datatype_version_intent(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _PropertyDependencySelection:
+    property_name: str
+    property_position: int
+    datatype_id: UUID
+    explicit: bool
+    requested_version: int | None
+    selected_version: int
+    current_version: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedPropertyCandidate:
+    properties: tuple[RelationshipDefinitionProperty, ...]
+    dependencies: tuple[_PropertyDependencySelection, ...]
+
+
 async def _acquire(
     connection: Any,
     intents: tuple[RowLockIntent, ...],
@@ -232,7 +250,7 @@ class RelationshipDefinitionService:
         store: RelationshipDefinitionVersionStore,
         candidates: tuple[RelationshipPropertyCandidate, ...],
         current: RelationshipDefinitionVersion | None,
-    ) -> tuple[RelationshipDefinitionProperty, ...]:
+    ) -> _ResolvedPropertyCandidate:
         datatype_store = DataTypeStore(store.connection)
         current_by_name = (
             {} if current is None else {item.name: item for item in current.properties}
@@ -279,6 +297,7 @@ class RelationshipDefinitionService:
             tuple(selected_keys.values())
         )
         resolved: dict[tuple[UUID, int | None], DataTypeVersion] = {}
+        dependencies: list[_PropertyDependencySelection] = []
         for candidate in ordered_candidates:
             requested_key = (candidate.datatype_id, candidate.datatype_version)
             selected_key = selected_keys[requested_key]
@@ -305,6 +324,21 @@ class RelationshipDefinitionService:
                     dependency, candidate.datatype_id, dependency.version
                 )
             resolved[requested_key] = dependency
+            dependencies.append(
+                _PropertyDependencySelection(
+                    property_name=candidate.name,
+                    property_position=candidate.position,
+                    datatype_id=candidate.datatype_id,
+                    explicit=candidate.datatype_version is not None,
+                    requested_version=candidate.datatype_version,
+                    selected_version=dependency.version,
+                    current_version=(
+                        old.datatype_version
+                        if old is not None and old.datatype_id == candidate.datatype_id
+                        else None
+                    ),
+                )
+            )
         properties = tuple(
             sorted(
                 (
@@ -327,34 +361,43 @@ class RelationshipDefinitionService:
             validate_relationship_definition_version(candidate_version)
         except RelationshipDefinitionValidationError as error:
             raise _semantic(error) from error
-        return properties
+        return _ResolvedPropertyCandidate(
+            properties=properties,
+            dependencies=tuple(
+                sorted(
+                    dependencies,
+                    key=lambda item: (
+                        item.property_position,
+                        item.property_name,
+                        item.datatype_id.int,
+                    ),
+                )
+            ),
+        )
 
     @staticmethod
     def _candidate_dependency_intents(
-        candidates: tuple[RelationshipPropertyCandidate, ...],
-        resolved: tuple[RelationshipDefinitionProperty, ...],
+        resolved: _ResolvedPropertyCandidate,
         current: RelationshipDefinitionVersion | None,
     ) -> tuple[RowLockIntent, ...]:
-        requested_by_name = {item.name: item for item in candidates}
         current_by_name = (
             {} if current is None else {item.name: item for item in current.properties}
         )
+        resolved_by_name = {item.name: item for item in resolved.properties}
         intents: list[RowLockIntent] = []
-        for item in resolved:
-            old = current_by_name.get(item.name)
+        for selection in resolved.dependencies:
+            item = resolved_by_name[selection.property_name]
+            old = current_by_name.get(selection.property_name)
             if old == item:
                 continue
-            same_target = (
-                old is not None
-                and old.datatype_id == item.datatype_id
-                and old.datatype_version == item.datatype_version
-            )
-            explicit = requested_by_name[item.name].datatype_version is not None
+            same_target = selection.current_version == item.datatype_version
             intents.extend(
                 (
                     _datatype_header_intent(
                         item.datatype_id,
-                        RowLockMode.KS if same_target or explicit else RowLockMode.S,
+                        RowLockMode.KS
+                        if same_target or selection.explicit
+                        else RowLockMode.S,
                     ),
                     _datatype_version_intent(
                         item.datatype_id,
@@ -364,6 +407,41 @@ class RelationshipDefinitionService:
                 )
             )
         return tuple(intents)
+
+    @staticmethod
+    def _missing_dependency_failure(
+        missing: tuple[RowLockKey, ...],
+        resolved: _ResolvedPropertyCandidate,
+    ) -> ApplicationFailure | None:
+        missing_headers = {
+            key.resource_id
+            for key in missing
+            if key.row_class is RowLockClass.DATA_TYPE_HEADER
+        }
+        missing_versions = {
+            (key.resource_id, key.version)
+            for key in missing
+            if key.row_class is RowLockClass.DATA_TYPE_VERSION
+        }
+        for selection in resolved.dependencies:
+            header_missing = selection.datatype_id in missing_headers
+            version_missing = (
+                selection.datatype_id,
+                selection.selected_version,
+            ) in missing_versions
+            if not header_missing and not version_missing:
+                continue
+            if selection.explicit:
+                requested_version = selection.requested_version
+                if requested_version is None:
+                    raise RuntimeError("explicit DataTypeVersion selector is missing")
+                return _referenced(
+                    "datatype_version", selection.datatype_id, requested_version
+                )
+            if header_missing:
+                return _referenced("datatype", selection.datatype_id)
+            return _internal("A persisted DataType default target is missing.")
+        return None
 
     @staticmethod
     def _clone_dependency_intents(
@@ -528,7 +606,7 @@ class RelationshipDefinitionService:
                 )
             }
             version_store = RelationshipDefinitionVersionStore(uow.connection)
-            resolved_properties = await self._resolve_properties(
+            resolved_candidate = await self._resolve_properties(
                 version_store, properties, None
             )
             version = RelationshipDefinitionVersion(
@@ -536,25 +614,34 @@ class RelationshipDefinitionService:
                 1,
                 1,
                 VersionStatus.DRAFT,
-                resolved_properties,
+                resolved_candidate.properties,
             )
             plan, missing = await _acquire(
                 uow.connection,
                 (
                     *(_template_intent(item) for item in endpoint_ids),
-                    *self._candidate_dependency_intents(
-                        properties, resolved_properties, None
-                    ),
+                    *self._candidate_dependency_intents(resolved_candidate, None),
                 ),
                 AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
             )
-            for key in missing:
-                if key.row_class is RowLockClass.OBJECT_TEMPLATE_HEADER:
-                    raise _referenced_template(key.resource_id)
-                raise _referenced("datatype_version", key.resource_id, key.version)
+            missing_templates = sorted(
+                (
+                    key.resource_id
+                    for key in missing
+                    if key.row_class is RowLockClass.OBJECT_TEMPLATE_HEADER
+                ),
+                key=lambda value: value.int,
+            )
+            if missing_templates:
+                raise _referenced_template(missing_templates[0])
+            dependency_failure = self._missing_dependency_failure(
+                missing, resolved_candidate
+            )
+            if dependency_failure is not None:
+                raise dependency_failure
             store = RelationshipDefinitionStore(uow.connection)
             await self._certify(store, candidate, create_operands=True)
-            resolved_properties = await self._resolve_properties(
+            resolved_candidate = await self._resolve_properties(
                 version_store, properties, None
             )
             version = RelationshipDefinitionVersion(
@@ -562,14 +649,12 @@ class RelationshipDefinitionService:
                 1,
                 1,
                 VersionStatus.DRAFT,
-                resolved_properties,
+                resolved_candidate.properties,
             )
             plan.require_same_plan(
                 (
                     *(_template_intent(item) for item in endpoint_ids),
-                    *self._candidate_dependency_intents(
-                        properties, resolved_properties, None
-                    ),
+                    *self._candidate_dependency_intents(resolved_candidate, None),
                 ),
                 gate=AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
             )
@@ -752,22 +837,26 @@ class RelationshipDefinitionService:
                 version,
                 current.revision + 1,
                 VersionStatus.DRAFT,
-                resolved,
+                resolved.properties,
             )
             intents = (
-                *self._candidate_dependency_intents(properties, resolved, current),
+                *self._candidate_dependency_intents(resolved, current),
                 _definition_intent(definition_id, RowLockMode.KS),
                 _definition_version_intent(definition_id, version, RowLockMode.NKU),
             )
             plan, missing = await _acquire(uow.connection, intents)
-            if missing:
-                key = missing[0]
-                if key.row_class in {
+            if any(
+                key.row_class
+                in {
                     RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
                     RowLockClass.RELATIONSHIP_DEFINITION_VERSION,
-                }:
-                    raise _version_not_found(definition_id, version)
-                raise _referenced("datatype_version", key.resource_id, key.version)
+                }
+                for key in missing
+            ):
+                raise _version_not_found(definition_id, version)
+            dependency_failure = self._missing_dependency_failure(missing, resolved)
+            if dependency_failure is not None:
+                raise dependency_failure
             current = await store.get_version(definition_id, version)
             if current is None:
                 raise _version_not_found(definition_id, version)
@@ -778,11 +867,11 @@ class RelationshipDefinitionService:
                 version,
                 current.revision + 1,
                 VersionStatus.DRAFT,
-                resolved,
+                resolved.properties,
             )
             plan.require_same_plan(
                 (
-                    *self._candidate_dependency_intents(properties, resolved, current),
+                    *self._candidate_dependency_intents(resolved, current),
                     _definition_intent(definition_id, RowLockMode.KS),
                     _definition_version_intent(definition_id, version, RowLockMode.NKU),
                 )

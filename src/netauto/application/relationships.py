@@ -524,11 +524,11 @@ class RelationshipService:
                         raise _fact_conflict(surviving_conflicts[0])
 
                 relationship = Relationship(
-                    relationship_id,
-                    definition.id,
-                    resolutions,
-                    selected_version,
-                    canonical_properties,
+                    id=relationship_id,
+                    relationship_definition_id=definition.id,
+                    resolutions=resolutions,
+                    relationship_definition_version=selected_version,
+                    properties=canonical_properties,
                 )
                 plan.begin_dml()
                 try:

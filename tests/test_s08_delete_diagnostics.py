@@ -2,12 +2,14 @@
 
 from collections.abc import AsyncIterator
 from typing import cast
+from uuid import UUID
 
 import httpx
 import pytest
 from sqlalchemy import Engine
 
 from netauto.entrypoints.http import build_app
+from netauto.persistence.datatypes import DataTypeReferenceCounts, DataTypeStore
 from netauto.settings import Settings
 
 
@@ -53,6 +55,32 @@ async def _template(
         )
         assert published.status_code == 200, published.text
     return template_id
+
+
+async def _published_datatype(client: httpx.AsyncClient, name: str) -> str:
+    created = await client.post(
+        "/api/v1/core/datatypes",
+        json={
+            "namespace": "s08_delete",
+            "name": name,
+            "base_type": "core.integer",
+        },
+    )
+    assert created.status_code == 201, created.text
+    datatype_id = cast(str, created.json()["datatype"]["id"])
+    published = await client.post(
+        f"/api/v1/core/datatypes/{datatype_id}/versions/1/publish",
+        params={"expected_revision": 1},
+    )
+    assert published.status_code == 200, published.text
+    return datatype_id
+
+
+async def _bypass_datatype_delete_precheck(
+    store: DataTypeStore, datatype_id: UUID
+) -> DataTypeReferenceCounts:
+    del store, datatype_id
+    return DataTypeReferenceCounts(0, 0)
 
 
 @pytest.mark.api
@@ -170,3 +198,154 @@ async def test_cross_domain_delete_blocker_matrix_and_aggregate_integrity(
     assert (
         await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
     ).status_code == 204
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_datatype_delete_reports_rdv_only_and_mixed_property_blockers(
+    s08_client: httpx.AsyncClient,
+) -> None:
+    client = s08_client
+    datatype_id = await _published_datatype(client, "rdv_referenced_value")
+    first_template_id = await _template(client, "rdv_first")
+    second_template_id = await _template(client, "rdv_second")
+    definition = await client.post(
+        "/api/v1/core/relationship-definitions",
+        json={
+            "symmetric": False,
+            "perspectives": [
+                {"template_id": first_template_id, "name": "links_to"},
+                {"template_id": second_template_id, "name": "linked_from"},
+            ],
+            "properties": [
+                {
+                    "name": "first_value",
+                    "position": 1,
+                    "datatype_id": datatype_id,
+                    "datatype_version": 1,
+                    "value_mode": "SCALAR",
+                },
+                {
+                    "name": "second_value",
+                    "position": 2,
+                    "datatype_id": datatype_id,
+                    "datatype_version": 1,
+                    "value_mode": "LIST",
+                },
+            ],
+        },
+    )
+    assert definition.status_code == 201, definition.text
+
+    rdv_only = await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
+    assert rdv_only.status_code == 409
+    assert rdv_only.json()["details"]["blockers"] == [
+        {"type": "relationship_definition_property", "count": 2}
+    ]
+
+    await _template(
+        client,
+        "mixed_property_consumer",
+        properties=[
+            {
+                "name": "value",
+                "position": 1,
+                "datatype_id": datatype_id,
+                "datatype_version": 1,
+                "value_mode": "SCALAR",
+                "required": False,
+            }
+        ],
+    )
+    mixed = await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
+    assert mixed.status_code == 409
+    assert mixed.json()["details"]["blockers"] == [
+        {"type": "object_template_property", "count": 1},
+        {"type": "relationship_definition_property", "count": 2},
+    ]
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_datatype_delete_final_ot_property_fk_is_bounded(
+    s08_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = s08_client
+    datatype_id = await _published_datatype(client, "ot_final_fk_value")
+    await _template(
+        client,
+        "ot_final_fk_consumer",
+        properties=[
+            {
+                "name": "value",
+                "position": 1,
+                "datatype_id": datatype_id,
+                "datatype_version": 1,
+                "value_mode": "SCALAR",
+                "required": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        DataTypeStore,
+        "external_reference_counts",
+        _bypass_datatype_delete_precheck,
+    )
+
+    blocked = await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["details"]["blockers"] == [
+        {"type": "object_template_property", "count": 1}
+    ]
+    assert "fk_object_template_properties_datatype_version" not in blocked.text
+    current = await client.get(f"/api/v1/core/datatypes/{datatype_id}")
+    assert current.status_code == 200
+    assert current.json()["default_version"] == 1
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_datatype_delete_final_rdv_property_fk_is_bounded(
+    s08_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = s08_client
+    datatype_id = await _published_datatype(client, "rdv_final_fk_value")
+    first_template_id = await _template(client, "rdv_final_fk_first")
+    second_template_id = await _template(client, "rdv_final_fk_second")
+    definition = await client.post(
+        "/api/v1/core/relationship-definitions",
+        json={
+            "symmetric": False,
+            "perspectives": [
+                {"template_id": first_template_id, "name": "depends_on"},
+                {"template_id": second_template_id, "name": "supports"},
+            ],
+            "properties": [
+                {
+                    "name": "value",
+                    "position": 1,
+                    "datatype_id": datatype_id,
+                    "datatype_version": 1,
+                    "value_mode": "SCALAR",
+                }
+            ],
+        },
+    )
+    assert definition.status_code == 201, definition.text
+    monkeypatch.setattr(
+        DataTypeStore,
+        "external_reference_counts",
+        _bypass_datatype_delete_precheck,
+    )
+
+    blocked = await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["details"]["blockers"] == [
+        {"type": "relationship_definition_property", "count": 1}
+    ]
+    assert "fk_relationship_definition_properties_datatype_version" not in blocked.text
+    current = await client.get(f"/api/v1/core/datatypes/{datatype_id}")
+    assert current.status_code == 200
+    assert current.json()["default_version"] == 1

@@ -1,11 +1,13 @@
 """Deterministic PostgreSQL evidence for the M2-S01 RDV lock cut."""
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass
 from uuid import UUID
 
 import pytest
 from sqlalchemy import Engine, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 import netauto.application.objecttemplates as object_template_application
 import netauto.application.relationshipdefinitions as definition_application
@@ -30,11 +32,19 @@ from netauto.domain.relationships import (
     RelationshipPropertyCandidate,
 )
 from netauto.failures import ApplicationFailure, FailureClass
-from netauto.persistence.locking import RowLockClass, RowLockMode
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockMode,
+)
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     relationship_definition_properties,
     relationship_definition_versions,
+    relationship_definitions,
+    relationship_resolutions,
     relationships,
 )
 from netauto.persistence.relationships import (
@@ -47,6 +57,7 @@ from tests.support.semantic_concurrency import (
     PhaseCut,
     SemanticActors,
     blocked_race,
+    capture,
     install_lock_plan_cut,
     progress_race,
     semantic_actors,
@@ -105,6 +116,78 @@ def _relationship_insert_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 
     monkeypatch.setattr(RuntimeRelationshipStore, "insert", intercepted)
     return cut
+
+
+def _pre_acquisition_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+    """Pause T1 after semantic discovery and before complete plan acquisition."""
+    cut = PhaseCut()
+    original = definition_application.prepare_lock_plan
+
+    async def intercepted(
+        connection: AsyncConnection,
+        *,
+        intents: Iterable[RowLockIntent] = (),
+        gate: AdvisoryGate | None = None,
+    ) -> LockPlan:
+        task = asyncio.current_task()
+        if task is not None and task.get_name() == "T1" and not cut.reached.is_set():
+            cut.reached.set()
+            await cut.release.wait()
+        return await original(connection, intents=intents, gate=gate)
+
+    monkeypatch.setattr(definition_application, "prepare_lock_plan", intercepted)
+    return cut
+
+
+async def _unreferenced_property_operand(
+    actors: SemanticActors, prefix: str
+) -> tuple[CreateDataTypeResult, UUID, UUID]:
+    factory = UnitOfWorkFactory(actors.t1_engine)
+    datatypes = DataTypeService(factory)
+    datatype = await datatypes.create(
+        "m2_s01_concurrency", f"{prefix}_value", "core.integer", None, {}
+    )
+    await datatypes.publish(datatype.datatype.id, 1, 1)
+    templates = ObjectTemplateService(factory)
+    first = await templates.create(
+        "m2_s01_concurrency", f"{prefix}_first", False, None, None, None, (), ()
+    )
+    second = await templates.create(
+        "m2_s01_concurrency", f"{prefix}_second", False, None, None, None, (), ()
+    )
+    return datatype, first.object_template.id, second.object_template.id
+
+
+async def _relationship_model_counts(
+    actors: SemanticActors,
+) -> tuple[int, int, int, int]:
+    async with actors.t1_engine.connect() as connection:
+        return (
+            int(
+                await connection.scalar(
+                    select(func.count()).select_from(relationship_definitions)
+                )
+                or 0
+            ),
+            int(
+                await connection.scalar(
+                    select(func.count()).select_from(relationship_resolutions)
+                )
+                or 0
+            ),
+            int(
+                await connection.scalar(
+                    select(func.count()).select_from(relationship_definition_versions)
+                )
+                or 0
+            ),
+            int(
+                await connection.scalar(
+                    select(func.count()).select_from(relationship_definition_properties)
+                )
+                or 0
+            ),
+        )
 
 
 async def _seed(
@@ -446,6 +529,200 @@ async def test_row_24_implicit_dtv_binding_is_stable_through_commit(
         assert created.revision == 2
         assert isinstance(selected, DataType)
         assert selected.default_version == 2
+        assert len(actors.tracker.transactions["T1"]) == 2
+        assert len(set(actors.tracker.transactions["T1"])) == 2
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_row_24_explicit_create_delete_first_preserves_exact_selector(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(
+        test_database_url, "ROW-24-RF03-EXPLICIT-CREATE"
+    ) as actors:
+        (
+            datatype,
+            first_template_id,
+            second_template_id,
+        ) = await _unreferenced_property_operand(actors, "rf03_create")
+        before = await _relationship_model_counts(actors)
+        service = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        deleter = DataTypeService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        cut = _pre_acquisition_cut(monkeypatch)
+        operation = asyncio.create_task(
+            capture(
+                lambda: service.create_non_symmetric(
+                    (
+                        RelationshipPerspective(first_template_id, "links_to"),
+                        RelationshipPerspective(second_template_id, "linked_from"),
+                    ),
+                    (
+                        RelationshipPropertyCandidate(
+                            "value",
+                            1,
+                            datatype.datatype.id,
+                            1,
+                            ValueMode.SCALAR,
+                        ),
+                    ),
+                )
+            ),
+            name="T1",
+        )
+        await cut.reached.wait()
+        try:
+            await deleter.delete_lineage(datatype.datatype.id)
+        finally:
+            cut.release.set()
+        async with asyncio.timeout(5):
+            outcome = await operation
+
+        failure = _failure(outcome)
+        assert failure.code == "referenced_resource_not_found"
+        assert failure.details == {
+            "resource_type": "datatype_version",
+            "id": str(datatype.datatype.id),
+            "version": 1,
+        }
+        assert await _relationship_model_counts(actors) == before
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_ref_09_explicit_revise_delete_first_preserves_exact_selector(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(
+        test_database_url, "REF-09-RF03-EXPLICIT-REVISE"
+    ) as actors:
+        seed = await _seed(actors, "rf03_revise", publish_definition=False)
+        factory = UnitOfWorkFactory(actors.t1_engine)
+        datatypes = DataTypeService(factory)
+        target = await datatypes.create(
+            "m2_s01_concurrency", "rf03_revise_target", "core.integer", None, {}
+        )
+        await datatypes.publish(target.datatype.id, 1, 1)
+        service = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        deleter = DataTypeService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        cut = _pre_acquisition_cut(monkeypatch)
+        operation = asyncio.create_task(
+            capture(
+                lambda: service.revise(
+                    seed.definition.id,
+                    1,
+                    1,
+                    (
+                        RelationshipPropertyCandidate(
+                            "replacement",
+                            1,
+                            target.datatype.id,
+                            1,
+                            ValueMode.SCALAR,
+                        ),
+                    ),
+                )
+            ),
+            name="T1",
+        )
+        await cut.reached.wait()
+        try:
+            await deleter.delete_lineage(target.datatype.id)
+        finally:
+            cut.release.set()
+        async with asyncio.timeout(5):
+            outcome = await operation
+
+        failure = _failure(outcome)
+        assert failure.code == "referenced_resource_not_found"
+        assert failure.details == {
+            "resource_type": "datatype_version",
+            "id": str(target.datatype.id),
+            "version": 1,
+        }
+        current = await RelationshipDefinitionService(factory).get_version(
+            seed.definition.id, 1
+        )
+        assert current.revision == 1
+        assert len(current.properties) == 1
+        assert current.properties[0].name == "value"
+        assert current.properties[0].datatype_id == seed.datatype.datatype.id
+        assert current.properties[0].datatype_version == 1
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_row_24_implicit_create_delete_first_identifies_lineage(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(
+        test_database_url, "ROW-24-RF03-IMPLICIT-CREATE"
+    ) as actors:
+        (
+            datatype,
+            first_template_id,
+            second_template_id,
+        ) = await _unreferenced_property_operand(actors, "rf03_implicit")
+        before = await _relationship_model_counts(actors)
+        service = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        deleter = DataTypeService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        cut = _pre_acquisition_cut(monkeypatch)
+        operation = asyncio.create_task(
+            capture(
+                lambda: service.create_non_symmetric(
+                    (
+                        RelationshipPerspective(first_template_id, "connects_to"),
+                        RelationshipPerspective(second_template_id, "connected_from"),
+                    ),
+                    (
+                        RelationshipPropertyCandidate(
+                            "value",
+                            1,
+                            datatype.datatype.id,
+                            None,
+                            ValueMode.SCALAR,
+                        ),
+                    ),
+                )
+            ),
+            name="T1",
+        )
+        await cut.reached.wait()
+        try:
+            await deleter.delete_lineage(datatype.datatype.id)
+        finally:
+            cut.release.set()
+        async with asyncio.timeout(5):
+            outcome = await operation
+
+        failure = _failure(outcome)
+        assert failure.code == "referenced_resource_not_found"
+        assert failure.details == {
+            "resource_type": "datatype",
+            "id": str(datatype.datatype.id),
+        }
+        assert await _relationship_model_counts(actors) == before
 
 
 @pytest.mark.postgresql

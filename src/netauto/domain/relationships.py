@@ -113,7 +113,7 @@ class Relationship:
     id: UUID
     relationship_definition_id: UUID
     resolutions: tuple[RuntimeRelationshipResolution, ...]
-    relationship_definition_version: int = 1
+    relationship_definition_version: int
     properties: dict[str, JsonValue] = field(default_factory=_empty_properties)
 
 
@@ -131,7 +131,7 @@ class ObjectRelationshipView:
     object_id: UUID
     destination_object_id: UUID
     name: str
-    relationship_definition_version: int = 1
+    relationship_definition_version: int
     properties: dict[str, JsonValue] = field(default_factory=_empty_properties)
 
 
@@ -570,6 +570,13 @@ def validate_relationship(
     template_by_object_id: Mapping[UUID, UUID],
 ) -> None:
     """Validate that persisted runtime rows are exactly one factual closure."""
+    if (
+        isinstance(value.relationship_definition_version, bool)
+        or value.relationship_definition_version <= 0
+    ):
+        raise RelationshipValidationError(
+            "relationship_definition_version", "positive_required"
+        )
     if value.relationship_definition_id != definition.id or not value.resolutions:
         raise RelationshipValidationError("relationship", "incomplete_closure")
     if any(

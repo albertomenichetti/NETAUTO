@@ -1,10 +1,14 @@
 """Pure factual Relationship closure and semantic-view coverage."""
 
+from dataclasses import replace
+from inspect import Parameter, signature
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 
 from netauto.domain.relationships import (
+    ObjectRelationshipView,
     Relationship,
     RelationshipPerspective,
     RelationshipValidationError,
@@ -46,7 +50,12 @@ def test_non_symmetric_closure_preserves_selected_factual_orientation() -> None:
         parent_by_id={root: None, child: root},
         relationship_id=relationship_id,
     )
-    value = Relationship(relationship_id, definition.id, resolutions)
+    value = Relationship(
+        relationship_id,
+        definition.id,
+        resolutions,
+        relationship_definition_version=1,
+    )
     assert len(resolutions) == 2
     assert (selected.id, first, second) in _keys(value)
     assert (selected.id, second, first) not in _keys(value)
@@ -72,7 +81,12 @@ def test_non_symmetric_same_template_self_loop_keeps_two_names() -> None:
         parent_by_id={template_id: None},
         relationship_id=relationship_id,
     )
-    value = Relationship(relationship_id, definition.id, resolutions)
+    value = Relationship(
+        relationship_id,
+        definition.id,
+        resolutions,
+        relationship_definition_version=1,
+    )
     assert len(resolutions) == 2
     assert {item.name for item in relationship_views(value, definition)} == {
         "parent_of",
@@ -136,7 +150,12 @@ def test_symmetric_disjoint_and_inheritance_overlap_closure_shapes() -> None:
         to_template_id=child,
         parent_by_id={root: None, child: root},
     )
-    value = Relationship(overlap_rows[0].relationship_id, overlap.id, overlap_rows)
+    value = Relationship(
+        overlap_rows[0].relationship_id,
+        overlap.id,
+        overlap_rows,
+        relationship_definition_version=1,
+    )
     assert len(overlap_rows) == 4
     assert len(relationship_views(value, overlap)) == 2
 
@@ -181,7 +200,12 @@ def test_persisted_incomplete_closure_is_rejected() -> None:
         to_template_id=template_id,
         parent_by_id={template_id: None},
     )
-    malformed = Relationship(rows[0].relationship_id, definition.id, rows[:1])
+    malformed = Relationship(
+        rows[0].relationship_id,
+        definition.id,
+        rows[:1],
+        relationship_definition_version=1,
+    )
     with pytest.raises(RelationshipValidationError) as caught:
         validate_relationship(
             malformed,
@@ -190,3 +214,57 @@ def test_persisted_incomplete_closure_is_rejected() -> None:
             template_by_object_id={first: template_id, second: template_id},
         )
     assert caught.value.rule == "incomplete_closure"
+
+
+def test_factual_relationship_constructors_require_an_exact_version_pin() -> None:
+    relationship_parameter = signature(Relationship).parameters[
+        "relationship_definition_version"
+    ]
+    view_parameter = signature(ObjectRelationshipView).parameters[
+        "relationship_definition_version"
+    ]
+    assert relationship_parameter.default is Parameter.empty
+    assert view_parameter.default is Parameter.empty
+
+    relationship_constructor = cast(Any, Relationship)
+    with pytest.raises(TypeError):
+        relationship_constructor(uuid4(), uuid4(), ())
+    view_constructor = cast(Any, ObjectRelationshipView)
+    with pytest.raises(TypeError):
+        view_constructor(uuid4(), uuid4(), uuid4(), uuid4(), "related")
+
+
+@pytest.mark.parametrize("invalid_pin", [True, 0, -1])
+def test_factual_relationship_rejects_non_positive_or_boolean_exact_pin(
+    invalid_pin: int,
+) -> None:
+    template_id = uuid4()
+    definition = new_symmetric_definition((template_id, template_id), "peers")
+    first = uuid4()
+    second = uuid4()
+    rows = derive_runtime_closure(
+        definition,
+        selected_resolution_id=definition.resolutions[0].id,
+        from_object_id=first,
+        from_template_id=template_id,
+        to_object_id=second,
+        to_template_id=template_id,
+        parent_by_id={template_id: None},
+    )
+    valid = Relationship(
+        rows[0].relationship_id,
+        definition.id,
+        rows,
+        relationship_definition_version=1,
+    )
+    invalid = replace(valid, relationship_definition_version=invalid_pin)
+
+    with pytest.raises(RelationshipValidationError) as caught:
+        validate_relationship(
+            invalid,
+            definition,
+            parent_by_id={template_id: None},
+            template_by_object_id={first: template_id, second: template_id},
+        )
+    assert caught.value.path == "relationship_definition_version"
+    assert caught.value.rule == "positive_required"
