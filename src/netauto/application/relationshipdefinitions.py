@@ -29,6 +29,7 @@ from netauto.persistence.locking import (
     RowLockKey,
     RowLockMode,
     acquire_lock_plan,
+    prepare_lock_plan,
 )
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.relationships import (
@@ -112,15 +113,10 @@ def _template_intent(template_id: UUID) -> RowLockIntent:
 
 async def _acquire(
     connection: Any,
-    template_store: ObjectTemplateStore,
     intents: tuple[RowLockIntent, ...],
     gate: AdvisoryGate,
 ) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
-    plan = LockPlan(
-        intents=intents,
-        gate=gate,
-        object_template_parent_by_id=await template_store.lineage_parents(),
-    )
+    plan = await prepare_lock_plan(connection, intents=intents, gate=gate)
     return plan, await acquire_lock_plan(connection, plan)
 
 
@@ -221,7 +217,6 @@ class RelationshipDefinitionService:
         self, candidate: RelationshipDefinition
     ) -> RelationshipDefinition:
         async with self._uow_factory() as uow:
-            template_store = ObjectTemplateStore(uow.connection)
             endpoint_ids = {
                 template_id
                 for resolution in candidate.resolutions
@@ -232,7 +227,6 @@ class RelationshipDefinitionService:
             }
             plan, missing = await _acquire(
                 uow.connection,
-                template_store,
                 tuple(_template_intent(item) for item in endpoint_ids),
                 AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
             )
@@ -271,7 +265,6 @@ class RelationshipDefinitionService:
             store = RelationshipDefinitionStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                ObjectTemplateStore(uow.connection),
                 (_definition_intent(definition_id, RowLockMode.KS),),
                 AdvisoryGate.RELATIONSHIP_DEFINITION_CONFLICT_GATE,
             )
@@ -308,7 +301,6 @@ class RelationshipDefinitionService:
             store = RelationshipDefinitionStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                ObjectTemplateStore(uow.connection),
                 (_definition_intent(definition_id, RowLockMode.U),),
                 AdvisoryGate.MODEL_ROOT_DELETE_GATE,
             )

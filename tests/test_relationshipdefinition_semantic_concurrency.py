@@ -102,7 +102,7 @@ def _definition_owner_cut(
         monkeypatch,
         relationshipdefinition_application,
         RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
-        RowLockMode.U if delete else RowLockMode.NKU,
+        RowLockMode.U if delete else RowLockMode.KS,
     )
 
 

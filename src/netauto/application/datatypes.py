@@ -32,6 +32,7 @@ from netauto.persistence.locking import (
     RowLockKey,
     RowLockMode,
     acquire_lock_plan,
+    prepare_lock_plan,
 )
 from netauto.persistence.uow import UnitOfWorkFactory
 
@@ -98,7 +99,7 @@ async def _acquire(
     *intents: RowLockIntent,
     gate: AdvisoryGate | None = None,
 ) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
-    plan = LockPlan(intents=intents, gate=gate)
+    plan = await prepare_lock_plan(connection, intents=intents, gate=gate)
     missing = await acquire_lock_plan(connection, plan)
     return plan, missing
 

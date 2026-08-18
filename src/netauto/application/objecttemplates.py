@@ -39,6 +39,7 @@ from netauto.persistence.locking import (
     RowLockKey,
     RowLockMode,
     acquire_lock_plan,
+    prepare_lock_plan,
     run_semantic_uow_attempts,
 )
 from netauto.persistence.objecttemplates import (
@@ -157,16 +158,11 @@ def _dt_version(datatype_id: UUID, version: int, mode: RowLockMode) -> RowLockIn
 
 async def _acquire(
     connection: Any,
-    store: ObjectTemplateStore,
     intents: tuple[RowLockIntent, ...],
     *,
     gate: AdvisoryGate | None = None,
 ) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
-    plan = LockPlan(
-        intents=intents,
-        gate=gate,
-        object_template_parent_by_id=await store.lineage_parents(),
-    )
+    plan = await prepare_lock_plan(connection, intents=intents, gate=gate)
     missing = await acquire_lock_plan(connection, plan)
     return plan, missing
 
@@ -732,7 +728,7 @@ class ObjectTemplateService:
                     property_candidates=properties,
                     current=None,
                 )
-                plan, _ = await _acquire(uow.connection, store, intents)
+                plan, _ = await _acquire(uow.connection, intents)
 
                 resolved_parent = await self._resolve_parent(
                     store, lineage, parent_version, None
@@ -805,7 +801,7 @@ class ObjectTemplateService:
                 _ot_header(template_id, RowLockMode.NKU),
                 _ot_version(template_id, source_version, RowLockMode.KS),
             )
-            plan, missing = await _acquire(uow.connection, store, intents)
+            plan, missing = await _acquire(uow.connection, intents)
             if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
             source = await store.get_version(template_id, source_version)
@@ -895,7 +891,7 @@ class ObjectTemplateService:
                 _ot_header(template_id, RowLockMode.KS),
                 _ot_version(template_id, version, RowLockMode.NKU),
             )
-            plan, missing = await _acquire(uow.connection, store, intents)
+            plan, missing = await _acquire(uow.connection, intents)
             if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
             if (
@@ -971,7 +967,7 @@ class ObjectTemplateService:
                 raise _not_found(template_id, version)
             self._require_draft(current, expected_revision)
             plan, missing = await _acquire(
-                uow.connection, store, self._publish_intents(current)
+                uow.connection, self._publish_intents(current)
             )
             if RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id) in missing:
                 raise _not_found(template_id)
@@ -1030,7 +1026,6 @@ class ObjectTemplateService:
             store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                store,
                 (
                     _ot_header(template_id, RowLockMode.NKU),
                     _ot_version(template_id, version, RowLockMode.S),
@@ -1052,7 +1047,6 @@ class ObjectTemplateService:
             store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                store,
                 (_ot_header(template_id, RowLockMode.NKU),),
             )
             if missing:
@@ -1067,7 +1061,6 @@ class ObjectTemplateService:
             store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                store,
                 (
                     _ot_header(template_id, RowLockMode.S),
                     _ot_version(template_id, version, RowLockMode.NKU),
@@ -1117,7 +1110,6 @@ class ObjectTemplateService:
             store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                store,
                 (
                     _ot_header(template_id, RowLockMode.NKU),
                     _ot_version(template_id, version, RowLockMode.U),
@@ -1143,7 +1135,6 @@ class ObjectTemplateService:
             store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                store,
                 (_ot_header(template_id, RowLockMode.U),),
                 gate=AdvisoryGate.MODEL_ROOT_DELETE_GATE,
             )
@@ -1186,7 +1177,6 @@ class ObjectTemplateService:
             store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                store,
                 (_ot_header(template_id, RowLockMode.NKU),),
             )
             if missing:

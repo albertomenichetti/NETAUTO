@@ -1,12 +1,14 @@
 """Deterministic real-PostgreSQL runtime Relationship scenarios."""
 
 import asyncio
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 import netauto.application.relationships as relationship_application
 from netauto.application.objects import ObjectService
@@ -28,7 +30,14 @@ from netauto.domain.relationships import (
     derive_runtime_closure,
 )
 from netauto.failures import ApplicationFailure, FailureClass
-from netauto.persistence.locking import RowLockClass, RowLockMode
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+)
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     relationships,
@@ -75,13 +84,6 @@ class RelationshipSeed:
             for item in self.definition.resolutions
             if item.from_template_id == self.second_object.template_id
         )
-
-
-@dataclass(slots=True)
-class ExactReadCut:
-    reached: asyncio.Event = field(default_factory=asyncio.Event)
-    release: asyncio.Event = field(default_factory=asyncio.Event)
-    calls: int = 0
 
 
 def _relationship_services(
@@ -571,27 +573,32 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
         seed = await _seed(actors, "arb07b")
         first, second = _relationship_services(actors)
         insert_cut, candidates = _insert_cut(monkeypatch)
-        exact_cut = ExactReadCut()
-        original_exact = RuntimeRelationshipStore.exact_relationship_id
+        owner_observed_cut = PhaseCut()
+        original_prepare = relationship_application.prepare_lock_plan
 
-        async def intercepted_exact(
-            store: RuntimeRelationshipStore,
-            resolution_id: UUID,
-            from_object_id: UUID,
-            to_object_id: UUID,
-        ) -> UUID | None:
+        async def intercepted_prepare(
+            connection: AsyncConnection,
+            *,
+            intents: Iterable[RowLockIntent] = (),
+            gate: AdvisoryGate | None = None,
+        ) -> LockPlan:
+            requested = tuple(intents)
             task = asyncio.current_task()
-            if task is not None and task.get_name() == "T2":
-                exact_cut.calls += 1
-                if exact_cut.calls == 2:
-                    exact_cut.reached.set()
-                    await exact_cut.release.wait()
-            return await original_exact(
-                store, resolution_id, from_object_id, to_object_id
-            )
+            if (
+                task is not None
+                and task.get_name() == "T2"
+                and any(
+                    intent.key.row_class is RowLockClass.RELATIONSHIP
+                    and intent.mode is RowLockMode.KS
+                    for intent in requested
+                )
+            ):
+                owner_observed_cut.reached.set()
+                await owner_observed_cut.release.wait()
+            return await original_prepare(connection, intents=requested, gate=gate)
 
         monkeypatch.setattr(
-            RuntimeRelationshipStore, "exact_relationship_id", intercepted_exact
+            relationship_application, "prepare_lock_plan", intercepted_prepare
         )
         actors.tracker.reset()
         winner_task = asyncio.create_task(
@@ -624,9 +631,9 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
         insert_cut.release.set()
         winner = await winner_task
         assert isinstance(winner, RelationshipCreateResult)
-        await exact_cut.reached.wait()
+        await owner_observed_cut.reached.wait()
         await _reader(actors).delete(winner.relationship.id)
-        exact_cut.release.set()
+        owner_observed_cut.release.set()
         loser = await loser_task
         assert isinstance(loser, RelationshipCreateResult)
         assert loser.created is True
@@ -639,6 +646,245 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
         async with actors.t1_engine.connect() as connection:
             current_ids = set(await connection.scalars(select(relationships.c.id)))
         assert current_ids == {loser.relationship.id}
+        t2_transactions = actors.tracker.transactions["T2"]
+        assert len(t2_transactions) >= 3
+        assert len({identity[1] for identity in t2_transactions}) == len(
+            t2_transactions
+        )
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_arb_07c_delete_blocks_after_collision_owner_lifetime_lock(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ARB-07C-REL") as actors:
+        seed = await _seed(actors, "arb07c")
+        first, second = _relationship_services(actors)
+        insert_cut, _ = _insert_cut(monkeypatch)
+        owner_locked_cut = PhaseCut()
+        original_acquire = relationship_application.acquire_lock_plan
+
+        async def intercepted_acquire(
+            connection: AsyncConnection, plan: LockPlan
+        ) -> tuple[RowLockKey, ...]:
+            missing = await original_acquire(connection, plan)
+            task = asyncio.current_task()
+            if (
+                task is not None
+                and task.get_name() == "T2"
+                and any(
+                    intent.key.row_class is RowLockClass.RELATIONSHIP
+                    and intent.mode is RowLockMode.KS
+                    for intent in plan.rows
+                )
+            ):
+                owner_locked_cut.reached.set()
+                await owner_locked_cut.release.wait()
+            return missing
+
+        monkeypatch.setattr(
+            relationship_application, "acquire_lock_plan", intercepted_acquire
+        )
+        actors.tracker.reset()
+        winner_task = asyncio.create_task(
+            capture(
+                lambda: first.create(
+                    seed.first_resolution_id,
+                    seed.first_object.id,
+                    seed.second_object.id,
+                )
+            ),
+            name="T1",
+        )
+        await insert_cut.reached.wait()
+        loser_task = asyncio.create_task(
+            capture(
+                lambda: second.create(
+                    seed.second_resolution_id,
+                    seed.second_object.id,
+                    seed.first_object.id,
+                )
+            ),
+            name="T2",
+        )
+        await actors.tracker.ready["T2"].wait()
+        assert actors.tracker.pids["T1"] in await wait_for_blocker(
+            actors.observer,
+            actors.tracker.pids["T2"],
+            actors.tracker.pids["T1"],
+        )
+        insert_cut.release.set()
+        winner = await winner_task
+        assert isinstance(winner, RelationshipCreateResult)
+        await owner_locked_cut.reached.wait()
+
+        deleter = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T3")
+        )
+        actors.tracker.ready["T3"] = asyncio.Event()
+        delete_task = asyncio.create_task(
+            capture(lambda: deleter.delete(winner.relationship.id)), name="T3"
+        )
+        await actors.tracker.ready["T3"].wait()
+        assert actors.tracker.pids["T2"] in await wait_for_blocker(
+            actors.observer,
+            actors.tracker.pids["T3"],
+            actors.tracker.pids["T2"],
+        )
+
+        owner_locked_cut.release.set()
+        loser, deleted = await asyncio.gather(loser_task, delete_task)
+        assert isinstance(loser, RelationshipCreateResult)
+        assert loser.created is False
+        assert loser.relationship.id == winner.relationship.id
+        assert deleted is None
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_arb_07d_expanded_collision_owner_set_restarts_complete_plan(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ARB-07D-REL") as actors:
+        first_seed = await _seed(actors, "arb07d_first")
+        second_seed = await _seed(actors, "arb07d_second")
+        service = _reader(actors)
+        first = await service.create(
+            first_seed.first_resolution_id,
+            first_seed.first_object.id,
+            first_seed.second_object.id,
+        )
+        parent_by_id = {
+            first_seed.first_object.template_id: None,
+            first_seed.second_object.template_id: None,
+            second_seed.first_object.template_id: None,
+            second_seed.second_object.template_id: None,
+        }
+        collision_keys = (
+            *derive_runtime_closure(
+                first_seed.definition,
+                selected_resolution_id=first_seed.first_resolution_id,
+                from_object_id=first_seed.first_object.id,
+                from_template_id=first_seed.first_object.template_id,
+                to_object_id=first_seed.second_object.id,
+                to_template_id=first_seed.second_object.template_id,
+                parent_by_id=parent_by_id,
+            ),
+            *derive_runtime_closure(
+                second_seed.definition,
+                selected_resolution_id=second_seed.first_resolution_id,
+                from_object_id=second_seed.first_object.id,
+                from_template_id=second_seed.first_object.template_id,
+                to_object_id=second_seed.second_object.id,
+                to_template_id=second_seed.second_object.template_id,
+                parent_by_id=parent_by_id,
+            ),
+        )
+        owner_observed_cut = PhaseCut()
+        original_prepare = relationship_application.prepare_lock_plan
+        original_acquire = relationship_application.acquire_lock_plan
+        cut_used = False
+        acquired_owner_sets: list[tuple[UUID, ...]] = []
+
+        async def intercepted_prepare(
+            connection: AsyncConnection,
+            *,
+            intents: Iterable[RowLockIntent] = (),
+            gate: AdvisoryGate | None = None,
+        ) -> LockPlan:
+            nonlocal cut_used
+            requested = tuple(intents)
+            task = asyncio.current_task()
+            if (
+                not cut_used
+                and task is not None
+                and task.get_name() == "T2"
+                and requested
+                and all(
+                    intent.key.row_class is RowLockClass.RELATIONSHIP
+                    for intent in requested
+                )
+            ):
+                cut_used = True
+                owner_observed_cut.reached.set()
+                await owner_observed_cut.release.wait()
+            return await original_prepare(connection, intents=requested, gate=gate)
+
+        async def intercepted_acquire(
+            connection: AsyncConnection, plan: LockPlan
+        ) -> tuple[RowLockKey, ...]:
+            owner_ids = tuple(
+                item.key.resource_id
+                for item in plan.rows
+                if item.key.row_class is RowLockClass.RELATIONSHIP
+            )
+            if owner_ids:
+                acquired_owner_sets.append(owner_ids)
+            return await original_acquire(connection, plan)
+
+        monkeypatch.setattr(
+            relationship_application, "prepare_lock_plan", intercepted_prepare
+        )
+        monkeypatch.setattr(
+            relationship_application, "acquire_lock_plan", intercepted_acquire
+        )
+        classify_collision = cast(
+            Callable[..., Awaitable[RelationshipCreateResult]],
+            RelationshipService.__dict__["_classify_exact_view_collision"],
+        )
+        restart_error = cast(
+            type[Exception],
+            relationship_application.__dict__["_RestartRelationshipCreate"],
+        )
+
+        async def classify_once() -> RelationshipCreateResult:
+            return await classify_collision(
+                service,
+                collision_keys,
+                resolution_id=first_seed.first_resolution_id,
+                from_object_id=first_seed.first_object.id,
+                to_object_id=first_seed.second_object.id,
+            )
+
+        first_classification = asyncio.create_task(
+            classify_once(),
+            name="T2",
+        )
+        await owner_observed_cut.reached.wait()
+        second = await service.create(
+            second_seed.first_resolution_id,
+            second_seed.first_object.id,
+            second_seed.second_object.id,
+        )
+        owner_observed_cut.release.set()
+        with pytest.raises(restart_error):
+            await first_classification
+
+        converged = await classify_collision(
+            service,
+            collision_keys,
+            resolution_id=first_seed.first_resolution_id,
+            from_object_id=first_seed.first_object.id,
+            to_object_id=first_seed.second_object.id,
+        )
+        assert converged.created is False
+        assert converged.relationship.id == first.relationship.id
+        assert acquired_owner_sets == [
+            (first.relationship.id,),
+            tuple(
+                sorted(
+                    (first.relationship.id, second.relationship.id),
+                    key=lambda value: value.int,
+                )
+            ),
+        ]
 
 
 @pytest.mark.postgresql

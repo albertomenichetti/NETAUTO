@@ -1,12 +1,13 @@
 """Canonical ObjectTemplate semantic races on independent PostgreSQL sessions."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import cast
 from uuid import UUID
 
 import pytest
 from sqlalchemy import Engine
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 import netauto.application.objecttemplates as objecttemplate_application
 from netauto.application.objects import ObjectService
@@ -26,7 +27,13 @@ from netauto.domain.objecttemplates import (
     ValueMode,
 )
 from netauto.failures import ApplicationFailure
-from netauto.persistence.locking import RowLockClass, RowLockMode
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockMode,
+)
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.semantic_concurrency import (
@@ -203,6 +210,52 @@ def _reference_precheck_cut(
         return result
 
     monkeypatch.setattr(ObjectTemplateStore, "external_reference_counts", intercepted)
+    return cut, observations
+
+
+def _lineage_delete_plan_cut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[PhaseCut, list[dict[str, int]]]:
+    cut = PhaseCut()
+    observations: list[dict[str, int]] = []
+    original_prepare = objecttemplate_application.prepare_lock_plan
+    original_counts = ObjectTemplateStore.external_reference_counts
+
+    async def intercepted_prepare(
+        connection: AsyncConnection,
+        *,
+        intents: Iterable[RowLockIntent] = (),
+        gate: AdvisoryGate | None = None,
+    ) -> LockPlan:
+        requested = tuple(intents)
+        task = asyncio.current_task()
+        if (
+            task is not None
+            and task.get_name() == "T1"
+            and gate is AdvisoryGate.MODEL_ROOT_DELETE_GATE
+            and any(
+                item.key.row_class is RowLockClass.OBJECT_TEMPLATE_HEADER
+                and item.mode is RowLockMode.U
+                for item in requested
+            )
+        ):
+            cut.reached.set()
+            await cut.release.wait()
+        return await original_prepare(connection, intents=requested, gate=gate)
+
+    async def observed_counts(
+        store: ObjectTemplateStore, template_id: UUID
+    ) -> dict[str, int]:
+        result = await original_counts(store, template_id)
+        observations.append(result)
+        return result
+
+    monkeypatch.setattr(
+        objecttemplate_application, "prepare_lock_plan", intercepted_prepare
+    )
+    monkeypatch.setattr(
+        ObjectTemplateStore, "external_reference_counts", observed_counts
+    )
     return cut, observations
 
 
@@ -753,7 +806,7 @@ async def test_ref_06b_object_template_cascade_loses_to_object_restrict(
         await first.publish(template_id, 1, 1)
         second_version = await first.create_next(template_id, 1)
         assert second_version.version == 2
-        cut, precheck_counts = _reference_precheck_cut(monkeypatch)
+        cut, precheck_counts = _lineage_delete_plan_cut(monkeypatch)
         object_service = ObjectService(UnitOfWorkFactory(actors.t2_engine))
         deleted, created = await progress_race(
             cut,
@@ -764,7 +817,7 @@ async def test_ref_06b_object_template_cascade_loses_to_object_restrict(
             {
                 "child_object_template": 0,
                 "object_template_component": 0,
-                "object": 0,
+                "object": 1,
                 "relationship_resolution": 0,
             }
         ]

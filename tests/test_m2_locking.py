@@ -6,9 +6,12 @@ from typing import cast
 from uuid import UUID
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+import netauto.persistence.locking as locking
 from netauto.domain.objecttemplates import LocalComponent, LocalProperty, ValueMode
 from netauto.persistence.locking import (
     MAX_SEMANTIC_UOW_ATTEMPTS,
@@ -25,6 +28,7 @@ from netauto.persistence.locking import (
     acquire_advisory_gate,
     acquire_lock_plan,
     classify_postgresql_failure,
+    prepare_lock_plan,
     row_lock_statement,
     run_semantic_uow_attempts,
 )
@@ -115,6 +119,72 @@ def test_plan_02_coalescence_and_canonical_sorting() -> None:
         (RowLockClass.RELATIONSHIP, _uuid(1), None),
     ]
     assert plan.rows[-2].mode is RowLockMode.U
+
+
+@given(st.permutations(tuple(range(9))))
+def test_plan_02_arbitrary_input_permutations_are_canonical(
+    permutation: list[int],
+) -> None:
+    root = _uuid(20)
+    child = _uuid(10)
+    unrelated = _uuid(5)
+    intents = (
+        _intent(RowLockClass.RELATIONSHIP, 1, RowLockMode.U),
+        _intent(RowLockClass.OBJECT, 4, RowLockMode.NKU),
+        _intent(RowLockClass.DATA_TYPE_HEADER, 2, RowLockMode.S),
+        RowLockIntent(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, child, 3),
+            RowLockMode.S,
+        ),
+        RowLockIntent(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, child), RowLockMode.KS
+        ),
+        RowLockIntent(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, root), RowLockMode.KS
+        ),
+        RowLockIntent(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, root, 2), RowLockMode.KS
+        ),
+        RowLockIntent(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, unrelated), RowLockMode.S
+        ),
+        _intent(RowLockClass.OBJECT, 4, RowLockMode.U),
+    )
+    parents = {root: None, child: root, unrelated: None}
+    expected = LockPlan(intents=intents, object_template_parent_by_id=parents).rows
+    permuted = LockPlan(
+        intents=(intents[index] for index in permutation),
+        object_template_parent_by_id=parents,
+    )
+    assert permuted.rows == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("row_class", "version"),
+    [
+        (RowLockClass.DATA_TYPE_HEADER, None),
+        (RowLockClass.RELATIONSHIP_DEFINITION_HEADER, None),
+        (RowLockClass.OBJECT, None),
+        (RowLockClass.RELATIONSHIP, None),
+    ],
+)
+async def test_plan_02_non_template_plans_do_not_load_ancestry(
+    monkeypatch: pytest.MonkeyPatch,
+    row_class: RowLockClass,
+    version: int | None,
+) -> None:
+    async def forbidden_loader(
+        connection: AsyncConnection, lineage_ids: object
+    ) -> dict[UUID, UUID | None]:
+        del connection, lineage_ids
+        raise AssertionError("non-OT plan invoked the ancestry loader")
+
+    monkeypatch.setattr(locking, "load_object_template_ancestry", forbidden_loader)
+    connection = cast(AsyncConnection, object())
+    intent = RowLockIntent(RowLockKey(row_class, _uuid(80), version), RowLockMode.KS)
+    plan = await prepare_lock_plan(connection, intents=(intent,))
+    assert plan.rows == (intent,)
 
 
 def test_plan_02_missing_object_template_header_remains_plannable() -> None:

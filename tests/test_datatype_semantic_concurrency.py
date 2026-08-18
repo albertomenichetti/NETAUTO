@@ -1,14 +1,14 @@
 """Kernel-level semantic outcomes for canonical S02 PostgreSQL races."""
 
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, func, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 import netauto.application.datatypes as datatype_application
 from netauto.application.datatypes import DataTypeService
@@ -17,7 +17,13 @@ from netauto.domain.datatypes import DataTypeVersion, VersionStatus
 from netauto.domain.objecttemplates import CreateObjectTemplateResult, ValueMode
 from netauto.failures import ApplicationFailure
 from netauto.persistence.datatypes import DataTypeStore
-from netauto.persistence.locking import RowLockClass, RowLockMode
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockMode,
+)
 from netauto.persistence.metadata import datatype_versions, datatypes
 from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
@@ -203,17 +209,37 @@ def _install_reference_precheck_cut(
 ) -> tuple[PhaseCut, list[int]]:
     cut = PhaseCut()
     observations: list[int] = []
-    original = DataTypeStore.external_reference_count
+    original_prepare = datatype_application.prepare_lock_plan
+    original_count = DataTypeStore.external_reference_count
 
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> int:
-        result = await original(store, datatype_id)
+    async def intercepted_prepare(
+        connection: AsyncConnection,
+        *,
+        intents: Iterable[RowLockIntent] = (),
+        gate: AdvisoryGate | None = None,
+    ) -> LockPlan:
+        requested = tuple(intents)
         task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            observations.append(result)
+        if (
+            task is not None
+            and task.get_name() == "T1"
+            and gate is AdvisoryGate.MODEL_ROOT_DELETE_GATE
+            and any(
+                item.key.row_class is RowLockClass.DATA_TYPE_HEADER
+                and item.mode is RowLockMode.U
+                for item in requested
+            )
+        ):
             cut.reached.set()
             await cut.release.wait()
+        return await original_prepare(connection, intents=requested, gate=gate)
+
+    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> int:
+        result = await original_count(store, datatype_id)
+        observations.append(result)
         return result
 
+    monkeypatch.setattr(datatype_application, "prepare_lock_plan", intercepted_prepare)
     monkeypatch.setattr(DataTypeStore, "external_reference_count", intercepted)
     return cut, observations
 
@@ -662,7 +688,7 @@ async def test_ref_06a_datatype_cascade_loses_to_external_property_restrict(
                 (),
             ),
         )
-        assert precheck_counts == [0]
+        assert precheck_counts == [1]
         assert isinstance(created, CreateObjectTemplateResult)
         assert isinstance(deleted, ApplicationFailure)
         assert deleted.code == "delete_blocked"

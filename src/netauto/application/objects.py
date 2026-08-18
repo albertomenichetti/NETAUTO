@@ -45,6 +45,7 @@ from netauto.persistence.locking import (
     RowLockKey,
     RowLockMode,
     acquire_lock_plan,
+    prepare_lock_plan,
     run_semantic_uow_attempts,
 )
 from netauto.persistence.objects import (
@@ -155,16 +156,11 @@ def _template_version(
 
 async def _acquire(
     connection: Any,
-    template_store: ObjectTemplateStore,
     intents: tuple[RowLockIntent, ...],
     *,
     gate: AdvisoryGate | None = None,
 ) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
-    plan = LockPlan(
-        intents=intents,
-        gate=gate,
-        object_template_parent_by_id=await template_store.lineage_parents(),
-    )
+    plan = await prepare_lock_plan(connection, intents=intents, gate=gate)
     missing = await acquire_lock_plan(connection, plan)
     return plan, missing
 
@@ -353,7 +349,7 @@ class ObjectService:
                 ),
                 _template_version(template_id, selected_version, RowLockMode.S),
             )
-            plan, _ = await _acquire(uow.connection, template_store, intents)
+            plan, _ = await _acquire(uow.connection, intents)
             lineage, header, selected_version = await self._selected_template(
                 template_store, template_id, template_version
             )
@@ -415,7 +411,6 @@ class ObjectService:
             template_store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                template_store,
                 (_object_intent(object_id, RowLockMode.U),),
             )
             if missing:
@@ -466,7 +461,6 @@ class ObjectService:
             template_store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                template_store,
                 (_object_intent(object_id, RowLockMode.NKU),),
             )
             if missing:
@@ -496,7 +490,6 @@ class ObjectService:
             template_store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                template_store,
                 (_object_intent(object_id, RowLockMode.NKU),),
             )
             if missing:
@@ -535,7 +528,6 @@ class ObjectService:
             template_store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                template_store,
                 (
                     _template_header(before.template_id, RowLockMode.KS),
                     _template_version(
@@ -726,7 +718,7 @@ class ObjectService:
             gate = (
                 AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE if discovered is None else None
             )
-            plan, _ = await _acquire(uow.connection, template_store, intents, gate=gate)
+            plan, _ = await _acquire(uow.connection, intents, gate=gate)
             parent, child, slot, current = await load_candidate()
             fresh_gate = (
                 AdvisoryGate.OWNERSHIP_GRAPH_WRITE_GATE if current is None else None
@@ -787,7 +779,6 @@ class ObjectService:
             template_store = ObjectTemplateStore(uow.connection)
             plan, missing = await _acquire(
                 uow.connection,
-                template_store,
                 (_object_intent(parent_object_id, RowLockMode.NKU),),
             )
             if missing:

@@ -22,12 +22,12 @@ from netauto.domain.relationships import (
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.locking import (
     MAX_SEMANTIC_UOW_ATTEMPTS,
-    LockPlan,
     RowLockClass,
     RowLockIntent,
     RowLockKey,
     RowLockMode,
     acquire_lock_plan,
+    prepare_lock_plan,
 )
 from netauto.persistence.objects import EventKind, ObjectStore
 from netauto.persistence.relationships import (
@@ -123,6 +123,12 @@ def _relationship_intent(relationship_id: UUID) -> RowLockIntent:
     )
 
 
+def _relationship_lifetime_intent(relationship_id: UUID) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.RELATIONSHIP, relationship_id), RowLockMode.KS
+    )
+
+
 class RelationshipService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
@@ -173,6 +179,61 @@ class RelationshipService:
             RelationshipProjection(value.id, value.relationship_definition_id, views),
         )
 
+    async def _classify_exact_view_collision(
+        self,
+        collision_keys: tuple[RuntimeRelationshipResolution, ...],
+        *,
+        resolution_id: UUID,
+        from_object_id: UUID,
+        to_object_id: UUID,
+    ) -> RelationshipCreateResult:
+        """Classify a rolled-back collision under one protected owner set."""
+        async with self._uow_factory() as uow:
+            store = RuntimeRelationshipStore(uow.connection)
+            definition_store = RelationshipDefinitionStore(uow.connection)
+            observed_owner_ids = tuple(
+                sorted(
+                    set(await store.current_candidate_relationship_ids(collision_keys)),
+                    key=lambda value: value.int,
+                )
+            )
+            if not observed_owner_ids:
+                raise _RestartRelationshipCreate
+
+            plan = await prepare_lock_plan(
+                uow.connection,
+                intents=tuple(
+                    _relationship_lifetime_intent(relationship_id)
+                    for relationship_id in observed_owner_ids
+                ),
+            )
+            missing = await acquire_lock_plan(uow.connection, plan)
+            protected_owner_ids = tuple(
+                sorted(
+                    set(await store.current_candidate_relationship_ids(collision_keys)),
+                    key=lambda value: value.int,
+                )
+            )
+            if missing or protected_owner_ids != observed_owner_ids:
+                raise _RestartRelationshipCreate
+
+            projections: dict[UUID, RelationshipProjection] = {}
+            for relationship_id in protected_owner_ids:
+                _, _, projection = await self._validated(
+                    store, definition_store, relationship_id
+                )
+                projections[relationship_id] = projection
+
+            current_id = await store.exact_relationship_id(
+                resolution_id, from_object_id, to_object_id
+            )
+            if current_id is not None:
+                projection = projections.get(current_id)
+                if projection is None:
+                    raise _RestartRelationshipCreate
+                return RelationshipCreateResult(projection, False)
+            raise _fact_conflict(protected_owner_ids[0])
+
     async def create(
         self, resolution_id: UUID, from_object_id: UUID, to_object_id: UUID
     ) -> RelationshipCreateResult:
@@ -183,12 +244,13 @@ class RelationshipService:
                 definition = await definition_store.get_by_resolution(resolution_id)
                 if definition is None:
                     raise _referenced_resolution(resolution_id)
-                plan = LockPlan(
+                plan = await prepare_lock_plan(
+                    uow.connection,
                     intents=(
                         _definition_intent(definition.id),
                         _object_intent(from_object_id),
                         _object_intent(to_object_id),
-                    )
+                    ),
                 )
                 missing = await acquire_lock_plan(uow.connection, plan)
                 if RowLockKey(RowLockClass.OBJECT, from_object_id) in missing:
@@ -311,26 +373,15 @@ class RelationshipService:
                         True,
                     )
 
-            async with self._uow_factory() as classification_uow:
-                store = RuntimeRelationshipStore(classification_uow.connection)
-                definition_store = RelationshipDefinitionStore(
-                    classification_uow.connection
+            try:
+                return await self._classify_exact_view_collision(
+                    collision_keys,
+                    resolution_id=resolution_id,
+                    from_object_id=from_object_id,
+                    to_object_id=to_object_id,
                 )
-                current_id = await store.exact_relationship_id(
-                    resolution_id, from_object_id, to_object_id
-                )
-                if current_id is not None:
-                    _, _, projection = await self._validated(
-                        store, definition_store, current_id
-                    )
-                    return RelationshipCreateResult(projection, False)
-                conflicts = await store.current_candidate_relationship_ids(
-                    collision_keys
-                )
-                if conflicts:
-                    for conflicting_id in conflicts:
-                        await self._validated(store, definition_store, conflicting_id)
-                    raise _fact_conflict(conflicts[0])
+            except _RestartRelationshipCreate:
+                pass
             if attempt_number == MAX_SEMANTIC_UOW_ATTEMPTS:
                 break
         raise _internal("The Relationship create restart budget was exhausted.")
@@ -348,7 +399,9 @@ class RelationshipService:
     async def delete(self, relationship_id: UUID) -> None:
         async with self._uow_factory() as uow:
             store = RuntimeRelationshipStore(uow.connection)
-            plan = LockPlan(intents=(_relationship_intent(relationship_id),))
+            plan = await prepare_lock_plan(
+                uow.connection, intents=(_relationship_intent(relationship_id),)
+            )
             if await acquire_lock_plan(uow.connection, plan):
                 return
             relationship, definition, _ = await self._validated(

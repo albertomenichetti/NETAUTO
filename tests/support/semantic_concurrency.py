@@ -31,6 +31,9 @@ type AcquireLockPlan = Callable[
 @dataclass(slots=True)
 class ConnectionTracker:
     pids: dict[str, int] = field(default_factory=lambda: dict[str, int]())
+    transactions: dict[str, list[tuple[int, int]]] = field(
+        default_factory=lambda: dict[str, list[tuple[int, int]]]()
+    )
     ready: dict[str, asyncio.Event] = field(
         default_factory=lambda: {"T1": asyncio.Event(), "T2": asyncio.Event()}
     )
@@ -50,8 +53,11 @@ class ObservedUnitOfWork(UnitOfWork):
     async def __aenter__(self) -> UnitOfWork:
         entered = await super().__aenter__()
         pid = await self.connection.scalar(text("SELECT pg_backend_pid()"))
-        self._tracker.pids[self._role] = int(pid)
-        self._tracker.ready[self._role].set()
+        transaction_id = await self.connection.scalar(text("SELECT txid_current()"))
+        identity = (int(pid), int(transaction_id))
+        self._tracker.pids[self._role] = identity[0]
+        self._tracker.transactions.setdefault(self._role, []).append(identity)
+        self._tracker.ready.setdefault(self._role, asyncio.Event()).set()
         return entered
 
 

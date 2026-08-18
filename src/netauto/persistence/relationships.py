@@ -462,6 +462,7 @@ class RuntimeRelationshipStore:
                     ).in_(keys)
                 )
                 .distinct()
+                .order_by(runtime_relationship_resolutions.c.relationship_id)
             )
         ).all()
         return tuple(cast(UUID, value) for value in values)

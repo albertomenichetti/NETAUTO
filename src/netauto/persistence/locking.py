@@ -139,6 +139,10 @@ class LockPlanAttemptsExhausted(RuntimeError):
     """The bounded whole-UoW restart budget was exhausted."""
 
 
+class ObjectTemplateAncestryError(RuntimeError):
+    """Planned ObjectTemplate ancestry is persistently corrupt."""
+
+
 class _LockPlanPhase(StrEnum):
     PLANNED = auto()
     ACQUIRING = auto()
@@ -256,6 +260,102 @@ def _canonical_intents(
         )
 
     return tuple(sorted(coalesced.values(), key=sort_key))
+
+
+async def load_object_template_ancestry(
+    connection: AsyncConnection, lineage_ids: Iterable[UUID]
+) -> dict[UUID, UUID | None]:
+    """Load only planned OT lineages and their distinct stable ancestors.
+
+    One recursive statement owns planner ancestry materialization. Missing
+    planned roots remain representable so row acquisition can report them;
+    missing parents of existing rows and cycles are invariant failures.
+    """
+    planned = tuple(sorted(set(lineage_ids), key=lambda value: value.int))
+    if not planned:
+        return {}
+
+    ancestry = (
+        select(
+            object_templates.c.id,
+            object_templates.c.parent_template_id,
+        )
+        .where(object_templates.c.id.in_(planned))
+        .cte("planned_object_template_ancestry", recursive=True)
+    )
+    parent = object_templates.alias("planned_object_template_parent")
+    ancestry = ancestry.union(
+        select(
+            parent.c.id,
+            parent.c.parent_template_id,
+        ).select_from(
+            ancestry.join(parent, parent.c.id == ancestry.c.parent_template_id)
+        )
+    )
+
+    rows = (await connection.execute(select(ancestry))).mappings().all()
+    loaded: dict[UUID, UUID | None] = {}
+    for row in rows:
+        lineage_id = cast(UUID, row["id"])
+        parent_id = cast(UUID | None, row["parent_template_id"])
+        previous = loaded.setdefault(lineage_id, parent_id)
+        if previous != parent_id:
+            raise ObjectTemplateAncestryError(
+                "ObjectTemplate ancestry is not stable within one plan"
+            )
+
+    loaded_ids = set(loaded)
+    if any(
+        parent_id is not None and parent_id not in loaded_ids
+        for parent_id in loaded.values()
+    ):
+        raise ObjectTemplateAncestryError(
+            "ObjectTemplate ancestry contains a missing parent"
+        )
+
+    for lineage_id in loaded:
+        current: UUID | None = lineage_id
+        seen: set[UUID] = set()
+        while current is not None:
+            if current in seen:
+                raise ObjectTemplateAncestryError(
+                    "ObjectTemplate ancestry contains a cycle"
+                )
+            seen.add(current)
+            current = loaded[current]
+
+    for lineage_id in planned:
+        loaded.setdefault(lineage_id, None)
+    return loaded
+
+
+async def prepare_lock_plan(
+    connection: AsyncConnection,
+    *,
+    intents: Iterable[RowLockIntent] = (),
+    gate: AdvisoryGate | None = None,
+) -> LockPlan:
+    """Prepare one plan and load targeted OT ancestry only when required."""
+    requested = tuple(intents)
+    object_template_lineages = {
+        intent.key.resource_id
+        for intent in requested
+        if intent.key.row_class
+        in {
+            RowLockClass.OBJECT_TEMPLATE_HEADER,
+            RowLockClass.OBJECT_TEMPLATE_VERSION,
+        }
+    }
+    parents = (
+        await load_object_template_ancestry(connection, object_template_lineages)
+        if object_template_lineages
+        else {}
+    )
+    return LockPlan(
+        intents=requested,
+        gate=gate,
+        object_template_parent_by_id=parents,
+    )
 
 
 class LockPlan:
