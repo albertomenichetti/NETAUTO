@@ -288,11 +288,22 @@ def test_s08_public_route_and_error_catalog_closure() -> None:
         ("GET", "/api/v1/core/relationships/{relationship_id}"),
     }
     actual_reads = {
-        ("GET", path) for path, methods in paths.items() if "get" in _mapping(methods)
+        ("GET", path)
+        for path, methods in paths.items()
+        if path.startswith("/api/v1/core") and "get" in _mapping(methods)
     }
     assert len(expected_reads) == 22
     assert actual_reads == expected_reads
     assert len(actual_mutations | actual_reads) == 63
+    operational_operations = {
+        (method.upper(), path)
+        for path, methods in paths.items()
+        for method in _mapping(methods)
+        if not path.startswith("/api/v1/core")
+        and method in {"get", "post", "delete", "put", "patch"}
+    }
+    assert operational_operations == {("GET", "/health/core")}
+    assert len(actual_mutations | actual_reads | operational_operations) == 64
     assert all(
         method not in {"put", "patch"}
         for methods in paths.values()

@@ -506,8 +506,9 @@ Use a borrowed connection from the runtime AsyncEngine and the Alembic `Migratio
 ```python
 async with engine.connect() as connection:
     actual_heads = await connection.run_sync(
-        lambda sync_connection:
-            MigrationContext.configure(sync_connection).get_current_heads()
+        lambda sync_connection: MigrationContext.configure(
+            sync_connection
+        ).get_current_heads()
     )
 ```
 

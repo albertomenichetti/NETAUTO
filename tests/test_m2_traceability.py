@@ -873,16 +873,64 @@ S03_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     )
     for bundle_id, scenario_ids in S03_BUNDLE_SCENARIOS.items()
 }
+S04_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-22": frozenset(
+        {
+            "tests/test_runtime_schema_guard.py::"
+            "test_installed_graph_discovers_one_base_and_head_without_alembic_ini",
+            "tests/test_runtime_schema_guard.py::"
+            "test_installed_graph_rejects_non_unique_base_or_head",
+            "tests/test_runtime_schema_guard.py::"
+            "test_real_postgresql_exact_head_uses_runtime_engine",
+            "tests/test_runtime_schema_guard.py::"
+            "test_real_postgresql_rejects_every_non_exact_revision_state_and_restores",
+            "tests/test_runtime_schema_guard.py::"
+            "test_guard_timeout_is_one_safe_owned_failure",
+            "tests/test_http_composition.py::"
+            "test_guard_failure_prevents_publication_and_disposes_engine",
+            "tests/test_http_composition.py::"
+            "test_every_app_lifespan_executes_its_own_guard",
+            "tests/test_http_composition.py::"
+            "test_fastapi_lifespan_does_not_execute_migrations",
+            "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
+        }
+    ),
+    "M2-VER-23": frozenset(
+        {
+            "tests/test_health.py::"
+            "test_health_exact_vocabulary_classification_and_one_attempt",
+            "tests/test_health.py::"
+            "test_health_outer_timeout_waits_for_cleanup_before_measurement",
+            "tests/test_health_postgresql.py::"
+            "test_real_health_uses_same_engine_exact_select_and_returns_connection",
+            "tests/test_health_postgresql.py::"
+            "test_real_pool_starvation_times_out_then_recovers_on_same_engine",
+            "tests/test_health_api.py::"
+            "test_health_healthy_response_is_exact_and_non_cacheable",
+            "tests/test_health_api.py::"
+            "test_health_unready_response_is_exact_safe_and_non_cacheable",
+            "tests/test_health_api.py::"
+            "test_health_invalid_request_is_canonical_400_without_probe",
+            "tests/test_health_api.py::"
+            "test_health_unexpected_service_failure_uses_safe_canonical_500",
+            "tests/test_health_api.py::"
+            "test_health_openapi_uses_one_dto_for_200_and_503",
+            "tests/test_m2_s04_installed.py::test_installed_wheel_s04_runtime_smoke",
+        }
+    ),
+}
 M2_EVIDENCE_TO_TARGETS = {
     bundle_id: EvidenceBundle(
         "IMPLEMENTED"
         if bundle_id in S01_BUNDLE_TARGETS
         or bundle_id in S02_BUNDLE_TARGETS
         or bundle_id in S03_BUNDLE_TARGETS
+        or bundle_id in S04_BUNDLE_TARGETS
         else "DESIGNED",
         S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S02_BUNDLE_TARGETS.get(bundle_id, frozenset())
-        | S03_BUNDLE_TARGETS.get(bundle_id, frozenset()),
+        | S03_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S04_BUNDLE_TARGETS.get(bundle_id, frozenset()),
     )
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
@@ -1007,6 +1055,8 @@ S02_PUBLIC_ROUTE_DELTA = frozenset(
     }
 )
 
+S04_PUBLIC_ROUTE_DELTA = frozenset({("GET", "/health/core")})
+
 
 def _assert_target_exists(target: str) -> None:
     path_text, separator, test_name = target.partition("::")
@@ -1077,6 +1127,7 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
             bundle_id in S01_BUNDLE_TARGETS
             or bundle_id in S02_BUNDLE_TARGETS
             or bundle_id in S03_BUNDLE_TARGETS
+            or bundle_id in S04_BUNDLE_TARGETS
         ):
             assert evidence.state == "IMPLEMENTED"
             assert evidence.targets
@@ -1172,9 +1223,23 @@ def test_s02_route_delta_and_preserved_registries_remain_exact() -> None:
     assert all(path.startswith("/api/v1/core/") for _, path in S01_PUBLIC_ROUTE_DELTA)
     assert S02_PUBLIC_ROUTE_DELTA.isdisjoint(S01_PUBLIC_ROUTE_DELTA)
     assert len(S02_PUBLIC_ROUTE_DELTA) == 2
+    assert S04_PUBLIC_ROUTE_DELTA == frozenset({("GET", "/health/core")})
+    assert S04_PUBLIC_ROUTE_DELTA.isdisjoint(
+        S01_PUBLIC_ROUTE_DELTA | S02_PUBLIC_ROUTE_DELTA
+    )
     assert set(PLAN_EVIDENCE_TARGETS) == {
         *(f"PLAN-{number:02d}" for number in range(1, 7))
     }
+
+
+def test_s04_bundle_states_and_targets_are_honest_and_resolvable() -> None:
+    assert set(S04_BUNDLE_TARGETS) == {"M2-VER-22", "M2-VER-23"}
+    for bundle_id, targets in S04_BUNDLE_TARGETS.items():
+        evidence = M2_EVIDENCE_TO_TARGETS[bundle_id]
+        assert evidence.state == "IMPLEMENTED"
+        assert evidence.targets == targets
+        for target in targets:
+            _assert_target_exists(target)
 
 
 def test_s03_mutation_registry_is_exact_central_and_executable() -> None:
