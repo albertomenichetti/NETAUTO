@@ -14,7 +14,7 @@ from netauto.cli.model import (
     HttpExchangeTrace,
     ParsedCommand,
 )
-from netauto.cli.parser import ParseFailure, parse_process
+from netauto.cli.parser import ParseFailure, ParseProgress, parse_process
 from netauto.cli.render import render_json
 
 
@@ -38,13 +38,14 @@ def run(
     *,
     http_transport: httpx.AsyncBaseTransport | None = None,
 ) -> tuple[CliResult, int]:
-    try:
-        endpoint, command, spec = parse_process(list(argv))
-    except ParseFailure as failure:
-        result = CliResult.failed(failure.command, (), failure.error)
-        return result, 1
+    progress = ParseProgress()
     ledger = ExecutionLedger()
     try:
+        try:
+            endpoint, command, spec = parse_process(list(argv), progress=progress)
+        except ParseFailure as failure:
+            result = CliResult.failed(failure.command, (), failure.error)
+            return result, 1
         result = asyncio.run(
             execute(
                 endpoint,
@@ -55,7 +56,7 @@ def run(
             )
         )
     except Exception:  # bounded outer process boundary; never catches BaseException
-        result = _internal_error(command, ledger.snapshot())
+        result = _internal_error(progress.command, ledger.snapshot())
     return result, 0 if result.status == "ok" else 1
 
 

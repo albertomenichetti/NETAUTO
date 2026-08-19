@@ -1064,6 +1064,32 @@ S05_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_every_public_nested_json_view_is_recursively_immutable",
             "tests/test_m2_s05_review_fixes.py::"
             "test_as_json_mutation_is_detached_and_rendering_is_byte_stable",
+            "tests/test_m2_s05_model.py::"
+            "test_execution_ledger_updates_one_provisional_attempt_without_duplication",
+            "tests/test_m2_s05_model.py::"
+            "test_execution_ledger_preserves_begin_order_and_rejects_malformed_use",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_unexpected_parse_before_safe_command_is_bounded_by_run_and_main",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_unexpected_parse_after_safe_command_preserves_exact_typed_intent",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_expected_parse_failure_preserves_its_finite_local_classification",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_parse_base_exceptions_propagate_unchanged",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_pre_send_cookie_failure_has_no_exchange_or_send",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_send_failure_is_exactly_one_response_null_attempt",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_response_trace_failure_preserves_observed_response",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_post_send_cookie_failure_preserves_observed_response",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_selector_then_primary_failure_preserves_exact_attempt_order_and_intent",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_transport_base_exceptions_propagate_unchanged",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_residual_static_boundary_is_finite_and_ledger_owned",
             "tests/test_m2_s05_tls.py::"
             "test_default_tls_verification_trust_and_hostname_matrix",
             "tests/test_m2_s05_installed.py::"
@@ -1166,6 +1192,39 @@ S05_REVIEW_FIX_TARGETS = {
             "test_internal_exception_text_never_reaches_process_channels",
             "tests/test_m2_s05_review_fixes.py::"
             "test_base_exception_and_cancellation_are_not_normalized",
+            "tests/test_m2_s05_model.py::"
+            "test_execution_ledger_updates_one_provisional_attempt_without_duplication",
+            "tests/test_m2_s05_model.py::"
+            "test_execution_ledger_preserves_begin_order_and_rejects_malformed_use",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_unexpected_parse_before_safe_command_is_bounded_by_run_and_main",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_unexpected_parse_after_safe_command_preserves_exact_typed_intent",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_expected_parse_failure_preserves_its_finite_local_classification",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_parse_base_exceptions_propagate_unchanged",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_pre_send_cookie_failure_has_no_exchange_or_send",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_send_failure_is_exactly_one_response_null_attempt",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_response_trace_failure_preserves_observed_response",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_post_send_cookie_failure_preserves_observed_response",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_selector_then_primary_failure_preserves_exact_attempt_order_and_intent",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_transport_base_exceptions_propagate_unchanged",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_residual_static_boundary_is_finite_and_ledger_owned",
+            "tests/test_m2_s05_http_client.py::"
+            "test_remote_business_error_is_preserved_exactly",
+            "tests/test_m2_s05_http_client.py::test_protocol_failures_are_not_remapped",
+            "tests/test_m2_s05_http_client.py::"
+            "test_transport_failure_is_one_attempt_with_response_null",
+            "tests/test_m2_s05_installed.py::"
+            "test_installed_candidate_wheel_exposes_working_netauto_console",
         }
     ),
     "S05-RF-02": frozenset(
@@ -1202,6 +1261,57 @@ S05_REVIEW_FIX_TARGETS = {
             "test_s05_review_fix_registry_is_exact_and_resolvable",
         }
     ),
+}
+S05_RESIDUAL_REVIEW_FIX_TARGETS = {
+    "S05-RF-01": frozenset(
+        {
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_before_any_attempt_has_empty_truthful_trace",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_after_selector_preserves_selector_exchange",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_after_primary_response_preserves_ordered_trace",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_during_cleanup_preserves_primary_exchange",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_exception_text_never_reaches_process_channels",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_base_exception_and_cancellation_are_not_normalized",
+            "tests/test_m2_s05_model.py::"
+            "test_execution_ledger_updates_one_provisional_attempt_without_duplication",
+            "tests/test_m2_s05_model.py::"
+            "test_execution_ledger_preserves_begin_order_and_rejects_malformed_use",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_unexpected_parse_before_safe_command_is_bounded_by_run_and_main",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_unexpected_parse_after_safe_command_preserves_exact_typed_intent",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_expected_parse_failure_preserves_its_finite_local_classification",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_parse_base_exceptions_propagate_unchanged",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_pre_send_cookie_failure_has_no_exchange_or_send",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_send_failure_is_exactly_one_response_null_attempt",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_response_trace_failure_preserves_observed_response",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_post_send_cookie_failure_preserves_observed_response",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_selector_then_primary_failure_preserves_exact_attempt_order_and_intent",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_transport_base_exceptions_propagate_unchanged",
+            "tests/test_m2_s05_residual_review_fixes.py::"
+            "test_residual_static_boundary_is_finite_and_ledger_owned",
+            "tests/test_m2_s05_http_client.py::"
+            "test_remote_business_error_is_preserved_exactly",
+            "tests/test_m2_s05_http_client.py::test_protocol_failures_are_not_remapped",
+            "tests/test_m2_s05_http_client.py::"
+            "test_transport_failure_is_one_attempt_with_response_null",
+            "tests/test_m2_s05_installed.py::"
+            "test_installed_candidate_wheel_exposes_working_netauto_console",
+        }
+    )
 }
 S04_REVIEW_FIX_TARGETS = {
     "S04-RF-01": frozenset(
@@ -1627,6 +1737,16 @@ def test_s05_review_fix_registry_is_exact_and_resolvable() -> None:
     bundle_targets.update(S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-28"])
     bundle_targets.update(S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-30"])
     assert all_review_targets <= bundle_targets
+
+
+def test_s05_residual_review_fix_registry_is_exact_and_resolvable() -> None:
+    assert set(S05_RESIDUAL_REVIEW_FIX_TARGETS) == {"S05-RF-01"}
+    targets = S05_RESIDUAL_REVIEW_FIX_TARGETS["S05-RF-01"]
+    assert len(targets) == 23
+    for target in targets:
+        _assert_target_exists(target)
+    assert targets <= S05_REVIEW_FIX_TARGETS["S05-RF-01"]
+    assert targets <= S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"]
 
 
 def test_s05_preserves_exact_business_and_cli_operation_inventories() -> None:

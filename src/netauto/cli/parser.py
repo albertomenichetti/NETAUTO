@@ -2,6 +2,7 @@
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 from urllib.parse import urlsplit
@@ -45,6 +46,27 @@ class ParseFailure(Exception):
         self.error = error
         self.command = command
         super().__init__(error.code)
+
+
+@dataclass(slots=True)
+class ParseProgress:
+    """Last immutable command state safely recognized by the parser."""
+
+    command: ParsedCommand | None = None
+
+    def publish(self, command: ParsedCommand) -> ParsedCommand:
+        self.command = command
+        return command
+
+
+def _command_snapshot(
+    progress: ParseProgress | None,
+    key: CommandKey,
+    selector: str | None,
+    parameters: dict[str, JsonValue],
+) -> ParsedCommand:
+    command = ParsedCommand.create(key, selector, parameters)
+    return command if progress is None else progress.publish(command)
 
 
 def _fail(
@@ -222,28 +244,34 @@ def _validate_relationship_definition_shape(
 
 def parse_process(
     argv: list[str],
+    *,
+    progress: ParseProgress | None = None,
 ) -> tuple[str, ParsedCommand, CommandSpec]:
     if len(argv) < 4 or argv[0] != "-n":
         _fail("cli_invalid_invocation")
     endpoint = normalize_endpoint_root(argv[1])
     resource, operation = argv[2], argv[3]
     key = CommandKey(resource, operation)
+    empty_parameters: dict[str, JsonValue] = {}
+    command = _command_snapshot(progress, key, None, empty_parameters)
     if _TOKEN.fullmatch(resource) is None or _TOKEN.fullmatch(operation) is None:
-        _fail("cli_invalid_command", command=ParsedCommand.create(key, None, {}))
+        _fail("cli_invalid_command", command=command)
     spec = COMMAND_REGISTRY.get(key)
     if spec is None:
-        _fail("cli_invalid_command", command=ParsedCommand.create(key, None, {}))
+        _fail("cli_invalid_command", command=command)
 
     remaining = argv[4:]
     selector: str | None = None
     if spec.selector_kind is not None:
         if not remaining or "=" in remaining[0]:
-            _fail("cli_missing_selector", command=ParsedCommand.create(key, None, {}))
+            _fail("cli_missing_selector", command=command)
         selector = remaining.pop(0)
+        command = _command_snapshot(progress, key, selector, empty_parameters)
     elif remaining and "=" not in remaining[0]:
+        command = _command_snapshot(progress, key, remaining[0], empty_parameters)
         _fail(
             "cli_unexpected_selector",
-            command=ParsedCommand.create(key, remaining[0], {}),
+            command=command,
         )
 
     by_name = {parameter.name: parameter for parameter in spec.parameters}
@@ -252,29 +280,30 @@ def parse_process(
         if "=" not in token:
             _fail(
                 "cli_unexpected_selector",
-                command=ParsedCommand.create(key, selector, decoded),
+                command=_command_snapshot(progress, key, selector, decoded),
             )
         name, raw = token.split("=", 1)
         if _PARAMETER.fullmatch(name) is None or name not in by_name:
             _fail(
                 "cli_unexpected_parameter",
                 details={"parameter": name},
-                command=ParsedCommand.create(key, selector, decoded),
+                command=_command_snapshot(progress, key, selector, decoded),
             )
         if name in decoded:
             _fail(
                 "cli_duplicate_parameter",
                 details={"parameter": name},
-                command=ParsedCommand.create(key, selector, decoded),
+                command=_command_snapshot(progress, key, selector, decoded),
             )
         try:
             decoded[name] = _decode(raw, by_name[name])
         except ParseFailure as error:
             if error.command is None:
-                error.command = ParsedCommand.create(key, selector, decoded)
+                error.command = _command_snapshot(progress, key, selector, decoded)
             raise
+        _command_snapshot(progress, key, selector, decoded)
 
-    command = ParsedCommand.create(key, selector, decoded)
+    command = _command_snapshot(progress, key, selector, decoded)
     for parameter in spec.parameters:
         if parameter.required and parameter.name not in decoded:
             _fail(

@@ -349,6 +349,32 @@ class HttpExchangeTrace:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionAttempt:
+    """Opaque handle for one ordered command-scoped HTTP attempt."""
+
+    _owner: object
+    _index: int
+
+    def resolve_for(self, owner: object, size: int) -> int:
+        """Resolve this opaque handle only for its owning ledger."""
+
+        if self._owner is not owner:
+            raise RuntimeError("attempt belongs to a different execution ledger")
+        if not 0 <= self._index < size:
+            raise RuntimeError("attempt does not exist")
+        return self._index
+
+
+@dataclass(slots=True)
+class _AttemptState:
+    request: HttpRequestTrace
+    response: HttpResponseTrace | None = None
+    response_observed: bool = False
+    elapsed_ms: int = 0
+    finalized: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class CliError:
     source: ErrorSource
     code: str
@@ -440,19 +466,86 @@ class CliResult:
 class ExecutionLedger:
     """Single mutable owner of one command's in-flight exchange history."""
 
-    __slots__ = ("_exchanges",)
+    __slots__ = ("_attempts", "_owner")
 
     def __init__(self) -> None:
-        self._exchanges: list[HttpExchangeTrace] = []
+        self._owner = object()
+        self._attempts: list[_AttemptState] = []
 
-    def record(self, exchange: HttpExchangeTrace) -> None:
-        self._exchanges.append(exchange)
+    @staticmethod
+    def _elapsed(value: int) -> int:
+        if isinstance(value, bool) or value < 0:
+            raise ValueError("attempt elapsed time must be a non-negative integer")
+        return value
+
+    def _state(self, attempt: ExecutionAttempt) -> _AttemptState:
+        index = attempt.resolve_for(self._owner, len(self._attempts))
+        return self._attempts[index]
+
+    @staticmethod
+    def _exchange(state: _AttemptState) -> HttpExchangeTrace:
+        return HttpExchangeTrace(state.request, state.response, state.elapsed_ms)
+
+    def begin(self, request: HttpRequestTrace) -> ExecutionAttempt:
+        """Own one attempt immediately before its HTTP send begins."""
+
+        attempt = ExecutionAttempt(self._owner, len(self._attempts))
+        self._attempts.append(_AttemptState(request))
+        return attempt
+
+    def observe_response(
+        self,
+        attempt: ExecutionAttempt,
+        response: HttpResponseTrace,
+        elapsed_ms: int,
+    ) -> None:
+        """Attach the first immutable response observation to an attempt."""
+
+        state = self._state(attempt)
+        if state.finalized or state.response_observed:
+            raise RuntimeError("attempt response was already recorded")
+        elapsed = self._elapsed(elapsed_ms)
+        state.response = response
+        state.response_observed = True
+        state.elapsed_ms = elapsed
+
+    def refine_response(
+        self,
+        attempt: ExecutionAttempt,
+        response: HttpResponseTrace,
+        elapsed_ms: int,
+    ) -> None:
+        """Replace a provisional response observation without adding an exchange."""
+
+        state = self._state(attempt)
+        if state.finalized or not state.response_observed:
+            raise RuntimeError("attempt has no refinable response observation")
+        elapsed = self._elapsed(elapsed_ms)
+        state.response = response
+        state.elapsed_ms = elapsed
+
+    def finalize(
+        self,
+        attempt: ExecutionAttempt,
+        elapsed_ms: int,
+    ) -> HttpExchangeTrace:
+        """Finalize an attempt exactly once and return its immutable trace."""
+
+        state = self._state(attempt)
+        if state.finalized:
+            raise RuntimeError("attempt was already finalized")
+        state.elapsed_ms = self._elapsed(elapsed_ms)
+        state.finalized = True
+        return self._exchange(state)
+
+    def is_finalized(self, attempt: ExecutionAttempt) -> bool:
+        return self._state(attempt).finalized
 
     def snapshot(self) -> tuple[HttpExchangeTrace, ...]:
-        return tuple(self._exchanges)
+        return tuple(self._exchange(state) for state in self._attempts)
 
     def since(self, index: int) -> tuple[HttpExchangeTrace, ...]:
-        return tuple(self._exchanges[index:])
+        return self.snapshot()[index:]
 
     def __len__(self) -> int:
-        return len(self._exchanges)
+        return len(self._attempts)

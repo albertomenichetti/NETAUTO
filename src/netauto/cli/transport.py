@@ -1,5 +1,6 @@
 """One-attempt HTTPX transport with transparent exchange tracing."""
 
+import json
 import time
 from collections.abc import Iterable
 from importlib.metadata import version
@@ -54,6 +55,35 @@ def _response_trace(response: httpx.Response) -> HttpResponseTrace:
         body_format,
         None if body is None else freeze_json(body),
     )
+
+
+def _response_observation(response: httpx.Response) -> HttpResponseTrace:
+    """Capture a bounded immutable trace before later response processing."""
+
+    content = bytes(response.content)
+    if not content:
+        body_format = "none"
+        body: JsonValue | None = None
+    else:
+        try:
+            body = cast(JsonValue, json.loads(content))
+            body_format = "json"
+        except ValueError, UnicodeError:
+            try:
+                body = content.decode(response.encoding or "utf-8")
+            except LookupError, UnicodeError:
+                body = content.decode("utf-8", errors="replace")
+            body_format = "text"
+    return HttpResponseTrace(
+        response.status_code,
+        _group(response.headers.multi_items()),
+        body_format,
+        None if body is None else freeze_json(body),
+    )
+
+
+def _elapsed_since(started: float) -> int:
+    return max(0, int((time.monotonic() - started) * 1000))
 
 
 class HttpTransport:
@@ -115,16 +145,24 @@ class HttpTransport:
             plan.body,
         )
         started = time.monotonic()
+        attempt = self._ledger.begin(request_trace)
         try:
-            response = await self._client.send(request, follow_redirects=False)
-        except httpx.TransportError:
-            elapsed = max(0, int((time.monotonic() - started) * 1000))
-            exchange = HttpExchangeTrace(request_trace, None, elapsed)
-            self._ledger.record(exchange)
-            raise TransportFailure(exchange) from None
+            try:
+                response = await self._client.send(request, follow_redirects=False)
+            except httpx.TransportError:
+                exchange = self._ledger.finalize(attempt, _elapsed_since(started))
+                raise TransportFailure(exchange) from None
+            observation = _response_observation(response)
+            self._ledger.observe_response(attempt, observation, _elapsed_since(started))
+            response_trace = _response_trace(response)
+            self._ledger.refine_response(
+                attempt, response_trace, _elapsed_since(started)
+            )
         finally:
-            self._client.cookies.clear()
-        elapsed = max(0, int((time.monotonic() - started) * 1000))
-        exchange = HttpExchangeTrace(request_trace, _response_trace(response), elapsed)
-        self._ledger.record(exchange)
+            try:
+                self._client.cookies.clear()
+            finally:
+                if not self._ledger.is_finalized(attempt):
+                    self._ledger.finalize(attempt, _elapsed_since(started))
+        exchange = self._ledger.snapshot()[-1]
         return response, exchange

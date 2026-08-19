@@ -180,3 +180,37 @@ def test_installed_candidate_wheel_exposes_working_netauto_console(
     assert boundary_evidence["result"]["error"]["code"] == "cli_internal_error"
     assert len(boundary_evidence["result"]["exchanges"]) == 1
     assert "installed-boundary-secret" not in installed_boundary.stdout
+
+    installed_process_boundary = subprocess.run(
+        [
+            str(candidate_python),
+            "-c",
+            "\n".join(
+                (
+                    "import sys",
+                    "import netauto.cli.main as cli_main",
+                    "def fail_parse(*args, **kwargs):",
+                    "    raise RuntimeError('installed-parse-secret')",
+                    "cli_main.parse_process = fail_parse",
+                    "sys.argv = ['netauto', '-n', 'http://example.test', "
+                    "'datatype', 'list']",
+                    "cli_main.main()",
+                )
+            ),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert installed_process_boundary.returncode == 1
+    assert installed_process_boundary.stderr == ""
+    assert installed_process_boundary.stdout.count("\n") == 1
+    assert "installed-parse-secret" not in installed_process_boundary.stdout
+    process_evidence = json.loads(installed_process_boundary.stdout)
+    assert process_evidence["status"] == "error"
+    assert process_evidence["result"] is None
+    assert process_evidence["command"] is None
+    assert process_evidence["exchanges"] == []
+    assert process_evidence["error"]["code"] == "cli_internal_error"
