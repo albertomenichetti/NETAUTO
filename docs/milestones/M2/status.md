@@ -179,7 +179,7 @@ initial candidate evidence     c1365c1c951447ed3f22cd54bcb1effcf41043ee
 reviewer baseline              77b682bac31f6c2e7a8befa2b5a18d98330fb4ea
 review-fix prompt              2f43b21d66d318fcc43c2595bdf893fc6f395d53
 corrective implementation      1015dd5ea86b15e8248c9a5e2fe518fe98e2b637
-candidate evidence/status      pending provenance-only follow-up
+candidate evidence/status      eb8ff673ad1ea77179194493b712dcc0497b5835
 review result                  pending / reviewer-owned
 open findings                  none in the corrective candidate
 M2-S06                         BLOCKED / not started
