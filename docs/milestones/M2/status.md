@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S05 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S05 REVIEW CHANGES REQUIRED
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S05 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the bounded M2-S05 corrective candidate
-blockers        reviewer acceptance pending; M2-S06 remains blocked
+current slice   M2-S05 — REVIEW CHANGES REQUIRED
+current task    prepare and execute one bounded residual M2-S05 review-fix prompt
+blockers        S05-RF-01 remains open; M2-S06 remains blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | `M2-S05` CANDIDATE READY FOR REVIEW — reviewer acceptance pending |
+| Implementation | `M2-S05` REVIEW CHANGES REQUIRED — residual `S05-RF-01` only |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -44,7 +44,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
-| `M2-S05` | CANDIDATE READY FOR REVIEW | `M2-S04 COMPLETED` |
+| `M2-S05` | REVIEW CHANGES REQUIRED | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
@@ -54,180 +54,146 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and reviewed findings
 
-No contract, architecture, implementation-planning or technology contradiction is open. The four bounded findings below are corrected in the published S05 corrective candidate. Reviewer acceptance remains pending; no architecture reopen was required.
+No contract, architecture, implementation-planning or technology contradiction is open. The corrective candidate closes `S05-RF-02`, `S05-RF-03` and `S05-RF-04`. `S05-RF-01` is materially improved but not yet complete; the remaining work is bounded to the same non-interactive CLI execution/trace boundary.
 
-### `S05-RF-01` — an unexpected ordinary exception loses already-attempted HTTP exchanges
+### `S05-RF-01` — REOPENED: the unexpected-failure boundary is not complete
 
-Reviewed implementation:
+Accepted corrective material:
 
 ```text
-execute()
-    accumulates selector and primary exchanges in a local list
-
-main.run()
-    catches an ordinary Exception outside execute()
-    creates cli_internal_error with exchanges = ()
+one command-scoped ExecutionLedger exists
+normal selector and primary exchanges are recorded once and in order
+an unexpected failure after normal response capture preserves recorded exchanges
+HttpTransport.__aexit__ failure preserves the already-recorded primary exchange
+expected TransportFailure remains a bounded transport result
+BaseException, cancellation, KeyboardInterrupt and SystemExit remain unnormalized
+raw unexpected exception text is absent from the structured result
 ```
 
-If an unexpected defect occurs after a selector lookup or primary HTTP response—for example in request/protocol processing or transport cleanup—the process still emits a structured `cli_internal_error`, but the result falsely reports an empty trace. This violates the frozen rule that the JSON result contains every attempted HTTP exchange exactly once and in execution order, including failed commands.
+Two residual gaps remain.
+
+#### A. Unexpected parsing defects bypass the structured process boundary
+
+The production `run()` function catches only `ParseFailure` around `parse_process()`. The general ordinary-`Exception` boundary begins after parsing, around `asyncio.run(execute(...))`.
+
+Therefore an unexpected ordinary defect in endpoint parsing, registry lookup, local decoding or another `parse_process()` path escapes the non-interactive result boundary entirely. Instead of the frozen outcome:
+
+```text
+status       error
+error.code   cli_internal_error
+command      null or the safely parsed partial command
+exchanges    []
+stdout       one JSON object plus newline
+stderr       empty
+exit         1
+```
+
+the process may terminate with an unstructured traceback.
+
+#### B. The ledger records a request too late for some attempted-exchange failures
+
+`HttpTransport.exchange()` builds the request and calls `AsyncClient.send()`, but records the exchange only:
+
+```text
+when an expected httpx.TransportError is caught
+or
+after send returned, cookie cleanup completed and response capture succeeded
+```
+
+Consequently an ordinary unexpected exception raised:
+
+```text
+inside AsyncClient.send after the request attempt began
+during response-trace construction
+during the post-response cookie cleanup in exchange()
+```
+
+can still reach the outer `cli_internal_error` boundary with the attempted request absent from the ledger. This contradicts the frozen requirement that every actual attempted HTTP exchange appears exactly once and in execution order on every structured outcome.
 
 Required correction:
 
 ```text
-ordinary unexpected exception before any request
-    -> bounded cli_internal_error
-    -> exchanges = []
+one ordinary-Exception boundary covers parsing and execution
+    -> expected ParseFailure remains its finite local outcome
+    -> unexpected parse defect becomes bounded cli_internal_error
+    -> BaseException families remain untouched
 
-ordinary unexpected exception after one or more attempts
-    -> bounded cli_internal_error
-    -> preserve every completed/attempted exchange in order
+once an HTTP send attempt begins
+    -> the request attempt is owned by the command ledger
+    -> an unexpected ordinary send failure preserves one exchange with response = null
+    -> a returned response remains represented if response capture or later cleanup fails
+    -> expected TransportFailure is not duplicated
+    -> selector and primary ordering remains exact
+
+all structured failures
     -> result = null
-    -> stdout one JSON line
-    -> stderr empty
+    -> one JSON stdout line
+    -> empty stderr
     -> exit 1
-
-BaseException / cancellation / KeyboardInterrupt / SystemExit
-    -> not normalized as an ordinary CLI result
+    -> no raw exception text
 ```
 
-The structured execution boundary may be moved or may carry partial execution state, but no actual exchange may be discarded merely because the command ended through the unexpected-error boundary. Permanent tests must inject defects after a selector exchange, after a primary response and during post-response/client cleanup.
-
-### `S05-RF-02` — endpoint-root parsing silently repairs an empty explicit port
-
-`normalize_endpoint_root()` validates `parts.port` only when it is non-null. Python URL parsing represents an empty explicit port as `None`, so inputs such as:
+Permanent evidence must exercise the real `netauto -n` boundary for at least:
 
 ```text
-http://example.test:
-http://example.test:/
-https://[2001:db8::10]:
+unexpected RuntimeError from parse_process before a command key exists
+unexpected RuntimeError from parsing after a safe partial command exists
+unexpected ordinary exception raised by the HTTP send path
+unexpected failure during response-trace construction or equivalent post-response capture
+unexpected failure during exchange-level post-response cleanup
+existing __aexit__ cleanup failure
+expected httpx.TransportError without duplicate exchange
+BaseException/cancellation negative controls
 ```
 
-are accepted and normalized by dropping the trailing colon. The frozen contract permits either no port or one valid explicit numeric port; it does not permit malformed input to be silently repaired.
+### `S05-RF-02` — CLOSED
 
-Required correction:
+The endpoint authority now distinguishes absence of a port from one explicit ASCII-decimal port. Hostname and bracketed-IPv6 forms accept only `1..65535`; empty, zero, signed, nonnumeric and out-of-range ports produce bounded `cli_invalid_invocation`, `command = null` and no exchange. Parser, process and installed-wheel evidence cover the required matrix.
 
-```text
-port absent
-    -> valid
+### `S05-RF-03` — CLOSED
 
-explicit numeric port 1..65535
-    -> valid
+`ParsedCommand`, `RequestPlan`, `CliError`, request/response traces and `CliResult` now take recursive immutable JSON snapshots. Public nested values cannot mutate the stored authority, `as_json()` returns detached ordinary carriers and repeated rendering is byte-stable. Query/header maps and exchange ordering remain immutable.
 
-empty, zero, non-numeric, signed or out-of-range explicit port
-    -> cli_invalid_invocation
-    -> command = null
-    -> exchanges = []
-```
+### `S05-RF-04` — CLOSED
 
-Add deterministic parser/process regressions for hostname and bracketed-IPv6 roots, while preserving the accepted canonical examples and bounded non-leaking errors.
+All 63 `CommandSpec` values now own meaningful descriptions, selector and parameter metadata through the same registry fields, renderer metadata and at least one parser-valid example. The registry contains 65 stored examples because both RelationshipDefinition CREATE and RENAME expose their two discriminated shapes. All examples parse through the production parser to their own command without HTTP.
 
-### `S05-RF-03` — the CLI command/result/trace values are only shallowly immutable
+## M2-S05 second review record
 
-The model uses frozen dataclasses and top-level `MappingProxyType`, but nested JSON objects and arrays are retained by shallow copy. The same is true for command parameters, error details, request/response bodies and successful result bodies. Mutating an original nested input—or a nested value reached through a public field—can therefore change a supposedly immutable command, trace, error or result after construction.
-
-This contradicts the frozen ownership of `model.py` as the authority for immutable CLI command, result, trace and error values and can make rendered output differ from the state that was actually parsed or observed.
-
-Required correction:
+Reviewer result:
 
 ```text
-construction
-    -> take a recursive immutable snapshot or an equivalently isolated canonical copy
-
-stored command / error / request / response / result values
-    -> no externally reachable mutation can alter them
-
-serialization
-    -> return detached JSON-compatible carriers
-    -> mutating a serialized copy cannot alter the stored authority
-```
-
-Permanent pure tests must cover nested dictionaries and arrays for `ParsedCommand`, `CliError`, request/response traces and `CliResult`, including mutation of both the original constructor input and the value returned by `as_json()`.
-
-### `S05-RF-04` — registry help and example metadata are placeholders, not command authority
-
-The static registry correctly owns 63 command specifications, but the common builder currently assigns every specification only:
-
-```text
-help_text   = "<operation> <resource>"
-example     = "<resource> <operation>"
-renderer    = "<resource>.<operation>"
-```
-
-For operations requiring a selector or parameters, the recorded example is not a valid command at all. The frozen CLI architecture makes this installed registry the sole help/dispatch authority and requires operation help to expose selector type, required/optional parameter types, the exact HTTP operation and concise examples. S06 may render this metadata, but it must not invent a second command/help authority.
-
-Required correction:
-
-```text
-every CommandSpec
-    -> meaningful bounded operation description
-    -> exact selector metadata
-    -> required/optional parameter metadata and types
-    -> exact HTTP method/path already owned by the spec
-    -> at least one concise syntactically valid command example
-```
-
-Add machine-checkable evidence that every example resolves to its own registry key and passes the same local parser/required-parameter validation without performing HTTP. Do not implement `/help`, the REPL or FORMATTED runtime behavior in S05.
-
-## M2-S05 corrective candidate record
-
-Candidate state and provenance:
-
-```text
-M2-S05                         CANDIDATE READY FOR REVIEW
+M2-S05                         REVIEW CHANGES REQUIRED
 initial implementation         3d02fce9fe9c456e26100c3dbbbabce75bf90caf
 initial candidate evidence     c1365c1c951447ed3f22cd54bcb1effcf41043ee
-reviewer baseline              77b682bac31f6c2e7a8befa2b5a18d98330fb4ea
-review-fix prompt              2f43b21d66d318fcc43c2595bdf893fc6f395d53
+first review record            77b682bac31f6c2e7a8befa2b5a18d98330fb4ea
+first review-fix prompt        2f43b21d66d318fcc43c2595bdf893fc6f395d53
 corrective implementation      1015dd5ea86b15e8248c9a5e2fe518fe98e2b637
-candidate evidence/status      eb8ff673ad1ea77179194493b712dcc0497b5835
-review result                  pending / reviewer-owned
-open findings                  none in the corrective candidate
+corrective evidence/status     eb8ff673ad1ea77179194493b712dcc0497b5835
+corrective provenance          372d2954f206ae99f3935d3ee36d28a50f9fb72e
+closed findings                S05-RF-02, S05-RF-03, S05-RF-04
+open finding                   S05-RF-01 residual boundary cases
 M2-S06                         BLOCKED / not started
 ```
 
-Corrective finding outcomes:
+Conforming material to preserve:
 
 ```text
-S05-RF-01  PASS — one execution ledger preserves selector, primary and cleanup
-           exchange history on ordinary unexpected failure; BaseException and
-           cancellation controls remain unnormalized
-S05-RF-02  PASS — absent ports and numeric 1..65535 ports are accepted; empty,
-           zero, signed, nonnumeric and out-of-range hostname/IPv6 ports fail
-           locally with command = null and exchanges = []
-S05-RF-03  PASS — command, plan, error, request/response trace and result JSON
-           use recursive immutable snapshots with detached JSON serialization
-S05-RF-04  PASS — all 63 CommandSpec values own meaningful descriptions,
-           renderer metadata and parser-valid examples; both RelationshipDefinition
-           create/rename discriminated shapes are represented
+neutral wire boundary          shared request/success/page/lifecycle/error/Health DTOs
+server adapters                reuse neutral DTO identities; 63 business routes unchanged
+runtime dependency             HTTPX >=0.28,<1 promoted from dev to project dependency
+console entrypoint             netauto = netauto.cli.main:main
+CLI execution                  HTTP-only exact -n non-interactive process
+remote registry                63 exact CommandSpec values; 65 valid examples
+selectors                      deterministic top-level/nested lookup and per-command memoization
+transport                      verified TLS, no redirect/retry/auth/cookie persistence
+protocol                       exact 200/201/204, DTO/error/Location validation
+normal trace paths             selector and primary exchanges recorded once and ordered
+process result                 one stdout JSON line; stderr empty; exit 0/1 on covered paths
+interactive REPL/FORMATTED     not introduced; owned by blocked M2-S06
 ```
 
-Permanent exact review-fix registry:
-
-```text
-S05-RF-01                      6 selectors / 8 collected nodes
-S05-RF-02                      3 selectors / 21 collected nodes
-S05-RF-03                      3 selectors / 3 collected nodes
-S05-RF-04                      5 selectors / 5 collected nodes
-exact union                   17 selectors / 37 unique nodes / 37 passed — 11.46 s
-registry examples             63/63 specs; 65/65 stored examples parse to own key
-```
-
-Bundle state remains bounded and honest:
-
-```text
-M2-VER-27  S05 primary candidate PASS — 51 selectors / 106 passed — 15.44 s
-M2-VER-24  bounded S05 support PASS — 7 selectors / 7 passed — 9.49 s;
-           primary ownership remains M2-S07
-M2-VER-28  bounded S05 support PASS — 19 selectors / 27 passed — 4.86 s;
-           primary ownership remains M2-S06
-M2-VER-30  bounded S05 support PASS — 7 selectors / 30 passed — 9.73 s;
-           primary ownership remains M2-S07
-M2-VER-25/26 remain DESIGNED until M2-S06
-M2-VER-29 remains DESIGNED until M2-S07
-M2-VER-31/32 remain DESIGNED until M2-S08
-```
-
-Candidate verification on the corrective implementation:
+Candidate-reported verification remains useful but does not close the residual paths:
 
 ```text
 uv lock --check                                       PASS — 44 packages
@@ -236,22 +202,24 @@ uv build                                              PASS — sdist + wheel 0.1
 Ruff format/check                                     PASS — 215 files
 Ruff lint                                             PASS
 Pyright                                               PASS — 0 errors
-pytest collection                                     670 tests — 1.59 s
-all tests/test_m2_s05_*.py                            106 passed — 16.22 s
-DTO/API/route-inventory regressions                    57 passed — 27.87 s
-S04 Settings/startup/Health regressions               121 passed — 15.57 s
-schema metadata / migrations                            5 passed — 2.10 s
-M1 / S00 / M2 traceability                             24 passed — 14.27 s
-installed wheel/entrypoint boundary                     1 passed; success,
-                                                       malformed port and controlled
-                                                       post-exchange internal failure
-PostgreSQL concurrency marker                         182 passed — 117.83 s
-non-PostgreSQL                                        419 passed — 36.77 s
-full repository suite                                 670 passed — 204.01 s
-skip / xfail / rerun                                    0 / 0 / 0
-warning census                                          1 locked FastAPI/Starlette deprecation
-supported-path 40P01 / unexpected 40001                 0 / 0
-negative-control 40P01 / 40001                          1 / 2, expected and immediate
+pytest collection                                     670 tests
+review-fix union                                       37 passed
+all S05 tests                                         106 passed
+M2-VER-27                                             106 passed
+M2-VER-24 bounded support                               7 passed
+M2-VER-28 bounded support                              27 passed
+M2-VER-30 bounded support                              30 passed
+DTO/API/route inventory                               57 passed
+S04 Settings/startup/Health                          121 passed
+schema metadata / migrations                           5 passed
+M1 / S00 / M2 traceability                            24 passed
+PostgreSQL concurrency marker                        182 passed
+non-PostgreSQL                                       419 passed
+full repository suite                                670 passed — 206.58 s
+skip / xfail / rerun                                   0 / 0 / 0
+warning census                                         1 locked FastAPI/Starlette deprecation
+supported-path 40P01 / unexpected 40001                0 / 0
+negative-control 40P01 / 40001                         1 / 2, expected and immediate
 ```
 
 Environment and unchanged boundaries:
@@ -274,7 +242,9 @@ interactive REPL/FORMATTED      not introduced; owned by blocked M2-S06
 GitHub Actions/PR               not used / not created
 ```
 
-Both non-normative S05 execution aids remain in `wip/` pending reviewer acceptance.
+The reviewer inspected the published commit chain, production delta, tests and traceability. The reviewer did not independently execute the 670-test suite during this inspection; the execution results above are those produced and recorded by the candidate.
+
+Both existing S05 execution aids remain in `wip/`. No prompt is retired while the slice is open.
 
 ## M2-S04 completion record
 
@@ -372,13 +342,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare the non-normative corrective execution aid:
+Prepare the bounded residual execution aid:
 
 ```text
-docs/milestones/M2/wip/M2-S05-review-fixes-codex-prompt.md
+docs/milestones/M2/wip/M2-S05-review-fixes-2-codex-prompt.md
 ```
 
-The correction remains inside `M2-S05` and is limited to `S05-RF-01`, `S05-RF-02`, `S05-RF-03` and `S05-RF-04`. Do not start `M2-S06`.
+The correction remains inside `M2-S05` and is limited to the residual `S05-RF-01` boundary cases above. Do not start `M2-S06`.
 
 ## Current status vocabulary
 
