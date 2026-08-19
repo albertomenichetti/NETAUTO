@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S06 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S06 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S06 — REVIEW CHANGES REQUIRED
-current task    prepare and execute one bounded M2-S06 review-fix prompt
-blockers        S06-RF-01 and S06-RF-02 remain open; M2-S07 remains blocked
+current slice   M2-S06 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the corrected M2-S06 candidate
+blockers        none inside the corrected S06 candidate; M2-S07 remains blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | `M2-S06` REVIEW CHANGES REQUIRED — `S06-RF-01` / `S06-RF-02` only |
+| Implementation | `M2-S06` CANDIDATE READY FOR REVIEW — `S06-RF-01` / `S06-RF-02` corrected |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -45,7 +45,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
-| `M2-S06` | REVIEW CHANGES REQUIRED | `M2-S05 COMPLETED` |
+| `M2-S06` | CANDIDATE READY FOR REVIEW | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
@@ -54,7 +54,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and reviewed findings
 
-No contract, architecture, implementation-planning or technology contradiction is open. The published M2-S06 candidate establishes the interactive REPL, Health-backed connection state, persistent endpoint client, exact local-command inventory, shared S05 remote-command authority, terminal behavior, FORMATTED rendering and all nine enrichment entry points. Two bounded implementation defects remain inside the same S06 FORMATTED/enrichment boundary. No architecture reopen is required.
+No contract, architecture, implementation-planning or technology contradiction is open. The corrected M2-S06 candidate preserves the interactive REPL, Health-backed connection state, persistent endpoint client, exact local-command inventory, shared S05 remote-command authority, terminal behavior, FORMATTED rendering and all nine enrichment entry points. Both bounded review findings are corrected inside the existing S06 FORMATTED/enrichment boundary. No architecture reopen was required.
 
 ### `S06-RF-01` — FORMATTED output can hide the exact selected identity
 
@@ -109,6 +109,25 @@ JSON mode and S05 trace schema
 ```
 
 Permanent evidence must cover at least one human-selected `204` operation, nullable `object get-owner`, a direct projection/mutation whose body omits a path target, exact-ID visibility and zero extra HTTP exchanges.
+
+Corrected candidate:
+
+```text
+selector planning
+    -> records immutable resolved identities in registry discovery order
+
+primary request planning
+    -> builds one immutable FORMATTED-only presentation target
+    -> includes resolved selector identities and identifying path values
+
+FORMATTED rendering
+    -> displays submitted human intent where distinct
+    -> displays each exact resolved identity without duplicate ambiguity
+    -> does not issue a recovery GET
+
+JSON rendering and CliResult
+    -> unchanged
+```
 
 ### `S06-RF-02` — enrichment accepts identity-inconsistent GET responses and incomplete cycle detection
 
@@ -167,6 +186,115 @@ mismatch or cycle
 ```
 
 Permanent evidence must inject wrong stable DataType/ObjectTemplate/Object identities, a wrong exact ObjectTemplateVersion identity, a same-lineage/different-version cycle and a multi-lineage cycle whose repeated lineage uses a different version.
+
+Corrected candidate:
+
+```text
+secondary stable GET
+    -> validates returned id against the requested id before cache insertion
+
+ObjectTemplateVersion GET
+    -> validates returned template_id and version against the requested pair
+
+parent traversal
+    -> tracks exact pairs and stable template_id lineages
+    -> rejects a repeated stable lineage before another request is issued
+
+mismatch or cycle
+    -> cli_protocol_error with no partial presentation
+    -> truthful ordered trace
+    -> connection remains CONNECTED
+```
+
+## M2-S06 corrected candidate record
+
+Implementer result:
+
+```text
+M2-S06                         CANDIDATE READY FOR REVIEW — not COMPLETED
+review-fix baseline            827c15ccf16f89630f975f1b3faa644f0a709c27
+review-fix execution aid       a0a97e60074004e44be6a54e19378de6f2e24681
+corrective implementation      f9c463fc30856b56ffb0ef0d49d5ca11d558c1ce
+candidate evidence/status      commit containing this status
+corrected findings             S06-RF-01, S06-RF-02
+architecture reopen            none
+M2-S07                         BLOCKED / not started
+```
+
+Permanent review-fix evidence:
+
+```text
+finding registry               exactly S06-RF-01 and S06-RF-02
+S06-RF-01                      6 selectors / 6 passed
+S06-RF-02                      6 selectors / 9 passed
+review-fix union               11 unique selectors / 14 passed — 4.42 s
+focused review/render/trace     30 passed — 4.83 s
+human-selected 204             exact UUID + version; lookup + DELETE only
+nullable owner                 exact selected Object UUID; no recovery GET
+attach projection              exact parent/child IDs; no post-mutation GET
+exact selector                 exact UUID appears once
+JSON contract                  top-level schema/bytes unchanged; no target metadata
+identity mismatch coverage     DataType / ObjectTemplate / Object / version pair
+cycle coverage                 same-lineage and multi-lineage/different-version
+failure behavior               protocol error; no presentation; truthful trace; CONNECTED
+positive enrichment            root traversal and repeated-identity memoization
+```
+
+Pre-publication gates executed against the corrective implementation and this evidence-only status delta:
+
+```text
+uv lock --check                PASS — 46 packages resolved
+uv sync --locked               PASS — 44 packages checked
+uv build                       PASS — sdist + wheel 0.1.0
+Ruff format                    PASS — 224 files
+Ruff lint                      PASS
+Pyright strict                 PASS — 0 errors
+pytest collection              765 tests
+M2-VER-25 complete             26 passed — 17 selectors
+M2-VER-26 complete             18 passed — 12 selectors
+M2-VER-28 S05 + S06 complete   56 passed — 37 selectors
+M2-VER-27 accepted S05         126 passed — 64 selectors
+all M2-S06                     72 passed — 5.04 s
+all M2-S05                     126 passed — 19.45 s
+S05 + S06                      198 passed
+Health / S04 affected          77 passed — 1 locked warning — 15.17 s
+API route / DTO inventory      67 passed — 1 locked warning — 28.73 s
+trace / schema / migrations    32 passed — 16.69 s
+PostgreSQL concurrency         182 passed, 583 deselected — 117.48 s
+non-PostgreSQL                 514 passed, 251 deselected — 43.58 s
+full repository suite          765 passed — 212.41 s
+skip / xfail / rerun           0 / 0 / 0
+warning census                 1 locked FastAPI/Starlette deprecation
+supported 40P01 / 40001        0 / 0
+negative-control 40P01 / 40001 1 / 2, expected and immediate
+```
+
+Environment and unchanged boundaries verified by the corrected candidate:
+
+```text
+CPython                        3.14.7
+PostgreSQL                     16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+uv                             0.12.3
+prompt-toolkit                 3.0.53
+project version                0.1.0
+runtime dependency / lock diff none
+authoritative tables           15
+Alembic bases / heads          1 / 1
+root revision                  0001_m2_kernel
+compare_metadata               []
+schema / migration / index diff none
+business HTTP operations       41 mutations + 22 reads = 63 exact
+operational HTTP operations    1 Health; total public HTTP = 64
+CLI local / remote operations  8 / 63 exact
+CLI family census              14 / 16 / 13 / 14 / 5 / 1
+registry examples              65 parser-valid
+enrichment entry points        9 exact
+scenario / predicate registries 83 / 21
+S07 runtime-lock/release/Linux absent / not started
+GitHub Actions / PR            absent / not created
+```
+
+The corrected production delta is limited to CLI selector planning, execution, enrichment and FORMATTED presentation. No dependency, public route, DTO, schema, migration, constraint, index, Health, JSON trace/result or S05 non-interactive contract changed.
 
 ## M2-S06 first review record
 
