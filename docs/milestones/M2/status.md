@@ -268,8 +268,8 @@ M2-S05                         CANDIDATE READY FOR REVIEW
 reviewer baseline              7bfcdc5059de1742c2c211b4edb34c0879f31234
 residual prompt commit         01d12f821ccd1a5d09ea15f4830e9a844ee5ced1
 residual implementation        4e23af5dd4fd1f3ac3c7c343637fcad9a4906660
-candidate evidence/status      recorded by this commit
-final provenance/remote HEAD   pending provenance-only follow-up
+candidate evidence/status      2bd40d4ce358e6bd20d86973544441e9830ed563
+final provenance/remote HEAD   recorded by this commit
 S05-RF-01                      candidate correction implemented; review pending
 S05-RF-02 / 03 / 04            reviewer-owned CLOSED; preserved
 M2-S06                         BLOCKED / not started
