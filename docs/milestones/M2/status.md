@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S06 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S06 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S06 — IN PROGRESS
-current task    implement and verify the official interactive CLI REPL and formatted experience
+current slice   M2-S06 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published M2-S06 candidate
 blockers        none
 ```
 
@@ -45,7 +45,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
-| `M2-S06` | IN PROGRESS | `M2-S05 COMPLETED` |
+| `M2-S06` | CANDIDATE READY FOR REVIEW | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
@@ -59,6 +59,101 @@ No contract, architecture, implementation-planning, technology or verification b
 `M2-S06` is limited to the official interactive CLI REPL and formatted experience. It must consume the completed S05 HTTP core, registry, selector, protocol, trace and non-interactive authorities without creating a second command model. It must not begin `M2-S07` versioned-wheel, installed-Alembic or Linux operating-baseline work before reviewer-owned completion.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+
+## M2-S06 candidate record
+
+Candidate state:
+
+```text
+M2-S06                         CANDIDATE READY FOR REVIEW / not COMPLETED
+starting baseline              e0ad43277fb214ed3f97e275416304f0130ff471
+implementation                 e0c7a55bdbb066437fb0189ebcb781b834c476d6
+candidate evidence/status      commit containing this record
+M2-S07                         BLOCKED / not started
+```
+
+Implemented scope:
+
+```text
+runtime dependency             prompt-toolkit >=3.0,<4; resolved 3.0.53
+process routing                no argv -> async REPL; exact -n unchanged; other argv invalid
+initial session                DISCONNECTED / FORMATTED / empty in-memory history
+local commands                 8 / 8 exact
+remote commands                63 / 63 exact; same accepted registry and shared parser
+session transport              at most one endpoint-scoped persistent HTTPX client
+command isolation              fresh ledger and selector/enrichment memo per command
+Health state                   exact /connect and /status ready-200 validation
+terminal behavior              Ctrl-R / Ctrl-C / Ctrl-D / clear / exit verified on Linux PTY
+formatted rendering            every installed renderer key resolves
+bounded enrichment             all 9 frozen single-read shapes; GET-only / complete-or-fail
+JSON mode                      accepted S05 shape; no presentation enrichment
+mutation/list behavior         direct primary result only; zero hidden item/post-mutation GET
+```
+
+Traceability:
+
+```text
+M2-VER-25                      IMPLEMENTED — 17 permanent targets
+M2-VER-26                      IMPLEMENTED — 12 permanent targets
+M2-VER-28                      IMPLEMENTED — 7 S06 primary targets
+M2-VER-28 S05 support          preserved — 19 targets
+M2-VER-27                      IMPLEMENTED / accepted S05 ownership preserved
+M2-VER-29 / 31 / 32            DESIGNED; not overclaimed
+```
+
+Executed pre-publication verification:
+
+```text
+uv lock                        PASS — prompt-toolkit + wcwidth only
+uv lock --check                PASS — 46 packages resolved
+uv sync --locked               PASS — 44 packages checked
+uv build                       PASS — sdist + wheel 0.1.0
+Ruff format/check              PASS — 222 files
+Ruff lint                      PASS
+Pyright strict                 PASS — 0 errors
+pytest collection              751 tests
+M2-VER-25 runtime group         26 passed
+M2-VER-26 runtime group         18 passed
+M2-VER-28 S06 runtime group     15 passed
+S06 + traceability              78 passed
+S05 + S06                      185 passed
+all S05 regressions            126 passed
+Health / S04 affected          111 passed — 1 locked warning
+traceability / schema / migrate 31 passed
+PostgreSQL concurrency         182 passed, 569 deselected — 117.75 s
+non-PostgreSQL                 500 passed, 251 deselected — 43.47 s
+full repository suite          751 passed — 210.35 s
+skip / xfail / rerun             0 / 0 / 0
+warning census                   1 locked FastAPI/Starlette deprecation
+supported 40P01 / 40001          0 / 0
+negative-control 40P01 / 40001   1 / 2, expected and immediate
+```
+
+Environment and unchanged boundaries:
+
+```text
+CPython                        3.14.7
+PostgreSQL                     16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+uv                             0.12.3
+prompt-toolkit                 3.0.53
+authoritative tables           15
+Alembic bases / heads          1 / 1
+root revision                  0001_m2_kernel
+compare_metadata               []
+project version                0.1.0
+schema / migration / index diff none
+dependency / lock delta        prompt-toolkit + transitive wcwidth only
+business HTTP operations       41 mutations + 22 reads = 63 exact
+operational HTTP operations    1 Health; total public HTTP = 64
+CLI remote operations          63 exact
+CLI family census              14 / 16 / 13 / 14 / 5 / 1
+registry examples              65 parser-valid
+scenario / predicate registries 83 / 21
+S07 runtime-lock/release/Linux absent / not started
+GitHub Actions / PR            absent / not created
+```
+
+No architecture or documentation finding remains open from implementation. This record does not assign reviewer-owned completion.
 
 ## M2-S05 completion record
 
@@ -294,7 +389,7 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare and execute the Codex implementation prompt for:
+Review the published implementation and evidence candidate for:
 
 ```text
 M2-S06 — Official CLI interactive REPL and formatted experience
