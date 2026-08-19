@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S07 READY
+**Milestone status:** IMPLEMENTATION — M2-S07 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S07 — READY
-current task    prepare the M2-S07 Codex implementation prompt and execute the authorized slice
-blockers        none
+current slice   M2-S07 — IN PROGRESS
+current task    implement the authorized M2-S07 release and installed-runtime baseline
+blockers        externally supplied TEST_DATABASE_URL is unavailable for mandatory T9/PostgreSQL gates
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S07` ONLY |
+| Implementation | IN PROGRESS — `M2-S07` ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -46,7 +46,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
-| `M2-S07` | READY | `M2-S06 COMPLETED` |
+| `M2-S07` | IN PROGRESS | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
@@ -54,11 +54,81 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S07`.
+No contract, architecture, implementation-planning or technology blocker is open for `M2-S07`. The externally supplied `TEST_DATABASE_URL` is currently unavailable, so PostgreSQL-backed T9 and complete repository gates remain blocked while bounded implementation continues.
 
 `M2-S07` is limited to the versioned wheel, installed Alembic graph and documented/executed Linux operating baseline. It must consume the completed server, runtime, Health and CLI capabilities without changing their frozen public or semantic contracts. It must not begin `M2-S08` integrated traceability/negative-surface closure before reviewer-owned completion.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+
+## M2-S07 in-progress implementation record
+
+The bounded release implementation is present but is not a candidate-ready handoff.
+The required external PostgreSQL target was not present in the execution
+environment, so the installed migration/server T9 targets, PostgreSQL regressions,
+concurrency gate, complete suite, and exact-remote post-push rerun have not passed.
+
+Implemented boundaries:
+
+```text
+release version                  0.2.0
+canonical wheel                  netauto-0.2.0-py3-none-any.whl
+embedded runtime lock            netauto/release/runtime.pylock.toml
+runtime package census           29 total / 27 applicable on Linux CPython
+installed target                 wheel-only / outside checkout / --no-deps app install
+installed Alembic                package-resource graph and explicit real-PG harness
+Linux operation                  versioned layout, protected secret, foreground lifecycle
+CLI operation                    installed PTY and HTTP/HTTPS subprocess harness
+traceability                     M2-VER-24 / 29 / 30 plus installed support 22/23/25-28
+schema / migration DDL           unchanged
+API / CLI semantics              unchanged
+M2-S08 / M2-S09                  not started
+```
+
+Verified before partial publication:
+
+```text
+uv lock --check                  PASS — 46 packages resolved
+uv sync --locked                 PASS
+uv build                         PASS — 0.2.0 sdist + canonical wheel
+Ruff format / lint               PASS — 230 files / no findings
+Pyright strict                   PASS — 0 errors / warnings
+pytest collection                780 tests / 1 locked deprecation warning
+focused S07 non-PostgreSQL       11 passed / 3 real-PG targets deselected
+M2 traceability                  21 passed
+all non-PostgreSQL               526 passed / 254 deselected / 1 warning
+skip / xfail / rerun             0 / 0 / 0 in executed gates
+```
+
+Pre-publication release facts:
+
+```text
+wheel size / members             166001 bytes / 77
+wheel SHA-256                    16618ff26686fb6a44b994593f28c252bf2a0409790d7d59a68d5e324f02e503
+runtime lock size                48238 bytes
+runtime lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+migration checksum               379165a1eda83c226a6c1e5dc4f493c7fa0d0c8dba39449a1d004751aaa39c57
+CPython / uv / target OS         3.14.7 / 0.12.3 / Ubuntu 24.04.4 LTS x86_64
+```
+
+`uv 0.12.3` accepts only `pylock.toml` or `pylock.<name>.toml` as a
+PEP 751 input/output basename. Generation and synchronization therefore use the
+byte-identical temporary carrier `pylock.runtime.toml`, while the committed and
+installed canonical package resource remains `runtime.pylock.toml`. Permanent
+verification regenerates the same relative carrier in a disposable project copy
+and requires byte-for-byte equality.
+
+Blocked verification:
+
+```text
+TEST_DATABASE_URL                missing
+S07 installed explicit migration not executed
+S07 pre-start/start/Health/stop/restart/mismatch not executed
+S07 real-PG transport-cut 503    not executed
+PostgreSQL concurrency gate      not executed
+complete repository suite        not executed
+post-push exact-remote T9/suite  not eligible while the mandatory target is absent
+candidate-ready transition       forbidden
+```
 
 ## M2-S06 completion record
 

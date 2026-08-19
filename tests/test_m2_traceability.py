@@ -1428,6 +1428,102 @@ S06_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
         | _S06_REVIEW_FIX_UNION
     ),
 }
+S07_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-24": frozenset(
+        {
+            "tests/test_m2_s07_distribution.py::"
+            "test_candidate_wheel_has_exact_version_content_entrypoint_and_exclusions",
+            "tests/test_m2_s07_distribution.py::"
+            "test_committed_runtime_lock_is_exact_runtime_only_regenerated_export",
+            "tests/test_m2_s07_distribution.py::"
+            "test_clean_release_sync_and_no_deps_install_are_exact_and_source_isolated",
+            "tests/test_m2_s07_distribution.py::"
+            "test_installed_cli_import_boundary_and_user_agent_use_distribution_version",
+            "tests/test_m2_s07_alembic.py::"
+            "test_installed_distribution_discovers_exact_single_package_resource_graph",
+            "tests/test_m2_s07_alembic.py::"
+            "test_root_revision_payload_checksum_is_unchanged_from_s07_baseline",
+        }
+    ),
+    "M2-VER-29": frozenset(
+        {
+            "tests/test_m2_s07_alembic.py::"
+            "test_installed_alembic_explicitly_realizes_exact_schema_without_cli_cross_action",
+            "tests/test_m2_s07_linux.py::"
+            "test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_cli_local_repl_and_noninteractive_http_need_no_database",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_worker_returns_complete_503_when_real_pg_transport_is_cut",
+        }
+    ),
+    "M2-VER-30": frozenset(
+        {
+            "tests/test_m2_s07_linux.py::"
+            "test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+            "tests/test_m2_s07_trust.py::"
+            "test_installed_cli_https_verifies_trust_and_hostname_without_bypass",
+            "tests/test_m2_s07_trust.py::"
+            "test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+            "tests/test_m2_s07_trust.py::"
+            "test_secret_sentinel_is_absent_from_artifact_docs_config_and_server_argv",
+        }
+    ),
+}
+S07_INSTALLED_SUPPORT_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-22": frozenset(
+        {
+            "tests/test_m2_s07_alembic.py::"
+            "test_installed_distribution_discovers_exact_single_package_resource_graph",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+        }
+    ),
+    "M2-VER-23": frozenset(
+        {
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_worker_returns_complete_503_when_real_pg_transport_is_cut",
+        }
+    ),
+    "M2-VER-25": frozenset(
+        {
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_cli_local_repl_and_noninteractive_http_need_no_database",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+        }
+    ),
+    "M2-VER-26": frozenset(
+        {
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+        }
+    ),
+    "M2-VER-27": frozenset(
+        {
+            "tests/test_m2_s07_distribution.py::"
+            "test_installed_cli_import_boundary_and_user_agent_use_distribution_version",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_cli_local_repl_and_noninteractive_http_need_no_database",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+        }
+    ),
+    "M2-VER-28": frozenset(
+        {
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_cli_local_repl_and_noninteractive_http_need_no_database",
+            "tests/test_m2_s07_trust.py::"
+            "test_installed_cli_https_verifies_trust_and_hostname_without_bypass",
+            "tests/test_m2_s07_trust.py::"
+            "test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+        }
+    ),
+}
 M2_EVIDENCE_TO_TARGETS = {
     bundle_id: EvidenceBundle(
         "IMPLEMENTED"
@@ -1438,6 +1534,8 @@ M2_EVIDENCE_TO_TARGETS = {
         or bundle_id in S05_PRIMARY_BUNDLE_TARGETS
         or bundle_id in S05_SUPPORTING_BUNDLE_TARGETS
         or bundle_id in S06_PRIMARY_BUNDLE_TARGETS
+        or bundle_id in S07_PRIMARY_BUNDLE_TARGETS
+        or bundle_id in S07_INSTALLED_SUPPORT_TARGETS
         else "DESIGNED",
         S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S02_BUNDLE_TARGETS.get(bundle_id, frozenset())
@@ -1445,7 +1543,9 @@ M2_EVIDENCE_TO_TARGETS = {
         | S04_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S05_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S05_SUPPORTING_BUNDLE_TARGETS.get(bundle_id, frozenset())
-        | S06_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset()),
+        | S06_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S07_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S07_INSTALLED_SUPPORT_TARGETS.get(bundle_id, frozenset()),
     )
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
@@ -1646,6 +1746,8 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
             or bundle_id in S05_PRIMARY_BUNDLE_TARGETS
             or bundle_id in S05_SUPPORTING_BUNDLE_TARGETS
             or bundle_id in S06_PRIMARY_BUNDLE_TARGETS
+            or bundle_id in S07_PRIMARY_BUNDLE_TARGETS
+            or bundle_id in S07_INSTALLED_SUPPORT_TARGETS
         ):
             assert evidence.state == "IMPLEMENTED"
             assert evidence.targets
@@ -1755,7 +1857,7 @@ def test_s04_bundle_states_and_targets_are_honest_and_resolvable() -> None:
     for bundle_id, targets in S04_BUNDLE_TARGETS.items():
         evidence = M2_EVIDENCE_TO_TARGETS[bundle_id]
         assert evidence.state == "IMPLEMENTED"
-        assert evidence.targets == targets
+        assert targets <= evidence.targets
         for target in targets:
             _assert_target_exists(target)
 
@@ -1776,9 +1878,9 @@ def test_s05_primary_and_supporting_bundle_targets_are_honest() -> None:
         assert targets <= evidence.targets
         for target in targets:
             _assert_target_exists(target)
-    assert (
-        M2_EVIDENCE_TO_TARGETS["M2-VER-27"].targets
-        == (S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"])
+    assert M2_EVIDENCE_TO_TARGETS["M2-VER-27"].targets == (
+        S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"]
+        | S07_INSTALLED_SUPPORT_TARGETS["M2-VER-27"]
     )
     defined_s05_targets = {
         f"{path.as_posix()}::{node.name}"
@@ -1788,7 +1890,7 @@ def test_s05_primary_and_supporting_bundle_targets_are_honest() -> None:
         and node.name.startswith("test_")
     }
     assert S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"] == defined_s05_targets
-    for designed in ("M2-VER-29", "M2-VER-31", "M2-VER-32"):
+    for designed in ("M2-VER-31", "M2-VER-32"):
         assert M2_EVIDENCE_TO_TARGETS[designed] == EvidenceBundle(
             "DESIGNED", frozenset()
         )
@@ -1849,11 +1951,68 @@ def test_s06_review_fix_registry_is_exact_resolvable_and_bundle_mapped() -> None
         )
     )
     assert review_union <= S06_PRIMARY_BUNDLE_TARGETS["M2-VER-28"]
-    assert (
-        M2_EVIDENCE_TO_TARGETS["M2-VER-27"].targets
-        == S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"]
+    assert M2_EVIDENCE_TO_TARGETS["M2-VER-27"].targets == (
+        S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"]
+        | S07_INSTALLED_SUPPORT_TARGETS["M2-VER-27"]
     )
-    for bundle_id in ("M2-VER-29", "M2-VER-31", "M2-VER-32"):
+    for bundle_id in ("M2-VER-31", "M2-VER-32"):
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
+            "DESIGNED", frozenset()
+        )
+
+
+def test_s07_primary_and_installed_support_registries_are_exact_and_resolvable() -> (
+    None
+):
+    assert set(S07_PRIMARY_BUNDLE_TARGETS) == {
+        "M2-VER-24",
+        "M2-VER-29",
+        "M2-VER-30",
+    }
+    assert set(S07_INSTALLED_SUPPORT_TARGETS) == {
+        "M2-VER-22",
+        "M2-VER-23",
+        "M2-VER-25",
+        "M2-VER-26",
+        "M2-VER-27",
+        "M2-VER-28",
+    }
+    all_s07_targets = frozenset(
+        target
+        for targets in (
+            *S07_PRIMARY_BUNDLE_TARGETS.values(),
+            *S07_INSTALLED_SUPPORT_TARGETS.values(),
+        )
+        for target in targets
+    )
+    defined_s07_targets = {
+        f"{path.as_posix()}::{node.name}"
+        for path in sorted(Path("tests").glob("test_m2_s07_*.py"))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    assert all_s07_targets == defined_s07_targets
+    for bundle_id, targets in {
+        **S07_PRIMARY_BUNDLE_TARGETS,
+        **S07_INSTALLED_SUPPORT_TARGETS,
+    }.items():
+        assert targets
+        assert targets <= M2_EVIDENCE_TO_TARGETS[bundle_id].targets
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].state == "IMPLEMENTED"
+        for target in targets:
+            _assert_target_exists(target)
+    assert S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-24"] <= (
+        M2_EVIDENCE_TO_TARGETS["M2-VER-24"].targets
+    )
+    assert S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-30"] <= (
+        M2_EVIDENCE_TO_TARGETS["M2-VER-30"].targets
+    )
+    assert (
+        M2_EVIDENCE_TO_TARGETS["M2-VER-29"].targets
+        == (S07_PRIMARY_BUNDLE_TARGETS["M2-VER-29"])
+    )
+    for bundle_id in ("M2-VER-31", "M2-VER-32"):
         assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
             "DESIGNED", frozenset()
         )
@@ -2061,13 +2220,14 @@ def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
         "M2-VER-26",
         "M2-VER-27",
         "M2-VER-28",
+        "M2-VER-29",
         "M2-VER-30",
     }
     assert {
         bundle_id
         for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
         if evidence.state == "DESIGNED"
-    } == {"M2-VER-29", "M2-VER-31", "M2-VER-32"}
+    } == {"M2-VER-31", "M2-VER-32"}
 
 
 def test_s03_mutation_registry_is_exact_central_and_executable() -> None:

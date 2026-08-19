@@ -1,0 +1,1 @@
+"""Installed NETAUTO release resources."""

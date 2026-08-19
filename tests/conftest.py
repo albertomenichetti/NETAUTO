@@ -15,6 +15,13 @@ from tests.support.postgresql import (
     TestDatabaseConfigurationError,
     load_test_database_url,
 )
+from tests.support.s07_release import InstalledRelease, create_installed_release
+
+
+@pytest.fixture(scope="session")
+def s07_release(tmp_path_factory: pytest.TempPathFactory) -> InstalledRelease:
+    """Build and install the exact M2-S07 candidate once for T9 targets."""
+    return create_installed_release(tmp_path_factory.mktemp("m2-s07-target"))
 
 
 @pytest.fixture
