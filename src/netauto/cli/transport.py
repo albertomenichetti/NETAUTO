@@ -9,11 +9,14 @@ from typing import cast
 import httpx
 
 from netauto.cli.model import (
+    ExecutionLedger,
     HttpExchangeTrace,
     HttpRequestTrace,
     HttpResponseTrace,
     JsonValue,
     RequestPlan,
+    freeze_json,
+    thaw_json,
 )
 
 TIMEOUT = httpx.Timeout(connect=5.0, pool=5.0, read=30.0, write=30.0)
@@ -49,7 +52,7 @@ def _response_trace(response: httpx.Response) -> HttpResponseTrace:
         response.status_code,
         _group(response.headers.multi_items()),
         body_format,
-        body,
+        None if body is None else freeze_json(body),
     )
 
 
@@ -61,8 +64,10 @@ class HttpTransport:
         endpoint_root: str,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        ledger: ExecutionLedger | None = None,
     ) -> None:
         self._root = endpoint_root
+        self._ledger = ExecutionLedger() if ledger is None else ledger
         self._client = httpx.AsyncClient(
             timeout=TIMEOUT,
             follow_redirects=False,
@@ -84,6 +89,13 @@ class HttpTransport:
     ) -> None:
         await self._client.aclose()
 
+    @property
+    def exchange_count(self) -> int:
+        return len(self._ledger)
+
+    def exchanges_since(self, index: int) -> tuple[HttpExchangeTrace, ...]:
+        return self._ledger.since(index)
+
     async def exchange(
         self, plan: RequestPlan
     ) -> tuple[httpx.Response, HttpExchangeTrace]:
@@ -93,7 +105,7 @@ class HttpTransport:
             request = self._client.build_request(plan.method, url, params=plan.query)
         else:
             request = self._client.build_request(
-                plan.method, url, params=plan.query, json=plan.body
+                plan.method, url, params=plan.query, json=thaw_json(plan.body)
             )
         request_trace = HttpRequestTrace(
             request.method,
@@ -107,11 +119,12 @@ class HttpTransport:
             response = await self._client.send(request, follow_redirects=False)
         except httpx.TransportError:
             elapsed = max(0, int((time.monotonic() - started) * 1000))
-            raise TransportFailure(
-                HttpExchangeTrace(request_trace, None, elapsed)
-            ) from None
+            exchange = HttpExchangeTrace(request_trace, None, elapsed)
+            self._ledger.record(exchange)
+            raise TransportFailure(exchange) from None
         finally:
             self._client.cookies.clear()
         elapsed = max(0, int((time.monotonic() - started) * 1000))
         exchange = HttpExchangeTrace(request_trace, _response_trace(response), elapsed)
+        self._ledger.record(exchange)
         return response, exchange

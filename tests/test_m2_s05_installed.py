@@ -118,3 +118,65 @@ def test_installed_candidate_wheel_exposes_working_netauto_console(
     result = json.loads(invoked.stdout)
     assert result["status"] == "ok"
     assert result["result"] == {"items": [], "next_cursor": None}
+
+    malformed = subprocess.run(
+        [
+            str(environment_dir / "bin/netauto"),
+            "-n",
+            "http://example.test:",
+            "datatype",
+            "list",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert malformed.returncode == 1
+    assert malformed.stderr == ""
+    assert malformed.stdout.count("\n") == 1
+    failure = json.loads(malformed.stdout)
+    assert failure["command"] is None
+    assert failure["exchanges"] == []
+    assert failure["error"]["code"] == "cli_invalid_invocation"
+
+    installed_boundary = subprocess.run(
+        [
+            str(candidate_python),
+            "-c",
+            "\n".join(
+                (
+                    "import httpx, json",
+                    "from netauto.cli import execution",
+                    "from netauto.cli.main import run",
+                    "def handler(request):",
+                    "    return httpx.Response(200, json={'items': [], "
+                    "'next_cursor': None})",
+                    "def fail_after_exchange(*args, **kwargs):",
+                    "    raise RuntimeError('installed-boundary-secret')",
+                    "execution.interpret_response = fail_after_exchange",
+                    "result, exit_code = run([",
+                    "    '-n', 'http://example.test', 'datatype', 'list'",
+                    "], http_transport=httpx.MockTransport(handler))",
+                    "print(json.dumps({'exit_code': exit_code, "
+                    "'result': result.as_json()}))",
+                )
+            ),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert installed_boundary.returncode == 0, (
+        installed_boundary.stdout + installed_boundary.stderr
+    )
+    assert installed_boundary.stderr == ""
+    assert installed_boundary.stdout.count("\n") == 1
+    boundary_evidence = json.loads(installed_boundary.stdout)
+    assert boundary_evidence["exit_code"] == 1
+    assert boundary_evidence["result"]["error"]["code"] == "cli_internal_error"
+    assert len(boundary_evidence["result"]["exchanges"]) == 1
+    assert "installed-boundary-secret" not in installed_boundary.stdout

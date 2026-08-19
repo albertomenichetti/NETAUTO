@@ -9,6 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -169,6 +171,39 @@ def test_console_local_failure_has_exact_output_channels_and_exit() -> None:
     assert completed.stdout.count("\n") == 1
     result = json.loads(completed.stdout)
     assert result["status"] == "error"
+    assert result["command"] is None
+    assert result["exchanges"] == []
+    assert result["error"]["code"] == "cli_invalid_invocation"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://example.test:",
+        "http://example.test:/",
+        "http://example.test:0",
+        "http://example.test:+80",
+        "http://example.test:abc",
+        "https://[2001:db8::10]:",
+        "https://[2001:db8::10]:65536",
+    ],
+)
+def test_console_rejects_malformed_port_before_command_or_exchange(
+    endpoint: str,
+) -> None:
+    completed = subprocess.run(
+        [_console(), "-n", endpoint, "datatype", "list"],
+        cwd=ROOT,
+        env=_environment(),
+        text=True,
+        input="",
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stderr == ""
+    assert completed.stdout.count("\n") == 1
+    result = json.loads(completed.stdout)
     assert result["command"] is None
     assert result["exchanges"] == []
     assert result["error"]["code"] == "cli_invalid_invocation"

@@ -978,6 +978,14 @@ S05_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_m2_s05_registry.py::"
             "test_every_registry_spec_is_complete_and_path_metadata_is_closed",
             "tests/test_m2_s05_registry.py::"
+            "test_all_registry_examples_parse_to_their_own_command_without_http",
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_descriptions_and_help_metadata_are_bounded_and_usable",
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_examples_preserve_exact_selector_presence_and_required_operands",
+            "tests/test_m2_s05_registry.py::"
+            "test_relationship_definition_examples_cover_both_discriminated_shapes",
+            "tests/test_m2_s05_registry.py::"
             "test_fastapi_routes_use_the_neutral_wire_dto_identity",
             "tests/test_m2_s05_registry.py::"
             "test_cli_import_closure_has_no_server_or_database_boundary",
@@ -988,6 +996,8 @@ S05_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_m2_s05_parser.py::test_endpoint_root_normalization",
             "tests/test_m2_s05_parser.py::"
             "test_endpoint_root_rejects_non_root_or_credential_surface",
+            "tests/test_m2_s05_parser.py::"
+            "test_endpoint_root_rejects_every_malformed_explicit_port",
             "tests/test_m2_s05_parser.py::"
             "test_parser_preserves_original_typed_human_intent",
             "tests/test_m2_s05_parser.py::test_json_file_is_read_as_utf8_once",
@@ -1029,11 +1039,31 @@ S05_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_m2_s05_process.py::"
             "test_console_local_failure_has_exact_output_channels_and_exit",
             "tests/test_m2_s05_process.py::"
+            "test_console_rejects_malformed_port_before_command_or_exchange",
+            "tests/test_m2_s05_process.py::"
             "test_console_selector_sequence_has_no_health_preflight",
             "tests/test_m2_s05_process.py::"
             "test_console_remote_and_protocol_failures_use_structured_stdout",
             "tests/test_m2_s05_process.py::"
             "test_console_transport_failure_is_structured_and_single_attempt",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_before_any_attempt_has_empty_truthful_trace",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_after_selector_preserves_selector_exchange",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_after_primary_response_preserves_ordered_trace",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_during_cleanup_preserves_primary_exchange",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_exception_text_never_reaches_process_channels",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_base_exception_and_cancellation_are_not_normalized",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_recursive_snapshots_detach_every_original_constructor_input",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_every_public_nested_json_view_is_recursively_immutable",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_as_json_mutation_is_detached_and_rendering_is_byte_stable",
             "tests/test_m2_s05_tls.py::"
             "test_default_tls_verification_trust_and_hostname_matrix",
             "tests/test_m2_s05_installed.py::"
@@ -1067,6 +1097,14 @@ S05_SUPPORTING_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_m2_s05_registry.py::"
             "test_every_registry_spec_is_complete_and_path_metadata_is_closed",
             "tests/test_m2_s05_registry.py::"
+            "test_all_registry_examples_parse_to_their_own_command_without_http",
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_descriptions_and_help_metadata_are_bounded_and_usable",
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_examples_preserve_exact_selector_presence_and_required_operands",
+            "tests/test_m2_s05_registry.py::"
+            "test_relationship_definition_examples_cover_both_discriminated_shapes",
+            "tests/test_m2_s05_registry.py::"
             "test_cli_import_closure_has_no_server_or_database_boundary",
             "tests/test_m2_s05_http_client.py::"
             "test_selector_deduplication_cookie_isolation_and_primary_trace",
@@ -1084,6 +1122,14 @@ S05_SUPPORTING_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_uuid_only_selector_families_accept_uuid_and_reject_names",
             "tests/test_m2_s05_http_client.py::"
             "test_selector_cache_never_survives_one_command",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_recursive_snapshots_detach_every_original_constructor_input",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_every_public_nested_json_view_is_recursively_immutable",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_as_json_mutation_is_detached_and_rendering_is_byte_stable",
+            "tests/test_m2_traceability.py::"
+            "test_s05_review_fix_registry_is_exact_and_resolvable",
         }
     ),
     "M2-VER-30": frozenset(
@@ -1092,10 +1138,68 @@ S05_SUPPORTING_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_s05_has_no_repl_or_insecure_option_surface",
             "tests/test_m2_s05_parser.py::"
             "test_endpoint_root_rejects_non_root_or_credential_surface",
+            "tests/test_m2_s05_parser.py::"
+            "test_endpoint_root_rejects_every_malformed_explicit_port",
+            "tests/test_m2_s05_process.py::"
+            "test_console_rejects_malformed_port_before_command_or_exchange",
+            "tests/test_m2_s05_installed.py::"
+            "test_installed_candidate_wheel_exposes_working_netauto_console",
             "tests/test_m2_s05_http_client.py::"
             "test_selector_deduplication_cookie_isolation_and_primary_trace",
             "tests/test_m2_s05_tls.py::"
             "test_default_tls_verification_trust_and_hostname_matrix",
+        }
+    ),
+}
+S05_REVIEW_FIX_TARGETS = {
+    "S05-RF-01": frozenset(
+        {
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_before_any_attempt_has_empty_truthful_trace",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_after_selector_preserves_selector_exchange",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_after_primary_response_preserves_ordered_trace",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_failure_during_cleanup_preserves_primary_exchange",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_internal_exception_text_never_reaches_process_channels",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_base_exception_and_cancellation_are_not_normalized",
+        }
+    ),
+    "S05-RF-02": frozenset(
+        {
+            "tests/test_m2_s05_parser.py::"
+            "test_endpoint_root_rejects_every_malformed_explicit_port",
+            "tests/test_m2_s05_process.py::"
+            "test_console_rejects_malformed_port_before_command_or_exchange",
+            "tests/test_m2_s05_installed.py::"
+            "test_installed_candidate_wheel_exposes_working_netauto_console",
+        }
+    ),
+    "S05-RF-03": frozenset(
+        {
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_recursive_snapshots_detach_every_original_constructor_input",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_every_public_nested_json_view_is_recursively_immutable",
+            "tests/test_m2_s05_review_fixes.py::"
+            "test_as_json_mutation_is_detached_and_rendering_is_byte_stable",
+        }
+    ),
+    "S05-RF-04": frozenset(
+        {
+            "tests/test_m2_s05_registry.py::"
+            "test_all_registry_examples_parse_to_their_own_command_without_http",
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_descriptions_and_help_metadata_are_bounded_and_usable",
+            "tests/test_m2_s05_registry.py::"
+            "test_registry_examples_preserve_exact_selector_presence_and_required_operands",
+            "tests/test_m2_s05_registry.py::"
+            "test_relationship_definition_examples_cover_both_discriminated_shapes",
+            "tests/test_m2_traceability.py::"
+            "test_s05_review_fix_registry_is_exact_and_resolvable",
         }
     ),
 }
@@ -1503,6 +1607,26 @@ def test_s05_primary_and_supporting_bundle_targets_are_honest() -> None:
         assert M2_EVIDENCE_TO_TARGETS[designed] == EvidenceBundle(
             "DESIGNED", frozenset()
         )
+
+
+def test_s05_review_fix_registry_is_exact_and_resolvable() -> None:
+    assert set(S05_REVIEW_FIX_TARGETS) == {
+        "S05-RF-01",
+        "S05-RF-02",
+        "S05-RF-03",
+        "S05-RF-04",
+    }
+    all_review_targets: set[str] = set()
+    for targets in S05_REVIEW_FIX_TARGETS.values():
+        assert targets
+        all_review_targets.update(targets)
+        for target in targets:
+            _assert_target_exists(target)
+    bundle_targets: set[str] = set(S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"])
+    bundle_targets.update(S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-24"])
+    bundle_targets.update(S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-28"])
+    bundle_targets.update(S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-30"])
+    assert all_review_targets <= bundle_targets
 
 
 def test_s05_preserves_exact_business_and_cli_operation_inventories() -> None:

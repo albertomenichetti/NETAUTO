@@ -3,6 +3,7 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import cast
 
 import httpx
 from pydantic import TypeAdapter, ValidationError
@@ -12,6 +13,7 @@ from netauto.cli.model import (
     ErrorSource,
     HttpExchangeTrace,
     JsonValue,
+    thaw_json,
 )
 from netauto.transport.http.errors import PUBLIC_STATUS_BY_CODE, BusinessErrorDTO
 
@@ -78,6 +80,7 @@ def interpret_response(
     trace = exchange.response
     if trace is None:
         return _protocol_error(response.status_code)
+    trace_body = None if trace.body is None else thaw_json(trace.body)
     status = response.status_code
     if status != expected_status:
         if 200 <= status < 400 or not _json_content_type(response):
@@ -85,7 +88,7 @@ def interpret_response(
         if trace.body_format != "json":
             return _protocol_error(status)
         try:
-            remote = BusinessErrorDTO.model_validate(trace.body)
+            remote = BusinessErrorDTO.model_validate(trace_body)
         except ValidationError:
             return _protocol_error(status)
         if PUBLIC_STATUS_BY_CODE.get(remote.code) != status:
@@ -96,7 +99,7 @@ def interpret_response(
                 ErrorSource.REMOTE,
                 remote.code,
                 remote.message,
-                remote.details,
+                cast(Mapping[str, JsonValue], remote.details),
                 status,
             ),
         )
@@ -114,14 +117,14 @@ def interpret_response(
         return _protocol_error(status)
     try:
         adapter: TypeAdapter[object] = TypeAdapter(response_annotation)
-        validated: object = adapter.validate_python(trace.body)
+        validated: object = adapter.validate_python(trace_body)
         canonical = adapter.dump_python(validated, mode="json", exclude_unset=True)
     except ValidationError:
         return _protocol_error(status)
-    if canonical != trace.body:
+    if canonical != trace_body:
         return _protocol_error(status)
 
-    result = trace.body
+    result = trace_body
     if location_template is not None:
         locations = response.headers.get_list("location")
         expected = _expected_location(location_template, result, request_values or {})

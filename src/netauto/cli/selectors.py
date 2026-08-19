@@ -1,6 +1,5 @@
 """Deterministic top-level and nested human-selector resolution."""
 
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
@@ -14,6 +13,7 @@ from netauto.cli.model import (
     ParsedCommand,
     RequestPlan,
     SelectorKind,
+    thaw_json,
 )
 from netauto.cli.protocol import interpret_response
 from netauto.cli.transport import HttpTransport, TransportFailure
@@ -97,14 +97,18 @@ def _walk(
     return _walk(values[segment], remaining, (*path, segment), kind)
 
 
-def _targets(command: ParsedCommand, spec: CommandSpec) -> list[_Target]:
+def _targets(
+    command: ParsedCommand,
+    spec: CommandSpec,
+    parameters: dict[str, JsonValue],
+) -> list[_Target]:
     targets: list[_Target] = []
     if spec.selector_kind is not None:
         targets.append(_Target(spec.selector_kind, command.selector, ()))
     for parameter in spec.parameters:
-        if parameter.name not in command.parameters:
+        if parameter.name not in parameters:
             continue
-        value = command.parameters[parameter.name]
+        value = parameters[parameter.name]
         if parameter.selector_kind is not None:
             targets.append(_Target(parameter.selector_kind, value, (parameter.name,)))
         for nested in parameter.nested_selectors:
@@ -178,7 +182,7 @@ async def _lookup(
 
     try:
         response, exchange = await transport.exchange(
-            RequestPlan("GET", path, query, None)
+            RequestPlan.create("GET", path, query, None)
         )
     except TransportFailure as failure:
         return (
@@ -223,29 +227,31 @@ async def resolve_selectors(
     command: ParsedCommand,
     spec: CommandSpec,
 ) -> ResolutionOutcome:
-    parameters = deepcopy(dict(command.parameters))
+    mutable_parameters = thaw_json(command.parameters)
+    if not isinstance(mutable_parameters, dict):
+        raise RuntimeError("parsed command parameters are not an object")
+    parameters = mutable_parameters
     resolved_selector: str | None = None
-    exchanges: list[HttpExchangeTrace] = []
+    first_exchange = transport.exchange_count
     cache: dict[tuple[SelectorKind, str], str] = {}
-    for target in _targets(command, spec):
+    for target in _targets(command, spec, parameters):
         if not isinstance(target.value, str):
             return ResolutionOutcome(
                 resolved_selector,
                 parameters,
-                tuple(exchanges),
+                transport.exchanges_since(first_exchange),
                 _selector_error(target.kind, "cli_selector_invalid", target.value),
             )
         key = (target.kind, target.value)
         resolved = cache.get(key)
         if resolved is None:
-            resolved, exchange, error = await _lookup(
-                transport, target.kind, target.value
-            )
-            if exchange is not None:
-                exchanges.append(exchange)
+            resolved, _, error = await _lookup(transport, target.kind, target.value)
             if error is not None:
                 return ResolutionOutcome(
-                    resolved_selector, parameters, tuple(exchanges), error
+                    resolved_selector,
+                    parameters,
+                    transport.exchanges_since(first_exchange),
+                    error,
                 )
             if resolved is None:
                 raise RuntimeError("selector resolver returned no outcome")
@@ -254,4 +260,9 @@ async def resolve_selectors(
             resolved_selector = resolved
         else:
             _replace(parameters, target.path, resolved)
-    return ResolutionOutcome(resolved_selector, parameters, tuple(exchanges), None)
+    return ResolutionOutcome(
+        resolved_selector,
+        parameters,
+        transport.exchanges_since(first_exchange),
+        None,
+    )

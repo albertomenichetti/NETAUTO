@@ -2,6 +2,7 @@
 
 import ast
 import re
+import shlex
 from collections import Counter
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from netauto.cli.model import (
     SELECTOR_ERROR_CODES,
     TRANSPORT_PROTOCOL_ERROR_CODES,
 )
+from netauto.cli.parser import parse_command_example
 from netauto.cli.registry import BUSINESS_OPERATION_SET, COMMAND_REGISTRY
 from netauto.entrypoints.api.datatypes import DataTypeDto as RouteDataTypeDto
 from netauto.entrypoints.http import build_app
@@ -87,6 +89,103 @@ def test_every_registry_spec_is_complete_and_path_metadata_is_closed() -> None:
     assert TRANSPORT_PROTOCOL_ERROR_CODES == {
         "cli_transport_error",
         "cli_protocol_error",
+    }
+
+
+def test_all_registry_examples_parse_to_their_own_command_without_http() -> None:
+    example_count = 0
+    for spec in COMMAND_REGISTRY.values():
+        assert spec.examples
+        for index, example in enumerate(spec.examples):
+            command = parse_command_example(spec, index)
+            example_count += 1
+            assert command.key == spec.key
+            assert (command.selector is not None) == spec.selector_required
+            required = {
+                parameter.name for parameter in spec.parameters if parameter.required
+            }
+            assert required <= command.parameters.keys()
+            assert shlex.split(spec.example) == list(spec.example_argv)
+            assert example[:2] == (spec.key.resource, spec.key.operation)
+    assert example_count == 65
+
+
+def test_registry_descriptions_and_help_metadata_are_bounded_and_usable() -> None:
+    for spec in COMMAND_REGISTRY.values():
+        assert 24 <= len(spec.help_text) <= 160
+        assert spec.help_text.lower() not in {
+            f"{spec.key.operation} {spec.key.resource}",
+            f"{spec.key.resource} {spec.key.operation}",
+        }
+        assert len(spec.help_text.split()) >= 6
+        assert spec.renderer_key != f"{spec.key.resource}.{spec.key.operation}"
+        assert spec.method in {"GET", "POST", "DELETE"}
+        assert spec.path_template.startswith("/api/v1/core/")
+        for parameter in spec.parameters:
+            assert parameter.location in {"path", "query", "body"}
+            assert isinstance(parameter.required, bool)
+            assert isinstance(parameter.nullable, bool)
+    assert any(
+        parameter.required
+        for spec in COMMAND_REGISTRY.values()
+        for parameter in spec.parameters
+    )
+    assert any(
+        not parameter.required
+        for spec in COMMAND_REGISTRY.values()
+        for parameter in spec.parameters
+    )
+    assert any(
+        parameter.nullable
+        for spec in COMMAND_REGISTRY.values()
+        for parameter in spec.parameters
+    )
+
+
+def test_registry_examples_preserve_exact_selector_presence_and_required_operands() -> (
+    None
+):
+    for spec in COMMAND_REGISTRY.values():
+        for index in range(len(spec.examples)):
+            command = parse_command_example(spec, index)
+            assert (command.selector is not None) == spec.selector_required
+            for parameter in spec.parameters:
+                if parameter.required:
+                    assert parameter.name in command.parameters
+
+
+def test_relationship_definition_examples_cover_both_discriminated_shapes() -> None:
+    create = COMMAND_REGISTRY[
+        next(
+            key
+            for key in COMMAND_REGISTRY
+            if key.resource == "relationship-definition" and key.operation == "create"
+        )
+    ]
+    rename = COMMAND_REGISTRY[
+        next(
+            key
+            for key in COMMAND_REGISTRY
+            if key.resource == "relationship-definition" and key.operation == "rename"
+        )
+    ]
+    assert len(create.examples) == 2
+    assert len(rename.examples) == 2
+    create_commands = [
+        parse_command_example(create, index) for index in range(len(create.examples))
+    ]
+    rename_commands = [
+        parse_command_example(rename, index) for index in range(len(rename.examples))
+    ]
+    assert [command.parameters["symmetric"] for command in create_commands] == [
+        False,
+        True,
+    ]
+    assert {"perspectives", "endpoint_template_ids"} <= {
+        name for command in create_commands for name in command.parameters
+    }
+    assert {"resolutions", "name"} == {
+        name for command in rename_commands for name in command.parameters
     }
 
 

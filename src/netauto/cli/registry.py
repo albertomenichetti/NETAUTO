@@ -52,6 +52,171 @@ EVENT_KINDS: Final = frozenset(
     }
 )
 
+_EXAMPLE_UUID: Final = "11111111-1111-1111-1111-111111111111"
+_SECOND_EXAMPLE_UUID: Final = "22222222-2222-2222-2222-222222222222"
+_RESOURCE_LABELS: Final = {
+    "datatype": "DataType",
+    "object-template": "ObjectTemplate",
+    "object": "Object",
+    "relationship-definition": "RelationshipDefinition",
+    "relationship": "factual Relationship",
+    "lifecycle-event": "lifecycle event",
+}
+_DESCRIPTION_TEMPLATES: Final = {
+    "create": "Create a new {label} from a complete caller-supplied candidate.",
+    "create-next": "Create the next draft {label} version from one exact source.",
+    "revise": "Replace one exact draft {label} candidate at the expected revision.",
+    "publish": "Publish one exact draft {label} version at the expected revision.",
+    "set-default": "Select one exact published {label} version as the default.",
+    "clear-default": "Clear the current default version from the selected {label}.",
+    "deprecate": "Deprecate one exact published {label} version.",
+    "delete-draft": "Delete one exact draft {label} version at the expected revision.",
+    "delete": "Delete the selected {label} through its exact public operation.",
+    "set-description": "Replace the nullable description of the selected {label}.",
+    "list": "List {label} resources with the supported filters and keyset cursor.",
+    "get": "Read the canonical public projection of one selected {label}.",
+    "list-versions": "List exact {label} versions in canonical version order.",
+    "get-version": "Read one exact selected {label} version and its full projection.",
+    "get-effective-schema": (
+        "Read one exact ObjectTemplate effective-schema projection."
+    ),
+    "list-relationship-capabilities": (
+        "List Relationship capabilities applicable to one ObjectTemplate lineage."
+    ),
+    "rename": "Rename the selected {label} using one complete accepted shape.",
+    "data-change": "Apply one non-empty typed data-change set to the selected {label}.",
+    "schema-change": "Move the selected {label} to one explicit exact target version.",
+    "attach": (
+        "Attach one child Object in a declared slot of the selected parent Object."
+    ),
+    "detach": (
+        "Detach one child Object from a declared slot of the selected parent Object."
+    ),
+    "list-components": "List the direct component children of one selected Object.",
+    "get-owner": "Read the nullable owner projection of one selected Object.",
+    "list-relationships": (
+        "List factual Relationship views involving one selected Object."
+    ),
+    "list-lifecycle-events": "List lifecycle events involving one selected Object.",
+}
+
+
+def _description(resource: str, operation: str) -> str:
+    return _DESCRIPTION_TEMPLATES[operation].format(label=_RESOURCE_LABELS[resource])
+
+
+def _example_selector(kind: SelectorKind) -> str:
+    if kind is SelectorKind.DATATYPE:
+        return "core.string"
+    if kind is SelectorKind.OBJECT_TEMPLATE:
+        return "infra.server"
+    if kind is SelectorKind.OBJECT:
+        return "server01"
+    return _EXAMPLE_UUID
+
+
+def _example_parameter(parameter: ParameterSpec) -> str:
+    if parameter.selector_kind is not None:
+        value = _example_selector(parameter.selector_kind)
+    elif parameter.kind is ParameterKind.POSITIVE_INTEGER:
+        value = "1"
+    elif parameter.kind is ParameterKind.BOOLEAN:
+        value = "true"
+    elif parameter.kind is ParameterKind.ENUM:
+        value = sorted(parameter.choices)[0]
+    elif parameter.kind is ParameterKind.UUID:
+        value = _EXAMPLE_UUID
+    elif parameter.kind is ParameterKind.JSON_OBJECT:
+        value = "{}"
+    elif parameter.kind is ParameterKind.JSON_ARRAY:
+        value = (
+            '[{"op":"REMOVE","property":"comment"}]'
+            if parameter.name == "operations"
+            else "[]"
+        )
+    elif parameter.kind is ParameterKind.JSON_VALUE:
+        value = '"example"'
+    elif parameter.kind is ParameterKind.DATETIME:
+        value = "2026-08-19T00:00:00Z"
+    else:
+        value = {
+            "namespace": "example",
+            "name": "sample",
+            "canonical_name": "server01",
+            "slot_name": "member",
+        }.get(parameter.name, "example")
+    return f"{parameter.name}={value}"
+
+
+def _examples(
+    resource: str,
+    operation: str,
+    selector: SelectorKind | None,
+    parameters: tuple[ParameterSpec, ...],
+) -> tuple[tuple[str, ...], ...]:
+    prefix = [resource, operation]
+    if selector is not None:
+        prefix.append(_example_selector(selector))
+    if resource == "relationship-definition" and operation == "create":
+        return (
+            (
+                *prefix,
+                "symmetric=false",
+                (
+                    'perspectives=[{"template_id":"infra.server","name":"hosts"},'
+                    '{"template_id":"infra.rack","name":"hosted_by"}]'
+                ),
+            ),
+            (
+                *prefix,
+                "symmetric=true",
+                'endpoint_template_ids=["infra.server","infra.peer"]',
+                "name=peers",
+            ),
+        )
+    if resource == "relationship-definition" and operation == "rename":
+        return (
+            (
+                *prefix,
+                (
+                    'resolutions=[{"resolution_id":"'
+                    f"{_EXAMPLE_UUID}"
+                    '","name":"hosts"},{"resolution_id":"'
+                    f"{_SECOND_EXAMPLE_UUID}"
+                    '","name":"hosted_by"}]'
+                ),
+            ),
+            (*prefix, "name=peers"),
+        )
+    required = tuple(
+        _example_parameter(parameter) for parameter in parameters if parameter.required
+    )
+    return ((*prefix, *required),)
+
+
+def _renderer_key(resource: str, operation: str, status: int) -> str:
+    if status == 204:
+        return "no-content"
+    special = {
+        "get-effective-schema": "object-template.effective-schema",
+        "list-relationship-capabilities": "object-template.capability-page",
+        "list-components": "object.component-page",
+        "get-owner": "object.owner",
+        "list-relationships": "object.relationship-page",
+        "list-lifecycle-events": "lifecycle-event.page",
+    }
+    if operation in special:
+        return special[operation]
+    if operation == "list":
+        return f"{resource}.page"
+    if operation == "list-versions":
+        return f"{resource}.version-page"
+    if operation in {"get-version", "create-next", "revise", "publish", "deprecate"}:
+        return f"{resource}.version"
+    if operation == "create":
+        return f"{resource}.created"
+    return f"{resource}.resource"
+
 
 def _p(
     name: str,
@@ -90,6 +255,7 @@ def _s(
     request: object | None = None,
     location: str | None = None,
 ) -> CommandSpec:
+    examples = _examples(resource, operation, selector, parameters)
     return CommandSpec(
         CommandKey(resource, operation),
         method,
@@ -101,9 +267,9 @@ def _s(
         response,
         request,
         location,
-        f"{operation} {resource}",
-        f"{resource} {operation}",
-        f"{resource}.{operation}",
+        _description(resource, operation),
+        examples,
+        _renderer_key(resource, operation, status),
     )
 
 

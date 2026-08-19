@@ -14,6 +14,10 @@ from netauto.cli.parser import ParseFailure, normalize_endpoint_root, parse_proc
     ("raw", "normalized"),
     [
         ("HTTP://Example.TEST/", "http://example.test"),
+        ("http://example.test", "http://example.test"),
+        ("http://example.test:1", "http://example.test:1"),
+        ("https://example.test:65535/", "https://example.test:65535"),
+        ("https://[2001:db8::10]", "https://[2001:db8::10]"),
         ("https://example.test:8443", "https://example.test:8443"),
         ("https://[2001:db8::10]:8443/", "https://[2001:db8::10]:8443"),
     ],
@@ -38,6 +42,32 @@ def test_endpoint_root_rejects_non_root_or_credential_surface(raw: str) -> None:
         normalize_endpoint_root(raw)
     assert caught.value.error.code == "cli_invalid_invocation"
     assert "secret" not in str(caught.value.error.as_json())
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "http://example.test:",
+        "http://example.test:/",
+        "https://[2001:db8::10]:",
+        "https://[2001:db8::10]:/",
+        "http://example.test:0",
+        "http://example.test:65536",
+        "http://example.test:+80",
+        "http://example.test:-1",
+        "http://example.test:abc",
+        "https://[2001:db8::10]:0",
+        "https://[2001:db8::10]:65536",
+        "https://[2001:db8::10]:+443",
+        "https://[2001:db8::10]:abc",
+    ],
+)
+def test_endpoint_root_rejects_every_malformed_explicit_port(raw: str) -> None:
+    with pytest.raises(ParseFailure) as caught:
+        normalize_endpoint_root(raw)
+    result = caught.value.error.as_json()
+    assert result["code"] == "cli_invalid_invocation"
+    assert raw not in str(result)
 
 
 def test_parser_preserves_original_typed_human_intent() -> None:

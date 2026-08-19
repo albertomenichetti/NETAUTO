@@ -58,10 +58,34 @@ def _fail(
     )
 
 
+def _explicit_port(authority: str) -> int | None:
+    if authority.startswith("["):
+        closing_bracket = authority.find("]")
+        if closing_bracket < 0:
+            raise ValueError("invalid bracketed authority")
+        suffix = authority[closing_bracket + 1 :]
+        if not suffix:
+            return None
+        if not suffix.startswith(":"):
+            raise ValueError("invalid bracketed authority suffix")
+        port_text = suffix[1:]
+    else:
+        if authority.count(":") > 1:
+            raise ValueError("unbracketed IPv6 authority")
+        if ":" not in authority:
+            return None
+        _, port_text = authority.rsplit(":", 1)
+    if re.fullmatch(r"[0-9]+", port_text) is None:
+        raise ValueError("invalid explicit port")
+    port = int(port_text)
+    if not 1 <= port <= 65535:
+        raise ValueError("explicit port outside TCP range")
+    return port
+
+
 def normalize_endpoint_root(value: str) -> str:
     try:
         parts = urlsplit(value)
-        port = parts.port
         host = parts.hostname
     except ValueError:
         _fail("cli_invalid_invocation")
@@ -72,12 +96,15 @@ def normalize_endpoint_root(value: str) -> str:
         or parts.username is not None
         or parts.password is not None
         or parts.path not in {"", "/"}
-        or port == 0
         or parts.query
         or parts.fragment
         or "?" in value
         or "#" in value
     ):
+        _fail("cli_invalid_invocation")
+    try:
+        port = _explicit_port(parts.netloc)
+    except ValueError:
         _fail("cli_invalid_invocation")
     normalized_host = host.lower()
     if ":" in normalized_host:
@@ -257,3 +284,19 @@ def parse_process(
             )
     _validate_relationship_definition_shape(command)
     return endpoint, command, spec
+
+
+def parse_command_example(
+    spec: CommandSpec,
+    index: int = 0,
+    *,
+    endpoint_root: str = "http://example.test",
+) -> ParsedCommand:
+    """Validate registry-owned example tokens through the production parser."""
+
+    _, command, parsed_spec = parse_process(
+        ["-n", endpoint_root, *spec.examples[index]]
+    )
+    if parsed_spec is not spec:
+        raise RuntimeError("registry example resolved to a different command")
+    return command

@@ -10,6 +10,7 @@ from netauto.cli.model import (
     CliResult,
     CommandSpec,
     ErrorSource,
+    ExecutionLedger,
     JsonValue,
     ParameterLocation,
     ParsedCommand,
@@ -88,7 +89,7 @@ def _request_plan(
         raise RuntimeError("static registry body metadata mismatch")
     if "{" in path or "}" in path:
         raise RuntimeError("static registry path metadata mismatch")
-    return RequestPlan(spec.method, path, tuple(query), body), None, values
+    return RequestPlan.create(spec.method, path, tuple(query), body), None, values
 
 
 async def execute(
@@ -97,33 +98,38 @@ async def execute(
     spec: CommandSpec,
     *,
     http_transport: httpx.AsyncBaseTransport | None = None,
+    ledger: ExecutionLedger | None = None,
 ) -> CliResult:
-    async with HttpTransport(endpoint_root, transport=http_transport) as transport:
+    execution_ledger = ExecutionLedger() if ledger is None else ledger
+    async with HttpTransport(
+        endpoint_root,
+        transport=http_transport,
+        ledger=execution_ledger,
+    ) as transport:
         resolution = await resolve_selectors(transport, command, spec)
-        exchanges = list(resolution.exchanges)
         if resolution.error is not None:
-            return CliResult.failed(command, tuple(exchanges), resolution.error)
+            return CliResult.failed(
+                command, execution_ledger.snapshot(), resolution.error
+            )
         plan, local_error, request_values = _request_plan(
             spec, resolution.selector, resolution.parameters
         )
         if local_error is not None:
-            return CliResult.failed(command, tuple(exchanges), local_error)
+            return CliResult.failed(command, execution_ledger.snapshot(), local_error)
         if plan is None:
             raise RuntimeError("request planner returned no plan")
         try:
             response, exchange = await transport.exchange(plan)
-        except TransportFailure as failure:
-            exchanges.append(failure.exchange)
+        except TransportFailure:
             return CliResult.failed(
                 command,
-                tuple(exchanges),
+                execution_ledger.snapshot(),
                 CliError.create(
                     ErrorSource.TRANSPORT,
                     "cli_transport_error",
                     "The HTTP request could not be completed.",
                 ),
             )
-        exchanges.append(exchange)
         outcome = interpret_response(
             response,
             exchange,
@@ -133,5 +139,5 @@ async def execute(
             request_values=request_values,
         )
         if outcome.error is not None:
-            return CliResult.failed(command, tuple(exchanges), outcome.error)
-        return CliResult.ok(command, tuple(exchanges), outcome.result)
+            return CliResult.failed(command, execution_ledger.snapshot(), outcome.error)
+        return CliResult.ok(command, execution_ledger.snapshot(), outcome.result)
