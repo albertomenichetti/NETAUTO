@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S06 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S07 READY
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S06 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the corrected M2-S06 candidate
-blockers        none inside the corrected S06 candidate; M2-S07 remains blocked
+current slice   M2-S07 — READY
+current task    prepare the M2-S07 Codex implementation prompt and execute the authorized slice
+blockers        none
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | `M2-S06` CANDIDATE READY FOR REVIEW — `S06-RF-01` / `S06-RF-02` corrected |
+| Implementation | AUTHORIZED — `M2-S07` ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -45,231 +45,115 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
-| `M2-S06` | CANDIDATE READY FOR REVIEW | `M2-S05 COMPLETED` |
-| `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
+| `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
+| `M2-S07` | READY | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
-`M2-S00` through `M2-S05` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
+`M2-S00` through `M2-S06` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
-## Current blockers and reviewed findings
+## Current blockers and findings
 
-No contract, architecture, implementation-planning or technology contradiction is open. The corrected M2-S06 candidate preserves the interactive REPL, Health-backed connection state, persistent endpoint client, exact local-command inventory, shared S05 remote-command authority, terminal behavior, FORMATTED rendering and all nine enrichment entry points. Both bounded review findings are corrected inside the existing S06 FORMATTED/enrichment boundary. No architecture reopen was required.
+No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S07`.
 
-### `S06-RF-01` — FORMATTED output can hide the exact selected identity
+`M2-S07` is limited to the versioned wheel, installed Alembic graph and documented/executed Linux operating baseline. It must consume the completed server, runtime, Health and CLI capabilities without changing their frozen public or semantic contracts. It must not begin `M2-S08` integrated traceability/negative-surface closure before reviewer-owned completion.
 
-Frozen authority requires FORMATTED output to keep exact IDs visible even when human names are resolved. Mutations must show the direct response or bodyless success target without a hidden post-mutation GET.
+Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
-Reviewed implementation:
+## M2-S06 completion record
 
-```text
-render._resource()
-    -> displays the original ParsedCommand.selector
-    -> otherwise relies on the direct response body for identifiers
-
-render._no_content()
-    -> uses only the original ParsedCommand.selector as target
-
-selector execution
-    -> resolves human selectors to exact UUIDs for the HTTP request
-    -> intentionally preserves original human intent in ParsedCommand
-```
-
-Therefore a successful command can omit the exact selected UUID from FORMATTED output when the operator used a human selector and the direct response does not carry that path identity. Representative cases include:
+Reviewer result:
 
 ```text
-datatype delete core.string
-object-template delete infra.server
-object delete server01
-human-selected delete-draft operations
-object detach with a human parent selector
-object get-owner with a null result
-other direct projections that omit the selected path resource
-```
-
-The actual exchange trace owns the resolved request path/body, but FORMATTED does not expose that exact target identity. A test using an already-UUID selector does not prove the human-selector case.
-
-Required correction:
-
-```text
-FORMATTED direct output
-    -> retain original human intent where useful
-    -> also expose every exact selected identity required to identify the primary target
-    -> derive it from the already-resolved primary request/plan/trace or equivalent
-    -> never issue an additional GET merely to recover it
-
-bodyless success
-    -> identify the exact resolved target, not only the submitted human selector
-
-nullable/projection reads and direct mutations
-    -> preserve the exact path target when the body omits it
-
-JSON mode and S05 trace schema
-    -> unchanged
-```
-
-Permanent evidence must cover at least one human-selected `204` operation, nullable `object get-owner`, a direct projection/mutation whose body omits a path target, exact-ID visibility and zero extra HTTP exchanges.
-
-Corrected candidate:
-
-```text
-selector planning
-    -> records immutable resolved identities in registry discovery order
-
-primary request planning
-    -> builds one immutable FORMATTED-only presentation target
-    -> includes resolved selector identities and identifying path values
-
-FORMATTED rendering
-    -> displays submitted human intent where distinct
-    -> displays each exact resolved identity without duplicate ambiguity
-    -> does not issue a recovery GET
-
-JSON rendering and CliResult
-    -> unchanged
-```
-
-### `S06-RF-02` — enrichment accepts identity-inconsistent GET responses and incomplete cycle detection
-
-Frozen enrichment rules require every secondary lookup to use public GET routes, memoize identical identities per command and fail the complete FORMATTED command on a cycle, missing resource or invalid response. Delivered ObjectTemplate authority also requires stable inheritance to be acyclic.
-
-Reviewed implementation:
-
-```text
-enrichment._Context.get(kind, identity, path, annotation)
-    -> uses identity as a cache key
-    -> validates only the returned DTO shape
-    -> does not verify that the returned DTO identity equals the requested identity
-
-ObjectTemplateVersion parent traversal
-    -> detects repeated (template_id, version) pairs
-    -> does not reject the same stable template_id reappearing at another version
-```
-
-Consequences:
-
-```text
-GET /datatypes/<A> returning a valid DataType DTO for <B>
-    -> accepted and cached under <A>
-    -> FORMATTED may present B's name for A
-
-ObjectTemplate/Object stable GET identity mismatch
-    -> accepted when the DTO shape is valid
-
-GET /object-templates/<A>/versions/2 returning <A>/1 or <B>/2
-    -> accepted as enrichment state
-
-exact parent chain A:2 -> A:1 -> root
-or A:2 -> B:1 -> A:1
-    -> exact pairs are unique
-    -> stable-lineage inheritance cycle is not detected
-```
-
-Required correction:
-
-```text
-every secondary stable GET
-    -> validate returned id == requested id before cache/use
-
-ObjectTemplateVersion GET
-    -> validate returned template_id and version equal the requested exact pair
-
-exact parent traversal
-    -> detect repeated stable template_id as a lineage cycle
-    -> retain exact-pair checks as additional protection
-
-mismatch or cycle
-    -> cli_protocol_error
-    -> preserve every actual exchange once and in order
-    -> emit no partial FORMATTED presentation
-    -> preserve CONNECTED unless the failure itself is transport-level
-```
-
-Permanent evidence must inject wrong stable DataType/ObjectTemplate/Object identities, a wrong exact ObjectTemplateVersion identity, a same-lineage/different-version cycle and a multi-lineage cycle whose repeated lineage uses a different version.
-
-Corrected candidate:
-
-```text
-secondary stable GET
-    -> validates returned id against the requested id before cache insertion
-
-ObjectTemplateVersion GET
-    -> validates returned template_id and version against the requested pair
-
-parent traversal
-    -> tracks exact pairs and stable template_id lineages
-    -> rejects a repeated stable lineage before another request is issued
-
-mismatch or cycle
-    -> cli_protocol_error with no partial presentation
-    -> truthful ordered trace
-    -> connection remains CONNECTED
-```
-
-## M2-S06 corrected candidate record
-
-Implementer result:
-
-```text
-M2-S06                         CANDIDATE READY FOR REVIEW — not COMPLETED
-review-fix baseline            827c15ccf16f89630f975f1b3faa644f0a709c27
-review-fix execution aid       a0a97e60074004e44be6a54e19378de6f2e24681
+M2-S06                         COMPLETED
+original prompt                e0ad43277fb214ed3f97e275416304f0130ff471
+initial implementation         e0c7a55bdbb066437fb0189ebcb781b834c476d6
+initial candidate evidence     8d4074f57b214d158d288a65dccde15156bcd812
+first review record            827c15ccf16f89630f975f1b3faa644f0a709c27
+review-fix prompt              a0a97e60074004e44be6a54e19378de6f2e24681
 corrective implementation      f9c463fc30856b56ffb0ef0d49d5ca11d558c1ce
-candidate evidence/status      commit containing this status
-corrected findings             S06-RF-01, S06-RF-02
-architecture reopen            none
-M2-S07                         BLOCKED / not started
+corrected evidence/status      ea25b47ee4a78496180ea1c00e13b482ac1ed85b
+review acceptance              recorded by the commit containing this status
+M2-S07                         READY / not started
 ```
 
-Permanent review-fix evidence:
+Closed findings:
 
 ```text
-finding registry               exactly S06-RF-01 and S06-RF-02
-S06-RF-01                      6 selectors / 6 passed
-S06-RF-02                      6 selectors / 9 passed
-review-fix union               11 unique selectors / 14 passed — 4.42 s
-focused review/render/trace     30 passed — 4.83 s
-human-selected 204             exact UUID + version; lookup + DELETE only
-nullable owner                 exact selected Object UUID; no recovery GET
-attach projection              exact parent/child IDs; no post-mutation GET
-exact selector                 exact UUID appears once
-JSON contract                  top-level schema/bytes unchanged; no target metadata
-identity mismatch coverage     DataType / ObjectTemplate / Object / version pair
-cycle coverage                 same-lineage and multi-lineage/different-version
-failure behavior               protocol error; no presentation; truthful trace; CONNECTED
-positive enrichment            root traversal and repeated-identity memoization
+S06-RF-01
+    Selector planning now records immutable exact identities in registry-owned
+    discovery order. Execution derives one FORMATTED-only PresentationTarget from
+    the already-resolved command/request plan. Human intent remains visible when
+    distinct, while exact UUIDs and identifying path versions remain visible even
+    for bodyless or nullable direct results. No recovery or post-mutation GET is
+    introduced. CliResult, interactive JSON and the accepted S05 trace schema are
+    unchanged.
+
+S06-RF-02
+    Every secondary DataType, ObjectTemplate and Object GET validates returned
+    identity before cache insertion. Exact ObjectTemplateVersion GETs validate
+    both template_id and version. Parent traversal retains exact-pair protection
+    and adds a repeated-public-template-ID termination guard. The guard is client
+    request/response correlation and finite traversal protection over public DTO
+    identities; it imports no domain or persistence authority and does not
+    reimplement mutation admission or model certification. Mismatch/repetition
+    yields cli_protocol_error, no partial presentation, truthful ordered trace and
+    preserves CONNECTED unless the failure is transport-level.
 ```
 
-Pre-publication gates executed against the corrective implementation and this evidence-only status delta:
+Accepted S06 capability:
+
+```text
+runtime dependency             prompt-toolkit >=3.0,<4; resolved 3.0.53
+process routing                no argv -> async REPL; exact -n unchanged; other argv invalid
+initial session                DISCONNECTED / FORMATTED / empty in-memory history
+local commands                 8 / 8 exact
+remote commands                63 / 63 exact; shared accepted registry/parser
+session transport              at most one endpoint-scoped persistent HTTPX client
+command isolation              fresh ledger and selector/enrichment memo per command
+Health state                   exact /connect and /status ready-200 validation
+terminal behavior              Ctrl-R / Ctrl-C editing / Ctrl-D / clear / exit
+help/history                    registry-derived help; process-local chronological history
+formatted rendering            every installed renderer key resolves deterministically
+bounded enrichment             9 exact single-read shapes; GET-only / complete-or-fail
+formatted target identity      human intent + exact resolved IDs without extra HTTP
+JSON mode                      accepted S05 result/trace shape; no presentation enrichment
+mutation/list behavior         direct primary result only; no hidden item/post-mutation GET
+HTTP-only boundary             no application, persistence, DB-driver or Alembic execution path
+```
+
+Accepted verification:
 
 ```text
 uv lock --check                PASS — 46 packages resolved
 uv sync --locked               PASS — 44 packages checked
 uv build                       PASS — sdist + wheel 0.1.0
-Ruff format                    PASS — 224 files
-Ruff lint                      PASS
+Ruff format/lint               PASS — 224 files
 Pyright strict                 PASS — 0 errors
 pytest collection              765 tests
-M2-VER-25 complete             26 passed — 17 selectors
-M2-VER-26 complete             18 passed — 12 selectors
-M2-VER-28 S05 + S06 complete   56 passed — 37 selectors
-M2-VER-27 accepted S05         126 passed — 64 selectors
-all M2-S06                     72 passed — 5.04 s
-all M2-S05                     126 passed — 19.45 s
-S05 + S06                      198 passed
-Health / S04 affected          77 passed — 1 locked warning — 15.17 s
-API route / DTO inventory      67 passed — 1 locked warning — 28.73 s
-trace / schema / migrations    32 passed — 16.69 s
-PostgreSQL concurrency         182 passed, 583 deselected — 117.48 s
-non-PostgreSQL                 514 passed, 251 deselected — 43.58 s
-full repository suite          765 passed — 212.41 s
+S06-RF-01                      6 selectors / 6 passed
+S06-RF-02                      6 selectors / 9 passed
+review-fix union               11 unique selectors / 14 passed
+M2-VER-25 complete             26 passed
+M2-VER-26 complete             18 passed
+M2-VER-28 S05 + S06 complete   56 passed
+M2-VER-27 accepted S05         126 passed
+all M2-S06                     72 passed
+all M2-S05                     126 passed
+Health / S04 affected          77 passed
+API route / DTO inventory      67 passed
+traceability / schema/migrate  32 passed
+PostgreSQL concurrency         182 passed
+non-PostgreSQL                 514 passed
+full repository suite          765 passed
+post-push exact remote run     765 passed — 211.12 s
 skip / xfail / rerun           0 / 0 / 0
 warning census                 1 locked FastAPI/Starlette deprecation
 supported 40P01 / 40001        0 / 0
 negative-control 40P01 / 40001 1 / 2, expected and immediate
 ```
 
-Environment and unchanged boundaries verified by the corrected candidate:
+Environment and unchanged boundaries:
 
 ```text
 CPython                        3.14.7
@@ -277,7 +161,7 @@ PostgreSQL                     16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 uv                             0.12.3
 prompt-toolkit                 3.0.53
 project version                0.1.0
-runtime dependency / lock diff none
+corrective dependency/lock diff none
 authoritative tables           15
 Alembic bases / heads          1 / 1
 root revision                  0001_m2_kernel
@@ -290,97 +174,24 @@ CLI family census              14 / 16 / 13 / 14 / 5 / 1
 registry examples              65 parser-valid
 enrichment entry points        9 exact
 scenario / predicate registries 83 / 21
-S07 runtime-lock/release/Linux absent / not started
+S07 runtime-lock/release/Linux absent / not started at reviewed candidate
 GitHub Actions / PR            absent / not created
 ```
 
-The corrected production delta is limited to CLI selector planning, execution, enrichment and FORMATTED presentation. No dependency, public route, DTO, schema, migration, constraint, index, Health, JSON trace/result or S05 non-interactive contract changed.
+`M2-VER-25`, `M2-VER-26` and the S06-owned complete `M2-VER-28` evidence are accepted. `M2-VER-27` and every S05 review-fix boundary remain preserved. `M2-VER-24`, `M2-VER-29` and `M2-VER-30` retain their S07 primary ownership; `M2-VER-31` and `M2-VER-32` remain S08-owned.
 
-## M2-S06 first review record
+Reviewer inspection verified the published commit chain, exact corrected production delta, immutable target presentation, response-identity correlation, finite traversal guard, truthful traces, connection consequences, permanent finding registry and unchanged API/schema/dependency boundaries. The reviewer did not independently re-execute the 765-test suite; the accepted execution results are the candidate's exact-remote evidence.
 
-Reviewer result:
+The implementer reported one pre-publication aggregate PTY run that did not observe the Ctrl-R sentinel. The isolated target, complete S06 group and exact-remote full suite then passed without terminal-code changes or a generic retry mechanism. This was not reproducible and is recorded as a non-blocking execution-environment observation; T8 is re-executed by the S09 final gate.
 
-```text
-M2-S06                         REVIEW CHANGES REQUIRED
-starting baseline              e0ad43277fb214ed3f97e275416304f0130ff471
-initial implementation         e0c7a55bdbb066437fb0189ebcb781b834c476d6
-initial candidate evidence     8d4074f57b214d158d288a65dccde15156bcd812
-review record                  commit containing this status
-open findings                  S06-RF-01, S06-RF-02
-M2-S07                         BLOCKED / not started
-```
+No blocking review finding remains open for `M2-S06`.
 
-Conforming material to preserve:
+The concluded S06 execution aids were retired from the working tree by the same reviewer-owned acceptance commit:
 
 ```text
-runtime dependency             prompt-toolkit >=3.0,<4; resolved 3.0.53
-process routing                no argv -> async REPL; exact -n unchanged; other argv invalid
-initial session                DISCONNECTED / FORMATTED / empty in-memory history
-local commands                 8 / 8 exact
-remote commands                63 / 63 exact; same accepted registry and shared parser
-session transport              at most one endpoint-scoped persistent HTTPX client
-command isolation              fresh ledger and selector/enrichment memo per command
-Health state                   exact /connect and /status ready-200 validation
-terminal behavior              Ctrl-R / Ctrl-C editing / Ctrl-D / clear / exit
-formatted boundary             direct mutation/page behavior and nine registered read shapes
-JSON mode                      accepted S05 shape; no presentation enrichment
-S05 behavior                   all accepted non-interactive and review-fix boundaries
-schema/API/concurrency          unchanged
+docs/milestones/M2/wip/M2-S06-codex-prompt.md
+docs/milestones/M2/wip/M2-S06-review-fixes-codex-prompt.md
 ```
-
-Candidate evidence recorded by the implementer:
-
-```text
-uv lock                        PASS — prompt-toolkit + wcwidth only
-uv lock --check                PASS — 46 packages resolved
-uv sync --locked               PASS — 44 packages checked
-uv build                       PASS — sdist + wheel 0.1.0
-Ruff format/check              PASS — 222 files
-Ruff lint                      PASS
-Pyright strict                 PASS — 0 errors
-pytest collection              751 tests
-M2-VER-25 runtime group         26 passed
-M2-VER-26 runtime group         18 passed
-M2-VER-28 S06 runtime group     15 passed
-S06 + traceability              78 passed
-S05 + S06                      185 passed
-all S05 regressions            126 passed
-Health / S04 affected          111 passed — 1 locked warning
-traceability / schema / migrate 31 passed
-PostgreSQL concurrency         182 passed, 569 deselected — 117.75 s
-non-PostgreSQL                 500 passed, 251 deselected — 43.47 s
-full repository suite          751 passed — 210.35 s
-skip / xfail / rerun             0 / 0 / 0
-warning census                   1 locked FastAPI/Starlette deprecation
-supported 40P01 / 40001          0 / 0
-negative-control 40P01 / 40001   1 / 2, expected and immediate
-```
-
-Environment and unchanged boundaries recorded by the candidate:
-
-```text
-CPython                        3.14.7
-PostgreSQL                     16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
-uv                             0.12.3
-prompt-toolkit                 3.0.53
-authoritative tables           15
-Alembic bases / heads          1 / 1
-root revision                  0001_m2_kernel
-compare_metadata               []
-project version                0.1.0
-schema / migration / index diff none
-dependency / lock delta        prompt-toolkit + transitive wcwidth only
-business HTTP operations       41 mutations + 22 reads = 63 exact
-operational HTTP operations    1 Health; total public HTTP = 64
-CLI remote operations          63 exact
-CLI family census              14 / 16 / 13 / 14 / 5 / 1
-registry examples              65 parser-valid
-scenario / predicate registries 83 / 21
-S07 runtime-lock/release/Linux absent / not started
-GitHub Actions / PR            absent / not created
-```
-
-Reviewer inspection verified the published commit chain, bounded production delta, state/client/ledger ownership, Health transition paths, shared parser/registry use, terminal evidence structure, FORMATTED dispatch and enrichment code. The reviewer did not independently re-execute the 751-test suite; the execution results above are those produced and recorded by the candidate. The green suite does not cover the two reviewed failure cases.
 
 ## M2-S05 completion record
 
@@ -616,13 +427,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare and execute one bounded review-fix prompt for:
+Prepare the implementation execution aid and execute:
 
 ```text
-M2-S06 — S06-RF-01 / S06-RF-02
+M2-S07 — Versioned wheel, installed Alembic and Linux operating baseline
 ```
 
-Do not start `M2-S07` before reviewer-owned completion of `M2-S06`.
+Do not start `M2-S08` before reviewer-owned completion of `M2-S07`.
 
 ## Current status vocabulary
 
