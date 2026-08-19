@@ -15,7 +15,9 @@ from netauto.cli.model import (
     JsonValue,
     ParameterLocation,
     ParsedCommand,
+    PresentationTarget,
     RequestPlan,
+    ResolvedIdentity,
     thaw_json,
 )
 from netauto.cli.protocol import interpret_response
@@ -94,6 +96,30 @@ def _request_plan(
     return RequestPlan.create(spec.method, path, tuple(query), body), None, values
 
 
+def _presentation_target(
+    spec: CommandSpec,
+    identities: tuple[ResolvedIdentity, ...],
+    parameters: dict[str, JsonValue],
+) -> PresentationTarget | None:
+    fields: dict[str, JsonValue] = {}
+    for identity in identities:
+        if identity.label in fields:
+            raise RuntimeError("resolved presentation target labels are not unique")
+        fields[identity.label] = identity.exact_id
+    for parameter in spec.parameters:
+        if (
+            parameter.location is not ParameterLocation.PATH
+            or parameter.name not in parameters
+        ):
+            continue
+        value = parameters[parameter.name]
+        existing = fields.get(parameter.name)
+        if existing is not None and existing != value:
+            raise RuntimeError("resolved presentation target values disagree")
+        fields[parameter.name] = value
+    return PresentationTarget.create(fields) if fields else None
+
+
 async def execute(
     endpoint_root: str,
     command: ParsedCommand,
@@ -108,7 +134,7 @@ async def execute(
         transport=http_transport,
         ledger=execution_ledger,
     ) as transport:
-        result, _ = await execute_connected(
+        result, _, _ = await execute_connected(
             transport,
             command,
             spec,
@@ -125,20 +151,33 @@ async def execute_connected(
     *,
     ledger: ExecutionLedger,
     formatted: bool,
-) -> tuple[CliResult, JsonValue | None]:
+) -> tuple[CliResult, JsonValue | None, PresentationTarget | None]:
     """Execute one command on a persistent session client with a fresh ledger."""
 
     transport.use_ledger(ledger)
     resolution = await resolve_selectors(transport, command, spec)
     if resolution.error is not None:
-        return CliResult.failed(command, ledger.snapshot(), resolution.error), None
+        return (
+            CliResult.failed(command, ledger.snapshot(), resolution.error),
+            None,
+            None,
+        )
     plan, local_error, request_values = _request_plan(
         spec, resolution.selector, resolution.parameters
     )
     if local_error is not None:
-        return CliResult.failed(command, ledger.snapshot(), local_error), None
+        return (
+            CliResult.failed(command, ledger.snapshot(), local_error),
+            None,
+            None,
+        )
     if plan is None:
         raise RuntimeError("request planner returned no plan")
+    presentation_target = _presentation_target(
+        spec,
+        resolution.identities,
+        resolution.parameters,
+    )
     try:
         response, exchange = await transport.exchange(plan)
     except TransportFailure:
@@ -153,6 +192,7 @@ async def execute_connected(
                 ),
             ),
             None,
+            presentation_target,
         )
     outcome = interpret_response(
         response,
@@ -163,17 +203,25 @@ async def execute_connected(
         request_values=request_values,
     )
     if outcome.error is not None:
-        return CliResult.failed(command, ledger.snapshot(), outcome.error), None
+        return (
+            CliResult.failed(command, ledger.snapshot(), outcome.error),
+            None,
+            presentation_target,
+        )
     result = CliResult.ok(command, ledger.snapshot(), outcome.result)
     if not formatted:
-        return result, outcome.result
+        return result, outcome.result, presentation_target
     enriched = await enrich_formatted(transport, command, outcome.result)
     if enriched.error is not None:
-        return CliResult.failed(command, ledger.snapshot(), enriched.error), None
+        return (
+            CliResult.failed(command, ledger.snapshot(), enriched.error),
+            None,
+            presentation_target,
+        )
     # Enrichment may have appended exchanges after the primary result was created.
     final_result = CliResult.ok(
         command,
         ledger.snapshot(),
         None if result.result is None else thaw_json(result.result),
     )
-    return final_result, enriched.presentation
+    return final_result, enriched.presentation, presentation_target

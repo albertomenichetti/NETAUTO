@@ -46,6 +46,7 @@ class _Context:
         identity: str,
         path: str,
         annotation: object,
+        expected_identity: tuple[tuple[str, JsonValue], ...],
     ) -> tuple[dict[str, JsonValue] | None, CliError | None]:
         key = (kind, identity)
         cached = self.cache.get(key)
@@ -75,6 +76,8 @@ class _Context:
         if not isinstance(outcome.result, dict):
             return None, _protocol_error(response.status_code)
         value = cast(dict[str, JsonValue], outcome.result)
+        if any(value.get(field) != expected for field, expected in expected_identity):
+            return None, _protocol_error(response.status_code)
         self.cache[key] = value
         return value, None
 
@@ -86,6 +89,7 @@ class _Context:
             datatype_id,
             f"/api/v1/core/datatypes/{datatype_id}",
             DataTypeDto,
+            (("id", datatype_id),),
         )
 
     async def template(
@@ -96,6 +100,7 @@ class _Context:
             template_id,
             f"/api/v1/core/object-templates/{template_id}",
             ObjectTemplateDto,
+            (("id", template_id),),
         )
 
     async def template_version(
@@ -106,6 +111,7 @@ class _Context:
             f"{template_id}:{version}",
             f"/api/v1/core/object-templates/{template_id}/versions/{version}",
             ObjectTemplateVersionDto,
+            (("template_id", template_id), ("version", version)),
         )
 
     async def object(
@@ -116,6 +122,7 @@ class _Context:
             object_id,
             f"/api/v1/core/objects/{object_id}",
             ObjectDto,
+            (("id", object_id),),
         )
 
 
@@ -235,13 +242,15 @@ async def enrich_formatted(
         if owner_version is None:
             return EnrichmentOutcome(None, _protocol_error())
         seen_versions: set[tuple[str, int]] = {(owner_id, owner_version)}
+        seen_lineages = {owner_id}
         while parent_id is not None or parent_version is not None:
             if parent_id is None or parent_version is None:
                 return EnrichmentOutcome(None, _protocol_error())
             version_key = (parent_id, parent_version)
-            if version_key in seen_versions:
+            if version_key in seen_versions or parent_id in seen_lineages:
                 return EnrichmentOutcome(None, _protocol_error())
             seen_versions.add(version_key)
+            seen_lineages.add(parent_id)
             parent_name, error = await _template_name(context, parent_id)
             if error is not None or parent_name is None:
                 return EnrichmentOutcome(None, error or _protocol_error())

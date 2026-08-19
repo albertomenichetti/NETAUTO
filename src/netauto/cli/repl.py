@@ -24,6 +24,7 @@ from netauto.cli.model import (
     HttpExchangeTrace,
     JsonValue,
     ParsedCommand,
+    PresentationTarget,
     RequestPlan,
 )
 from netauto.cli.parser import (
@@ -106,6 +107,7 @@ class InteractiveOutcome:
     spec: CommandSpec | None
     presentation: JsonValue | None
     exit_requested: bool = False
+    presentation_target: PresentationTarget | None = None
 
 
 def _local_command(name: str, arguments: list[str]) -> ParsedCommand:
@@ -496,7 +498,7 @@ class InteractiveSession:
                     "cli_not_connected",
                     "The CLI is not connected to an endpoint.",
                 )
-            result, presentation = await execute_connected(
+            result, presentation, presentation_target = await execute_connected(
                 self._transport,
                 command,
                 spec,
@@ -508,7 +510,12 @@ class InteractiveSession:
                 and result.error.source is ErrorSource.TRANSPORT
             ):
                 await self._discard_transport()
-            return InteractiveOutcome(result, spec, presentation)
+            return InteractiveOutcome(
+                result,
+                spec,
+                presentation,
+                presentation_target=presentation_target,
+            )
         except Exception:  # bounded per-command boundary; never catches BaseException
             try:
                 await self._discard_transport()
@@ -534,7 +541,12 @@ class InteractiveSession:
 def render_interactive(session: InteractiveSession, outcome: InteractiveOutcome) -> str:
     if session.output is OutputMode.JSON:
         return render_json(outcome.result)
-    return render_formatted(outcome.result, outcome.spec, outcome.presentation)
+    return render_formatted(
+        outcome.result,
+        outcome.spec,
+        outcome.presentation,
+        outcome.presentation_target,
+    )
 
 
 async def run_repl(

@@ -290,6 +290,32 @@ class RequestPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class ResolvedIdentity:
+    """One registry-owned selector location and its exact resolved UUID."""
+
+    label: str
+    exact_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class PresentationTarget:
+    """Immutable exact primary-target metadata used only by FORMATTED output."""
+
+    fields: FrozenJsonObject
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "fields",
+            FrozenJsonObject(cast(Mapping[str, object], self.fields)),
+        )
+
+    @classmethod
+    def create(cls, fields: Mapping[str, JsonValue]) -> PresentationTarget:
+        return cls(freeze_json_object(fields))
+
+
+@dataclass(frozen=True, slots=True)
 class HttpRequestTrace:
     method: str
     url: str

@@ -12,6 +12,7 @@ from netauto.cli.model import (
     JsonValue,
     ParsedCommand,
     RequestPlan,
+    ResolvedIdentity,
     SelectorKind,
     thaw_json,
 )
@@ -27,6 +28,7 @@ class ResolutionOutcome:
     selector: str | None
     parameters: dict[str, JsonValue]
     exchanges: tuple[HttpExchangeTrace, ...]
+    identities: tuple[ResolvedIdentity, ...]
     error: CliError | None
 
 
@@ -143,6 +145,20 @@ def _replace(
         raise RuntimeError("invalid static selector target")
 
 
+def _identity_label(spec: CommandSpec, target: _Target) -> str:
+    if not target.path:
+        if spec.selector_parameter is None:
+            raise RuntimeError("selector registry identity has no parameter name")
+        return spec.selector_parameter
+    label = ""
+    for segment in target.path:
+        if isinstance(segment, int):
+            label += f"[{segment}]"
+        else:
+            label += ("." if label else "") + segment
+    return label
+
+
 async def _lookup(
     transport: HttpTransport,
     kind: SelectorKind,
@@ -234,12 +250,14 @@ async def resolve_selectors(
     resolved_selector: str | None = None
     first_exchange = transport.exchange_count
     cache: dict[tuple[SelectorKind, str], str] = {}
+    identities: list[ResolvedIdentity] = []
     for target in _targets(command, spec, parameters):
         if not isinstance(target.value, str):
             return ResolutionOutcome(
                 resolved_selector,
                 parameters,
                 transport.exchanges_since(first_exchange),
+                tuple(identities),
                 _selector_error(target.kind, "cli_selector_invalid", target.value),
             )
         key = (target.kind, target.value)
@@ -251,6 +269,7 @@ async def resolve_selectors(
                     resolved_selector,
                     parameters,
                     transport.exchanges_since(first_exchange),
+                    tuple(identities),
                     error,
                 )
             if resolved is None:
@@ -260,9 +279,11 @@ async def resolve_selectors(
             resolved_selector = resolved
         else:
             _replace(parameters, target.path, resolved)
+        identities.append(ResolvedIdentity(_identity_label(spec, target), resolved))
     return ResolutionOutcome(
         resolved_selector,
         parameters,
         transport.exchanges_since(first_exchange),
+        tuple(identities),
         None,
     )

@@ -1356,6 +1356,43 @@ S04_REVIEW_FIX_TARGETS = {
         }
     ),
 }
+S06_REVIEW_FIX_TARGETS: dict[str, frozenset[str]] = {
+    "S06-RF-01": frozenset(
+        {
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf01_human_selector_204_exposes_exact_target_without_hidden_get",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf01_nullable_owner_exposes_selected_object_without_recovery_get",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf01_projection_exposes_resolved_path_and_body_identities",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf01_exact_uuid_target_is_visible_once_without_lookup_ambiguity",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf01_json_contract_remains_primary_only_and_target_metadata_absent",
+            "tests/test_m2_traceability.py::"
+            "test_s06_review_fix_registry_is_exact_resolvable_and_bundle_mapped",
+        }
+    ),
+    "S06-RF-02": frozenset(
+        {
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf02_stable_get_identity_mismatch_fails_before_cache_or_use",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf02_exact_version_identity_mismatch_fails_before_cache_or_use",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf02_same_lineage_different_version_cycle_stops_immediately",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf02_multi_lineage_different_version_cycle_stops_before_repeat",
+            "tests/test_m2_s06_review_fixes.py::"
+            "test_rf02_valid_root_lineage_and_repeated_ids_are_memoized_once",
+            "tests/test_m2_traceability.py::"
+            "test_s06_review_fix_registry_is_exact_resolvable_and_bundle_mapped",
+        }
+    ),
+}
+_S06_REVIEW_FIX_UNION: frozenset[str] = frozenset(
+    target for targets in S06_REVIEW_FIX_TARGETS.values() for target in targets
+)
 S06_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     "M2-VER-25": frozenset(
         {
@@ -1378,14 +1415,17 @@ S06_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             and node.name.startswith("test_")
         }
     ),
-    "M2-VER-28": frozenset(
-        {
-            f"{path.as_posix()}::{node.name}"
-            for path in (Path("tests/test_m2_s06_rendering.py"),)
-            for node in ast.parse(path.read_text()).body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name.startswith("test_")
-        }
+    "M2-VER-28": (
+        frozenset(
+            {
+                f"{path.as_posix()}::{node.name}"
+                for path in (Path("tests/test_m2_s06_rendering.py"),)
+                for node in ast.parse(path.read_text()).body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name.startswith("test_")
+            }
+        )
+        | _S06_REVIEW_FIX_UNION
     ),
 }
 M2_EVIDENCE_TO_TARGETS = {
@@ -1767,7 +1807,13 @@ def test_s06_primary_bundle_targets_are_honest_complete_and_resolvable() -> None
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name.startswith("test_")
     }
-    assert set().union(*S06_PRIMARY_BUNDLE_TARGETS.values()) == defined_s06_targets
+    assert set().union(*S06_PRIMARY_BUNDLE_TARGETS.values()) == (
+        defined_s06_targets
+        | {
+            "tests/test_m2_traceability.py::"
+            "test_s06_review_fix_registry_is_exact_resolvable_and_bundle_mapped"
+        }
+    )
     assert S06_PRIMARY_BUNDLE_TARGETS["M2-VER-28"].isdisjoint(
         S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-28"]
     )
@@ -1778,6 +1824,39 @@ def test_s06_primary_bundle_targets_are_honest_complete_and_resolvable() -> None
         assert targets <= evidence.targets
         for target in targets:
             _assert_target_exists(target)
+
+
+def test_s06_review_fix_registry_is_exact_resolvable_and_bundle_mapped() -> None:
+    assert set(S06_REVIEW_FIX_TARGETS) == {"S06-RF-01", "S06-RF-02"}
+    assert len(S06_REVIEW_FIX_TARGETS["S06-RF-01"]) == 6
+    assert len(S06_REVIEW_FIX_TARGETS["S06-RF-02"]) == 6
+    review_union: frozenset[str] = frozenset(
+        target for targets in S06_REVIEW_FIX_TARGETS.values() for target in targets
+    )
+    assert len(review_union) == 11
+    for targets in S06_REVIEW_FIX_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+    assert review_union <= frozenset().union(
+        *(
+            S06_PRIMARY_BUNDLE_TARGETS[bundle_id]
+            for bundle_id in (
+                "M2-VER-25",
+                "M2-VER-26",
+                "M2-VER-28",
+            )
+        )
+    )
+    assert review_union <= S06_PRIMARY_BUNDLE_TARGETS["M2-VER-28"]
+    assert (
+        M2_EVIDENCE_TO_TARGETS["M2-VER-27"].targets
+        == S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"]
+    )
+    for bundle_id in ("M2-VER-29", "M2-VER-31", "M2-VER-32"):
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
+            "DESIGNED", frozenset()
+        )
 
 
 def test_s05_review_fix_registry_is_exact_and_resolvable() -> None:
