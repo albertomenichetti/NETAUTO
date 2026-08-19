@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S05 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S06 READY
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S05 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the published residual corrective candidate
-blockers        reviewer acceptance pending; M2-S06 remains blocked
+current slice   M2-S06 — READY
+current task    prepare the M2-S06 Codex implementation prompt and execute the authorized slice
+blockers        none
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | `M2-S05` CANDIDATE READY FOR REVIEW — reviewer decision pending |
+| Implementation | AUTHORIZED — `M2-S06` ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -44,193 +44,120 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
-| `M2-S05` | CANDIDATE READY FOR REVIEW | `M2-S04 COMPLETED` |
-| `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
+| `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
+| `M2-S06` | READY | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
-`M2-S00` through `M2-S04` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
+`M2-S00` through `M2-S05` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
-## Current blockers and reviewed findings
+## Current blockers and findings
 
-No contract, architecture, implementation-planning or technology contradiction is open. The published residual candidate addresses `S05-RF-01`; reviewer acceptance remains pending. Reviewer-owned `CLOSED` findings `S05-RF-02`, `S05-RF-03` and `S05-RF-04` remain preserved.
+No contract, architecture, implementation-planning, technology or verification blocker is open for starting `M2-S06`.
 
-### `S05-RF-01` — CANDIDATE CORRECTED; REVIEWER DECISION PENDING
+`M2-S06` is limited to the official interactive CLI REPL and formatted experience. It must consume the completed S05 HTTP core, registry, selector, protocol, trace and non-interactive authorities without creating a second command model. It must not begin `M2-S07` versioned-wheel, installed-Alembic or Linux operating-baseline work before reviewer-owned completion.
 
-Accepted corrective material:
+Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
-```text
-one command-scoped ExecutionLedger exists
-normal selector and primary exchanges are recorded once and in order
-an unexpected failure after normal response capture preserves recorded exchanges
-HttpTransport.__aexit__ failure preserves the already-recorded primary exchange
-expected TransportFailure remains a bounded transport result
-BaseException, cancellation, KeyboardInterrupt and SystemExit remain unnormalized
-raw unexpected exception text is absent from the structured result
-```
-
-The second review identified two residual gaps in reviewer baseline `7bfcdc5059de1742c2c211b4edb34c0879f31234`.
-
-#### A. Unexpected parsing defects bypass the structured process boundary
-
-The production `run()` function catches only `ParseFailure` around `parse_process()`. The general ordinary-`Exception` boundary begins after parsing, around `asyncio.run(execute(...))`.
-
-Therefore an unexpected ordinary defect in endpoint parsing, registry lookup, local decoding or another `parse_process()` path escapes the non-interactive result boundary entirely. Instead of the frozen outcome:
-
-```text
-status       error
-error.code   cli_internal_error
-command      null or the safely parsed partial command
-exchanges    []
-stdout       one JSON object plus newline
-stderr       empty
-exit         1
-```
-
-the process may terminate with an unstructured traceback.
-
-#### B. The ledger records a request too late for some attempted-exchange failures
-
-`HttpTransport.exchange()` builds the request and calls `AsyncClient.send()`, but records the exchange only:
-
-```text
-when an expected httpx.TransportError is caught
-or
-after send returned, cookie cleanup completed and response capture succeeded
-```
-
-Consequently an ordinary unexpected exception raised:
-
-```text
-inside AsyncClient.send after the request attempt began
-during response-trace construction
-during the post-response cookie cleanup in exchange()
-```
-
-can still reach the outer `cli_internal_error` boundary with the attempted request absent from the ledger. This contradicts the frozen requirement that every actual attempted HTTP exchange appears exactly once and in execution order on every structured outcome.
-
-Required correction:
-
-```text
-one ordinary-Exception boundary covers parsing and execution
-    -> expected ParseFailure remains its finite local outcome
-    -> unexpected parse defect becomes bounded cli_internal_error
-    -> BaseException families remain untouched
-
-once an HTTP send attempt begins
-    -> the request attempt is owned by the command ledger
-    -> an unexpected ordinary send failure preserves one exchange with response = null
-    -> a returned response remains represented if response capture or later cleanup fails
-    -> expected TransportFailure is not duplicated
-    -> selector and primary ordering remains exact
-
-all structured failures
-    -> result = null
-    -> one JSON stdout line
-    -> empty stderr
-    -> exit 1
-    -> no raw exception text
-```
-
-Permanent evidence must exercise the real `netauto -n` boundary for at least:
-
-```text
-unexpected RuntimeError from parse_process before a command key exists
-unexpected RuntimeError from parsing after a safe partial command exists
-unexpected ordinary exception raised by the HTTP send path
-unexpected failure during response-trace construction or equivalent post-response capture
-unexpected failure during exchange-level post-response cleanup
-existing __aexit__ cleanup failure
-expected httpx.TransportError without duplicate exchange
-BaseException/cancellation negative controls
-```
-
-Published residual candidate outcome:
-
-```text
-ordinary Exception boundary      spans production parsing and execution
-safe parse progress              immutable partial ParsedCommand when available
-expected ParseFailure            finite local classification preserved
-BaseException family             propagates unchanged
-attempt ownership                ledger begins immediately before HTTPX send
-in-flight snapshot               includes exactly one provisional exchange
-returned response                observed before fallible trace/cleanup work
-send/capture/cleanup defects     truthful response-null/non-null exchange retained
-selector + primary ordering      exact, duplicate-free, original human intent retained
-public failure channels          bounded JSON stdout, empty stderr, exit 1
-```
-
-### `S05-RF-02` — CLOSED
-
-The endpoint authority now distinguishes absence of a port from one explicit ASCII-decimal port. Hostname and bracketed-IPv6 forms accept only `1..65535`; empty, zero, signed, nonnumeric and out-of-range ports produce bounded `cli_invalid_invocation`, `command = null` and no exchange. Parser, process and installed-wheel evidence cover the required matrix.
-
-### `S05-RF-03` — CLOSED
-
-`ParsedCommand`, `RequestPlan`, `CliError`, request/response traces and `CliResult` now take recursive immutable JSON snapshots. Public nested values cannot mutate the stored authority, `as_json()` returns detached ordinary carriers and repeated rendering is byte-stable. Query/header maps and exchange ordering remain immutable.
-
-### `S05-RF-04` — CLOSED
-
-All 63 `CommandSpec` values now own meaningful descriptions, selector and parameter metadata through the same registry fields, renderer metadata and at least one parser-valid example. The registry contains 65 stored examples because both RelationshipDefinition CREATE and RENAME expose their two discriminated shapes. All examples parse through the production parser to their own command without HTTP.
-
-## M2-S05 second review record
+## M2-S05 completion record
 
 Reviewer result:
 
 ```text
-M2-S05                         REVIEW CHANGES REQUIRED
+M2-S05                         COMPLETED
+original prompt                24f65b11afe72f2882a796e1c0daf6aef80bda05
 initial implementation         3d02fce9fe9c456e26100c3dbbbabce75bf90caf
 initial candidate evidence     c1365c1c951447ed3f22cd54bcb1effcf41043ee
 first review record            77b682bac31f6c2e7a8befa2b5a18d98330fb4ea
 first review-fix prompt        2f43b21d66d318fcc43c2595bdf893fc6f395d53
-corrective implementation      1015dd5ea86b15e8248c9a5e2fe518fe98e2b637
-corrective evidence/status     eb8ff673ad1ea77179194493b712dcc0497b5835
-corrective provenance          372d2954f206ae99f3935d3ee36d28a50f9fb72e
-closed findings                S05-RF-02, S05-RF-03, S05-RF-04
-open finding                   S05-RF-01 residual boundary cases
-M2-S06                         BLOCKED / not started
+first corrective implementation 1015dd5ea86b15e8248c9a5e2fe518fe98e2b637
+first corrective evidence      eb8ff673ad1ea77179194493b712dcc0497b5835
+first corrective provenance    372d2954f206ae99f3935d3ee36d28a50f9fb72e
+second review record           7bfcdc5059de1742c2c211b4edb34c0879f31234
+residual review-fix prompt     01d12f821ccd1a5d09ea15f4830e9a844ee5ced1
+residual implementation        4e23af5dd4fd1f3ac3c7c343637fcad9a4906660
+residual evidence/status       2bd40d4ce358e6bd20d86973544441e9830ed563
+residual provenance            00f81aafbabdcd5e6bbf66b8271e3aab33cadea8
+review acceptance              recorded by the commit containing this status
+M2-S06                         READY / not started
 ```
 
-Conforming material to preserve:
+Closed findings:
 
 ```text
-neutral wire boundary          shared request/success/page/lifecycle/error/Health DTOs
-server adapters                reuse neutral DTO identities; 63 business routes unchanged
-runtime dependency             HTTPX >=0.28,<1 promoted from dev to project dependency
-console entrypoint             netauto = netauto.cli.main:main
-CLI execution                  HTTP-only exact -n non-interactive process
-remote registry                63 exact CommandSpec values; 65 valid examples
-selectors                      deterministic top-level/nested lookup and per-command memoization
-transport                      verified TLS, no redirect/retry/auth/cookie persistence
-protocol                       exact 200/201/204, DTO/error/Location validation
-normal trace paths             selector and primary exchanges recorded once and ordered
-process result                 one stdout JSON line; stderr empty; exit 0/1 on covered paths
-interactive REPL/FORMATTED     not introduced; owned by blocked M2-S06
+S05-RF-01
+    The ordinary-Exception boundary spans parsing and execution while expected
+    ParseFailure values retain their finite local classification. ParseProgress
+    preserves only a safely materialized immutable partial command. The command-
+    scoped ExecutionLedger owns an HTTP attempt immediately before send, exposes
+    in-flight attempts in snapshots, observes a returned response before later
+    fallible processing and finalizes each attempt exactly once. Unexpected send,
+    response-capture, exchange-cleanup and context-cleanup failures therefore
+    preserve a truthful ordered trace. BaseException families remain unnormalized.
+
+S05-RF-02
+    Endpoint roots distinguish an absent port from an explicit ASCII-decimal port.
+    Empty, zero, signed, nonnumeric and out-of-range hostname or bracketed-IPv6
+    ports fail locally without a command or HTTP exchange.
+
+S05-RF-03
+    Command, plan, error, request/response trace and result values use recursive
+    immutable JSON snapshots. Public serialization returns detached ordinary JSON
+    carriers and repeated rendering is byte-stable.
+
+S05-RF-04
+    All 63 CommandSpec values own meaningful help/selector/parameter metadata,
+    renderer metadata and parser-valid examples. The 65 examples include both
+    discriminated RelationshipDefinition CREATE and RENAME forms and resolve to
+    their own installed registry key without HTTP execution.
 ```
 
-Historical verification from the rejected second candidate (superseded by the residual candidate record below):
+Accepted S05 capability:
+
+```text
+neutral HTTP wire authority       shared request/success/page/lifecycle/error/Health DTOs
+server adapter reuse              neutral DTO identities; server contract unchanged
+runtime dependency                HTTPX >=0.28,<1 promoted from dev to project runtime
+console entrypoint                netauto = netauto.cli.main:main
+non-interactive grammar           exact netauto -n endpoint resource operation form
+remote registry                   63 immutable business CommandSpec values
+registry examples                 65 parser-valid examples
+family census                     14 / 16 / 13 / 14 / 5 / 1
+selectors                         deterministic top-level/nested resolution and one-command cache
+transport                         verified TLS; no redirect/retry/auth/cookie persistence
+protocol                          exact 200/201/204, business-error and Location validation
+trace                             every attempted exchange once, ordered and immutable
+unexpected failures               bounded ordinary failures with truthful partial intent/trace
+process contract                  one JSON stdout line; empty stderr; exit 0/1
+interactive REPL/FORMATTED        absent; owned by M2-S06
+```
+
+Accepted verification:
 
 ```text
 uv lock --check                                       PASS — 44 packages
 uv sync --locked                                      PASS — 42 checked packages
 uv build                                              PASS — sdist + wheel 0.1.0
-Ruff format/check                                     PASS — 215 files
+Ruff format/check                                     PASS — 218 files
 Ruff lint                                             PASS
 Pyright                                               PASS — 0 errors
-pytest collection                                     670 tests
-review-fix union                                       37 passed
-all S05 tests                                         106 passed
-M2-VER-27                                             106 passed
+pytest collection                                     691 tests
+residual S05-RF-01 registry                           23 selectors / 35 passed
+complete S05-RF-01 target set                         35 passed
+all S05 tests                                         126 passed
+M2-VER-27 primary S05                                 126 passed
 M2-VER-24 bounded support                               7 passed
 M2-VER-28 bounded support                              27 passed
 M2-VER-30 bounded support                              30 passed
 DTO/API/route inventory                               57 passed
 S04 Settings/startup/Health                          121 passed
 schema metadata / migrations                           5 passed
-M1 / S00 / M2 traceability                            24 passed
+M1 / S00 / M2 traceability                            25 passed
 PostgreSQL concurrency marker                        182 passed
-non-PostgreSQL                                       419 passed
-full repository suite                                670 passed — 206.58 s
+non-PostgreSQL                                       440 passed
+full repository suite                                691 passed
+post-push full rerun on exact remote candidate       691 passed — 205.18 s
 skip / xfail / rerun                                   0 / 0 / 0
 warning census                                         1 locked FastAPI/Starlette deprecation
 supported-path 40P01 / unexpected 40001                0 / 0
@@ -244,98 +171,31 @@ CPython                         3.14.7
 PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 uv                              0.12.3
 authoritative tables            15
-Alembic graph                   one base / one head
-root migration                  0001_m2_kernel unchanged
-metadata/schema/index diff      none
-project version                 0.1.0 unchanged
-dependency / lock delta         none in the review fixes
-business HTTP operations        41 mutations + 22 reads = 63 exact
-operational HTTP operations      1 Health; total public HTTP = 64
-CLI remote operations           63 exact; Health excluded
-scenario / predicate registries 83 / 21 unchanged
-interactive REPL/FORMATTED      not introduced; owned by blocked M2-S06
-GitHub Actions/PR               not used / not created
-```
-
-The reviewer inspected the published commit chain, production delta, tests and traceability. The reviewer did not independently execute the 670-test suite during this inspection; the execution results above are those produced and recorded by the candidate.
-
-## M2-S05 residual corrective candidate record
-
-Candidate state:
-
-```text
-M2-S05                         CANDIDATE READY FOR REVIEW
-reviewer baseline              7bfcdc5059de1742c2c211b4edb34c0879f31234
-residual prompt commit         01d12f821ccd1a5d09ea15f4830e9a844ee5ced1
-residual implementation        4e23af5dd4fd1f3ac3c7c343637fcad9a4906660
-candidate evidence/status      2bd40d4ce358e6bd20d86973544441e9830ed563
-final provenance/remote HEAD   recorded by this commit
-S05-RF-01                      candidate correction implemented; review pending
-S05-RF-02 / 03 / 04            reviewer-owned CLOSED; preserved
-M2-S06                         BLOCKED / not started
-```
-
-The complete mandatory gate passed on the exact published implementation commit `4e23af5dd4fd1f3ac3c7c343637fcad9a4906660`, with an externally supplied real PostgreSQL target:
-
-```text
-uv lock --check                                       PASS — 44 packages — 0.02 s
-uv sync --locked                                      PASS — 42 checked packages — 0.03 s
-uv build                                              PASS — sdist + wheel 0.1.0 — 1.50 s
-ruff format --check                                   PASS — 218 files — 0.05 s
-ruff check                                            PASS — 0.05 s
-pyright                                               PASS — 0 errors — 21.45 s
-pytest collection                                     691 tests — 1.68 s
-residual registry                                     23 selectors / 35 collected / 35 unique
-residual registry execution                           35 passed — 4.64 s
-complete S05-RF-01 target set                         23 selectors / 35 passed — 4.80 s
-all S05 tests                                         126 passed — 17.29 s
-M2-VER-27                                             64 selectors / 126 passed — 15.67 s
-M2-VER-24 bounded support                              7 passed — 9.86 s
-M2-VER-28 bounded support                             27 passed — 4.91 s
-M2-VER-30 bounded support                             30 passed — 10.89 s
-DTO/API/route inventory                               57 passed — 27.73 s
-S04 Settings/startup/Health                          121 passed — 15.40 s
-schema metadata / migrations                           5 passed — 2.22 s
-M1 / S00 / M2 traceability                            25 passed — 14.72 s
-PostgreSQL concurrency marker                        182 passed — 117.36 s
-non-PostgreSQL                                       440 passed — 38.33 s
-full repository suite with TEST_DATABASE_URL         691 passed — 205.45 s
-installed wheel / console boundary                    PASS — included in residual and S05 gates
-skip / xfail / rerun                                   0 / 0 / 0
-warning census                                         1 locked FastAPI/Starlette deprecation
-supported-path 40P01 / unexpected 40001                0 / 0
-negative-control 40P01 / 40001                         1 / 2, expected and immediate
-```
-
-Environment and unchanged-boundary census:
-
-```text
-CPython                         3.14.7
-PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
-uv                              0.12.3
-authoritative tables            15
 Alembic bases / heads           1 / 1
 root revision                   0001_m2_kernel
 compare_metadata                []
 project version                 0.1.0
-pyproject dependency diff       none
-uv.lock diff                    none
+schema / migration / index diff none
+residual dependency / lock diff none
 business HTTP operations        41 mutations + 22 reads = 63 exact
 operational HTTP operations      1 Health; total public HTTP = 64
 CLI remote operations           63 exact
-registry examples               65
 scenario / predicate registries 83 / 21
-interactive REPL/FORMATTED       absent
-schema/migration/route/DTO diff  none
-GitHub Actions changes           absent
+GitHub Actions / PR             absent / not created
 ```
 
-The three S05 execution aids remain in `wip/`. No prompt is retired while the slice is open:
+`M2-VER-27` is accepted as the primary S05 bundle. The S05 work for `M2-VER-24`, `M2-VER-28` and `M2-VER-30` remains bounded supporting evidence; their primary ownership remains `M2-S07`, `M2-S06` and `M2-S07` respectively. `M2-VER-25`, `M2-VER-26`, `M2-VER-29`, `M2-VER-31` and `M2-VER-32` remain owned by later slices.
+
+Reviewer inspection verified the published commit chain, production delta, parser progress boundary, attempt lifecycle, response preservation, process regressions, installed-wheel evidence, traceability and unchanged public/schema boundaries. The reviewer did not independently re-execute the 691-test suite during this inspection; the accepted execution results are those produced and recorded by the residual candidate.
+
+No blocking review finding remains open for `M2-S05`.
+
+The concluded S05 execution aids were retired from the working tree by the same reviewer-owned acceptance commit:
 
 ```text
-M2-S05-codex-prompt.md
-M2-S05-review-fixes-codex-prompt.md
-M2-S05-residual-review-fix-codex-prompt.md
+docs/milestones/M2/wip/M2-S05-codex-prompt.md
+docs/milestones/M2/wip/M2-S05-review-fixes-codex-prompt.md
+docs/milestones/M2/wip/M2-S05-residual-review-fix-codex-prompt.md
 ```
 
 ## M2-S04 completion record
@@ -409,7 +269,7 @@ original candidate status      63c0e772df4c73c439b7b4baed67b3d11fc809b9
 review changes record          e5728486ace14bf525fa3f5df51d7c18e87b957c
 corrective prompt              4a35581769feb0791a9eca1aa795c1fd0f95aa5c
 corrective implementation      46afa3341d292fb1790612456b28689eafb5b694
-corrective evidence/status      6d8a0838530f2b449c598dc545a0a2ad3577c5d3
+corrective evidence/status     6d8a0838530f2b449c598dc545a0a2ad3577c5d3
 publication provenance         63e7be04d8880ec5ea79289fd6b0462babe5ab40
 review acceptance              24e7b788b6b7f54d96614ef2c37bffbeb25ebd8b
 full suite                     PASS (349)
@@ -434,15 +294,13 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Reviewer inspection of the published M2-S05 residual corrective candidate:
+Prepare and execute the Codex implementation prompt for:
 
 ```text
-S05-RF-01 candidate correction
-complete candidate evidence and final remote provenance
-preservation of reviewer-owned CLOSED S05-RF-02 / 03 / 04
+M2-S06 — Official CLI interactive REPL and formatted experience
 ```
 
-Reviewer acceptance remains pending. Do not mark `M2-S05 COMPLETED` and do not start `M2-S06`.
+Do not start `M2-S07` before reviewer-owned completion of `M2-S06`.
 
 ## Current status vocabulary
 
