@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S05 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S05 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S05 — REVIEW CHANGES REQUIRED
-current task    prepare and execute the bounded M2-S05 review-fix prompt
-blockers        S05-RF-01, S05-RF-02, S05-RF-03 and S05-RF-04
+current slice   M2-S05 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the bounded M2-S05 corrective candidate
+blockers        reviewer acceptance pending; M2-S06 remains blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | `M2-S05` REVIEW CHANGES REQUIRED — bounded fixes only |
+| Implementation | `M2-S05` CANDIDATE READY FOR REVIEW — reviewer acceptance pending |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -44,7 +44,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
-| `M2-S05` | REVIEW CHANGES REQUIRED | `M2-S04 COMPLETED` |
+| `M2-S05` | CANDIDATE READY FOR REVIEW | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
@@ -54,7 +54,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and reviewed findings
 
-No contract, architecture, implementation-planning or technology contradiction is open. The published S05 candidate implements the principal HTTP-only CLI and non-interactive capability, but four bounded implementation/evidence defects remain. They are corrected inside `M2-S05`; no architecture reopen is required.
+No contract, architecture, implementation-planning or technology contradiction is open. The four bounded findings below are corrected in the published S05 corrective candidate. Reviewer acceptance remains pending; no architecture reopen was required.
 
 ### `S05-RF-01` — an unexpected ordinary exception loses already-attempted HTTP exchanges
 
@@ -168,61 +168,90 @@ every CommandSpec
 
 Add machine-checkable evidence that every example resolves to its own registry key and passes the same local parser/required-parameter validation without performing HTTP. Do not implement `/help`, the REPL or FORMATTED runtime behavior in S05.
 
-## M2-S05 reviewed candidate record
+## M2-S05 corrective candidate record
 
-Reviewer result:
+Candidate state and provenance:
 
 ```text
-M2-S05                         REVIEW CHANGES REQUIRED
-starting baseline              24f65b11afe72f2882a796e1c0daf6aef80bda05
-implementation-start status    c8ac18e1dfcd33beb9a20468c393ba0266a20d23
-implementation                 3d02fce9fe9c456e26100c3dbbbabce75bf90caf
-candidate evidence/status      c1365c1c951447ed3f22cd54bcb1effcf41043ee
-open findings                  S05-RF-01, S05-RF-02, S05-RF-03, S05-RF-04
+M2-S05                         CANDIDATE READY FOR REVIEW
+initial implementation         3d02fce9fe9c456e26100c3dbbbabce75bf90caf
+initial candidate evidence     c1365c1c951447ed3f22cd54bcb1effcf41043ee
+reviewer baseline              77b682bac31f6c2e7a8befa2b5a18d98330fb4ea
+review-fix prompt              2f43b21d66d318fcc43c2595bdf893fc6f395d53
+corrective implementation      1015dd5ea86b15e8248c9a5e2fe518fe98e2b637
+candidate evidence/status      pending provenance-only follow-up
+review result                  pending / reviewer-owned
+open findings                  none in the corrective candidate
 M2-S06                         BLOCKED / not started
 ```
 
-Conforming material to preserve:
+Corrective finding outcomes:
 
 ```text
-neutral wire boundary          shared request/success/page/lifecycle/error/Health DTOs
-server adapters                reuse neutral DTO identities; 63 business routes unchanged
-runtime dependency             HTTPX >=0.28,<1 promoted from dev to project dependency
-console entrypoint             netauto = netauto.cli.main:main
-CLI execution                  HTTP-only exact -n non-interactive process
-remote registry                63 exact CommandSpec values and family census
-selectors                      deterministic top-level/nested lookup and per-command memoization
-transport                      verified TLS, no redirect/retry/auth/cookie persistence
-protocol                       exact 200/201/204, DTO/error/Location validation
-normal trace paths             selector and primary exchanges recorded once and ordered
-process result                 one stdout JSON line; stderr empty; exit 0/1
-interactive REPL/FORMATTED     not introduced; owned by blocked M2-S06
+S05-RF-01  PASS — one execution ledger preserves selector, primary and cleanup
+           exchange history on ordinary unexpected failure; BaseException and
+           cancellation controls remain unnormalized
+S05-RF-02  PASS — absent ports and numeric 1..65535 ports are accepted; empty,
+           zero, signed, nonnumeric and out-of-range hostname/IPv6 ports fail
+           locally with command = null and exchanges = []
+S05-RF-03  PASS — command, plan, error, request/response trace and result JSON
+           use recursive immutable snapshots with detached JSON serialization
+S05-RF-04  PASS — all 63 CommandSpec values own meaningful descriptions,
+           renderer metadata and parser-valid examples; both RelationshipDefinition
+           create/rename discriminated shapes are represented
 ```
 
-Candidate-reported verification:
+Permanent exact review-fix registry:
 
 ```text
-uv lock                                               PASS — 44 packages
+S05-RF-01                      6 selectors / 8 collected nodes
+S05-RF-02                      3 selectors / 21 collected nodes
+S05-RF-03                      3 selectors / 3 collected nodes
+S05-RF-04                      5 selectors / 5 collected nodes
+exact union                   17 selectors / 37 unique nodes / 37 passed — 11.46 s
+registry examples             63/63 specs; 65/65 stored examples parse to own key
+```
+
+Bundle state remains bounded and honest:
+
+```text
+M2-VER-27  S05 primary candidate PASS — 51 selectors / 106 passed — 15.44 s
+M2-VER-24  bounded S05 support PASS — 7 selectors / 7 passed — 9.49 s;
+           primary ownership remains M2-S07
+M2-VER-28  bounded S05 support PASS — 19 selectors / 27 passed — 4.86 s;
+           primary ownership remains M2-S06
+M2-VER-30  bounded S05 support PASS — 7 selectors / 30 passed — 9.73 s;
+           primary ownership remains M2-S07
+M2-VER-25/26 remain DESIGNED until M2-S06
+M2-VER-29 remains DESIGNED until M2-S07
+M2-VER-31/32 remain DESIGNED until M2-S08
+```
+
+Candidate verification on the corrective implementation:
+
+```text
 uv lock --check                                       PASS — 44 packages
 uv sync --locked                                      PASS — 42 checked packages
 uv build                                              PASS — sdist + wheel 0.1.0
-Ruff format/check                                     PASS — 213 files
+Ruff format/check                                     PASS — 215 files
 Ruff lint                                             PASS
 Pyright                                               PASS — 0 errors
-pytest collection                                     630 tests
-M2-VER-27 primary S05 targets                         67 passed — 11.64 s
-M2-VER-24 bounded supporting targets                   7 passed — 8.69 s
-M2-VER-28 registry/selector supporting targets        19 passed — 1.53 s
-M2-VER-30 transport-security supporting targets        9 passed — 3.72 s
-DTO/API/S04 affected regressions                     115 passed — 39.54 s
-schema metadata / migrations                           5 passed — 2.17 s
-M1 / S00 / M2 traceability                            23 passed — 14.13 s
-PostgreSQL concurrency marker                        182 passed — 116.69 s
-non-PostgreSQL                                       379 passed — 31.68 s
-full repository suite                                630 passed — 197.79 s
-skip / xfail / rerun                                   0 / 0 / 0
-warning census                                         1 locked FastAPI/Starlette deprecation
-supported-path 40P01 / unexpected 40001                0 / 0
+pytest collection                                     670 tests — 1.59 s
+all tests/test_m2_s05_*.py                            106 passed — 16.22 s
+DTO/API/route-inventory regressions                    57 passed — 27.87 s
+S04 Settings/startup/Health regressions               121 passed — 15.57 s
+schema metadata / migrations                            5 passed — 2.10 s
+M1 / S00 / M2 traceability                             24 passed — 14.27 s
+installed wheel/entrypoint boundary                     1 passed; success,
+                                                       malformed port and controlled
+                                                       post-exchange internal failure
+PostgreSQL concurrency marker                         182 passed — 117.83 s
+non-PostgreSQL                                        419 passed — 36.77 s
+full repository suite                                 670 passed — 204.01 s
+skip / xfail / rerun                                    0 / 0 / 0
+warning census                                          1 locked FastAPI/Starlette deprecation
+supported-path 40P01 / unexpected 40001                 0 / 0
+negative-control 40P01 / 40001                          1 / 2, expected and immediate
 ```
 
 Environment and unchanged boundaries:
@@ -236,17 +265,16 @@ Alembic graph                   one base / one head
 root migration                  0001_m2_kernel unchanged
 metadata/schema/index diff      none
 project version                 0.1.0 unchanged
-dependency / lock delta         HTTPX promotion only; no package version churn
+dependency / lock delta         none in the review fixes
 business HTTP operations        41 mutations + 22 reads = 63 exact
 operational HTTP operations      1 Health; total public HTTP = 64
 CLI remote operations           63 exact; Health excluded
 scenario / predicate registries 83 / 21 unchanged
+interactive REPL/FORMATTED      not introduced; owned by blocked M2-S06
 GitHub Actions/PR               not used / not created
 ```
 
-The reported runs remain useful candidate evidence. The reviewer did not independently re-execute the 630-test suite during this inspection. The four findings identify paths not exercised by the current mandatory target set or metadata that the current tests only check for non-emptiness.
-
-The non-normative S05 execution aid remains in `wip/` while the slice is open.
+Both non-normative S05 execution aids remain in `wip/` pending reviewer acceptance.
 
 ## M2-S04 completion record
 
