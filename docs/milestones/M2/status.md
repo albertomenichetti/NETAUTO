@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S05 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S05 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S05 — REVIEW CHANGES REQUIRED
-current task    prepare and execute one bounded residual M2-S05 review-fix prompt
-blockers        S05-RF-01 remains open; M2-S06 remains blocked
+current slice   M2-S05 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published residual corrective candidate
+blockers        reviewer acceptance pending; M2-S06 remains blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | `M2-S05` REVIEW CHANGES REQUIRED — residual `S05-RF-01` only |
+| Implementation | `M2-S05` CANDIDATE READY FOR REVIEW — reviewer decision pending |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -44,7 +44,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S02` | COMPLETED | `M2-S01 COMPLETED` |
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
-| `M2-S05` | REVIEW CHANGES REQUIRED | `M2-S04 COMPLETED` |
+| `M2-S05` | CANDIDATE READY FOR REVIEW | `M2-S04 COMPLETED` |
 | `M2-S06` | BLOCKED | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
@@ -54,9 +54,9 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and reviewed findings
 
-No contract, architecture, implementation-planning or technology contradiction is open. The corrective candidate closes `S05-RF-02`, `S05-RF-03` and `S05-RF-04`. `S05-RF-01` is materially improved but not yet complete; the remaining work is bounded to the same non-interactive CLI execution/trace boundary.
+No contract, architecture, implementation-planning or technology contradiction is open. The published residual candidate addresses `S05-RF-01`; reviewer acceptance remains pending. Reviewer-owned `CLOSED` findings `S05-RF-02`, `S05-RF-03` and `S05-RF-04` remain preserved.
 
-### `S05-RF-01` — REOPENED: the unexpected-failure boundary is not complete
+### `S05-RF-01` — CANDIDATE CORRECTED; REVIEWER DECISION PENDING
 
 Accepted corrective material:
 
@@ -70,7 +70,7 @@ BaseException, cancellation, KeyboardInterrupt and SystemExit remain unnormalize
 raw unexpected exception text is absent from the structured result
 ```
 
-Two residual gaps remain.
+The second review identified two residual gaps in reviewer baseline `7bfcdc5059de1742c2c211b4edb34c0879f31234`.
 
 #### A. Unexpected parsing defects bypass the structured process boundary
 
@@ -146,6 +146,21 @@ expected httpx.TransportError without duplicate exchange
 BaseException/cancellation negative controls
 ```
 
+Published residual candidate outcome:
+
+```text
+ordinary Exception boundary      spans production parsing and execution
+safe parse progress              immutable partial ParsedCommand when available
+expected ParseFailure            finite local classification preserved
+BaseException family             propagates unchanged
+attempt ownership                ledger begins immediately before HTTPX send
+in-flight snapshot               includes exactly one provisional exchange
+returned response                observed before fallible trace/cleanup work
+send/capture/cleanup defects     truthful response-null/non-null exchange retained
+selector + primary ordering      exact, duplicate-free, original human intent retained
+public failure channels          bounded JSON stdout, empty stderr, exit 1
+```
+
 ### `S05-RF-02` — CLOSED
 
 The endpoint authority now distinguishes absence of a port from one explicit ASCII-decimal port. Hostname and bracketed-IPv6 forms accept only `1..65535`; empty, zero, signed, nonnumeric and out-of-range ports produce bounded `cli_invalid_invocation`, `command = null` and no exchange. Parser, process and installed-wheel evidence cover the required matrix.
@@ -193,7 +208,7 @@ process result                 one stdout JSON line; stderr empty; exit 0/1 on c
 interactive REPL/FORMATTED     not introduced; owned by blocked M2-S06
 ```
 
-Candidate-reported verification remains useful but does not close the residual paths:
+Historical verification from the rejected second candidate (superseded by the residual candidate record below):
 
 ```text
 uv lock --check                                       PASS — 44 packages
@@ -244,7 +259,84 @@ GitHub Actions/PR               not used / not created
 
 The reviewer inspected the published commit chain, production delta, tests and traceability. The reviewer did not independently execute the 670-test suite during this inspection; the execution results above are those produced and recorded by the candidate.
 
-Both existing S05 execution aids remain in `wip/`. No prompt is retired while the slice is open.
+## M2-S05 residual corrective candidate record
+
+Candidate state:
+
+```text
+M2-S05                         CANDIDATE READY FOR REVIEW
+reviewer baseline              7bfcdc5059de1742c2c211b4edb34c0879f31234
+residual prompt commit         01d12f821ccd1a5d09ea15f4830e9a844ee5ced1
+residual implementation        4e23af5dd4fd1f3ac3c7c343637fcad9a4906660
+candidate evidence/status      recorded by this commit
+final provenance/remote HEAD   pending provenance-only follow-up
+S05-RF-01                      candidate correction implemented; review pending
+S05-RF-02 / 03 / 04            reviewer-owned CLOSED; preserved
+M2-S06                         BLOCKED / not started
+```
+
+The complete mandatory gate passed on the exact published implementation commit `4e23af5dd4fd1f3ac3c7c343637fcad9a4906660`, with an externally supplied real PostgreSQL target:
+
+```text
+uv lock --check                                       PASS — 44 packages — 0.02 s
+uv sync --locked                                      PASS — 42 checked packages — 0.03 s
+uv build                                              PASS — sdist + wheel 0.1.0 — 1.50 s
+ruff format --check                                   PASS — 218 files — 0.05 s
+ruff check                                            PASS — 0.05 s
+pyright                                               PASS — 0 errors — 21.45 s
+pytest collection                                     691 tests — 1.68 s
+residual registry                                     23 selectors / 35 collected / 35 unique
+residual registry execution                           35 passed — 4.64 s
+complete S05-RF-01 target set                         23 selectors / 35 passed — 4.80 s
+all S05 tests                                         126 passed — 17.29 s
+M2-VER-27                                             64 selectors / 126 passed — 15.67 s
+M2-VER-24 bounded support                              7 passed — 9.86 s
+M2-VER-28 bounded support                             27 passed — 4.91 s
+M2-VER-30 bounded support                             30 passed — 10.89 s
+DTO/API/route inventory                               57 passed — 27.73 s
+S04 Settings/startup/Health                          121 passed — 15.40 s
+schema metadata / migrations                           5 passed — 2.22 s
+M1 / S00 / M2 traceability                            25 passed — 14.72 s
+PostgreSQL concurrency marker                        182 passed — 117.36 s
+non-PostgreSQL                                       440 passed — 38.33 s
+full repository suite with TEST_DATABASE_URL         691 passed — 205.45 s
+installed wheel / console boundary                    PASS — included in residual and S05 gates
+skip / xfail / rerun                                   0 / 0 / 0
+warning census                                         1 locked FastAPI/Starlette deprecation
+supported-path 40P01 / unexpected 40001                0 / 0
+negative-control 40P01 / 40001                         1 / 2, expected and immediate
+```
+
+Environment and unchanged-boundary census:
+
+```text
+CPython                         3.14.7
+PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+uv                              0.12.3
+authoritative tables            15
+Alembic bases / heads           1 / 1
+root revision                   0001_m2_kernel
+compare_metadata                []
+project version                 0.1.0
+pyproject dependency diff       none
+uv.lock diff                    none
+business HTTP operations        41 mutations + 22 reads = 63 exact
+operational HTTP operations      1 Health; total public HTTP = 64
+CLI remote operations           63 exact
+registry examples               65
+scenario / predicate registries 83 / 21
+interactive REPL/FORMATTED       absent
+schema/migration/route/DTO diff  none
+GitHub Actions changes           absent
+```
+
+The three S05 execution aids remain in `wip/`. No prompt is retired while the slice is open:
+
+```text
+M2-S05-codex-prompt.md
+M2-S05-review-fixes-codex-prompt.md
+M2-S05-residual-review-fix-codex-prompt.md
+```
 
 ## M2-S04 completion record
 
@@ -342,13 +434,15 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare the bounded residual execution aid:
+Reviewer inspection of the published M2-S05 residual corrective candidate:
 
 ```text
-docs/milestones/M2/wip/M2-S05-review-fixes-2-codex-prompt.md
+S05-RF-01 candidate correction
+complete candidate evidence and final remote provenance
+preservation of reviewer-owned CLOSED S05-RF-02 / 03 / 04
 ```
 
-The correction remains inside `M2-S05` and is limited to the residual `S05-RF-01` boundary cases above. Do not start `M2-S06`.
+Reviewer acceptance remains pending. Do not mark `M2-S05 COMPLETED` and do not start `M2-S06`.
 
 ## Current status vocabulary
 
