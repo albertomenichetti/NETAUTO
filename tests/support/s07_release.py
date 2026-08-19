@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -287,11 +287,20 @@ def terminate_orderly(
 class PtyProcess:
     process: subprocess.Popen[bytes]
     master: int
+    pending: bytearray = field(default_factory=bytearray)
 
     def read_until(self, needle: bytes, timeout: float = 10.0) -> bytes:
         deadline = time.monotonic() + timeout
         output = bytearray()
-        while needle not in output:
+        while True:
+            marker = self.pending.find(needle)
+            if marker >= 0:
+                end = marker + len(needle)
+                output.extend(self.pending[:end])
+                del self.pending[:end]
+                return bytes(output)
+            output.extend(self.pending)
+            self.pending.clear()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AssertionError(
@@ -308,9 +317,8 @@ class PtyProcess:
                 raise
             if not chunk:
                 break
-            output.extend(chunk)
-        assert needle in output
-        return bytes(output)
+            self.pending.extend(chunk)
+        raise AssertionError(f"PTY closed before {needle!r}: {bytes(output)[-2000:]!r}")
 
     def write(self, value: bytes) -> None:
         os.write(self.master, value)
