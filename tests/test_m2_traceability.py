@@ -1356,6 +1356,38 @@ S04_REVIEW_FIX_TARGETS = {
         }
     ),
 }
+S06_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-25": frozenset(
+        {
+            f"{path.as_posix()}::{node.name}"
+            for path in (
+                Path("tests/test_m2_s06_state.py"),
+                Path("tests/test_m2_s06_process.py"),
+            )
+            for node in ast.parse(path.read_text()).body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("test_")
+        }
+    ),
+    "M2-VER-26": frozenset(
+        {
+            f"{path.as_posix()}::{node.name}"
+            for path in (Path("tests/test_m2_s06_connection.py"),)
+            for node in ast.parse(path.read_text()).body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("test_")
+        }
+    ),
+    "M2-VER-28": frozenset(
+        {
+            f"{path.as_posix()}::{node.name}"
+            for path in (Path("tests/test_m2_s06_rendering.py"),)
+            for node in ast.parse(path.read_text()).body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("test_")
+        }
+    ),
+}
 M2_EVIDENCE_TO_TARGETS = {
     bundle_id: EvidenceBundle(
         "IMPLEMENTED"
@@ -1365,13 +1397,15 @@ M2_EVIDENCE_TO_TARGETS = {
         or bundle_id in S04_BUNDLE_TARGETS
         or bundle_id in S05_PRIMARY_BUNDLE_TARGETS
         or bundle_id in S05_SUPPORTING_BUNDLE_TARGETS
+        or bundle_id in S06_PRIMARY_BUNDLE_TARGETS
         else "DESIGNED",
         S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S02_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S03_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S04_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S05_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
-        | S05_SUPPORTING_BUNDLE_TARGETS.get(bundle_id, frozenset()),
+        | S05_SUPPORTING_BUNDLE_TARGETS.get(bundle_id, frozenset())
+        | S06_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset()),
     )
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
@@ -1571,6 +1605,7 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
             or bundle_id in S04_BUNDLE_TARGETS
             or bundle_id in S05_PRIMARY_BUNDLE_TARGETS
             or bundle_id in S05_SUPPORTING_BUNDLE_TARGETS
+            or bundle_id in S06_PRIMARY_BUNDLE_TARGETS
         ):
             assert evidence.state == "IMPLEMENTED"
             assert evidence.targets
@@ -1713,10 +1748,36 @@ def test_s05_primary_and_supporting_bundle_targets_are_honest() -> None:
         and node.name.startswith("test_")
     }
     assert S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"] == defined_s05_targets
-    for designed in ("M2-VER-25", "M2-VER-26", "M2-VER-29", "M2-VER-31", "M2-VER-32"):
+    for designed in ("M2-VER-29", "M2-VER-31", "M2-VER-32"):
         assert M2_EVIDENCE_TO_TARGETS[designed] == EvidenceBundle(
             "DESIGNED", frozenset()
         )
+
+
+def test_s06_primary_bundle_targets_are_honest_complete_and_resolvable() -> None:
+    assert set(S06_PRIMARY_BUNDLE_TARGETS) == {
+        "M2-VER-25",
+        "M2-VER-26",
+        "M2-VER-28",
+    }
+    defined_s06_targets = {
+        f"{path.as_posix()}::{node.name}"
+        for path in sorted(Path("tests").glob("test_m2_s06_*.py"))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    assert set().union(*S06_PRIMARY_BUNDLE_TARGETS.values()) == defined_s06_targets
+    assert S06_PRIMARY_BUNDLE_TARGETS["M2-VER-28"].isdisjoint(
+        S05_SUPPORTING_BUNDLE_TARGETS["M2-VER-28"]
+    )
+    for bundle_id, targets in S06_PRIMARY_BUNDLE_TARGETS.items():
+        assert targets
+        evidence = M2_EVIDENCE_TO_TARGETS[bundle_id]
+        assert evidence.state == "IMPLEMENTED"
+        assert targets <= evidence.targets
+        for target in targets:
+            _assert_target_exists(target)
 
 
 def test_s05_review_fix_registry_is_exact_and_resolvable() -> None:
@@ -1917,6 +1978,8 @@ def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
     }
     assert implemented == {
         *(f"M2-VER-{number:02d}" for number in range(1, 25)),
+        "M2-VER-25",
+        "M2-VER-26",
         "M2-VER-27",
         "M2-VER-28",
         "M2-VER-30",
@@ -1925,7 +1988,7 @@ def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
         bundle_id
         for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
         if evidence.state == "DESIGNED"
-    } == {"M2-VER-25", "M2-VER-26", "M2-VER-29", "M2-VER-31", "M2-VER-32"}
+    } == {"M2-VER-29", "M2-VER-31", "M2-VER-32"}
 
 
 def test_s03_mutation_registry_is_exact_central_and_executable() -> None:

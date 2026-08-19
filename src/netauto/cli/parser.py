@@ -1,4 +1,4 @@
-"""Strict non-interactive process and remote-command parser."""
+"""Shared strict process and remote-command parser."""
 
 import json
 import re
@@ -250,7 +250,20 @@ def parse_process(
     if len(argv) < 4 or argv[0] != "-n":
         _fail("cli_invalid_invocation")
     endpoint = normalize_endpoint_root(argv[1])
-    resource, operation = argv[2], argv[3]
+    command, spec = parse_remote_tokens(argv[2:], progress=progress)
+    return endpoint, command, spec
+
+
+def parse_remote_tokens(
+    tokens: list[str],
+    *,
+    progress: ParseProgress | None = None,
+) -> tuple[ParsedCommand, CommandSpec]:
+    """Parse already-tokenized remote command input from argv or POSIX shlex."""
+
+    if len(tokens) < 2:
+        _fail("cli_invalid_invocation")
+    resource, operation = tokens[0], tokens[1]
     key = CommandKey(resource, operation)
     empty_parameters: dict[str, JsonValue] = {}
     command = _command_snapshot(progress, key, None, empty_parameters)
@@ -260,7 +273,7 @@ def parse_process(
     if spec is None:
         _fail("cli_invalid_command", command=command)
 
-    remaining = argv[4:]
+    remaining = list(tokens[2:])
     selector: str | None = None
     if spec.selector_kind is not None:
         if not remaining or "=" in remaining[0]:
@@ -312,7 +325,7 @@ def parse_process(
                 command=command,
             )
     _validate_relationship_definition_shape(command)
-    return endpoint, command, spec
+    return command, spec
 
 
 def parse_command_example(

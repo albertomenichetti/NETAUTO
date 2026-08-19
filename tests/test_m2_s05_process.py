@@ -159,7 +159,7 @@ def test_console_process_emits_one_json_line_and_needs_no_database_url() -> None
 
 def test_console_local_failure_has_exact_output_channels_and_exit() -> None:
     completed = subprocess.run(
-        [_console()],
+        [_console(), "--unsupported"],
         cwd=ROOT,
         text=True,
         input="",

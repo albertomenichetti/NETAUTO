@@ -250,9 +250,9 @@ def test_s05_has_no_repl_or_insecure_option_surface() -> None:
     cli = "\n".join(
         path.read_text() for path in sorted((ROOT / "src/netauto/cli").glob("*.py"))
     )
-    assert not (ROOT / "src/netauto/cli/repl.py").exists()
+    assert (ROOT / "src/netauto/cli/repl.py").is_file()
+    assert "prompt_toolkit" in cli
     for forbidden in (
-        "prompt_toolkit",
         "--insecure",
         "verify=False",
         "skip-verify",
@@ -266,5 +266,7 @@ def test_httpx_is_runtime_dependency_and_console_entrypoint_is_exact() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text()
     project, dev = pyproject.split("[dependency-groups]", 1)
     assert '"httpx>=0.28,<1"' in project
+    assert '"prompt-toolkit>=3.0,<4"' in project
     assert 'netauto = "netauto.cli.main:main"' in project
     assert '"httpx>=0.28,<1"' not in dev
+    assert '"prompt-toolkit>=3.0,<4"' not in dev

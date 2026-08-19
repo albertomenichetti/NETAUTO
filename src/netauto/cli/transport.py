@@ -87,7 +87,7 @@ def _elapsed_since(started: float) -> int:
 
 
 class HttpTransport:
-    """A scoped client reused for one non-interactive command."""
+    """One endpoint-scoped client with command-scoped exchange ledgers."""
 
     def __init__(
         self,
@@ -117,6 +117,24 @@ class HttpTransport:
         exception: object,
         traceback: object,
     ) -> None:
+        await self.close()
+
+    @property
+    def endpoint_root(self) -> str:
+        return self._root
+
+    @property
+    def is_closed(self) -> bool:
+        return self._client.is_closed
+
+    def use_ledger(self, ledger: ExecutionLedger) -> None:
+        """Bind a fresh ledger before one session command begins."""
+
+        self._ledger = ledger
+
+    async def close(self) -> None:
+        """Close the endpoint client; HTTPX close is idempotent."""
+
         await self._client.aclose()
 
     @property

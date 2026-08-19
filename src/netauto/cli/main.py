@@ -1,4 +1,4 @@
-"""Installed ``netauto -n`` process boundary for S05."""
+"""Installed process router for the interactive and non-interactive CLI."""
 
 import asyncio
 import sys
@@ -16,6 +16,7 @@ from netauto.cli.model import (
 )
 from netauto.cli.parser import ParseFailure, ParseProgress, parse_process
 from netauto.cli.render import render_json
+from netauto.cli.repl import run_repl
 
 
 def _internal_error(
@@ -33,7 +34,7 @@ def _internal_error(
     )
 
 
-def run(
+async def _run_noninteractive(
     argv: list[str],
     *,
     http_transport: httpx.AsyncBaseTransport | None = None,
@@ -46,21 +47,36 @@ def run(
         except ParseFailure as failure:
             result = CliResult.failed(failure.command, (), failure.error)
             return result, 1
-        result = asyncio.run(
-            execute(
-                endpoint,
-                command,
-                spec,
-                http_transport=http_transport,
-                ledger=ledger,
-            )
+        result = await execute(
+            endpoint,
+            command,
+            spec,
+            http_transport=http_transport,
+            ledger=ledger,
         )
     except Exception:  # bounded outer process boundary; never catches BaseException
         result = _internal_error(progress.command, ledger.snapshot())
     return result, 0 if result.status == "ok" else 1
 
 
+def run(
+    argv: list[str],
+    *,
+    http_transport: httpx.AsyncBaseTransport | None = None,
+) -> tuple[CliResult, int]:
+    """Preserve the accepted synchronous S05 non-interactive test boundary."""
+
+    return asyncio.run(_run_noninteractive(argv, http_transport=http_transport))
+
+
+async def _main_async(argv: list[str]) -> tuple[CliResult | None, int]:
+    if not argv:
+        return None, await run_repl()
+    return await _run_noninteractive(argv)
+
+
 def main() -> None:
-    result, exit_code = run(sys.argv[1:])
-    sys.stdout.write(render_json(result))
+    result, exit_code = asyncio.run(_main_async(sys.argv[1:]))
+    if result is not None:
+        sys.stdout.write(render_json(result))
     raise SystemExit(exit_code)

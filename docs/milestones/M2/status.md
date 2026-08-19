@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S06 READY
+**Milestone status:** IMPLEMENTATION — M2-S06 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S06 — READY
-current task    prepare the M2-S06 Codex implementation prompt and execute the authorized slice
+current slice   M2-S06 — IN PROGRESS
+current task    implement and verify the official interactive CLI REPL and formatted experience
 blockers        none
 ```
 
@@ -45,7 +45,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S03` | COMPLETED | `M2-S02 COMPLETED` |
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
-| `M2-S06` | READY | `M2-S05 COMPLETED` |
+| `M2-S06` | IN PROGRESS | `M2-S05 COMPLETED` |
 | `M2-S07` | BLOCKED | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |

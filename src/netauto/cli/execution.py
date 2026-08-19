@@ -5,6 +5,7 @@ from typing import cast
 import httpx
 from pydantic import TypeAdapter, ValidationError
 
+from netauto.cli.enrichment import enrich_formatted
 from netauto.cli.model import (
     CliError,
     CliResult,
@@ -15,6 +16,7 @@ from netauto.cli.model import (
     ParameterLocation,
     ParsedCommand,
     RequestPlan,
+    thaw_json,
 )
 from netauto.cli.protocol import interpret_response
 from netauto.cli.selectors import resolve_selectors
@@ -106,38 +108,72 @@ async def execute(
         transport=http_transport,
         ledger=execution_ledger,
     ) as transport:
-        resolution = await resolve_selectors(transport, command, spec)
-        if resolution.error is not None:
-            return CliResult.failed(
-                command, execution_ledger.snapshot(), resolution.error
-            )
-        plan, local_error, request_values = _request_plan(
-            spec, resolution.selector, resolution.parameters
+        result, _ = await execute_connected(
+            transport,
+            command,
+            spec,
+            ledger=execution_ledger,
+            formatted=False,
         )
-        if local_error is not None:
-            return CliResult.failed(command, execution_ledger.snapshot(), local_error)
-        if plan is None:
-            raise RuntimeError("request planner returned no plan")
-        try:
-            response, exchange = await transport.exchange(plan)
-        except TransportFailure:
-            return CliResult.failed(
+        return result
+
+
+async def execute_connected(
+    transport: HttpTransport,
+    command: ParsedCommand,
+    spec: CommandSpec,
+    *,
+    ledger: ExecutionLedger,
+    formatted: bool,
+) -> tuple[CliResult, JsonValue | None]:
+    """Execute one command on a persistent session client with a fresh ledger."""
+
+    transport.use_ledger(ledger)
+    resolution = await resolve_selectors(transport, command, spec)
+    if resolution.error is not None:
+        return CliResult.failed(command, ledger.snapshot(), resolution.error), None
+    plan, local_error, request_values = _request_plan(
+        spec, resolution.selector, resolution.parameters
+    )
+    if local_error is not None:
+        return CliResult.failed(command, ledger.snapshot(), local_error), None
+    if plan is None:
+        raise RuntimeError("request planner returned no plan")
+    try:
+        response, exchange = await transport.exchange(plan)
+    except TransportFailure:
+        return (
+            CliResult.failed(
                 command,
-                execution_ledger.snapshot(),
+                ledger.snapshot(),
                 CliError.create(
                     ErrorSource.TRANSPORT,
                     "cli_transport_error",
                     "The HTTP request could not be completed.",
                 ),
-            )
-        outcome = interpret_response(
-            response,
-            exchange,
-            expected_status=spec.expected_status,
-            response_annotation=spec.response_annotation,
-            location_template=spec.location_template,
-            request_values=request_values,
+            ),
+            None,
         )
-        if outcome.error is not None:
-            return CliResult.failed(command, execution_ledger.snapshot(), outcome.error)
-        return CliResult.ok(command, execution_ledger.snapshot(), outcome.result)
+    outcome = interpret_response(
+        response,
+        exchange,
+        expected_status=spec.expected_status,
+        response_annotation=spec.response_annotation,
+        location_template=spec.location_template,
+        request_values=request_values,
+    )
+    if outcome.error is not None:
+        return CliResult.failed(command, ledger.snapshot(), outcome.error), None
+    result = CliResult.ok(command, ledger.snapshot(), outcome.result)
+    if not formatted:
+        return result, outcome.result
+    enriched = await enrich_formatted(transport, command, outcome.result)
+    if enriched.error is not None:
+        return CliResult.failed(command, ledger.snapshot(), enriched.error), None
+    # Enrichment may have appended exchanges after the primary result was created.
+    final_result = CliResult.ok(
+        command,
+        ledger.snapshot(),
+        None if result.result is None else thaw_json(result.result),
+    )
+    return final_result, enriched.presentation
