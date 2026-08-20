@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — REVIEW CHANGES REQUIRED
-current task    close S08-VRF-05 package-aware relative-import analysis
-blockers        M2-S09 remains blocked; one verification-harness finding is open
+current slice   M2-S08 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the package-relative import closure
+blockers        M2-S09 remains blocked pending reviewer-owned M2-S08 completion
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S08` ONLY |
+| Implementation | CANDIDATE HANDOFF — `M2-S08` reviewer inspection |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -47,50 +47,32 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | REVIEW CHANGES REQUIRED | `M2-S07 COMPLETED` |
+| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
-## Current blocker and reviewer finding
+## Current candidate and reviewer finding closure
 
 No contract, architecture, implementation-planning, technology or infrastructure blocker is open.
 
-The candidate below closes the previously identified package-parent initializer omission, the abstract-negative capability audit, reviewer-acceptance coherence and the preserved S06 PTY gate. One bounded defect remains in the test-only Alembic mutation analysis:
+The candidate below closes the package-aware relative-import omission while preserving the previously accepted package-parent initializer closure, abstract-negative capability audit, reviewer-acceptance coherence and S06 PTY gate:
 
 ```text
-S08-VRF-05  OPEN
-    package-aware relative-import closure
+S08-VRF-05  CLOSED IN CANDIDATE
+    package-aware relative-import and package-parent initializer closure
 
-S08-VRF-06  CLOSED
+S08-VRF-06  CLOSED / PRESERVED
     finite abstract-negative capability audit
 
-S08-VRF-07  CLOSED
+S08-VRF-07  CLOSED / PRESERVED
     reviewer ACCEPTED all-pass coherence
 
-preserved S06 PTY regression  CLOSED
+preserved S06 PTY regression  CLOSED / PRESERVED
     pending-aware reader and structured Ctrl-R proof accepted
 ```
 
-Python resolves relative imports against `__package__`. For an ordinary module, `__package__` is the parent package; for a package initializer represented by `__init__.py`, `__package__` is the module name itself. The current test helper stores package initializers under names such as `sample` or `sample.api` but does not retain that package identity. Consequently, relative imports executed from package initializers can be resolved as top-level names and their reachable Alembic mutation can be omitted.
-
-Representative false-negative shapes:
-
-```text
-sample/__init__.py
-    from . import migrator
-
-sample/migrator.py
-    import-time alembic.command.upgrade(...)
-
-sample/api/__init__.py
-    from .. import migrator
-
-sample/migrator.py
-    import-time alembic.command.stamp(...)
-```
-
-The bounded correction must preserve explicit package metadata in the synthetic and real production source inventories, use it in both import-edge and import-alias resolution, and retain all previously accepted module/class/package-parent, alias, wrapper, call-path and PTY behavior.
+The test-only source inventory now records package identity directly from each physical `__init__.py`. Relative import edges and lexical aliases resolve against the package itself for an initializer and against the parent package for an ordinary module. Imports beyond the top-level remain unresolved and cannot fabricate a plausible top-level edge. Unknown package metadata is rejected deterministically. The real production audit uses the same one-pass source/package inventory and remains finding-free.
 
 This is a verification-harness defect only. It does not reopen the frozen architecture and does not authorize production, API, CLI, Health, schema, migration, dependency, lock or artifact changes.
 
@@ -115,12 +97,69 @@ package-parent candidate       b53de79eb831c8da6fd965fa07c0562f2b010482
 failed exact-remote record     3bfa3ab62e28c6309dde8c8d916cb3b0fada07bb
 PTY deterministic test fix     954fd86f576f3b4a0ec4efb8849cf059c801dfef
 PTY-closure candidate          c4cd4e633afaafa395a67f2b9efcc396906052e1
-current review reopen          recorded by the commit containing this status
+package-relative review reopen 620b3016f4ef66eab53831125cc21d879edb5ac5
+package-relative test fix      664d8b02323f17daeada898d448c4a8a9c0e6a51
+package-relative candidate     recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                REVIEW CHANGES REQUIRED / reviewer-owned
+review decision                pending / reviewer-owned
 ```
 
 The immutable history preserves every prior candidate and failed gate. No reset, rebase or force-push is authorized.
+
+## Package-relative corrected candidate evidence
+
+The candidate starts from pulled remote HEAD `de5836f07ddd60f5fb8ce95d06fff0d9673e9c53`, which preserves `c4cd4e633afaafa395a67f2b9efcc396906052e1` and the reviewer reopen `620b3016f4ef66eab53831125cc21d879edb5ac5` in its ancestry. The implementation/test commit is `664d8b02323f17daeada898d448c4a8a9c0e6a51`; the evidence/status commit is the commit containing this record.
+
+Pre-push verification on the final candidate tree:
+
+```text
+new relative-import regressions  8 selected / 8 unique / 8 passed / 1.51 s
+S08-VRF-05                       21 selected / 21 unique / 22 passed / 1.77 s
+registry + real Alembic audit    2 passed / 5.49 s
+S08 review-fix union             33 selected / 32 unique / 45 passed / 2.46 s
+S08_REVIEW_FIX_TARGETS           exact S08-VRF-01 ... S08-VRF-07
+M2-VER-31                        31 selected / 31 unique / 39 passed / 22.20 s
+M2-VER-32                        55 selected / 55 unique / 72 passed / 17.56 s
+S08/T10 and traceability         122 passed / 33.61 s
+51 delivered scenarios          91 selected / 91 unique / 95 passed / 59.59 s
+complete S06                     73 passed / 5.07 s
+complete S07/T9                  18 passed / 41.82 s
+API/error/CLI                    247 passed / 49.42 s
+schema/Alembic                   28 passed / 13.85 s / compare_metadata []
+runtime/schema-guard/Health      121 passed / 15.77 s
+PostgreSQL/concurrency           254 passed / 608 deselected / 190.07 s
+non-PostgreSQL                   608 passed / 254 deselected / 79.77 s
+complete repository             862 passed / 265.51 s
+collection                      862 / 1.79 s
+skip / xfail / rerun            0 / 0 / 0
+warnings                        1 unchanged third-party Starlette deprecation
+supported 40P01 / 40001         0 / 0
+negative controls               40P01 x1 / 40001 x2, exact expected census
+```
+
+Quality, environment and artifact evidence:
+
+```text
+uv lock --check                 PASS
+uv sync --locked                PASS
+uv build                        PASS
+Ruff format / lint              PASS
+Pyright strict                  PASS — 0 errors / 0 warnings
+uv / Python                     0.12.3 / 3.14.7
+pytest / Ruff / Pyright         8.4.2 / 0.16.3 / 1.1.411
+environment                     Linux 6.8.0-134-generic x86_64
+PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+database identity               netautotest
+bounded SELECT 1                PASS
+release                         0.2.0
+wheel                           netauto-0.2.0-py3-none-any.whl
+wheel size / members            165978 bytes / 77
+wheel SHA-256                   38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size               48238 bytes
+runtime lock SHA-256            0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Implementer changes after pulled remote HEAD `de5836f` are limited to `tests/support/s08_static.py`, `tests/test_m2_s08_negative_surface.py`, `tests/test_m2_traceability.py` and this status record. Production, public API, CLI behavior and grammar, Health, SQLAlchemy metadata, schema, migration, dependencies, `uv.lock`, the embedded runtime lock and artifact content are unchanged. Temporary build artifacts were removed. No PR, GitHub Actions workflow or run, tag, GitHub Release, acceptance record or artifact publication was created.
 
 ## Rejected candidate evidence
 
@@ -172,7 +211,7 @@ bounded SELECT 1              PASS
 
 Production, API, CLI behavior and grammar, Health, metadata, schema, migration, dependencies, `uv.lock`, the embedded runtime lock and artifact content were unchanged. No PR, GitHub Actions workflow or run, tag, GitHub Release, acceptance record or artifact publication was created.
 
-## Authorized bounded continuation
+## Candidate handoff boundary
 
 The only active non-normative execution aid is:
 
@@ -180,7 +219,7 @@ The only active non-normative execution aid is:
 docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
 ```
 
-The aid authorizes only the package-aware relative-import continuation of `S08-VRF-05`. It must not be used as semantic authority and must remain subordinate to the frozen contract, architecture, steps and this reviewer-owned status.
+The aid authorized only the now-closed package-aware relative-import continuation of `S08-VRF-05`. It is not semantic authority and remains subordinate to the frozen contract, architecture, steps and this status.
 
 Permitted implementation files are limited to:
 
