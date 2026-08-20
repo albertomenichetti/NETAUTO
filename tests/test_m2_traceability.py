@@ -2765,6 +2765,12 @@ _S08_NEGATIVE_TARGETS = frozenset(
         "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_class_body_side_effect",
         "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_follows_local_helper",
         "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_definition_time_wrapper",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_root_package_initializer_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_package_initializer_mutation",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_nested_parent_initializer_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_accepts_safe_package_initializer_chain",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_does_not_invent_missing_package_initializer",
+        "tests/test_m2_s08_negative_surface.py::test_real_netauto_root_initializer_chains_include_existing_parents",
         "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_preserves_lexical_import_scopes",
         "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_allows_normative_and_test_surfaces",
     }
@@ -2811,6 +2817,12 @@ S08_REVIEW_FIX_TARGETS: dict[str, frozenset[str]] = {
             "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_class_body_side_effect",
             "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_follows_local_helper",
             "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_definition_time_wrapper",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_root_package_initializer_side_effect",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_package_initializer_mutation",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_nested_parent_initializer_side_effect",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_accepts_safe_package_initializer_chain",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_does_not_invent_missing_package_initializer",
+            "tests/test_m2_s08_negative_surface.py::test_real_netauto_root_initializer_chains_include_existing_parents",
             "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_preserves_lexical_import_scopes",
             "tests/test_m2_s08_negative_surface.py::test_schema_alembic_and_automatic_migration_surfaces_are_exact",
         }
@@ -3485,6 +3497,9 @@ def test_s08_review_fix_registry_is_exact_resolvable_and_bundle_mapped() -> None
         "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_direct_top_level_alias",
         "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_module_side_effect",
         "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_class_body_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_root_package_initializer_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_package_initializer_mutation",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_nested_parent_initializer_side_effect",
     } <= S08_REVIEW_FIX_TARGETS["S08-VRF-05"]
     assert {
         "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_covers_real_repository_surfaces",

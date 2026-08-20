@@ -18,6 +18,8 @@ ALEMBIC_MUTATIONS = frozenset(
     }
 )
 
+_MAX_ALEMBIC_CALL_PATH_LENGTH = 8
+
 _DEPLOYMENT_BASENAMES = frozenset(
     {
         ".gitlab-ci.yml",
@@ -365,6 +367,30 @@ def _absolute_import(module: str, imported: str | None, level: int) -> str:
     return ".".join(prefix)
 
 
+def existing_initializer_chain(
+    module_name: str, available_module_names: Iterable[str]
+) -> tuple[str, ...]:
+    """Return only existing parent-to-child module initializers."""
+    available = frozenset(available_module_names)
+    parts = module_name.split(".")
+    return tuple(
+        candidate
+        for index in range(1, len(parts) + 1)
+        if (candidate := ".".join(parts[:index])) in available
+    )
+
+
+def _append_bounded_call_path(path: tuple[str, ...], child: str) -> tuple[str, ...]:
+    extended = (*path, child)
+    if len(extended) <= _MAX_ALEMBIC_CALL_PATH_LENGTH:
+        return extended
+    return (extended[0], "<...>", *extended[-6:])
+
+
+def _diagnostic_path_rank(path: tuple[str, ...]) -> tuple[bool, int, tuple[str, ...]]:
+    return (not path[0].endswith(".<module_init>"), len(path), path)
+
+
 def _scoped_import_aliases(
     statements: Iterable[ast.stmt], module: str
 ) -> dict[str, str]:
@@ -470,8 +496,10 @@ class _ExecutionScanner(ast.NodeVisitor):
         self.edges: set[str] = set()
 
     def _import_edge(self, candidate: str) -> None:
-        if candidate in self.module_names:
-            self.edges.add(f"{candidate}.<module_init>")
+        self.edges.update(
+            f"{module}.<module_init>"
+            for module in existing_initializer_chain(candidate, self.module_names)
+        )
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -594,11 +622,15 @@ def find_reachable_alembic_mutations(
 
     entrypoints = sorted(
         {
-            *(f"{module}.<module_init>" for module in roots),
+            *(
+                f"{initializer}.<module_init>"
+                for module in roots
+                for initializer in existing_initializer_chain(module, module_names)
+            ),
             *(key for key, function in functions.items() if function.module in roots),
         }
     )
-    findings: set[AlembicMutationFinding] = set()
+    findings: dict[tuple[str, str, int, str], AlembicMutationFinding] = {}
     for root in entrypoints:
         queue: deque[tuple[str, tuple[str, ...]]] = deque([(root, (root,))])
         visited: set[str] = set()
@@ -608,16 +640,21 @@ def find_reachable_alembic_mutations(
                 continue
             visited.add(key)
             module, owner, _, _ = execution[key]
-            findings.update(
-                AlembicMutationFinding(module, owner, line, target, path)
-                for line, target in direct[key]
-            )
+            for line, target in direct[key]:
+                identity = (module, owner, line, target)
+                candidate = AlembicMutationFinding(module, owner, line, target, path)
+                current = findings.get(identity)
+                if current is None or _diagnostic_path_rank(
+                    candidate.call_path
+                ) < _diagnostic_path_rank(current.call_path):
+                    findings[identity] = candidate
             queue.extend(
-                (child, (*path, child)) for child in sorted(edges[key] - visited)
+                (child, _append_bounded_call_path(path, child))
+                for child in sorted(edges[key] - visited)
             )
     return tuple(
         sorted(
-            findings,
+            findings.values(),
             key=lambda item: (
                 item.module,
                 item.function,

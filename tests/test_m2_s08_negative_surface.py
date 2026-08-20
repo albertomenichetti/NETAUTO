@@ -19,6 +19,7 @@ from netauto.settings import Settings
 from tests.support.s08_static import (
     ABSTRACT_NEGATIVE_CAPABILITY_IDS,
     AlembicMutationFinding,
+    existing_initializer_chain,
     find_abstract_capability_findings,
     find_reachable_alembic_mutations,
     forbidden_deployment_assets,
@@ -698,6 +699,109 @@ def test_automatic_migration_analysis_preserves_lexical_import_scopes() -> None:
         )
     }
     assert find_reachable_alembic_mutations(local_import_only, {"sample.runtime"}) == ()
+
+
+def test_import_time_alembic_analysis_detects_root_package_initializer_side_effect():
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": ("from alembic.command import upgrade\nupgrade(None, 'head')\n"),
+            "sample.server": "import sample\n\ndef build_app():\n    pass\n",
+        },
+        {"sample.server"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "sample"
+    assert finding.function == "sample.<module_init>"
+    assert finding.target == "alembic.command.upgrade"
+    assert finding.line > 0
+    assert 1 <= len(finding.call_path) <= 8
+    assert finding.call_path[-1] == finding.function
+
+
+def test_import_time_alembic_analysis_detects_imported_package_initializer_mutation():
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.server": "import vendor.adapter\n",
+            "vendor": ("from alembic.command import stamp\nstamp(None, 'head')\n"),
+            "vendor.adapter": "SAFE = True\n",
+        },
+        {"sample.server"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "vendor"
+    assert finding.function == "vendor.<module_init>"
+    assert finding.target == "alembic.command.stamp"
+    assert finding.line > 0
+    assert finding.call_path == (
+        "sample.server.<module_init>",
+        "vendor.<module_init>",
+    )
+
+
+def test_import_time_alembic_analysis_detects_nested_parent_initializer_side_effect():
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "SAFE = True\n",
+            "sample.api": (
+                "from alembic import command\ncommand.merge(None, 'heads')\n"
+            ),
+            "sample.api.http": "def build_app():\n    pass\n",
+        },
+        {"sample.api.http"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "sample.api"
+    assert finding.function == "sample.api.<module_init>"
+    assert finding.target == "alembic.command.merge"
+    assert finding.line > 0
+    assert finding.call_path == ("sample.api.<module_init>",)
+
+
+def test_import_time_alembic_analysis_accepts_safe_package_initializer_chain() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "import sample.api\n",
+            "sample.api": "from .. import adapter\nimport sample\n",
+            "sample.api.http": "import sample.api\n",
+            "sample.adapter": "SAFE = True\n",
+        },
+        {"sample.api.http"},
+    )
+    assert findings == ()
+
+
+def test_import_time_alembic_analysis_does_not_invent_missing_package_initializer() -> (
+    None
+):
+    sources = {"sample.server": "def build_app():\n    pass\n"}
+    assert existing_initializer_chain("a.b.c", {"a", "a.b.c"}) == ("a", "a.b.c")
+    assert existing_initializer_chain("sample.server", sources) == ("sample.server",)
+    assert find_reachable_alembic_mutations(sources, {"sample.server"}) == ()
+
+
+def test_real_netauto_root_initializer_chains_include_existing_parents() -> None:
+    module_names = frozenset(_production_module_sources())
+    assert existing_initializer_chain("netauto", module_names) == ("netauto",)
+    assert existing_initializer_chain("netauto.entrypoints", module_names) == (
+        "netauto",
+        "netauto.entrypoints",
+    )
+    assert existing_initializer_chain("netauto.entrypoints.http", module_names) == (
+        "netauto",
+        "netauto.entrypoints",
+        "netauto.entrypoints.http",
+    )
+    assert existing_initializer_chain("netauto.runtime", module_names) == (
+        "netauto",
+        "netauto.runtime",
+    )
+    assert existing_initializer_chain("netauto.cli", module_names) == (
+        "netauto",
+        "netauto.cli",
+    )
 
 
 def test_security_transport_and_secret_surfaces_remain_external() -> None:
