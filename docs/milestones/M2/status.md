@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — IN PROGRESS
-current task    reviewer inspection of the corrective S08 IN PROGRESS handoff
-blockers        candidate handoff withheld by the failed-post-push rule; M2-S09 blocked
+current slice   M2-S08 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the corrected M2-S08 candidate
+blockers        M2-S09 remains blocked on reviewer-owned M2-S08 completion
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | IN PROGRESS | `M2-S07 COMPLETED` |
+| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The first exact-remote complete-suite rerun exposed one PTY synchronization defect in a preserved S06 regression; bounded corrective work and full reverification are in progress.
+No contract, architecture, implementation-planning, technology, infrastructure or verification blocker is open in the corrected M2-S08 candidate. Reviewer inspection is pending.
 
 `M2-S08` is limited to integrated regression, complete machine-checkable traceability, the M2 delta allowlist and positive/negative surface closure. It must preserve the completed kernel, runtime, Health, CLI and installed-release capabilities. It must not begin `M2-S09` final acceptance before reviewer-owned completion of S08.
 
@@ -65,17 +65,20 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         IN PROGRESS — post-push correction
+M2-S08                         CANDIDATE READY FOR REVIEW
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
-candidate evidence/status      recorded by the commit containing this status
+first candidate evidence       b8c78c712d61514998281ea170e7606e1eb99781
 post-push corrective commit    9027b02b7f2b949cd7674adfa7c3fe3758eacda3
+corrective handoff              02a3a98ce5fc14419bcc795a8520ad1659140805
+verification review-fix        42843b4c885ee550a3e7b3dfc21896d9ae8a1ba1
+corrected candidate evidence   recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
 review decision                pending / reviewer-owned
 ```
 
-The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. The failed candidate is not being handed off; the prompt's failed-post-push rule keeps S08 `IN PROGRESS` even though the corrective SHA passes its focused and complete-suite checks.
+The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. That failed candidate was not handed off; its execution correctly returned S08 to `IN PROGRESS` before the later authorized continuation recorded below.
 
 Post-push and corrective evidence:
 
@@ -100,7 +103,63 @@ b8c78c7 repository             815 passed / 1 PTY failure — 273.24 s
 9027b02 negative controls       40P01 x1 / 40001 x2, exact expected census
 ```
 
-The corrective SHA has not been promoted to a new candidate state in this execution. No final-acceptance claim is made.
+The corrective SHA was not promoted by that superseded execution. The subsequent authorized continuation from `02a3a98ce5fc14419bcc795a8520ad1659140805` closed the four bounded verification findings below and executed a fresh complete candidate cycle. No final-acceptance claim is made.
+
+### S08 verification review continuation
+
+Closed findings:
+
+```text
+S08-VRF-01  WIP census accepts the active S08 aid and its reviewer-owned removal
+S08-VRF-02  131 negative surfaces have entry-specific semantic target ownership
+S08-VRF-03  automatic-migration absence is alias-safe and call-graph-aware
+S08-VRF-04  evidence validation separates implementer and reviewer phases
+```
+
+The WIP proof preserves exactly 19 historical disposition rows and the two permanent closure records while treating only `M2-S08-codex-prompt.md` as optional. The prompt-present test and a real temporary prompt-absent execution both pass.
+
+The negative-surface registry remains exactly 131 entries and now contains 65 distinct target sets over 47 concrete domain, API, CLI, schema, migration, runtime and T9 test targets. Deployment inspection evaluates forbidden basenames and path components recursively.
+
+The automatic-migration audit follows the complete server/lifespan/runtime/CLI import and call closure, resolves aliased `alembic.command` imports and local wrappers, rejects mutating upgrade/downgrade/stamp/revision/merge calls and permits only non-mutating Config/ScriptDirectory/MigrationContext introspection.
+
+Evidence validation now requires null `reviewer_decision` in implementer phase and one of `ACCEPTED` / `REVIEW CHANGES REQUIRED` in reviewer phase. It rejects database URLs, DSNs, URL userinfo and secret-bearing values while accepting HTTP/HTTPS endpoints without userinfo.
+
+Review-fix pre-publication evidence:
+
+```text
+focused four findings           20 passed — 2.52 s
+real prompt-absent WIP proof     1 passed — 1.66 s
+M2-VER-31 selected/unique/pass  31 / 31 / 39 — 21.90 s
+M2-VER-32 selected/unique/pass  29 / 29 / 35 — 15.72 s
+S08/T10 + M1/S00/M2 trace       68 passed — 27.67 s
+51 delivered scenarios          51 IDs / 91 unique targets / 95 passed — 58.50 s
+complete S06                    72 passed — 4.98 s
+complete S07/T9                 18 passed — 41.11 s
+API/error/CLI equality          37 passed — 3.02 s
+schema/Alembic positive/negative 32 passed — 7.00 s
+PostgreSQL suite               254 passed / 570 deselected — 185.68 s
+non-PostgreSQL suite           570 passed / 254 deselected — 77.46 s
+complete repository            824 passed — 260.23 s
+skip / xfail / rerun             0 / 0 / 0
+warnings                         1 unchanged third-party Starlette deprecation
+supported 40P01 / 40001          0 / 0
+negative-control 40P01 / 40001   1 / 2, exact expected census
+```
+
+Quality and candidate artifact:
+
+```text
+uv lock --check / sync / build PASS
+Ruff format / lint             PASS — 236 files / no findings
+Pyright strict                 PASS — 0 errors / 0 warnings
+pytest collection              824 tests
+wheel size / members           165978 bytes / 77
+wheel SHA-256                  38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size              48238 bytes
+runtime lock SHA-256           0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Production, schema, migration, public API, CLI, dependencies, `uv.lock` and the embedded runtime lock remain unchanged. No candidate-specific evidence record or `acceptance.md` exists; M2-S09 remains blocked.
 
 ### Closed S08 obligations
 
@@ -410,7 +469,7 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Review the corrective `IN PROGRESS` handoff for:
+Review the corrected candidate for:
 
 ```text
 M2-S08 — Integrated regression, traceability and negative-surface closure
