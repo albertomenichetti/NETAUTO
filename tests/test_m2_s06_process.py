@@ -132,9 +132,9 @@ def test_ctrl_r_searches_only_current_in_memory_history() -> None:
         searched = _read_until(master, b"/help")
         assert b"/help" in searched
         assert process.poll() is None
-        os.write(master, b"\x03")
-        _read_until(master, b"netauto>")
-        os.write(master, b"/exit\r")
+        os.write(master, b"\x03/exit\r")
+        exited = _read_until(master, b'"exiting": true')
+        assert b"status: ok" in exited
         assert process.wait(timeout=10) == 0
     finally:
         _finish(process, master)

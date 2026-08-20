@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S08 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the published M2-S08 candidate
+current slice   M2-S08 — IN PROGRESS
+current task    correct and reverify the failed post-push S08 PTY gate
 blockers        M2-S09 remains blocked on reviewer-owned M2-S08 completion
 ```
 
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
+| `M2-S08` | IN PROGRESS | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology, infrastructure or verification blocker is open in the M2-S08 candidate. Reviewer inspection is pending.
+No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The first exact-remote complete-suite rerun exposed one PTY synchronization defect in a preserved S06 regression; bounded corrective work and full reverification are in progress.
 
 `M2-S08` is limited to integrated regression, complete machine-checkable traceability, the M2 delta allowlist and positive/negative surface closure. It must preserve the completed kernel, runtime, Health, CLI and installed-release capabilities. It must not begin `M2-S09` final acceptance before reviewer-owned completion of S08.
 
@@ -65,7 +65,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         CANDIDATE READY FOR REVIEW
+M2-S08                         IN PROGRESS — post-push correction
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -73,6 +73,8 @@ candidate evidence/status      recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
 review decision                pending / reviewer-owned
 ```
+
+The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. The failed candidate is not being handed off; S08 remains `IN PROGRESS` until the corrected candidate completes every required gate.
 
 ### Closed S08 obligations
 
@@ -382,7 +384,7 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Review the published candidate for:
+Complete the corrective verification for:
 
 ```text
 M2-S08 — Integrated regression, traceability and negative-surface closure
