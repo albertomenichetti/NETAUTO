@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S09 READY
+**Milestone status:** IMPLEMENTATION — M2-S09 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,8 +14,8 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S09 — READY
-current task    execute the dedicated full M2 acceptance and delivery-candidate gate
+current slice   M2-S09 — IN PROGRESS
+current task    finalize the test-only acceptance harness and freeze one candidate SHA
 blockers        none; execution still requires the ratified Linux/Python toolchain and real TEST_DATABASE_URL
 ```
 
@@ -31,7 +31,7 @@ Implementation work is authorized only for the exact slice marked `READY`, `IN P
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
 | Implementation | AUTHORIZED — `M2-S09` ONLY |
-| Final acceptance | READY — requires one exact candidate record and reviewer approval |
+| Final acceptance | IN PROGRESS — candidate gate not yet executed |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
 
@@ -48,9 +48,9 @@ Implementation work is authorized only for the exact slice marked `READY`, `IN P
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
-| `M2-S09` | READY | `M2-S00 ... M2-S08 COMPLETED` |
+| `M2-S09` | IN PROGRESS | `M2-S00 ... M2-S08 COMPLETED` |
 
-`M2-S00` through `M2-S08` are reviewer-owned `COMPLETED`. `M2-S09` has not started.
+`M2-S00` through `M2-S08` are reviewer-owned `COMPLETED`. `M2-S09` is executing its test-only final acceptance harness; no candidate evidence has been published yet.
 
 ## M2-S08 reviewer-owned completion
 
@@ -205,11 +205,9 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Execute:
-
-```text
-docs/milestones/M2/wip/M2-S09-codex-prompt.md
-```
+Complete and publish the test-only S09 harness commit, freeze that exact remote
+SHA, and execute the full candidate gate from its detached clean worktree using
+the active non-normative execution aid.
 
 The only implementer handoff permitted by S09 is:
 

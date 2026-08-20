@@ -4,6 +4,15 @@ This directory contains non-normative evidence-format guidance beneath the froze
 
 M2-S08 defines and tests the finite record shape only. S08 does not create or populate a candidate-specific evidence record. M2-S09 owns creation of that record for one exact candidate commit and the reviewer owns the final `reviewer_decision`. Validation has two explicit phases: the implementer phase requires that field to remain null; the reviewer phase requires exactly `ACCEPTED` or `REVIEW CHANGES REQUIRED`.
 
+The lifecycle inventory is finite. While M2-S09 is `READY` or `IN PROGRESS`,
+this README is the only file in this directory and `acceptance.md` is absent.
+The implementer candidate state adds exactly one
+`candidate-<candidate_commit>.json` plus `acceptance.md`, with
+`reviewer_decision` still null. A later reviewer-owned `COMPLETED` transition
+keeps that same record, records one finite reviewer decision, and retires the
+active execution aid. Additional candidate records or unclassified evidence
+files are not permitted.
+
 ## Representation
 
 The record is serialized as UTF-8 JSON with lexicographically sorted object keys, compact separators, and one final newline. Sets are represented as objects keyed by their stable identifier so missing and extra identifiers remain reviewable. Command argument vectors are arrays of separate strings; they are evidence, not shell source.

@@ -24,6 +24,7 @@ from tests.support.s08_static import (
     find_reachable_alembic_mutations,
     forbidden_deployment_assets,
 )
+from tests.support.s09_acceptance import s09_state
 from tests.test_m2_traceability import (
     CLI_REMOTE_OPERATION_COVERAGE,
     HEALTH_LOCAL_COMMAND_COVERAGE,
@@ -1190,6 +1191,7 @@ def test_wip_provenance_is_complete_and_never_implementation_authority() -> None
     )
     assert "docs/milestones/M2/wip" not in production
     assert "M2-S08-codex-prompt" not in production
+    assert "M2-S09-codex-prompt" not in production
 
     for path in sorted((ROOT / "tests").rglob("*.py")):
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -1216,7 +1218,10 @@ def test_wip_provenance_is_complete_and_never_implementation_authority() -> None
         "steps-consistency-closure.md",
         "wip-extraction-closure.md",
     }
-    optional_active_execution_aids = {"M2-S08-review-fixes-codex-prompt.md"}
+    state = s09_state((ROOT / "docs/milestones/M2/status.md").read_text())
+    optional_active_execution_aids: set[str] = (
+        set() if state == "COMPLETED" else {"M2-S09-codex-prompt.md"}
+    )
     permanent_wip_census = set(rows) | closure_records
     assert wip_files - optional_active_execution_aids == permanent_wip_census
     assert wip_files <= permanent_wip_census | optional_active_execution_aids
@@ -1236,7 +1241,7 @@ def test_wip_provenance_is_complete_and_never_implementation_authority() -> None
     allowed_context = re.compile(
         r"non-normative|historical|discovery|supersed|review record|audit record|"
         r"consistency closure|freeze approval|retir|captured for ratification|"
-        r"must\s+\W*not|execution aid|corrective aid",
+        r"must\s+\W*not|execution aid|corrective aid|immediate next action",
         re.IGNORECASE,
     )
     for path in normative:

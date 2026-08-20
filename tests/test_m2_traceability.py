@@ -3072,6 +3072,11 @@ def assert_target_exists(target: str) -> None:
     _assert_target_exists(target)
 
 
+def collected_test_nodes() -> frozenset[str]:
+    """Return the stable concrete pytest collection for derived final gates."""
+    return _collected_test_nodes()
+
+
 @cache
 def _collected_test_nodes() -> frozenset[str]:
     result = subprocess.run(
@@ -4118,5 +4123,34 @@ def test_s08_all_bundles_are_implemented_nonempty_and_resolvable() -> None:
         *S08_PRIMARY_BUNDLE_TARGETS.values(),
         *M2_NEGATIVE_SURFACE_TO_TARGETS.values(),
     ):
+        for target in targets:
+            _assert_target_exists(target)
+
+
+def test_s09_final_gate_registry_is_derived_exact_and_resolvable() -> None:
+    from tests.support.s09_acceptance import (
+        S09_BUNDLE_TARGETS,
+        S09_FINAL_GATE_TARGETS,
+        S09_IDENTIFIER_CENSUS,
+        S09_SCENARIO_RECIPES,
+        S09_SCENARIO_TARGETS,
+    )
+
+    assert S09_IDENTIFIER_CENSUS == {
+        "outcomes": 16,
+        "acceptance_criteria": 32,
+        "evidence_bundles": 32,
+        "scenarios": 83,
+        "predicates": 21,
+        "negative_surfaces": 131,
+        "contract_quality_gates": 10,
+    }
+    assert set(S09_BUNDLE_TARGETS) == M2_EVIDENCE_BUNDLES
+    assert set(S09_SCENARIO_TARGETS) == M2_CONCURRENCY_SCENARIOS
+    assert set(S09_SCENARIO_RECIPES) == M2_CONCURRENCY_SCENARIOS
+    assert all(S09_BUNDLE_TARGETS.values())
+    assert all(S09_SCENARIO_TARGETS.values())
+    for targets in S09_FINAL_GATE_TARGETS.values():
+        assert targets
         for target in targets:
             _assert_target_exists(target)

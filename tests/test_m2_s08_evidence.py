@@ -22,6 +22,11 @@ from tests.support.m2_evidence import (
     validate_evidence_record,
 )
 from tests.support.m2_evidence import TestCensus as EvidenceTestCensus
+from tests.support.s09_acceptance import (
+    final_evidence_from_json,
+    s09_state,
+    validate_evidence_lifecycle,
+)
 from tests.test_m2_traceability import (
     M2_CONCURRENCY_SCENARIOS,
     M2_EVIDENCE_BUNDLES,
@@ -306,7 +311,17 @@ def test_evidence_documentation_matches_validator_and_reserves_s09_record() -> N
     ):
         assert required in text
     assert "S08 does not create or populate" in text
-    assert not (ROOT / "docs/milestones/M2/acceptance.md").exists()
-    assert [path.name for path in readme.parent.iterdir() if path.is_file()] == [
-        "README.md"
-    ]
+    state = s09_state((ROOT / "docs/milestones/M2/status.md").read_text())
+    record_path = validate_evidence_lifecycle(ROOT, state)
+    if state in {"READY", "IN PROGRESS"}:
+        assert record_path is None
+        return
+
+    assert record_path is not None
+    record = final_evidence_from_json(record_path.read_bytes())
+    if state == "CANDIDATE READY FOR REVIEW":
+        validate_evidence_record(record, EXPECTATIONS, phase="implementer")
+        assert record.reviewer_decision is None
+    else:
+        validate_evidence_record(record, EXPECTATIONS, phase="reviewer")
+        assert record.reviewer_decision in REVIEWER_DECISIONS
