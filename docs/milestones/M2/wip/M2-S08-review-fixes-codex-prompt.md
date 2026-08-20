@@ -1,4 +1,4 @@
-# Codex review-fix prompt — M2-S08
+# Codex review-fix prompt — M2-S08 package-aware relative imports
 
 **Status:** NON-NORMATIVE IMPLEMENTATION EXECUTION AID.
 
@@ -9,6 +9,8 @@ M2-S08 — Integrated regression, traceability and negative-surface closure
 ```
 
 È subordinato a `AGENTS.md`, all’AS-IS consegnato, al contract e all’architecture set M2 `FINAL / FROZEN`, a `steps.md`, alla technology baseline ratificata e allo stato reviewer-owned in `status.md`.
+
+Il presente contenuto sostituisce il precedente aid S08 nello stesso path. Il path resta l’unico execution aid attivo ammesso dal censimento WIP; non creare un secondo prompt.
 
 ---
 
@@ -23,30 +25,37 @@ M2
 Candidate rifiutato e baseline di ancestry obbligatoria:
 
 ```text
-e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5
-docs(m2): publish corrected S08 candidate evidence
+c4cd4e633afaafa395a67f2b9efcc396906052e1
+docs(m2): publish S08 candidate after PTY closure
 ```
 
 Reviewer-owned reopen obbligatorio nell’ancestry:
 
 ```text
-8e615d4223ee3a8a35cccebaa278cf23d740045a
-docs(m2): reopen S08 for final verification closure
+620b3016f4ef66eab53831125cc21d879edb5ac5
+docs(m2): reopen S08 for package-relative import closure
 ```
 
-Queste SHA sono baseline di ancestry, non l’HEAD atteso: la pubblicazione di questo prompt crea necessariamente commit successivi.
+Queste SHA sono baseline di ancestry, non l’HEAD esatto atteso: la pubblicazione di questo aid crea necessariamente un commit successivo.
 
-Correggi esclusivamente:
+Correggi esclusivamente la parte ancora aperta di:
 
 ```text
 S08-VRF-05
-    import-time Alembic mutation closure
+    package-aware relative-import closure
+    nell’audit delle mutazioni Alembic import-time
+```
 
+Non creare un nuovo finding. Il registro deve restare esattamente:
+
+```text
+S08-VRF-01
+S08-VRF-02
+S08-VRF-03
+S08-VRF-04
+S08-VRF-05
 S08-VRF-06
-    semantic closure delle superfici negative astratte
-
 S08-VRF-07
-    reviewer ACCEPTED coherence nel futuro evidence record
 ```
 
 Mantieni chiusi e invariati:
@@ -64,8 +73,17 @@ S08-VRF-03
 S08-VRF-04
     implementer/reviewer evidence phases
 
-PTY reverse-search correction
-    già pubblicata e verificata
+S08-VRF-06
+    finite abstract-negative capability audit
+
+S08-VRF-07
+    reviewer ACCEPTED all-pass coherence
+
+package-parent initializer chain
+    già implementata in 29e47eca66667b0e8ba8aefea410476d6dd0710f
+
+S06 PTY reverse-search proof
+    già corretta in 954fd86f576f3b4a0ec4efb8849cf059c801dfef
 ```
 
 Non ripartire da zero. Non eseguire reset, rebase, force-push o riscrittura della cronologia.
@@ -73,13 +91,10 @@ Non ripartire da zero. Non eseguire reset, rebase, force-push o riscrittura dell
 Preserva nell’ancestry almeno:
 
 ```text
-3d794d25317425254440f4e4b711ebfb63113edf
-b8c78c712d61514998281ea170e7606e1eb99781
-9027b02b7f2b949cd7674adfa7c3fe3758eacda3
-02a3a98ce5fc14419bcc795a8520ad1659140805
-42843b4c885ee550a3e7b3dfc21896d9ae8a1ba1
-e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5
-8e615d4223ee3a8a35cccebaa278cf23d740045a
+29e47eca66667b0e8ba8aefea410476d6dd0710f
+954fd86f576f3b4a0ec4efb8849cf059c801dfef
+c4cd4e633afaafa395a67f2b9efcc396906052e1
+620b3016f4ef66eab53831125cc21d879edb5ac5
 ```
 
 ---
@@ -92,8 +107,8 @@ Prima di modificare file, verifica:
 git branch --show-current              M2
 HEAD == origin/M2                      sì
 working tree                            pulito
-origin/M2 contiene e39f1aca...         sì
-origin/M2 contiene 8e615d42...         sì
+origin/M2 contiene c4cd4e6...          sì
+origin/M2 contiene 620b301...          sì
 questo prompt esiste all’HEAD           sì
 M2-S08                                  REVIEW CHANGES REQUIRED o IN PROGRESS
 M2-S09                                  BLOCKED
@@ -102,6 +117,8 @@ architecture set                        FINAL / FROZEN
 steps                                   FINAL / FROZEN
 reopen architetturali aperti            nessuno
 ```
+
+Se `status.md` non autorizza S08 o se M2-S09 non è `BLOCKED`, fermati senza modificare file.
 
 Rileggi almeno:
 
@@ -120,9 +137,6 @@ docs/milestones/M2/architecture/README.md
 docs/milestones/M2/architecture/provenance.md
 docs/milestones/M2/architecture/verification.md
 docs/milestones/M2/architecture/runtime-deployment.md
-docs/milestones/M2/architecture/cli.md
-docs/milestones/M2/architecture/health.md
-docs/milestones/M2/architecture/persistence.md
 docs/milestones/M2/steps.md
 docs/milestones/M2/status.md
 
@@ -133,16 +147,14 @@ Ispeziona inoltre:
 
 ```text
 tests/support/s08_static.py
-tests/support/m2_evidence.py
 tests/test_m2_s08_negative_surface.py
-tests/test_m2_s08_evidence.py
 tests/test_m2_traceability.py
-docs/milestones/M2/evidence/README.md
+tests/test_m2_s06_process.py
 ```
 
 ### `TEST_DATABASE_URL`
 
-`TEST_DATABASE_URL` è **externally supplied** quando è fornito esplicitamente dall’ambiente e il test code NETAUTO non lo provisiona, non lo inventa e non lo sostituisce silenziosamente.
+`TEST_DATABASE_URL` è externally supplied quando è fornito esplicitamente dall’ambiente e il test code NETAUTO non lo provisiona, non lo inventa e non lo sostituisce silenziosamente.
 
 Un hostname loopback o locale non è, da solo, un blocker.
 
@@ -154,35 +166,29 @@ forma supportata                 postgresql+psycopg
 server raggiungibile             sì
 backend reale                    PostgreSQL
 versione PostgreSQL              rilevata dalla connessione reale
-target test dedicato/sicuro      conforme ai controlli esistenti del test support
+target test dedicato/sicuro      conforme ai controlli esistenti
 provisioning da test code        assente
-fallback SQLite/fake/local auto  assente
+fallback SQLite/fake             assente
 ```
 
 Non inventare credenziali o hostname e non sostituire la URL fornita. Non usare Docker, Testcontainers, SQLite o PostgreSQL auto-avviato dal test code.
-
-Se la URL non raggiunge PostgreSQL reale o fallisce i controlli di sicurezza già ratificati, il lavoro non può diventare candidate-ready. Il mero fatto che il nome host sia locale non autorizza né impone uno STOP.
-
-Se una authority frozen è contraddittoria o non determina il comportamento, ferma soltanto il punto interessato e segnala un architecture finding. Non scegliere una semantica dal codice corrente e non modificare documenti frozen per adattarli all’implementazione.
 
 ---
 
 ## 3. Hard scope boundary
 
-La correzione deve restare **test/evidence-only**.
+La correzione deve restare test-only.
 
 File ammessi, quando necessari:
 
 ```text
 tests/support/s08_static.py
-tests/support/m2_evidence.py
 tests/test_m2_s08_negative_surface.py
-tests/test_m2_s08_evidence.py
 tests/test_m2_traceability.py
-un eventuale helper test-only strettamente necessario
-docs/milestones/M2/evidence/README.md
 docs/milestones/M2/status.md
 ```
+
+Non modificare questo execution aid durante l’implementazione.
 
 Non modificare:
 
@@ -191,6 +197,7 @@ src/netauto production code
 public API
 Health contract
 CLI grammar, behavior o rendering
+tests/test_m2_s06_process.py
 SQLAlchemy metadata
 schema o DDL
 migration 0001_m2_kernel
@@ -201,6 +208,8 @@ src/netauto/release/runtime.pylock.toml
 dipendenze
 versione 0.2.0
 wheel content
+evidence schema
+negative-capability policies
 public error catalog
 operation inventories
 ```
@@ -212,6 +221,7 @@ Non creare:
 ```text
 docs/milestones/M2/acceptance.md
 candidate-specific S09 evidence record
+un secondo execution aid WIP
 PR
 GitHub Actions workflow o run
 tag
@@ -240,97 +250,260 @@ negative-surface identifiers     131
 
 ---
 
-# 4. S08-VRF-05 — Import-time Alembic mutation closure
+## 4. Difetto da chiudere
 
-## 4.1 Difetto
+### 4.1 Rappresentazione corrente
 
-L’analizzatore corrente rileva chiamate mutanti contenute nei corpi delle funzioni raggiungibili, ma può non rilevare esecuzione mutante durante l’import del modulo o la costruzione di una classe.
+La production source inventory rappresenta un package initializer eliminando il segmento `__init__`:
 
-Devono essere rilevate almeno queste forme:
+```text
+src/sample/__init__.py
+    -> module name "sample"
 
-```python
+src/sample/api/__init__.py
+    -> module name "sample.api"
+```
+
+Il solo nome del modulo non consente di distinguere:
+
+```text
+sample.api.py
+    ordinary module
+
+sample/api/__init__.py
+    package initializer
+```
+
+### 4.2 Risoluzione corrente errata
+
+La funzione equivalente a:
+
+```text
+_absolute_import(module, imported, level)
+```
+
+calcola sempre il package context come il parent del module name.
+
+Questa regola è corretta per un ordinary module:
+
+```text
+module       sample.api.http
+__package__  sample.api
+```
+
+ma è errata per un package initializer:
+
+```text
+module       sample.api
+source       sample/api/__init__.py
+__package__  sample.api
+```
+
+Per un package initializer, il package context è il module name stesso.
+
+### 4.3 Falsi negativi obbligatori da eliminare
+
+Caso root package:
+
+```text
+sample/__init__.py
+    from . import migrator
+
+sample/migrator.py
+    from alembic.command import upgrade
+    upgrade(None, "head")
+```
+
+Risoluzione Python corretta:
+
+```text
+from . import migrator
+    -> sample.migrator
+```
+
+Caso nested package:
+
+```text
+sample/api/__init__.py
+    from .. import migrator
+
+sample/migrator.py
+    from alembic.command import stamp
+    stamp(None, "head")
+```
+
+Risoluzione Python corretta:
+
+```text
+from .. import migrator
+    -> sample.migrator
+```
+
+La helper corrente può invece risolvere entrambe come un top-level `migrator`, perdendo l’edge verso il modulo realmente presente.
+
+### 4.4 Superfici coinvolte
+
+La correzione deve applicarsi sia a:
+
+```text
+import-edge resolution
+    _ExecutionScanner.visit_ImportFrom o equivalente
+```
+
+sia a:
+
+```text
+import-alias resolution
+    _scoped_import_aliases o equivalente
+```
+
+Correggere soltanto gli edge non è sufficiente: wrapper e callable importati relativamente devono continuare a risolversi verso i function keys corretti.
+
+---
+
+## 5. Modello richiesto
+
+### 5.1 Package metadata esplicita
+
+Non inferire package/module status dal numero di segmenti del nome.
+
+Mantieni metadata espliciti e finiti per i moduli che provengono da `__init__.py`.
+
+Una forma raccomandata e backward-compatible è:
+
+```text
+find_reachable_alembic_mutations(
+    module_sources,
+    root_modules,
+    *,
+    package_modules=(),
+)
+```
+
+con:
+
+```text
+package_modules <= module_sources.keys()
+```
+
+È ammessa un’equivalente struttura `ModuleSource(source, is_package)`, purché non renda più fragile o ambiguo il test support e resti test-only.
+
+La funzione deve rifiutare package names sconosciuti con un errore deterministico, analogamente agli unknown roots.
+
+### 5.2 Production inventory
+
+La real production inventory deve derivare la package metadata dal path fisico prima di rimuovere `__init__` dal module name:
+
+```text
+path.name == "__init__.py"
+    -> module is package
+
+altro file .py
+    -> ordinary module
+```
+
+Preserva una singola source authority. Non creare due mappe divergenti con nomi calcolati in modi differenti.
+
+Puoi:
+
+```text
+aggiungere _production_package_modules()
+```
+
+oppure:
+
+```text
+aggiungere _production_module_inventory()
+    -> sources + package_modules
+```
+
+ma il real repository audit deve passare esplicitamente la package metadata all’analizzatore.
+
+### 5.3 Package context
+
+Per un ordinary module:
+
+```text
+package context = parent del module name
+```
+
+Per un package initializer:
+
+```text
+package context = module name stesso
+```
+
+La risoluzione relativa di livello `level` deve rimuovere `level - 1` segmenti dal package context.
+
+Esempi esatti:
+
+```text
+ordinary module sample.api.http
+    from . import sibling
+        -> sample.api.sibling
+
+    from .. import sibling
+        -> sample.sibling
+
+package initializer sample.api
+    from . import sibling
+        -> sample.api.sibling
+
+    from .. import sibling
+        -> sample.sibling
+```
+
+### 5.4 Import oltre il top-level
+
+Non trasformare un import relativo oltre il top-level in un import top-level plausibile.
+
+Esempio:
+
+```text
+package initializer sample
+    from .. import migrator
+```
+
+è invalido e non deve diventare:
+
+```text
+migrator
+```
+
+La helper può restituire `None` o un altro risultato esplicitamente unresolved. I caller devono evitare di creare edge o alias inventati.
+
+### 5.5 Forme da preservare
+
+Preserva la risoluzione di:
+
+```text
+import a.b.c
+import a.b.c as alias
+from a.b import c
+from . import c
+from .sub import c
+from .. import c
+from ..sub import c
 from alembic.command import upgrade as migrate
-
-migrate(config, "head")
-```
-
-```python
 from alembic import command as alembic_command
-
-
-class Runtime:
-    state = alembic_command.stamp(config, "head")
 ```
 
-```python
-# sample.server
-import sample.adapter
-
-
-def build_app(): ...
-
-
-# sample.adapter
-from alembic.command import downgrade as reset_schema
-
-reset_schema(config, "base")
-```
-
-Una mutazione import-time è una migrazione automatica e deve fallire l’audit anche se non è invocata da una funzione applicativa.
-
-## 4.2 Comportamento richiesto
-
-Estendi `find_reachable_alembic_mutations()` o l’equivalente helper test-only affinché modelli almeno:
+Preserva inoltre:
 
 ```text
 module initialization
-class body execution
-ordinary function/method execution
+class-body execution
+function-body execution
+definition-time decorator/default calls
+local and imported wrappers
+lexical alias scope
+existing package-parent initializer chain
+cycle termination
+finding deduplication
+bounded eight-element diagnostic path
 ```
 
-La closure deve includere:
-
-```text
-root module initialization
-initialization dei moduli importati dai root
-chiamate top-level
-chiamate dentro if / try / with / match / loop top-level
-corpi di classe eseguibili, escludendo i corpi ordinari dei metodi
-class bases, keyword/metaclass expressions e class decorators
-function decorators
-positional defaults e keyword defaults eseguiti alla definizione
-chiamate top-level a helper locali
-chiamate class-body a helper locali
-wrapper importati e aliasati
-```
-
-Rispetta lo scope lessicale:
-
-```text
-import dentro funzione != alias del modulo
-import dentro metodo != alias del class/module body
-alias omonimi in scope diversi restano distinti
-```
-
-La risoluzione deve continuare a riconoscere:
-
-```text
-from alembic.command import upgrade
-from alembic.command import upgrade as migrate
-import alembic.command as command
-from alembic import command as alembic_command
-```
-
-con chiamate:
-
-```text
-upgrade(...)
-migrate(...)
-command.upgrade(...)
-alembic_command.upgrade(...)
-```
-
-Le sole mutazioni vietate sono:
+Le sole mutazioni vietate restano:
 
 ```text
 alembic.command.upgrade
@@ -351,418 +524,326 @@ get_current_heads
 revision inspection
 ```
 
-## 4.3 Root reali
+---
 
-Esegui l’audit sulla closure di produzione raggiungibile almeno da:
+## 6. Regressioni obbligatorie
+
+Aggiungi test puri e deterministici in:
 
 ```text
-netauto.entrypoints.http
-server/application factory
-ASGI lifespan/composition
-netauto.runtime e relativi moduli
-schema guard
-netauto.cli e relativi moduli
-console-entrypoint/import path
+tests/test_m2_s08_negative_surface.py
 ```
 
-Un modulo amministrativo Alembic non è vietato per il solo fatto di esistere; è finding quando una mutazione è raggiungibile automaticamente dai root runtime/server/CLI o viene eseguita durante il loro import.
+Usa nomi stabili equivalenti ai seguenti.
 
-## 4.4 Regressioni obbligatorie
-
-Aggiungi test puri e deterministici per:
+### 6.1 Root package `from . import ...`
 
 ```text
-1. direct top-level alias
-2. imported-module side effect
-3. class-body side effect
-4. import-time call through local helper
-5. decorator o default argument che invoca un wrapper mutante
-6. introspezione Alembic non mutante con zero finding
-7. scope locale che non contamina l’alias map esterna
+test_import_time_alembic_analysis_resolves_relative_import_from_root_package
 ```
 
-Ogni finding deve fornire diagnostica bounded:
+Source inventory:
 
 ```text
-modulo
-nodo/funzione o synthetic initialization owner
-linea
-target mutante risolto
-call path comprensibile
+sample                         package initializer
+sample.entry                   ordinary root module
+sample.migrator                ordinary module con import-time upgrade
+```
+
+`sample/__init__.py` contiene:
+
+```text
+from . import migrator
+```
+
+Root:
+
+```text
+sample.entry
+```
+
+Assert:
+
+```text
+un solo finding
+module      sample.migrator
+owner       sample.migrator.<module_init>
+target      alembic.command.upgrade
+call path   bounded e raggiungibile dal package initializer
+```
+
+### 6.2 Nested package `from .. import ...`
+
+```text
+test_import_time_alembic_analysis_resolves_parent_relative_import_from_nested_package
+```
+
+Source inventory:
+
+```text
+sample                         package initializer safe
+sample.api                     package initializer
+sample.api.http                ordinary root module
+sample.migrator                ordinary module con import-time stamp
+```
+
+`sample/api/__init__.py` contiene:
+
+```text
+from .. import migrator
+```
+
+Root:
+
+```text
+sample.api.http
+```
+
+Assert:
+
+```text
+un solo finding in sample.migrator.<module_init>
+target alembic.command.stamp
+```
+
+### 6.3 Ordinary-module semantics preservata
+
+```text
+test_import_time_alembic_analysis_preserves_relative_import_from_ordinary_module
+```
+
+Source inventory:
+
+```text
+sample                         package
+sample.api                     package
+sample.api.http                ordinary module
+sample.api.sibling             ordinary module con import-time downgrade
+```
+
+`sample.api.http` contiene:
+
+```text
+from . import sibling
+```
+
+Assert:
+
+```text
+sample.api.sibling risolto
+non sample.api.http.sibling
+non sample.sibling
+```
+
+### 6.4 Relative imported wrapper
+
+```text
+test_import_time_alembic_analysis_resolves_relative_wrapper_from_package
+```
+
+Source inventory:
+
+```text
+sample                         package initializer
+sample.helper                  ordinary module
+```
+
+`sample/__init__.py` contiene una forma equivalente a:
+
+```text
+from .helper import migrate
+migrate()
+```
+
+`sample.helper.migrate` invoca una mutazione Alembic vietata.
+
+Assert:
+
+```text
+la alias map risolve sample.helper.migrate
+il call graph raggiunge il wrapper
+il finding mostra il target Alembic mutante
+```
+
+### 6.5 Beyond-top-level non inventato
+
+```text
+test_import_time_alembic_analysis_does_not_invent_top_level_import_beyond_package
+```
+
+Source inventory:
+
+```text
+sample                         package initializer
+sample.entry                   ordinary root module
+migrator                       top-level module con mutazione Alembic
+```
+
+`sample/__init__.py` contiene:
+
+```text
+from .. import migrator
+```
+
+Assert:
+
+```text
+nessun edge inventato verso top-level migrator
+nessun finding derivato da quell’import invalido
+nessun crash
+```
+
+### 6.6 Safe package-relative imports
+
+```text
+test_import_time_alembic_analysis_accepts_safe_package_relative_imports
+```
+
+Copri almeno:
+
+```text
+from . import sibling
+from .. import sibling
+from .submodule import helper
+```
+
+con package metadata esplicita e nessuna mutazione. Risultato:
+
+```text
+findings == ()
+```
+
+### 6.7 Production inventory metadata
+
+```text
+test_real_netauto_inventory_marks_exact_package_initializers
+```
+
+Verifica almeno:
+
+```text
+netauto                         package
+netauto.entrypoints             package
+netauto.cli                     package
+netauto.runtime                 package, se rappresentato da __init__.py
+netauto.entrypoints.http        ordinary module
+netauto.cli.repl                ordinary module
+```
+
+Non hardcodare un package che non esiste fisicamente. Deriva l’atteso dai path reali e asserisci i casi rappresentativi presenti.
+
+Il real production audit deve restare:
+
+```text
+find_reachable_alembic_mutations(
+    real_sources,
+    execution_roots,
+    package_modules=real_packages,
+) == ()
+```
+
+### 6.8 Regressioni precedenti
+
+Mantieni verdi e immutati i target già accettati per:
+
+```text
+direct top-level alias
+imported-module side effect
+class-body side effect
+local helper
+definition-time wrapper
+lexical scope isolation
+package-parent initializer chain
+missing namespace initializer
+cycle termination
+real NETAUTO root initializer chains
+Alembic introspection only
+S06 PTY split sentinel
+S06 Ctrl-R structured recall
 ```
 
 ---
 
-# 5. S08-VRF-06 — Semantic closure delle negative surfaces astratte
+## 7. Traceability
 
-## 5.1 Difetto
-
-Il registry contiene 131 entry esatte, ma alcune voci deployment, security, data-protection, availability e observability puntano ancora a un test che non rileverebbe una realizzazione della capability con un nome o una collocazione diversa.
-
-Le entry ad alto rischio includono almeno:
+Mantieni:
 
 ```text
-data_protection::PostgreSQL replica management
-data_protection::point-in-time recovery procedure
-data_protection::business-continuity SLA
-
-deployment_platform::multi-region operation
-deployment_platform::service discovery, clustering or high availability
-deployment_platform::CI/CD deployment pipeline
-
-security_network::reverse-proxy or firewall automation
-security_network::VPN or load-balancer configuration
-
-observability::dashboards or alerting
-observability::central log shipping or rotation
+set(S08_REVIEW_FIX_TARGETS)
+    == {
+        S08-VRF-01,
+        S08-VRF-02,
+        S08-VRF-03,
+        S08-VRF-04,
+        S08-VRF-05,
+        S08-VRF-06,
+        S08-VRF-07,
+    }
 ```
 
-## 5.2 Comportamento richiesto
+Non aggiungere `S08-VRF-08`.
 
-Mantieni esattamente:
+Aggiungi i nuovi package-aware relative-import target a:
 
 ```text
-131 negative-surface identifiers
-nessuna entry mancante
-nessuna entry extra
-ogni entry con almeno un concrete pytest target raccolto
-mapping entry-specific
+S08_REVIEW_FIX_TARGETS["S08-VRF-05"]
 ```
 
-Introduci una registry finita o un meccanismo equivalente per le capability astratte che definisca:
+Aggiorna:
 
 ```text
-superfici repository da ispezionare
-path e basename vietati
-directory/componenti vietati
-moduli production vietati
-script/entrypoint vietati
-dipendenze vietate
-infrastructure/config assets vietati
-operator documents vietati quando realizzano la capability
-concrete assertion target
-synthetic counterexample target
+test_s08_review_fix_registry_is_exact_resolvable_and_bundle_mapped
 ```
 
-L’audit deve ispezionare in modo proporzionato:
+affinché richieda esplicitamente almeno:
 
 ```text
-git-tracked file/path inventory
-production Python module inventory
-pyproject dependencies
-pyproject scripts/entrypoints
-configuration/infrastructure assets
-operator/deployment documents non normativi
-CI/deployment directories
-dashboard/logging/proxy/firewall/recovery assets
+root package relative-import target
+nested package parent-relative target
+ordinary-module preservation target
+relative wrapper target
 ```
 
-Non usare un grep globale che fallisca perché il contract frozen descrive esplicitamente un concetto come non-goal.
-
-Le authority normative devono poter contenere frasi come:
+Tutti i target devono:
 
 ```text
-no multi-region operation
-no backup automation
-no metrics integration
+esistere
+essere raccolti da pytest
+essere inclusi nel review-fix union
+appartenere a M2-VER-32
 ```
 
-senza essere interpretate come implementazione della capability.
+Non rimuovere alcun target S08 già accettato.
 
-## 5.3 Controesempi sintetici obbligatori
+`M2-VER-31` deve restare invariato, `IMPLEMENTED` e non vuoto.
 
-Il nuovo audit deve rilevare almeno:
-
-```text
-docs/operations/business-continuity.md
-docs/operations/postgresql-replicas.md
-docs/operations/pitr.md
-docs/deployment/multi-region.md
-docs/deployment/high-availability.md
-
-ops/nginx.conf
-ops/firewall-rules.nft
-ops/vpn.conf
-ops/postgresql-replica.conf
-
-src/netauto/cluster.py
-src/netauto/replication.py
-src/netauto/backup.py
-
-.circleci/config.yml
-dashboards/core.json
-grafana/datasources/netauto.yml
-fluent-bit.conf
-```
-
-Mantieni rilevati anche:
-
-```text
-nested Dockerfile
-Kubernetes manifests
-systemd unit
-backup.sh / restore.sh
-.github/workflows
-```
-
-Aggiungi controesempi sicuri che non devono essere classificati:
-
-```text
-docs/milestones/M2/contract.md
-docs/milestones/M2/architecture/runtime-deployment.md
-docs/architecture/*.md
-src/netauto/runtime/schema_guard.py
-ordinary test files che descrivono il non-goal
-```
-
-## 5.4 Mapping semantico
-
-Per le entry astratte ad alto rischio, `M2_NEGATIVE_SURFACE_TO_TARGETS` deve includere esplicitamente:
-
-```text
-target del capability audit finito
-synthetic-counterexample target
-```
-
-Non è sufficiente:
-
-```text
-mapping non vuoto
-numero minimo di target-set distinti
-un solo test generico che non asserisce la capability
-```
-
-È ammesso condividere un target tra entry realmente omogenee soltanto se il target contiene una policy finita che nomina e verifica ciascuna entry.
-
-Aggiorna la traceability affinché verifichi:
-
-```text
-exact 131-key census
-concrete collected targets
-high-risk entries -> dedicated capability audit
-nessuna broad-category fallback automatica
-nessun target inesistente
-nessuna dipendenza da execution prompt o WIP authority
-```
+`M2-VER-32` deve includere sia i target precedenti sia quelli nuovi.
 
 ---
 
-# 6. S08-VRF-07 — Reviewer `ACCEPTED` coherence
+## 8. Focused verification
 
-## 6.1 Difetto
-
-La fase reviewer accetta attualmente:
+Esegui prima:
 
 ```text
-reviewer_decision = ACCEPTED
+nuovi package-relative import test
+intero S08-VRF-05
+S08 review-fix registry target
+real runtime/server/CLI Alembic audit
 ```
-
-senza verificare che il record rappresenti un final gate interamente passato.
-
-Un record reviewer `ACCEPTED` non può contenere evidenza fallita o bloccata, comandi falliti, finding aperti o SQLSTATE vietati.
-
-## 6.2 Fasi da preservare
-
-```text
-implementer
-    reviewer_decision deve essere null
-
-reviewer
-    reviewer_decision deve essere:
-        ACCEPTED
-        REVIEW CHANGES REQUIRED
-```
-
-## 6.3 Decisione `ACCEPTED`
-
-Richiedi esattamente:
-
-```text
-ogni M2-VER-01 ... M2-VER-32 == PASS
-ogni scenario canonico 83 / 83 == PASS
-ogni safety predicate 21 / 21 == PASS
-installed_t9 == PASS
-ogni command.exit_status == 0
-runtime_census.skipped == 0
-runtime_census.xfailed == 0
-runtime_census.rerun == 0
-runtime_census.supported_40p01 == 0
-runtime_census.unexpected_40001 == 0
-open_findings == ()
-```
-
-Mantieni tutte le validazioni già esistenti:
-
-```text
-locked_environment_confirmed
-build_confirmed
-schema table count 15
-one base/head/current revision 0001_m2_kernel
-compare_metadata == ()
-operation census 63 / 1 / 63 / 8 / 65
-valid hashes
-safe secret-free record
-```
-
-Una warning terza parte censita può essere non-zero; non introdurre arbitrariamente `warnings == 0`.
-
-## 6.4 Decisione `REVIEW CHANGES REQUIRED`
-
-Il record può contenere:
-
-```text
-FAIL
-BLOCKED
-command exit non-zero
-finding aperti
-SQLSTATE o gate non conformi
-```
-
-ma deve comunque rispettare:
-
-```text
-schema del record
-exact identifier sets
-valori non negativi
-safe serialization
-no secret / DB URL / DSN / userinfo
-finite reviewer-decision vocabulary
-```
-
-Non richiedere artificialmente che almeno un campo sia `FAIL`: il reviewer può avere un finding qualitativo non ancora materializzato in un test result.
-
-## 6.5 Regressioni obbligatorie
-
-Verifica che un record completo e coerente con `ACCEPTED` sia valido.
-
-Verifica separatamente che `ACCEPTED` venga rifiutato quando è presente:
-
-```text
-1. un evidence bundle FAIL
-2. uno scenario BLOCKED
-3. un predicate non PASS
-4. installed_t9 non PASS
-5. un command exit_status = 1
-6. open_findings non vuoto
-7. runtime skipped > 0
-8. runtime xfailed > 0
-9. runtime rerun > 0
-10. supported_40p01 > 0
-11. unexpected_40001 > 0
-```
-
-Per ciascuna mutazione verifica che lo stesso record con:
-
-```text
-reviewer_decision = REVIEW CHANGES REQUIRED
-```
-
-resti validabile nella fase reviewer.
-
-Mantieni le regressioni già presenti per:
-
-```text
-implementer che tenta di impostare reviewer_decision
-decisione fuori vocabolario
-HTTP/HTTPS endpoint senza userinfo ammesso
-PostgreSQL URL vietato
-DSN vietato
-HTTP/HTTPS userinfo vietato
-secret-bearing value vietato
-stable deterministic JSON
-```
-
----
-
-# 7. Traceability permanente del review-fix
-
-Crea o estendi:
-
-```text
-S08_REVIEW_FIX_TARGETS
-```
-
-Il registry deve contenere esattamente:
-
-```text
-S08-VRF-01
-S08-VRF-02
-S08-VRF-03
-S08-VRF-04
-S08-VRF-05
-S08-VRF-06
-S08-VRF-07
-```
-
-Preserva i target dei primi quattro finding e aggiungi target concreti per gli ultimi tre.
-
-Machine-check:
-
-```text
-exact seven-key census
-ogni finding ha target non vuoti
-ogni target esiste ed è raccolto
-S08-VRF-05 include import-time/module/class-body tests
-S08-VRF-06 include capability-audit e synthetic counterexamples
-S08-VRF-07 include acceptance-coherence tests
-```
-
-Aggiorna, quando necessario, la membership di:
-
-```text
-M2-VER-31
-M2-VER-32
-```
-
-senza rimuovere target precedentemente accettati.
-
-Entrambi devono restare:
-
-```text
-IMPLEMENTED
-non-empty
-concretely collected
-```
-
-## WIP lifecycle
-
-Il prompt S08 originale è superseded e deve essere assente:
-
-```text
-docs/milestones/M2/wip/M2-S08-codex-prompt.md
-```
-
-Il WIP census deve trattare soltanto questo review-fix prompt come execution aid attivo opzionale:
-
-```text
-docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
-```
-
-Il test deve passare:
-
-```text
-mentre il prompt è presente durante il review-fix
-dopo la futura rimozione reviewer-owned all’acceptance
-```
-
-Preserva esattamente i 19 documenti storici classificati e i due closure record permanenti.
-
----
-
-# 8. Verification
-
-Esegui prima i target focused dei tre finding.
 
 Registra:
 
 ```text
-selected targets
-unique targets
-parametrized pass count
-duration
+target selezionati
+target unici
+pass parametrizzati
+durata
 ```
 
-## 8.1 Quality e pre-flight
+Non usare retry automatici.
+
+Esegui quindi:
 
 ```text
 uv lock --check
@@ -774,59 +855,35 @@ uv run pyright
 uv run pytest --collect-only -q
 ```
 
-## 8.2 Focused review-fix
+---
+
+## 9. Integrated verification
+
+Esegui almeno:
 
 ```text
-tutti i target S08-VRF-05
-tutti i target S08-VRF-06
-tutti i target S08-VRF-07
-S08_REVIEW_FIX_TARGETS registry test
-prompt-present e prompt-absent WIP lifecycle tests
-PTY reverse-search target
-```
-
-## 8.3 S08 bundles e T10
-
-```text
+S08_REVIEW_FIX_TARGETS completo
 M2-VER-31 complete deduplicated union
 M2-VER-32 complete deduplicated union
 tutti i test S08/T10
 tests/test_m1_traceability.py
 tests/test_m2_s00_traceability.py
 tests/test_m2_traceability.py
+
 direct union dei 51 scenari consegnati
-```
 
-## 8.4 Previous-slice preservation
-
-```text
 S06 completo
 S07/T9 completo
-API/error/CLI equality group
+API/error/CLI group
 schema/Alembic positive and negative group
 runtime/schema-guard/Health group
-```
 
-## 8.5 Integrated
-
-```text
-PostgreSQL/concurrency suite completa
-non-PostgreSQL suite completa
+PostgreSQL/concurrency suite
+non-PostgreSQL suite
 repository suite completa
 ```
 
-Usa soltanto il `TEST_DATABASE_URL` esplicitamente fornito.
-
-Non usare:
-
-```text
-Docker
-Testcontainers
-SQLite
-hostname o credenziali inventati
-automatic retry per nascondere failure
-xdist su PostgreSQL interferente senza isolamento esistente
-```
+Usa esclusivamente il `TEST_DATABASE_URL` esterno già verificato.
 
 Gate obbligatori:
 
@@ -834,8 +891,8 @@ Gate obbligatori:
 skip / xfail / rerun             0 / 0 / 0
 supported-path 40P01             0
 unexpected 40001                 0
-negative-control SQLSTATE        exact finite expected census
-schema drift                     []
+negative-control SQLSTATE        exact expected census
+compare_metadata                 []
 new unexplained warnings         0
 ```
 
@@ -843,65 +900,115 @@ La deprecazione Starlette/FastAPI già censita può restare l’unica warning.
 
 ---
 
-# 9. Candidate publication
+## 10. Artifact invariance
+
+Poiché la correzione è test-only, verifica che l’artifact resti invariato:
+
+```text
+version               0.2.0
+wheel                  netauto-0.2.0-py3-none-any.whl
+wheel size             165978 byte
+wheel members          77
+wheel SHA-256          38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+
+runtime lock size      48238 byte
+runtime lock SHA-256   0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Se la wheel o il runtime lock cambiano, fermati e identifica il motivo. Una correzione test-only non deve alterare il prodotto distribuito.
+
+Rimuovi `dist/`, wheel, sdist e output temporanei dopo la verifica.
+
+---
+
+## 11. Candidate publication
 
 Se un gate obbligatorio fallisce:
 
 ```text
 mantieni M2-S08 IN PROGRESS
 mantieni M2-S09 BLOCKED
-correggi soltanto dentro il perimetro S08
-non consegnare un candidate
+non pubblicare un candidate
 ```
 
-Se tutti i gate passano:
+Se tutti i gate passano, usa preferibilmente due commit:
 
-1. aggiorna `status.md` a:
+```text
+test(m2): close S08 package-relative import audit
+
+docs(m2): publish relative-import corrected S08 candidate
+```
+
+Non usare:
+
+```text
+git add .
+git add -A
+git add --all
+```
+
+Stage soltanto i file autorizzati.
+
+Aggiorna `status.md` a:
 
 ```text
 M2-S08    CANDIDATE READY FOR REVIEW
 M2-S09    BLOCKED
 ```
 
-Non impostare mai `M2-S08 COMPLETED`.
-
-2. registra nello status:
+Non dichiarare:
 
 ```text
-starting ancestry
-review-fix commit
+M2-S08 COMPLETED
+M2-S09 iniziata
+M2 DELIVERED
+final acceptance
+```
+
+Registra nello status:
+
+```text
+starting ancestry c4cd4e6...
+reviewer reopen 620b301...
+implementation/test commit
 candidate evidence/status commit
-chiusura S08-VRF-05 / 06 / 07
+
+package metadata mechanism
+relative-import correction
+new S08-VRF-05 target census
 exact seven-finding registry
-VER-31 selected / unique / passed
-VER-32 selected / unique / passed
-S08/T10 e traceability
-51 delivered scenarios
+
+focused result
+M2-VER-31
+M2-VER-32
+S08/T10
+51 scenari
 S06
 S07/T9
 API/error/CLI
 schema/Alembic
+runtime/schema-guard/Health
 PostgreSQL/concurrency
 non-PostgreSQL
 full repository
+
 collection
-quality/build
-skip/xfail/rerun/warning/SQLSTATE censuses
-PostgreSQL version realmente osservata
+Ruff
+Pyright
+build
+skip/xfail/rerun
+warning
+SQLSTATE
+compare_metadata
+
+PostgreSQL version e database identity senza credenziali
 artifact hash invariato
-production/schema/API/CLI/dependency boundaries invariati
+production/API/CLI/schema/migration/dependency/lock invariati
 ```
 
-3. committa e pusha esclusivamente su `M2`.
+Pusha soltanto su `M2`.
 
-Separazione consigliata:
-
-```text
-test(m2): close remaining S08 verification findings
-docs(m2): publish final corrected S08 candidate evidence
-```
-
-4. verifica:
+Verifica:
 
 ```text
 HEAD == origin/M2 == remote M2
@@ -909,57 +1016,68 @@ ahead / behind == 0 / 0
 working tree pulito
 ```
 
-5. sull’esatto nuovo remote HEAD riesegui almeno:
+---
+
+## 12. Exact-remote post-push gate
+
+Sull’esatto nuovo remote HEAD riesegui almeno:
 
 ```text
-focused S08-VRF-05/06/07
+nuovi package-relative import test
+S08-VRF-05 completo
 S08_REVIEW_FIX_TARGETS
 M2-VER-31
 M2-VER-32
 S08/T10 + traceability
-51 delivered scenarios
+51 scenari consegnati
 S06 completo
-S07/T9
+S07/T9 completo
 API/error/CLI
 schema/Alembic
+runtime/schema-guard/Health
 PostgreSQL/concurrency
 non-PostgreSQL
 full repository
+Ruff format/lint
+Pyright
+collection
 ```
 
-Se qualunque post-push gate fallisce:
+Se qualunque gate post-push fallisce:
 
 ```text
-torna a M2-S08 IN PROGRESS
+riporta M2-S08 a IN PROGRESS
 mantieni M2-S09 BLOCKED
 non consegnare il candidate
 ```
 
-Non creare un candidate-specific record sotto `docs/milestones/M2/evidence/`; appartiene a S09.
+Un passaggio isolato successivo non sostituisce un gate exact-remote fallito.
 
 ---
 
-# 10. Final report
+## 13. Final report
 
 Riporta soltanto fatti verificati:
 
 ```text
 branch
-starting ancestry
+starting HEAD
 reviewer reopen ancestry
-review-fix commit
+implementation commit
 evidence/status commit
 final remote HEAD
 HEAD/origin/remote equality
 ahead/behind
 clean worktree
 
-files changed
-S08-VRF-05 closure
-S08-VRF-06 closure
-S08-VRF-07 closure
-exact S08_REVIEW_FIX_TARGETS census
+file modificati
+package metadata implementation
+relative-import semantics
+regressioni nuove
+S08-VRF-05 target finali
+seven-finding registry
 
+focused result
 VER-31 result
 VER-32 result
 S08/T10 result
@@ -975,12 +1093,12 @@ Ruff/Pyright/build
 skip/xfail/rerun
 warning census
 SQLSTATE census
-compare_metadata result
-PostgreSQL version osservata
+compare_metadata
 
-unchanged production/API/CLI/schema/migration/dependencies/locks
-absence of PR/Actions/tag/Release/artifact publication
-M2-S09 BLOCKED
+wheel e runtime-lock hash
+PostgreSQL version/database/probe
+confini invariati
+assenza di PR/Action/tag/Release/artifact publication
 ```
 
 L’unico handoff implementer ammesso è:
