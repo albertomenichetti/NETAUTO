@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S09 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S09 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S09 — IN PROGRESS
-current task    finalize the test-only acceptance harness and freeze one candidate SHA
-blockers        none; execution still requires the ratified Linux/Python toolchain and real TEST_DATABASE_URL
+current slice   M2-S09 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the exact candidate and durable evidence
+blockers        none; reviewer decision remains pending
 ```
 
 The M2 contract, architecture set and implementation decomposition remain `FINAL / FROZEN`.
@@ -31,7 +31,7 @@ Implementation work is authorized only for the exact slice marked `READY`, `IN P
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
 | Implementation | AUTHORIZED — `M2-S09` ONLY |
-| Final acceptance | IN PROGRESS — candidate gate not yet executed |
+| Final acceptance | CANDIDATE READY FOR REVIEW — reviewer decision pending |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
 
@@ -48,9 +48,79 @@ Implementation work is authorized only for the exact slice marked `READY`, `IN P
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
-| `M2-S09` | IN PROGRESS | `M2-S00 ... M2-S08 COMPLETED` |
+| `M2-S09` | CANDIDATE READY FOR REVIEW | `M2-S00 ... M2-S08 COMPLETED` |
 
-`M2-S00` through `M2-S08` are reviewer-owned `COMPLETED`. `M2-S09` is executing its test-only final acceptance harness; no candidate evidence has been published yet.
+`M2-S00` through `M2-S08` are reviewer-owned `COMPLETED`. `M2-S09` has published an implementer candidate; completion and acceptance remain reviewer-owned.
+
+## M2-S09 final acceptance candidate
+
+Candidate identity:
+
+```text
+starting reviewer-owned HEAD   98405300ffd009a96ba187c8e5fe6f93d489303e
+harness / candidate commit     b0546b1109c66a57195c50294291cb4a32ad48f2
+evidence/status publication    commit containing this record
+candidate evidence             docs/milestones/M2/evidence/candidate-b0546b1109c66a57195c50294291cb4a32ad48f2.json
+acceptance summary              docs/milestones/M2/acceptance.md
+reviewer_decision              null
+```
+
+The gate ran from a clean detached worktree at the exact candidate SHA. A
+second independent clean worktree produced identical build output.
+
+Candidate-run evidence:
+
+```text
+uv lock --check                PASS
+uv sync --locked               PASS
+build 1 / build 2              PASS / PASS
+Ruff format / lint             PASS / PASS
+Pyright strict                 PASS — 0 errors / 0 warnings
+collection                     868
+bundle union                   369 unique targets / 516 passed / 32 of 32 PASS
+scenario/predicate union       166 unique targets / 190 passed
+canonical scenarios            83 of 83 PASS
+safety predicates              21 of 21 PASS
+acceptance criteria            32 of 32 PASS
+outcomes                       16 of 16 covered
+traceability                   44 passed
+S06 / T8                       73 passed
+S07 / T9                       18 passed
+S08 / T10                      99 passed
+schema / Alembic               33 passed / compare_metadata []
+API / error / CLI              277 passed
+runtime / schema guard / Health 121 passed
+PostgreSQL / concurrency       254 passed / 614 deselected
+non-PostgreSQL                 614 passed / 254 deselected
+full repository                868 passed
+skip / xfail / rerun           0 / 0 / 0
+warning                        1 unchanged Starlette deprecation
+supported 40P01 / 40001        0 / 0
+negative controls              40P01 x1 / 40001 x2
+open findings                  0
+```
+
+Environment and artifact evidence:
+
+```text
+CPython / uv / Hatchling       3.14.7 / 0.12.3 / 1.32.0
+pytest / Ruff / Pyright        8.4.2 / 0.16.3 / 1.1.411
+Linux                          Ubuntu 24.04 / 6.8.0-134-generic / x86_64
+PostgreSQL                     16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+database identity              netautotest
+bounded SELECT 1               PASS
+release                        0.2.0
+wheel                          netauto-0.2.0-py3-none-any.whl
+wheel size / members           165978 bytes / 77
+wheel SHA-256                  38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size / packages   48238 bytes / 29
+runtime lock SHA-256           0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Production, public API, CLI, Health, schema, migration, dependency, version,
+`uv.lock`, runtime-lock, and artifact-content boundaries are unchanged. No PR,
+GitHub Action, tag, Release, artifact publication, AS-IS consolidation, merge,
+or M2 delivery action was performed.
 
 ## M2-S08 reviewer-owned completion
 
@@ -205,9 +275,9 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Complete and publish the test-only S09 harness commit, freeze that exact remote
-SHA, and execute the full candidate gate from its detached clean worktree using
-the active non-normative execution aid.
+Review the candidate record and exact-remote integrity evidence. The reviewer
+owns the finite decision, M2-S09 completion, and retirement of the active
+non-normative execution aid.
 
 The only implementer handoff permitted by S09 is:
 

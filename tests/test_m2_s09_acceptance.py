@@ -282,7 +282,18 @@ def test_s09_real_candidate_record_and_acceptance_follow_current_lifecycle() -> 
         capture_output=True,
         text=True,
     ).stdout.strip()
-    assert record.candidate_commit != head
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", record_path.relative_to(ROOT)],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if tracked.returncode == 0:
+        assert record.candidate_commit != head
+    else:
+        # The bounded pre-commit publication tree momentarily still points at the
+        # candidate HEAD. Once this record is tracked, the identities must differ.
+        assert record.candidate_commit == head
     candidate_acceptance = subprocess.run(
         [
             "git",
