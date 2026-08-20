@@ -3,6 +3,7 @@
 import ast
 import re
 import subprocess
+import tomllib
 from collections import deque
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,9 @@ from netauto.entrypoints.http import build_app
 from netauto.persistence.metadata import metadata
 from netauto.settings import Settings
 from tests.support.s08_static import (
+    ABSTRACT_NEGATIVE_CAPABILITY_IDS,
+    AlembicMutationFinding,
+    find_abstract_capability_findings,
     find_reachable_alembic_mutations,
     forbidden_deployment_assets,
 )
@@ -131,6 +135,14 @@ def test_negative_surface_mapping_is_entry_specific_and_semantically_owned() -> 
         "test_automatic_migration_analysis_follows_wrappers_and_allows_introspection"
         in M2_NEGATIVE_SURFACE_TO_TARGETS["alembic::automatic migration at startup"]
     )
+    capability_targets = {
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_abstract_negative_capability_audit_covers_real_repository_surfaces",
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_abstract_negative_capability_audit_detects_synthetic_counterexamples",
+    }
+    for identifier in ABSTRACT_NEGATIVE_CAPABILITY_IDS:
+        assert capability_targets <= M2_NEGATIVE_SURFACE_TO_TARGETS[identifier]
 
 
 def test_relationship_model_non_goals_and_finite_public_surface() -> None:
@@ -526,6 +538,168 @@ def test_automatic_migration_analysis_follows_wrappers_and_allows_introspection(
     )
 
 
+def _assert_import_time_finding(
+    findings: tuple[AlembicMutationFinding, ...],
+    *,
+    module: str,
+    owner_fragment: str,
+    target: str,
+) -> None:
+    matching = [
+        finding
+        for finding in findings
+        if finding.module == module
+        and owner_fragment in finding.function
+        and finding.target == target
+    ]
+    assert matching
+    for finding in matching:
+        assert isinstance(finding.line, int)
+        assert finding.line > 0
+        call_path = finding.call_path
+        assert isinstance(call_path, tuple)
+        assert 1 <= len(call_path) <= 8
+        assert call_path[-1] == finding.function
+
+
+def test_import_time_alembic_analysis_detects_direct_top_level_alias() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.runtime": (
+                "from alembic.command import upgrade as migrate\n"
+                "migrate(None, 'head')\n"
+            )
+        },
+        {"sample.runtime"},
+    )
+    _assert_import_time_finding(
+        findings,
+        module="sample.runtime",
+        owner_fragment="<module_init>",
+        target="alembic.command.upgrade",
+    )
+
+
+def test_import_time_alembic_analysis_detects_imported_module_side_effect() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.server": "import sample.adapter\n\ndef build_app():\n    pass\n",
+            "sample.adapter": (
+                "from alembic import command\ncommand.stamp(None, 'head')\n"
+            ),
+        },
+        {"sample.server"},
+    )
+    _assert_import_time_finding(
+        findings,
+        module="sample.adapter",
+        owner_fragment="<module_init>",
+        target="alembic.command.stamp",
+    )
+    assert any(
+        finding.call_path
+        == (
+            "sample.server.<module_init>",
+            "sample.adapter.<module_init>",
+        )
+        for finding in findings
+    )
+
+
+def test_import_time_alembic_analysis_detects_class_body_side_effect() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.runtime": (
+                "import alembic.command as command\n\n"
+                "class Runtime:\n"
+                "    state = command.downgrade(None, 'base')\n"
+            )
+        },
+        {"sample.runtime"},
+    )
+    _assert_import_time_finding(
+        findings,
+        module="sample.runtime",
+        owner_fragment="Runtime.<class_init>",
+        target="alembic.command.downgrade",
+    )
+
+
+def test_import_time_alembic_analysis_follows_local_helper() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.runtime": (
+                "from alembic import command\n\n"
+                "def apply():\n"
+                "    command.upgrade(None, 'head')\n\n"
+                "apply()\n"
+            )
+        },
+        {"sample.runtime"},
+    )
+    _assert_import_time_finding(
+        findings,
+        module="sample.runtime",
+        owner_fragment="sample.runtime.apply",
+        target="alembic.command.upgrade",
+    )
+    assert any(
+        finding.call_path
+        == (
+            "sample.runtime.<module_init>",
+            "sample.runtime.apply",
+        )
+        for finding in findings
+    )
+
+
+@pytest.mark.parametrize("definition_kind", ["decorator", "default"])
+def test_import_time_alembic_analysis_detects_definition_time_wrapper(
+    definition_kind: str,
+) -> None:
+    definition = (
+        "@apply\ndef configured():\n    pass\n"
+        if definition_kind == "decorator"
+        else "def configured(value=apply()):\n    pass\n"
+    )
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.runtime": ("from sample.adapter import apply\n\n" + definition),
+            "sample.adapter": (
+                "from alembic.command import merge as mutate\n\n"
+                "def apply(value=None):\n"
+                "    mutate(None, 'heads')\n"
+                "    return value\n"
+            ),
+        },
+        {"sample.runtime"},
+    )
+    _assert_import_time_finding(
+        findings,
+        module="sample.adapter",
+        owner_fragment="sample.adapter.apply",
+        target="alembic.command.merge",
+    )
+    assert any(
+        finding.call_path[0] == "sample.runtime.<module_init>"
+        and finding.call_path[-1] == "sample.adapter.apply"
+        for finding in findings
+    )
+
+
+def test_automatic_migration_analysis_preserves_lexical_import_scopes() -> None:
+    local_import_only = {
+        "sample.runtime": (
+            "def bind_local_alias():\n"
+            "    from alembic.command import revision as action\n"
+            "    return action\n\n"
+            "def harmless():\n"
+            "    action()\n"
+        )
+    }
+    assert find_reachable_alembic_mutations(local_import_only, {"sample.runtime"}) == ()
+
+
 def test_security_transport_and_secret_surfaces_remain_external() -> None:
     document, operations = _openapi_operations()
     assert "securitySchemes" not in repr(document)
@@ -568,6 +742,115 @@ def test_runtime_deployment_data_protection_and_performance_surfaces_are_absent(
     assert "gunicorn" not in pyproject.lower()
     assert "prometheus" not in pyproject.lower()
     assert "opentelemetry" not in pyproject.lower()
+
+
+def _repository_capability_inputs() -> tuple[set[str], set[str], set[str]]:
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    repository_files = {line for line in result.stdout.splitlines() if line}
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    raw_project = cast(dict[str, object], project["project"])
+    dependencies = {
+        str(item) for item in cast(list[object], raw_project.get("dependencies", []))
+    }
+    optional = cast(
+        dict[str, list[object]], raw_project.get("optional-dependencies", {})
+    )
+    dependencies.update(str(item) for group in optional.values() for item in group)
+    scripts = {
+        f"{name}={target}"
+        for name, target in cast(
+            dict[str, object], raw_project.get("scripts", {})
+        ).items()
+    }
+    return repository_files, dependencies, scripts
+
+
+def test_abstract_negative_capability_audit_covers_real_repository_surfaces() -> None:
+    repository_files, dependencies, scripts = _repository_capability_inputs()
+    assert len(ABSTRACT_NEGATIVE_CAPABILITY_IDS) == 11
+    assert (
+        find_abstract_capability_findings(
+            repository_files,
+            dependencies=dependencies,
+            scripts=scripts,
+        )
+        == ()
+    )
+
+
+def test_abstract_negative_capability_audit_detects_synthetic_counterexamples() -> None:
+    expected = {
+        "docs/operations/business-continuity.md": (
+            "data_protection::business-continuity SLA"
+        ),
+        "docs/operations/postgresql-replicas.md": (
+            "data_protection::PostgreSQL replica management"
+        ),
+        "docs/operations/pitr.md": (
+            "data_protection::point-in-time recovery procedure"
+        ),
+        "docs/deployment/multi-region.md": (
+            "deployment_platform::multi-region operation"
+        ),
+        "docs/deployment/high-availability.md": (
+            "deployment_platform::service discovery, clustering or high availability"
+        ),
+        "ops/nginx.conf": ("security_network::reverse-proxy or firewall automation"),
+        "ops/firewall-rules.nft": (
+            "security_network::reverse-proxy or firewall automation"
+        ),
+        "ops/vpn.conf": ("security_network::VPN or load-balancer configuration"),
+        "ops/postgresql-replica.conf": (
+            "data_protection::PostgreSQL replica management"
+        ),
+        "src/netauto/cluster.py": (
+            "deployment_platform::service discovery, clustering or high availability"
+        ),
+        "src/netauto/replication.py": (
+            "data_protection::PostgreSQL replica management"
+        ),
+        "src/netauto/backup.py": "data_protection::backup or restore automation",
+        ".circleci/config.yml": "deployment_platform::CI/CD deployment pipeline",
+        "dashboards/core.json": "observability::dashboards or alerting",
+        "grafana/datasources/netauto.yml": "observability::dashboards or alerting",
+        "fluent-bit.conf": "observability::central log shipping or rotation",
+    }
+    findings = find_abstract_capability_findings(expected)
+    observed = {(finding.value, finding.identifier) for finding in findings}
+    assert {
+        (path.lower(), identifier) for path, identifier in expected.items()
+    } <= observed
+
+    legacy_assets = {
+        "nested/container/Dockerfile.worker",
+        "nested/k8s/deployment.yaml",
+        "packaging/systemd/netauto.service",
+        "ops/recovery/backup.sh",
+        "ops/recovery/restore.sh",
+        ".github/workflows/release.yml",
+    }
+    assert forbidden_deployment_assets(legacy_assets) == frozenset(
+        path.lower() for path in legacy_assets
+    )
+
+
+def test_abstract_negative_capability_audit_allows_normative_and_test_surfaces() -> (
+    None
+):
+    safe_paths = {
+        "docs/milestones/M2/contract.md",
+        "docs/milestones/M2/architecture/runtime-deployment.md",
+        "docs/architecture/verification.md",
+        "src/netauto/runtime/schema_guard.py",
+        "tests/test_non_goals_describe_multi-region-backup-metrics.py",
+    }
+    assert find_abstract_capability_findings(safe_paths) == ()
 
 
 def test_deployment_asset_audit_checks_nested_paths_and_basenames() -> None:
@@ -660,7 +943,7 @@ def test_wip_provenance_is_complete_and_never_implementation_authority() -> None
         "steps-consistency-closure.md",
         "wip-extraction-closure.md",
     }
-    optional_active_execution_aids = {"M2-S08-codex-prompt.md"}
+    optional_active_execution_aids = {"M2-S08-review-fixes-codex-prompt.md"}
     permanent_wip_census = set(rows) | closure_records
     assert wip_files - optional_active_execution_aids == permanent_wip_census
     assert wip_files <= permanent_wip_census | optional_active_execution_aids
@@ -680,7 +963,7 @@ def test_wip_provenance_is_complete_and_never_implementation_authority() -> None
     allowed_context = re.compile(
         r"non-normative|historical|discovery|supersed|review record|audit record|"
         r"consistency closure|freeze approval|retir|captured for ratification|"
-        r"must\s+\W*not|execution aid",
+        r"must\s+\W*not|execution aid|corrective aid",
         re.IGNORECASE,
     )
     for path in normative:

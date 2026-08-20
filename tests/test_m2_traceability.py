@@ -711,6 +711,14 @@ _DEPLOYMENT = (
     "tests/test_m2_s08_negative_surface.py::"
     "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
 )
+_ABSTRACT_CAPABILITY_AUDIT = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_abstract_negative_capability_audit_covers_real_repository_surfaces"
+)
+_ABSTRACT_CAPABILITY_COUNTEREXAMPLES = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_abstract_negative_capability_audit_detects_synthetic_counterexamples"
+)
 _OBSERVABILITY = (
     "tests/test_m2_s08_negative_surface.py::"
     "test_observability_and_health_non_goals_are_absent"
@@ -867,10 +875,14 @@ M2_NEGATIVE_SURFACE_TO_TARGETS: dict[str, frozenset[str]] = {
         "tests/test_m2_s05_registry.py::test_s05_has_no_repl_or_insecure_option_surface",
     ),
     "security_network::reverse-proxy or firewall automation": _negative_targets(
-        _DEPLOYMENT
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
     ),
     "security_network::VPN or load-balancer configuration": _negative_targets(
-        _DEPLOYMENT
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
     ),
     "security_network::a separate Health listener": _negative_targets(
         "tests/test_health_api.py::test_health_is_the_only_operational_route",
@@ -886,8 +898,16 @@ M2_NEGATIVE_SURFACE_TO_TARGETS: dict[str, frozenset[str]] = {
     ),
     (
         "deployment_platform::service discovery, clustering or high availability"
-    ): _negative_targets(_DEPLOYMENT),
-    "deployment_platform::multi-region operation": _negative_targets(_DEPLOYMENT),
+    ): _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
+    "deployment_platform::multi-region operation": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
     (
         "deployment_platform::rolling, blue/green, canary or zero-downtime upgrade"
     ): _negative_targets(_DEPLOYMENT),
@@ -898,17 +918,37 @@ M2_NEGATIVE_SURFACE_TO_TARGETS: dict[str, frozenset[str]] = {
     "deployment_platform::artifact registry or transfer automation": _negative_targets(
         _DEPLOYMENT
     ),
-    "deployment_platform::CI/CD deployment pipeline": _negative_targets(_DEPLOYMENT),
+    "deployment_platform::CI/CD deployment pipeline": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
     "deployment_platform::automatic installation or upgrade": _negative_targets(
         "tests/test_m2_s07_linux.py::test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
         _DEPLOYMENT,
     ),
-    "data_protection::backup or restore automation": _negative_targets(_DEPLOYMENT),
-    "data_protection::point-in-time recovery procedure": _negative_targets(_DEPLOYMENT),
-    "data_protection::PostgreSQL replica management": _negative_targets(_DEPLOYMENT),
+    "data_protection::backup or restore automation": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
+    "data_protection::point-in-time recovery procedure": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
+    "data_protection::PostgreSQL replica management": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
     "data_protection::data-retention policy": _negative_targets(_DEPLOYMENT),
     "data_protection::disaster-recovery orchestration": _negative_targets(_DEPLOYMENT),
-    "data_protection::business-continuity SLA": _negative_targets(_DEPLOYMENT),
+    "data_protection::business-continuity SLA": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
     "observability::logging redesign or structured logging contract": _negative_targets(
         _OBSERVABILITY, _DEPLOYMENT
     ),
@@ -919,8 +959,16 @@ M2_NEGATIVE_SURFACE_TO_TARGETS: dict[str, frozenset[str]] = {
     "observability::metrics endpoint or Prometheus integration": _negative_targets(
         _OBSERVABILITY, _DEPLOYMENT
     ),
-    "observability::dashboards or alerting": _negative_targets(_DEPLOYMENT),
-    "observability::central log shipping or rotation": _negative_targets(_DEPLOYMENT),
+    "observability::dashboards or alerting": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
+    "observability::central log shipping or rotation": _negative_targets(
+        _DEPLOYMENT,
+        _ABSTRACT_CAPABILITY_AUDIT,
+        _ABSTRACT_CAPABILITY_COUNTEREXAMPLES,
+    ),
     "observability::compliance audit logs": _negative_targets(
         _OBSERVABILITY, _DEPLOYMENT
     ),
@@ -2712,6 +2760,13 @@ _S08_NEGATIVE_TARGETS = frozenset(
         "tests/test_m2_s08_negative_surface.py::test_negative_surface_mapping_is_entry_specific_and_semantically_owned",
         "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_resolves_import_aliases",
         "tests/test_m2_s08_negative_surface.py::test_deployment_asset_audit_checks_nested_paths_and_basenames",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_direct_top_level_alias",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_module_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_class_body_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_follows_local_helper",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_definition_time_wrapper",
+        "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_preserves_lexical_import_scopes",
+        "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_allows_normative_and_test_surfaces",
     }
 )
 _S08_EVIDENCE_TARGETS = frozenset(
@@ -2721,8 +2776,66 @@ _S08_EVIDENCE_TARGETS = frozenset(
         "tests/test_m2_s08_evidence.py::test_evidence_schema_allows_http_endpoints_without_userinfo",
         "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_identifier_shape_and_count_drift",
         "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_secrets_and_implementer_review_decision",
+        "tests/test_m2_s08_evidence.py::test_reviewer_accepted_requires_complete_all_pass_evidence",
+        "tests/test_m2_s08_evidence.py::test_reviewer_accepted_rejects_nonconforming_gate_but_changes_required_allows_it",
         "tests/test_m2_s08_evidence.py::test_evidence_documentation_matches_validator_and_reserves_s09_record",
     }
+)
+S08_REVIEW_FIX_TARGETS: dict[str, frozenset[str]] = {
+    "S08-VRF-01": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_wip_provenance_is_complete_and_never_implementation_authority"
+        }
+    ),
+    "S08-VRF-02": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_negative_surface_mapping_is_entry_specific_and_semantically_owned"
+        }
+    ),
+    "S08-VRF-03": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_resolves_import_aliases",
+            "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_follows_wrappers_and_allows_introspection",
+        }
+    ),
+    "S08-VRF-04": frozenset(
+        {
+            "tests/test_m2_s08_evidence.py::test_evidence_schema_accepts_finite_reviewer_phase_decisions",
+            "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_secrets_and_implementer_review_decision",
+        }
+    ),
+    "S08-VRF-05": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_direct_top_level_alias",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_module_side_effect",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_class_body_side_effect",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_follows_local_helper",
+            "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_definition_time_wrapper",
+            "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_preserves_lexical_import_scopes",
+            "tests/test_m2_s08_negative_surface.py::test_schema_alembic_and_automatic_migration_surfaces_are_exact",
+        }
+    ),
+    "S08-VRF-06": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_covers_real_repository_surfaces",
+            "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_detects_synthetic_counterexamples",
+            "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_allows_normative_and_test_surfaces",
+            "tests/test_m2_s08_negative_surface.py::test_negative_surface_mapping_is_entry_specific_and_semantically_owned",
+        }
+    ),
+    "S08-VRF-07": frozenset(
+        {
+            "tests/test_m2_s08_evidence.py::test_reviewer_accepted_requires_complete_all_pass_evidence",
+            "tests/test_m2_s08_evidence.py::test_reviewer_accepted_rejects_nonconforming_gate_but_changes_required_allows_it",
+        }
+    ),
+}
+_S08_REVIEW_FIX_REGISTRY_TARGET = (
+    "tests/test_m2_traceability.py::"
+    "test_s08_review_fix_registry_is_exact_resolvable_and_bundle_mapped"
+)
+_S08_REVIEW_FIX_TARGET_UNION = frozenset(
+    target for targets in S08_REVIEW_FIX_TARGETS.values() for target in targets
 )
 S08_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     "M2-VER-31": _S08_REGRESSION_TARGETS
@@ -2733,7 +2846,9 @@ S08_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     ),
     "M2-VER-32": _S08_TRACEABILITY_TARGETS
     | _S08_NEGATIVE_TARGETS
-    | _S08_EVIDENCE_TARGETS,
+    | _S08_EVIDENCE_TARGETS
+    | _S08_REVIEW_FIX_TARGET_UNION
+    | {_S08_REVIEW_FIX_REGISTRY_TARGET},
 }
 M2_EVIDENCE_TO_TARGETS = {
     bundle_id: EvidenceBundle(
@@ -3264,6 +3379,23 @@ def test_s07_primary_and_installed_support_registries_are_exact_and_resolvable()
         assert M2_EVIDENCE_TO_TARGETS[bundle_id].state == "IMPLEMENTED"
         assert M2_EVIDENCE_TO_TARGETS[bundle_id].targets
 
+    defined_s07_targets = {
+        f"{path.as_posix()}::{node.name}"
+        for path in sorted(Path("tests").glob("test_m2_s07_*.py"))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    mapped_s07_targets: frozenset[str] = frozenset(
+        target
+        for targets in (
+            *S07_PRIMARY_BUNDLE_TARGETS.values(),
+            *S07_INSTALLED_SUPPORT_TARGETS.values(),
+        )
+        for target in targets
+    )
+    assert defined_s07_targets <= mapped_s07_targets
+
 
 def test_s07_review_fix_registry_and_complete_bundle_membership() -> None:
     assert set(S07_REVIEW_FIX_TARGETS) == {"S07-RF-01", "S07-RF-02"}
@@ -3333,22 +3465,39 @@ def test_s07_review_fix_registry_and_complete_bundle_membership() -> None:
         assert M2_EVIDENCE_TO_TARGETS[bundle_id].state == "IMPLEMENTED"
         assert M2_EVIDENCE_TO_TARGETS[bundle_id].targets
 
-    defined_s07_targets = {
-        f"{path.as_posix()}::{node.name}"
-        for path in sorted(Path("tests").glob("test_m2_s07_*.py"))
-        for node in ast.parse(path.read_text()).body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test_")
+
+def test_s08_review_fix_registry_is_exact_resolvable_and_bundle_mapped() -> None:
+    assert set(S08_REVIEW_FIX_TARGETS) == {
+        "S08-VRF-01",
+        "S08-VRF-02",
+        "S08-VRF-03",
+        "S08-VRF-04",
+        "S08-VRF-05",
+        "S08-VRF-06",
+        "S08-VRF-07",
     }
-    mapped_s07_targets: frozenset[str] = frozenset(
-        target
-        for targets in (
-            *S07_PRIMARY_BUNDLE_TARGETS.values(),
-            *S07_INSTALLED_SUPPORT_TARGETS.values(),
-        )
-        for target in targets
+    assert all(S08_REVIEW_FIX_TARGETS.values())
+    for targets in S08_REVIEW_FIX_TARGETS.values():
+        for target in targets:
+            _assert_target_exists(target)
+
+    assert {
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_direct_top_level_alias",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_imported_module_side_effect",
+        "tests/test_m2_s08_negative_surface.py::test_import_time_alembic_analysis_detects_class_body_side_effect",
+    } <= S08_REVIEW_FIX_TARGETS["S08-VRF-05"]
+    assert {
+        "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_covers_real_repository_surfaces",
+        "tests/test_m2_s08_negative_surface.py::test_abstract_negative_capability_audit_detects_synthetic_counterexamples",
+    } <= S08_REVIEW_FIX_TARGETS["S08-VRF-06"]
+    assert {
+        "tests/test_m2_s08_evidence.py::test_reviewer_accepted_requires_complete_all_pass_evidence",
+        "tests/test_m2_s08_evidence.py::test_reviewer_accepted_rejects_nonconforming_gate_but_changes_required_allows_it",
+    } <= S08_REVIEW_FIX_TARGETS["S08-VRF-07"]
+    assert _S08_REVIEW_FIX_TARGET_UNION <= M2_EVIDENCE_TO_TARGETS["M2-VER-32"].targets
+    assert (
+        _S08_REVIEW_FIX_REGISTRY_TARGET in M2_EVIDENCE_TO_TARGETS["M2-VER-32"].targets
     )
-    assert defined_s07_targets <= mapped_s07_targets
 
 
 def test_s05_review_fix_registry_is_exact_and_resolvable() -> None:

@@ -204,6 +204,42 @@ def _validate_secret_free(value: object, path: str = "record") -> None:
             )
 
 
+def _validate_reviewer_acceptance(record: FinalEvidenceRecord) -> None:
+    """Require an internally all-pass record before reviewer acceptance."""
+    for ledger_name, ledger in (
+        ("evidence_bundles", record.evidence_bundles),
+        ("scenarios", record.scenarios),
+        ("predicates", record.predicates),
+    ):
+        _require(
+            all(state == "PASS" for state in ledger.values()),
+            f"reviewer ACCEPTED requires every {ledger_name} entry to PASS",
+        )
+    _require(
+        record.installed_t9 == "PASS",
+        "reviewer ACCEPTED requires installed_t9 to PASS",
+    )
+    _require(
+        all(command.exit_status == 0 for command in record.commands),
+        "reviewer ACCEPTED requires every command exit status to be zero",
+    )
+    for field_name in (
+        "skipped",
+        "xfailed",
+        "rerun",
+        "supported_40p01",
+        "unexpected_40001",
+    ):
+        _require(
+            getattr(record.runtime_census, field_name) == 0,
+            f"reviewer ACCEPTED requires runtime_census.{field_name} to be zero",
+        )
+    _require(
+        record.open_findings == (),
+        "reviewer ACCEPTED requires open_findings to be empty",
+    )
+
+
 def validate_evidence_record(
     record: FinalEvidenceRecord,
     expectations: EvidenceExpectations,
@@ -301,6 +337,8 @@ def validate_evidence_record(
             record.reviewer_decision in REVIEWER_DECISIONS,
             "reviewer phase requires one finite reviewer decision",
         )
+        if record.reviewer_decision == "ACCEPTED":
+            _validate_reviewer_acceptance(record)
     _validate_secret_free(asdict(record))
 
 

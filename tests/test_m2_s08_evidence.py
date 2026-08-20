@@ -88,6 +88,65 @@ def _record() -> FinalEvidenceRecord:
     )
 
 
+def _accepted_gate_counterexamples() -> tuple[tuple[str, FinalEvidenceRecord], ...]:
+    record = _record()
+    bundle = min(record.evidence_bundles)
+    scenario = min(record.scenarios)
+    predicate = min(record.predicates)
+    return (
+        (
+            "evidence-bundle-fail",
+            replace(
+                record,
+                evidence_bundles=record.evidence_bundles | {bundle: "FAIL"},
+            ),
+        ),
+        (
+            "scenario-blocked",
+            replace(record, scenarios=record.scenarios | {scenario: "BLOCKED"}),
+        ),
+        (
+            "predicate-fail",
+            replace(record, predicates=record.predicates | {predicate: "FAIL"}),
+        ),
+        ("installed-t9-blocked", replace(record, installed_t9="BLOCKED")),
+        (
+            "command-exit-one",
+            replace(
+                record,
+                commands=(replace(record.commands[0], exit_status=1),),
+            ),
+        ),
+        ("open-finding", replace(record, open_findings=("S08-VRF-07",))),
+        (
+            "runtime-skipped",
+            replace(record, runtime_census=replace(record.runtime_census, skipped=1)),
+        ),
+        (
+            "runtime-xfailed",
+            replace(record, runtime_census=replace(record.runtime_census, xfailed=1)),
+        ),
+        (
+            "runtime-rerun",
+            replace(record, runtime_census=replace(record.runtime_census, rerun=1)),
+        ),
+        (
+            "supported-40p01",
+            replace(
+                record,
+                runtime_census=replace(record.runtime_census, supported_40p01=1),
+            ),
+        ),
+        (
+            "unexpected-40001",
+            replace(
+                record,
+                runtime_census=replace(record.runtime_census, unexpected_40001=1),
+            ),
+        ),
+    )
+
+
 def test_evidence_schema_accepts_one_complete_stable_record() -> None:
     record = _record()
     validate_evidence_record(record, EXPECTATIONS)
@@ -111,6 +170,34 @@ def test_evidence_schema_accepts_finite_reviewer_phase_decisions() -> None:
         record = replace(_record(), reviewer_decision=decision)
         validate_evidence_record(record, EXPECTATIONS, phase="reviewer")
         assert f'"reviewer_decision":"{decision}"' in stable_evidence_json(record)
+
+
+def test_reviewer_accepted_requires_complete_all_pass_evidence() -> None:
+    accepted = replace(_record(), reviewer_decision="ACCEPTED")
+    validate_evidence_record(accepted, EXPECTATIONS, phase="reviewer")
+    assert accepted.runtime_census.warnings == 0
+
+
+@pytest.mark.parametrize(
+    ("case", "record"),
+    _accepted_gate_counterexamples(),
+    ids=[case for case, _ in _accepted_gate_counterexamples()],
+)
+def test_reviewer_accepted_rejects_nonconforming_gate_but_changes_required_allows_it(
+    case: str, record: FinalEvidenceRecord
+) -> None:
+    with pytest.raises(EvidenceValidationError, match="reviewer ACCEPTED"):
+        validate_evidence_record(
+            replace(record, reviewer_decision="ACCEPTED"),
+            EXPECTATIONS,
+            phase="reviewer",
+        )
+    validate_evidence_record(
+        replace(record, reviewer_decision="REVIEW CHANGES REQUIRED"),
+        EXPECTATIONS,
+        phase="reviewer",
+    )
+    assert case
 
 
 def test_evidence_schema_allows_http_endpoints_without_userinfo() -> None:

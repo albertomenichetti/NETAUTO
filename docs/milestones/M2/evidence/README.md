@@ -69,3 +69,12 @@ The `operations` object records the exact business HTTP, Health HTTP, remote CLI
 The record contains no database URL, DSN, URL userinfo, credential, password, token, private key, secret field, or secret-bearing value. HTTP and HTTPS endpoint values are permitted only when they contain no userinfo. Artifact hashes identify evidence without embedding artifacts or sensitive configuration.
 
 `reviewer_decision` is reserved for reviewer ownership. It remains null when validated in implementer phase and cannot be pre-populated as accepted, completed, delivered, or any equivalent decision. During reviewer-phase validation it must contain exactly one finite reviewer outcome: `ACCEPTED` or `REVIEW CHANGES REQUIRED`. The S09 implementer record reports evidence for inspection; it does not approve itself.
+
+Reviewer `ACCEPTED` is coherent only when every evidence bundle, canonical
+scenario and safety predicate is `PASS`, `installed_t9` is `PASS`, every command
+exit status is zero, skip/xfail/rerun and the supported-path `40P01` and
+unexpected `40001` censuses are zero, and `open_findings` is empty. The warning
+census may retain reviewed third-party warnings. `REVIEW CHANGES REQUIRED` may
+record failed or blocked evidence, non-zero command outcomes, SQLSTATE findings
+or qualitative findings while retaining the exact identifier sets, non-negative
+censuses, finite decision vocabulary and all secret-safety requirements.
