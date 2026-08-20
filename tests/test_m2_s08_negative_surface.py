@@ -320,13 +320,17 @@ def _module_path(module: str) -> Path | None:
     return None
 
 
-def _production_module_sources() -> dict[str, str]:
+def _production_module_inventory() -> tuple[dict[str, str], frozenset[str]]:
     sources: dict[str, str] = {}
+    packages: set[str] = set()
     for path in sorted((ROOT / "src/netauto").rglob("*.py")):
         relative = path.relative_to(ROOT / "src").with_suffix("")
         parts = relative.parts[:-1] if relative.name == "__init__" else relative.parts
-        sources[".".join(parts)] = path.read_text()
-    return sources
+        module = ".".join(parts)
+        sources[module] = path.read_text()
+        if path.name == "__init__.py":
+            packages.add(module)
+    return sources, frozenset(packages)
 
 
 def test_cli_operation_coverage_import_closure_and_negative_surface_are_exact() -> None:
@@ -450,7 +454,7 @@ def test_schema_alembic_and_automatic_migration_surfaces_are_exact() -> None:
     }
     assert assignments == {"revision": "0001_m2_kernel", "down_revision": None}
 
-    sources = _production_module_sources()
+    sources, package_modules = _production_module_inventory()
     execution_roots = {
         module
         for module in sources
@@ -463,7 +467,14 @@ def test_schema_alembic_and_automatic_migration_surfaces_are_exact() -> None:
     assert "netauto.entrypoints.http" in execution_roots
     assert "netauto.runtime.schema_guard" in execution_roots
     assert "netauto.cli.main" in execution_roots
-    assert find_reachable_alembic_mutations(sources, execution_roots) == ()
+    assert (
+        find_reachable_alembic_mutations(
+            sources,
+            execution_roots,
+            package_modules=package_modules,
+        )
+        == ()
+    )
 
 
 @pytest.mark.parametrize(
@@ -783,7 +794,8 @@ def test_import_time_alembic_analysis_does_not_invent_missing_package_initialize
 
 
 def test_real_netauto_root_initializer_chains_include_existing_parents() -> None:
-    module_names = frozenset(_production_module_sources())
+    sources, _ = _production_module_inventory()
+    module_names = frozenset(sources)
     assert existing_initializer_chain("netauto", module_names) == ("netauto",)
     assert existing_initializer_chain("netauto.entrypoints", module_names) == (
         "netauto",
@@ -802,6 +814,163 @@ def test_real_netauto_root_initializer_chains_include_existing_parents() -> None
         "netauto",
         "netauto.cli",
     )
+
+
+def test_import_time_alembic_analysis_resolves_relative_import_from_root_package() -> (
+    None
+):
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "from . import migrator\n",
+            "sample.entry": "SAFE = True\n",
+            "sample.migrator": (
+                "from alembic.command import upgrade\nupgrade(None, 'head')\n"
+            ),
+        },
+        {"sample.entry"},
+        package_modules={"sample"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "sample.migrator"
+    assert finding.function == "sample.migrator.<module_init>"
+    assert finding.target == "alembic.command.upgrade"
+    assert finding.line > 0
+    assert finding.call_path == (
+        "sample.<module_init>",
+        "sample.migrator.<module_init>",
+    )
+
+
+def test_import_time_alembic_analysis_resolves_parent_relative_import_from_nested_package() -> (  # noqa: E501
+    None
+):
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "SAFE = True\n",
+            "sample.api": "from .. import migrator\n",
+            "sample.api.http": "SAFE = True\n",
+            "sample.migrator": (
+                "from alembic.command import stamp\nstamp(None, 'head')\n"
+            ),
+        },
+        {"sample.api.http"},
+        package_modules={"sample", "sample.api"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "sample.migrator"
+    assert finding.function == "sample.migrator.<module_init>"
+    assert finding.target == "alembic.command.stamp"
+    assert finding.line > 0
+    assert finding.call_path == (
+        "sample.api.<module_init>",
+        "sample.migrator.<module_init>",
+    )
+
+
+def test_import_time_alembic_analysis_preserves_relative_import_from_ordinary_module() -> (  # noqa: E501
+    None
+):
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "SAFE = True\n",
+            "sample.api": "SAFE = True\n",
+            "sample.api.http": "from . import sibling\n",
+            "sample.api.sibling": (
+                "from alembic.command import downgrade\ndowngrade(None, 'base')\n"
+            ),
+        },
+        {"sample.api.http"},
+        package_modules={"sample", "sample.api"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "sample.api.sibling"
+    assert finding.function == "sample.api.sibling.<module_init>"
+    assert finding.target == "alembic.command.downgrade"
+    assert "sample.api.http.sibling.<module_init>" not in finding.call_path
+    assert "sample.sibling.<module_init>" not in finding.call_path
+
+
+def test_import_time_alembic_analysis_resolves_relative_wrapper_from_package() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "from .helper import migrate\nmigrate()\n",
+            "sample.helper": (
+                "from alembic import command\n\n"
+                "def migrate():\n"
+                "    command.merge(None, 'heads')\n"
+            ),
+        },
+        {"sample"},
+        package_modules={"sample"},
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.module == "sample.helper"
+    assert finding.function == "sample.helper.migrate"
+    assert finding.target == "alembic.command.merge"
+    assert finding.call_path == (
+        "sample.<module_init>",
+        "sample.helper.migrate",
+    )
+
+
+def test_import_time_alembic_analysis_does_not_invent_top_level_import_beyond_package() -> (  # noqa: E501
+    None
+):
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": "from .. import migrator\n",
+            "sample.entry": "SAFE = True\n",
+            "migrator": ("from alembic.command import revision\nrevision(None)\n"),
+        },
+        {"sample.entry"},
+        package_modules={"sample"},
+    )
+    assert findings == ()
+
+
+def test_import_time_alembic_analysis_accepts_safe_package_relative_imports() -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample": (
+                "from . import sibling\nfrom .submodule import helper\nhelper()\n"
+            ),
+            "sample.api": "from .. import sibling\n",
+            "sample.api.http": "SAFE = True\n",
+            "sample.sibling": "SAFE = True\n",
+            "sample.submodule": "def helper():\n    return None\n",
+        },
+        {"sample.api.http"},
+        package_modules={"sample", "sample.api"},
+    )
+    assert findings == ()
+
+
+def test_import_time_alembic_analysis_rejects_unknown_package_metadata() -> None:
+    with pytest.raises(ValueError, match="unknown package modules"):
+        find_reachable_alembic_mutations(
+            {"sample.entry": "SAFE = True\n"},
+            {"sample.entry"},
+            package_modules={"sample"},
+        )
+
+
+def test_real_netauto_inventory_marks_exact_package_initializers() -> None:
+    sources, package_modules = _production_module_inventory()
+    assert package_modules <= sources.keys()
+    assert {
+        "netauto",
+        "netauto.entrypoints",
+        "netauto.cli",
+        "netauto.runtime",
+    } <= package_modules
+    assert "netauto.entrypoints.http" in sources
+    assert "netauto.entrypoints.http" not in package_modules
+    assert "netauto.cli.repl" in sources
+    assert "netauto.cli.repl" not in package_modules
 
 
 def test_security_transport_and_secret_surfaces_remain_external() -> None:

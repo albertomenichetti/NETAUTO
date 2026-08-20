@@ -356,12 +356,20 @@ def _nested_scope_statements(statements: Iterable[ast.stmt]) -> Iterable[ast.stm
                 yield from _nested_scope_statements(case.body)
 
 
-def _absolute_import(module: str, imported: str | None, level: int) -> str:
+def _absolute_import(
+    module: str,
+    imported: str | None,
+    level: int,
+    *,
+    is_package: bool,
+) -> str | None:
     if level == 0:
         return imported or ""
-    package = module.split(".")[:-1]
-    keep = max(0, len(package) - level + 1)
-    prefix = package[:keep]
+    package = module.split(".") if is_package else module.split(".")[:-1]
+    parents_to_remove = level - 1
+    if parents_to_remove >= len(package):
+        return None
+    prefix = package[: len(package) - parents_to_remove]
     if imported:
         prefix.extend(imported.split("."))
     return ".".join(prefix)
@@ -392,7 +400,9 @@ def _diagnostic_path_rank(path: tuple[str, ...]) -> tuple[bool, int, tuple[str, 
 
 
 def _scoped_import_aliases(
-    statements: Iterable[ast.stmt], module: str
+    statements: Iterable[ast.stmt],
+    module: str,
+    package_modules: frozenset[str],
 ) -> dict[str, str]:
     aliases: dict[str, str] = {}
     for node in _nested_scope_statements(statements):
@@ -401,7 +411,14 @@ def _scoped_import_aliases(
                 bound = alias.asname or alias.name.split(".", 1)[0]
                 aliases[bound] = alias.name if alias.asname else bound
         elif isinstance(node, ast.ImportFrom):
-            owner = _absolute_import(module, node.module, node.level)
+            owner = _absolute_import(
+                module,
+                node.module,
+                node.level,
+                is_package=module in package_modules,
+            )
+            if owner is None:
+                continue
             for alias in node.names:
                 if alias.name == "*":
                     continue
@@ -420,7 +437,10 @@ def _scoped_definitions(statements: Iterable[ast.stmt], prefix: str) -> dict[str
 
 
 def _functions_and_classes(
-    module: str, tree: ast.Module, module_aliases: Mapping[str, str]
+    module: str,
+    tree: ast.Module,
+    module_aliases: Mapping[str, str],
+    package_modules: frozenset[str],
 ) -> tuple[tuple[_FunctionInfo, ...], tuple[_ClassInfo, ...]]:
     functions: list[_FunctionInfo] = []
     classes: list[_ClassInfo] = []
@@ -432,7 +452,7 @@ def _functions_and_classes(
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
             key = ".".join((module, *self.owners, node.name))
             aliases = dict(module_aliases)
-            aliases.update(_scoped_import_aliases(node.body, module))
+            aliases.update(_scoped_import_aliases(node.body, module, package_modules))
             aliases.update(_scoped_definitions(node.body, key))
             classes.append(_ClassInfo(key, module, node, aliases))
             self.owners.append(node.name)
@@ -442,7 +462,7 @@ def _functions_and_classes(
         def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             key = ".".join((module, *self.owners, node.name))
             aliases = dict(module_aliases)
-            aliases.update(_scoped_import_aliases(node.body, module))
+            aliases.update(_scoped_import_aliases(node.body, module, package_modules))
             aliases.update(_scoped_definitions(node.body, key))
             functions.append(_FunctionInfo(key, module, node, aliases))
             self.owners.append(node.name)
@@ -456,11 +476,13 @@ def _functions_and_classes(
     return tuple(functions), tuple(classes)
 
 
-def _module_info(name: str, source: str) -> _ModuleInfo:
+def _module_info(
+    name: str, source: str, package_modules: frozenset[str]
+) -> _ModuleInfo:
     tree = ast.parse(source, filename=f"{name.replace('.', '/')}.py")
-    aliases = _scoped_import_aliases(tree.body, name)
+    aliases = _scoped_import_aliases(tree.body, name, package_modules)
     aliases.update(_scoped_definitions(tree.body, name))
-    functions, classes = _functions_and_classes(name, tree, aliases)
+    functions, classes = _functions_and_classes(name, tree, aliases, package_modules)
     return _ModuleInfo(name, tree, aliases, functions, classes)
 
 
@@ -483,6 +505,7 @@ class _ExecutionScanner(ast.NodeVisitor):
         module: str,
         aliases: Mapping[str, str],
         module_names: frozenset[str],
+        package_modules: frozenset[str],
         function_keys: frozenset[str],
         class_keys: Mapping[int, str],
     ) -> None:
@@ -490,12 +513,15 @@ class _ExecutionScanner(ast.NodeVisitor):
         self.module = module
         self.aliases = aliases
         self.module_names = module_names
+        self.package_modules = package_modules
         self.function_keys = function_keys
         self.class_keys = class_keys
         self.direct: list[tuple[int, str]] = []
         self.edges: set[str] = set()
 
-    def _import_edge(self, candidate: str) -> None:
+    def _import_edge(self, candidate: str | None) -> None:
+        if candidate is None:
+            return
         self.edges.update(
             f"{module}.<module_init>"
             for module in existing_initializer_chain(candidate, self.module_names)
@@ -506,7 +532,14 @@ class _ExecutionScanner(ast.NodeVisitor):
             self._import_edge(alias.name)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        owner = _absolute_import(self.module, node.module, node.level)
+        owner = _absolute_import(
+            self.module,
+            node.module,
+            node.level,
+            is_package=self.module in self.package_modules,
+        )
+        if owner is None:
+            return
         self._import_edge(owner)
         for alias in node.names:
             self._import_edge(".".join(part for part in (owner, alias.name) if part))
@@ -563,11 +596,19 @@ class _ExecutionScanner(ast.NodeVisitor):
 
 
 def find_reachable_alembic_mutations(
-    module_sources: Mapping[str, str], root_modules: Iterable[str]
+    module_sources: Mapping[str, str],
+    root_modules: Iterable[str],
+    *,
+    package_modules: Iterable[str] = (),
 ) -> tuple[AlembicMutationFinding, ...]:
     """Find Alembic mutations in import and ordinary runtime call closure."""
+    packages = frozenset(package_modules)
+    unknown_packages = packages - set(module_sources)
+    if unknown_packages:
+        raise ValueError(f"unknown package modules: {sorted(unknown_packages)!r}")
     infos = {
-        name: _module_info(name, source) for name, source in module_sources.items()
+        name: _module_info(name, source, packages)
+        for name, source in module_sources.items()
     }
     roots = frozenset(root_modules)
     unknown_roots = roots - set(infos)
@@ -612,6 +653,7 @@ def find_reachable_alembic_mutations(
             module=module,
             aliases=aliases,
             module_names=module_names,
+            package_modules=packages,
             function_keys=function_keys,
             class_keys=class_keys,
         )
