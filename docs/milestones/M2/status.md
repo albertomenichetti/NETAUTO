@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 READY
+**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — READY
-current task    prepare the M2-S08 Codex implementation prompt and execute the authorized slice
-blockers        none
+current slice   M2-S08 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published M2-S08 candidate
+blockers        M2-S09 remains blocked on reviewer-owned M2-S08 completion
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,18 +47,118 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | READY | `M2-S07 COMPLETED` |
+| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology, infrastructure or verification blocker is open for starting `M2-S08`.
+No contract, architecture, implementation-planning, technology, infrastructure or verification blocker is open in the M2-S08 candidate. Reviewer inspection is pending.
 
 `M2-S08` is limited to integrated regression, complete machine-checkable traceability, the M2 delta allowlist and positive/negative surface closure. It must preserve the completed kernel, runtime, Health, CLI and installed-release capabilities. It must not begin `M2-S09` final acceptance before reviewer-owned completion of S08.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
+
+## M2-S08 candidate record
+
+Candidate state:
+
+```text
+M2-S08                         CANDIDATE READY FOR REVIEW
+starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
+starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
+implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
+candidate evidence/status      recorded by the commit containing this status
+M2-S09                         BLOCKED / not started
+review decision                pending / reviewer-owned
+```
+
+### Closed S08 obligations
+
+The singular registry in `tests/test_m2_traceability.py` now owns and machine-checks:
+
+```text
+M2 outcomes                    16 / 16
+M2 acceptance criteria         32 / 32
+M2 evidence bundles            32 / 32, all IMPLEMENTED and non-empty
+canonical scenarios            83 / 83
+safety predicates              21 / 21
+business HTTP operations       63 / 63 CLI remote mappings
+primary bundle owners          32 / 32 across M2-S01 ... M2-S08
+preserved AS-IS guarantees     18 / 18 with concrete collected targets
+contract/verification negatives 131 / 131 with concrete assertion ownership
+contract quality gates         10 / 10 with concrete collected targets
+```
+
+The permanent graph includes exact architecture-owner and inverse maps, capability portfolio/trace, delivered-scenario retention, the seven authorized scenario deltas, high-level/public-wire/schema-runtime delta allowlists, WIP provenance, normative-placeholder policy and exact positive/negative API, CLI, schema, Alembic, runtime and trust surfaces.
+
+S08 adds only test/evidence-format material. Production code, application behavior, public API/CLI registries, SQLAlchemy metadata, migration DDL, dependencies, `uv.lock` and the embedded runtime lock are unchanged.
+
+### Evidence-record schema
+
+`docs/milestones/M2/evidence/README.md` and `tests/support/m2_evidence.py` define and validate the future S09 record shape. Validation requires exact 32-bundle, 83-scenario and 21-predicate ledgers; candidate/artifact hashes; command and runtime censuses; schema/Alembic, operation and T9 facts; stable serialization; secret exclusion; and a null reviewer-owned decision.
+
+No candidate-specific evidence record and no `acceptance.md` were created. S09 remains the owner of candidate-record population and final acceptance evidence.
+
+### Pre-publication verification
+
+Quality and collection:
+
+```text
+uv lock --check                PASS — 46 packages resolved
+uv sync --locked               PASS — 44 packages checked
+uv build                       PASS — sdist and wheel
+Ruff format / lint             PASS — 235 files / no findings
+Pyright strict                 PASS — 0 errors / 0 warnings
+pytest collection              816 tests
+```
+
+Focused, traceability and exact inventories:
+
+```text
+focused S08 + M1/S00 trace     60 passed — 26.94 s
+M2-VER-31 selected/unique/pass 31 / 31 / 39 parametrized — 22.35 s
+M2-VER-32 selected/unique/pass 23 / 23 / 27 parametrized — 14.70 s
+51 delivered scenarios         51 IDs / 91 unique targets / 95 passed — 59.89 s
+all S05                        126 passed — 19.15 s
+all S06                         72 passed — 4.83 s
+all S07/T9                      18 passed — 40.86 s
+schema/migration/runtime/Health 106 passed — 10.48 s
+delivered regression           396 passed — 108.31 s
+complete M2                    420 passed — 155.00 s
+```
+
+Integrated gates against the externally supplied real PostgreSQL target:
+
+```text
+PostgreSQL suite               254 passed / 562 deselected — 199.02 s
+non-PostgreSQL suite           562 passed / 254 deselected — 79.79 s
+complete repository            816 passed — 268.69 s final status-inclusive rerun
+skip / xfail / rerun           0 / 0 / 0
+warnings                       1 unchanged third-party Starlette deprecation
+supported 40P01 / 40001        0 / 0
+negative-control 40P01 / 40001 1 / 2, expected finite census
+schema drift                   []
+```
+
+Candidate artifact and environment reused from the unchanged S07 release boundary:
+
+```text
+release                         0.2.0
+wheel                           netauto-0.2.0-py3-none-any.whl
+wheel size / members            165978 bytes / 77
+wheel SHA-256                   38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock                    src/netauto/release/runtime.pylock.toml
+runtime lock size               48238 bytes
+runtime packages                29 total / 27 applicable on Linux CPython
+runtime lock SHA-256            0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+CPython / uv / Hatchling        3.14.7 / 0.12.3 / 1.32.0
+PostgreSQL                      16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+Linux                           Ubuntu 24.04.4 LTS / kernel 6.8.0-134-generic
+```
+
+No PR, GitHub Actions workflow, tag, GitHub Release or artifact publication is part of this candidate. M2-S08 is not `COMPLETED`, M2-S09 has not started and no final milestone acceptance is claimed.
 
 ## M2-S07 final completion record
 
@@ -282,7 +382,7 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Prepare and execute the implementation prompt for:
+Review the published candidate for:
 
 ```text
 M2-S08 — Integrated regression, traceability and negative-surface closure
