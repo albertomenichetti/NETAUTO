@@ -46,25 +46,44 @@ Build from the selected, clean source revision:
 ```bash
 uv sync --locked
 uv export --frozen --no-dev --no-emit-project \
-  --format pylock.toml --output-file pylock.runtime.toml
-cmp pylock.runtime.toml src/netauto/release/runtime.pylock.toml
+  --format pylock.toml \
+  --output-file src/netauto/release/pylock.runtime.toml
+cmp src/netauto/release/pylock.runtime.toml \
+  src/netauto/release/runtime.pylock.toml
+rm src/netauto/release/pylock.runtime.toml
 uv build --wheel
 unzip -l dist/netauto-0.2.0-py3-none-any.whl
 ```
 
 `uv` versions that enforce PEP 751 output basenames require a temporary name such
-as `pylock.runtime.toml`; equality is checked against the canonical embedded
-`runtime.pylock.toml`. A generated-lock difference is a build failure, not an
-operator-editing step.
+as the exact relative path `src/netauto/release/pylock.runtime.toml`. Permanent
+evidence regenerates with that same relative output path, so uv's generated
+command header is byte-identical to the canonical embedded
+`src/netauto/release/runtime.pylock.toml`. A generated-lock difference is a build
+failure, not an operator-editing step.
 
-Transfer only the wheel to a staging location on the target. Then, as the
-dedicated account, create the versioned target and install without a Git checkout,
-editable install, target `pyproject.toml`, or development dependencies:
+Transfer only the wheel to a staging location on the target. A privileged
+administrator performs the one-time root creation and hands ownership to the
+already-created dedicated account; substitute the administered account and group
+names before executing:
+
+```bash
+NETAUTO_USER=netauto
+NETAUTO_GROUP=netauto
+sudo install -d -o "$NETAUTO_USER" -g "$NETAUTO_GROUP" -m 0755 /opt/netauto
+sudo -u "$NETAUTO_USER" install -d -m 0755 /opt/netauto/releases
+sudo -u "$NETAUTO_USER" install -d -m 0700 /opt/netauto/secrets
+```
+
+All subsequent target commands run as that dedicated account. Create the
+versioned target and install without a Git checkout, editable install, target
+`pyproject.toml`, or development dependencies:
 
 ```bash
 install -d /opt/netauto/releases/0.2.0
 uv venv --python 3.14 /opt/netauto/releases/0.2.0/.venv
-python3.14 - /staging/netauto-0.2.0-py3-none-any.whl \
+/opt/netauto/releases/0.2.0/.venv/bin/python - \
+  /staging/netauto-0.2.0-py3-none-any.whl \
   /opt/netauto/releases/0.2.0/runtime.pylock.toml <<'PY'
 from pathlib import Path
 from zipfile import ZipFile
@@ -121,7 +140,7 @@ The dedicated NETAUTO user must own the secret directory and file. Apply mode
 `0700` to the directory and `0600` to `NETAUTO_DATABASE_URL`:
 
 ```bash
-install -d -m 0700 /opt/netauto/secrets
+chmod 0700 /opt/netauto/secrets
 install -m 0600 /dev/null /opt/netauto/secrets/NETAUTO_DATABASE_URL
 ```
 
@@ -154,6 +173,19 @@ procedure.
 If explicit migration fails, do not start the server or stamp around the failure.
 Inspect the bounded Alembic diagnostic, correct the target/configuration, recreate
 the first-baseline database when needed, and rerun the explicit command.
+
+Only after installation verification and a successful explicit migration, select
+the release atomically as the operator-owned `current` convenience symlink:
+
+```bash
+ln -s releases/0.2.0 /opt/netauto/.current-0.2.0
+mv -T /opt/netauto/.current-0.2.0 /opt/netauto/current
+test "$(readlink /opt/netauto/current)" = "releases/0.2.0"
+```
+
+Replacing the temporary symlink with `mv -T` makes selection atomic on the same
+filesystem. The symlink remains a convenience only; installed distribution
+metadata and the installed migration graph remain release/schema authority.
 
 ## Foreground start
 

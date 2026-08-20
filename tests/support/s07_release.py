@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import select
+import signal
 import socket
 import subprocess
 import sys
@@ -279,7 +280,14 @@ def terminate_orderly(
             "foreground process did not stop after SIGTERM: "
             + sanitize(stdout + stderr, secrets)
         ) from None
-    assert process.returncode == 0, sanitize(stdout + stderr, secrets)
+    combined = stdout + stderr
+    assert process.returncode == -signal.SIGTERM, sanitize(combined, secrets)
+    for marker in (
+        "NETAUTO process stopping",
+        "Application shutdown complete.",
+        "Finished server process",
+    ):
+        assert marker in combined, sanitize(combined, secrets)
     return stdout, stderr
 
 
@@ -291,20 +299,19 @@ class PtyProcess:
 
     def read_until(self, needle: bytes, timeout: float = 10.0) -> bytes:
         deadline = time.monotonic() + timeout
-        output = bytearray()
+        assert needle, "PTY sentinel must not be empty"
         while True:
             marker = self.pending.find(needle)
             if marker >= 0:
                 end = marker + len(needle)
-                output.extend(self.pending[:end])
+                output = bytes(self.pending[:end])
                 del self.pending[:end]
-                return bytes(output)
-            output.extend(self.pending)
-            self.pending.clear()
+                return output
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AssertionError(
-                    f"PTY output did not contain {needle!r}: {bytes(output)[-2000:]!r}"
+                    "PTY output did not contain "
+                    f"{needle!r}: {bytes(self.pending)[-2000:]!r}"
                 )
             readable, _, _ = select.select([self.master], [], [], remaining)
             if not readable:
@@ -318,7 +325,9 @@ class PtyProcess:
             if not chunk:
                 break
             self.pending.extend(chunk)
-        raise AssertionError(f"PTY closed before {needle!r}: {bytes(output)[-2000:]!r}")
+        raise AssertionError(
+            f"PTY closed before {needle!r}: {bytes(self.pending)[-2000:]!r}"
+        )
 
     def write(self, value: bytes) -> None:
         os.write(self.master, value)

@@ -126,7 +126,7 @@ def test_installed_alembic_explicitly_realizes_exact_schema_without_cli_cross_ac
     secrets_dir = write_secret_directory(tmp_path, database_url)
     assert (secrets_dir.stat().st_mode & 0o777) == 0o700
     assert ((secrets_dir / "NETAUTO_DATABASE_URL").stat().st_mode & 0o777) == 0o600
-    engine = create_engine(database_url)
+    engine = create_engine(test_database_url)
     try:
         downgraded = installed_alembic(s07_release, secrets_dir, "downgrade", "base")
         require_success(downgraded, secrets=(database_url, sentinel))

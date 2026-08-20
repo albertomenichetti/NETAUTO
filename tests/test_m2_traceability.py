@@ -1432,6 +1432,8 @@ S07_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     "M2-VER-24": frozenset(
         {
             "tests/test_m2_s07_distribution.py::"
+            "test_pty_read_until_preserves_split_needle_and_exact_tail",
+            "tests/test_m2_s07_distribution.py::"
             "test_candidate_wheel_has_exact_version_content_entrypoint_and_exclusions",
             "tests/test_m2_s07_distribution.py::"
             "test_committed_runtime_lock_is_exact_runtime_only_regenerated_export",

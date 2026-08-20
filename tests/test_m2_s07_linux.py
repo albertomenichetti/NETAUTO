@@ -115,6 +115,14 @@ def test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility() -
         "CPython 3.14.x",
         "uv pip sync",
         "--no-deps",
+        "--output-file src/netauto/release/pylock.runtime.toml",
+        "cmp src/netauto/release/pylock.runtime.toml",
+        'sudo install -d -o "$NETAUTO_USER" -g "$NETAUTO_GROUP" -m 0755 /opt/netauto',
+        'sudo -u "$NETAUTO_USER" install -d -m 0755 /opt/netauto/releases',
+        "/opt/netauto/releases/0.2.0/.venv/bin/python -",
+        "ln -s releases/0.2.0 /opt/netauto/.current-0.2.0",
+        "mv -T /opt/netauto/.current-0.2.0 /opt/netauto/current",
+        'test "$(readlink /opt/netauto/current)" = "releases/0.2.0"',
         "script_location = netauto:migrations",
         "path_separator = os",
         "NETAUTO_SECRETS_DIR=/opt/netauto/secrets",
@@ -138,6 +146,7 @@ def test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility() -
     assert "sqlalchemy.url =" not in document
     assert "postgresql+psycopg://" not in document
     assert "NETAUTO_DATABASE_URL=" not in document
+    assert "python3.14 -" not in document
     assert "--host 0.0.0.0" not in document
     assert "--insecure" not in document
     assert "verify=false" not in document.lower()
@@ -145,6 +154,12 @@ def test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility() -
     assert "docker run" not in document.lower()
     assert "systemctl" not in document.lower()
     assert "netauto migrate" not in document.lower()
+    assert document.index("upgrade head") < document.index(
+        "ln -s releases/0.2.0 /opt/netauto/.current-0.2.0"
+    )
+    assert document.index("mv -T /opt/netauto/.current-0.2.0") < document.index(
+        "## Foreground start"
+    )
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="T9 PTY evidence is Linux-owned")
@@ -212,7 +227,7 @@ def test_installed_server_migration_start_health_cli_stop_restart_and_mismatch(
     database_url = _sentinel_url(test_database_url, sentinel)
     secrets_dir = write_secret_directory(tmp_path, database_url)
     observer = create_engine(test_database_url)
-    revision_engine = create_engine(database_url)
+    revision_engine = create_engine(test_database_url)
     active: subprocess.Popen[str] | None = None
     try:
         down = installed_alembic(s07_release, secrets_dir, "downgrade", "base")

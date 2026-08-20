@@ -13,6 +13,7 @@ import tomllib
 import zipfile
 from pathlib import Path
 from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,6 +23,7 @@ from tests.support.s07_release import (
     ROOT,
     WHEEL_BASENAME,
     InstalledRelease,
+    PtyProcess,
     applicable_locked_packages,
     isolated_environment,
     require_success,
@@ -40,6 +42,27 @@ DEV_ONLY = frozenset(
         "ruff",
     }
 )
+
+
+def test_pty_read_until_preserves_split_needle_and_exact_tail() -> None:
+    process = cast(subprocess.Popen[bytes], MagicMock(spec=subprocess.Popen))
+    pty = PtyProcess(process, 123)
+    with (
+        patch(
+            "tests.support.s07_release.select.select",
+            side_effect=[([123], [], []), ([123], [], [])],
+        ),
+        patch(
+            "tests.support.s07_release.os.read",
+            side_effect=[b"netau", b"to>tail"],
+        ) as read,
+    ):
+        assert pty.read_until(b"netauto>") == b"netauto>"
+
+    assert read.call_count == 2
+    assert bytes(pty.pending) == b"tail"
+    assert pty.read_until(b"tail") == b"tail"
+    assert pty.pending == bytearray()
 
 
 def test_candidate_wheel_has_exact_version_content_entrypoint_and_exclusions(
