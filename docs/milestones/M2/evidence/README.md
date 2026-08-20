@@ -2,7 +2,7 @@
 
 This directory contains non-normative evidence-format guidance beneath the frozen M2 verification architecture. It does not add product, architecture, or acceptance semantics.
 
-M2-S08 defines and tests the finite record shape only. S08 does not create or populate a candidate-specific evidence record. M2-S09 owns creation of that record for one exact candidate commit and the reviewer owns the final `reviewer_decision`. An implementer must leave that field null.
+M2-S08 defines and tests the finite record shape only. S08 does not create or populate a candidate-specific evidence record. M2-S09 owns creation of that record for one exact candidate commit and the reviewer owns the final `reviewer_decision`. Validation has two explicit phases: the implementer phase requires that field to remain null; the reviewer phase requires exactly `ACCEPTED` or `REVIEW CHANGES REQUIRED`.
 
 ## Representation
 
@@ -66,6 +66,6 @@ The `operations` object records the exact business HTTP, Health HTTP, remote CLI
 
 ## Safety and ownership
 
-The record contains no database URL, DSN, credential, password, token, private key, secret field, or secret-bearing value. Artifact hashes identify evidence without embedding artifacts or sensitive configuration.
+The record contains no database URL, DSN, URL userinfo, credential, password, token, private key, secret field, or secret-bearing value. HTTP and HTTPS endpoint values are permitted only when they contain no userinfo. Artifact hashes identify evidence without embedding artifacts or sensitive configuration.
 
-`reviewer_decision` is reserved for reviewer ownership. It remains null in implementer-produced evidence and cannot be pre-populated as accepted, completed, delivered, or any equivalent decision. The S09 record reports evidence for inspection; it does not approve itself.
+`reviewer_decision` is reserved for reviewer ownership. It remains null when validated in implementer phase and cannot be pre-populated as accepted, completed, delivered, or any equivalent decision. During reviewer-phase validation it must contain exactly one finite reviewer outcome: `ACCEPTED` or `REVIEW CHANGES REQUIRED`. The S09 implementer record reports evidence for inspection; it does not approve itself.

@@ -678,76 +678,444 @@ M2_NEGATIVE_SURFACE_CONTRACT: dict[str, frozenset[str]] = {
     ),
 }
 
-_NEGATIVE_CATEGORY_TARGET = {
-    "relationship_model": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_relationship_model_non_goals_and_finite_public_surface"
-    ),
-    "lifecycle_history": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_lifecycle_and_history_non_goals_are_absent"
-    ),
-    "api_protocol": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact"
-    ),
-    "security_network": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_security_transport_and_secret_surfaces_remain_external"
-    ),
-    "deployment_platform": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
-    ),
-    "data_protection": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
-    ),
-    "observability": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_observability_and_health_non_goals_are_absent"
-    ),
-    "cli": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_cli_operation_coverage_import_closure_and_negative_surface_are_exact"
-    ),
-    "health": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_observability_and_health_non_goals_are_absent"
-    ),
-    "alembic": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
-    ),
-    "performance_availability": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
-    ),
-    "verification_public": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact"
-    ),
-    "verification_schema": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
-    ),
-    "verification_runtime": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
-    ),
-    "wip_authority": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_wip_provenance_is_complete_and_never_implementation_authority"
-    ),
-    "normative_placeholder": (
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_normative_corpus_has_no_unresolved_placeholder_or_reopen"
-    ),
-}
+
+def _negative_targets(*targets: str) -> frozenset[str]:
+    return frozenset(targets)
+
+
+_REL_MODEL = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_relationship_model_non_goals_and_finite_public_surface"
+)
+_LIFECYCLE = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_lifecycle_and_history_non_goals_are_absent"
+)
+_PUBLIC = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact"
+)
+_CLI = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_cli_operation_coverage_import_closure_and_negative_surface_are_exact"
+)
+_SCHEMA = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
+)
+_SECURITY = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_security_transport_and_secret_surfaces_remain_external"
+)
+_DEPLOYMENT = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
+)
+_OBSERVABILITY = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_observability_and_health_non_goals_are_absent"
+)
+_WIP = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_wip_provenance_is_complete_and_never_implementation_authority"
+)
+_PLACEHOLDER = (
+    "tests/test_m2_s08_negative_surface.py::"
+    "test_normative_corpus_has_no_unresolved_placeholder_or_reopen"
+)
+
 M2_NEGATIVE_SURFACE_TO_TARGETS: dict[str, frozenset[str]] = {
-    f"{category}::{entry}": frozenset({_NEGATIVE_CATEGORY_TARGET[category]})
-    for category, entries in M2_NEGATIVE_SURFACE_CONTRACT.items()
-    for entry in entries
+    (
+        "relationship_model::versioned Relationship topology or Resolution membership"
+    ): _negative_targets(
+        "tests/test_relationshipdefinition_domain.py::test_complete_rename_preserves_ids_endpoints_and_membership",
+        _REL_MODEL,
+    ),
+    "relationship_model::required Relationship properties": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_relationship_factual_state_requires_exact_shape"
+    ),
+    "relationship_model::nullable present Relationship values": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_relationship_factual_state_requires_exact_shape",
+        "tests/test_relationship_api.py::test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+    ),
+    (
+        "relationship_model::Relationship property create defaults or "
+        "migration defaults"
+    ): _negative_targets(
+        "tests/test_relationship_domain.py::test_factual_relationship_constructors_require_an_exact_version_pin",
+        "tests/test_relationship_api.py::test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+    ),
+    "relationship_model::normal LIST -> SCALAR narrowing": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_schema_migration_preserves_removes_and_blocks_by_member"
+    ),
+    "relationship_model::caller remediation during SCHEMA_CHANGE": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_schema_migration_preserves_removes_and_blocks_by_member"
+    ),
+    "relationship_model::automatic factual schema migration": _negative_targets(
+        "tests/test_relationship_api.py::test_m2_s02_data_schema_change_lifecycle_and_strict_contract"
+    ),
+    "relationship_model::floating binding to default/latest/highest": _negative_targets(
+        "tests/test_relationship_domain.py::test_factual_relationship_constructors_require_an_exact_version_pin"
+    ),
+    (
+        "relationship_model::property- or version-based multi-edge factual identity"
+    ): _negative_targets(
+        "tests/test_relationship_api.py::test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock"
+    ),
+    "relationship_model::runtime property EAV": _negative_targets(
+        "tests/test_schema_metadata.py::test_metadata_contains_exactly_the_frozen_fifteen_tables",
+        _REL_MODEL,
+    ),
+    "relationship_model::property-value search API": _negative_targets(
+        _REL_MODEL, _PUBLIC
+    ),
+    "relationship_model::effective or inherited Relationship schema": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_schema_migration_preserves_removes_and_blocks_by_member",
+        _REL_MODEL,
+    ),
+    "relationship_model::standalone property-declaration CRUD": _negative_targets(
+        _REL_MODEL, _PUBLIC
+    ),
+    "relationship_model::standalone RelationshipResolution CRUD": _negative_targets(
+        "tests/test_relationshipdefinition_scope.py::test_s07_registers_runtime_routes_without_resolution_crud",
+        _PUBLIC,
+    ),
+    "lifecycle_history::a separate Relationship timeline": _negative_targets(
+        _LIFECYCLE
+    ),
+    "lifecycle_history::public event-set or transition aggregate": _negative_targets(
+        _LIFECYCLE, _PUBLIC
+    ),
+    "lifecycle_history::event_set_id or transition_id": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_lifecycle_store_is_the_sole_event_table_sql_owner",
+        _LIFECYCLE,
+    ),
+    "lifecycle_history::a compliance-grade immutable ledger": _negative_targets(
+        "tests/test_m2_s02_relationship_domain.py::test_m2_s02_lifecycle_store_is_the_sole_event_table_sql_owner",
+        _LIFECYCLE,
+    ),
+    (
+        "lifecycle_history::event sourcing or replay as current-state authority"
+    ): _negative_targets(
+        "tests/test_relationship_api.py::test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+        _LIFECYCLE,
+    ),
+    "lifecycle_history::temporal current-state reconstruction": _negative_targets(
+        "tests/test_relationship_api.py::test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+        _LIFECYCLE,
+    ),
+    "lifecycle_history::retention or archive policy": _negative_targets(
+        _LIFECYCLE, _DEPLOYMENT
+    ),
+    "lifecycle_history::snapshot property search": _negative_targets(
+        _LIFECYCLE, _REL_MODEL
+    ),
+    "lifecycle_history::live history foreign keys": _negative_targets(
+        "tests/test_schema_metadata.py::test_metadata_contains_exactly_the_frozen_fifteen_tables",
+        _LIFECYCLE,
+    ),
+    "lifecycle_history::retroactive historical metadata renaming": _negative_targets(
+        "tests/test_relationship_semantic_concurrency.py::test_snap_01_delete_event_keeps_one_pre_rename_name_snapshot"
+    ),
+    "api_protocol::a new business API version": _negative_targets(_PUBLIC),
+    "api_protocol::generic query or sorting DSL": _negative_targets(
+        "tests/test_relationship_api.py::test_object_relative_keyset_cursor_and_filter_identity",
+        _PUBLIC,
+    ),
+    "api_protocol::offset/page-number pagination": _negative_targets(
+        "tests/test_relationship_api.py::test_object_relative_keyset_cursor_and_filter_identity",
+        _PUBLIC,
+    ),
+    "api_protocol::automatic total counts": _negative_targets(_PUBLIC),
+    "api_protocol::bulk or batch mutation protocol": _negative_targets(_PUBLIC),
+    "api_protocol::generic PATCH semantics": _negative_targets(_PUBLIC),
+    "api_protocol::WebSocket, SSE or CDC subscription": _negative_targets(_PUBLIC),
+    "api_protocol::generic idempotency-key framework": _negative_targets(_PUBLIC),
+    "api_protocol::general ETag / If-Match protocol": _negative_targets(_PUBLIC),
+    "api_protocol::cross-request database snapshot tokens": _negative_targets(
+        "tests/test_relationship_api.py::test_object_relative_keyset_cursor_and_filter_identity",
+        _PUBLIC,
+    ),
+    "api_protocol::dynamic semantic extension through OpenAPI": _negative_targets(
+        "tests/test_m2_s05_registry.py::test_registry_is_exactly_the_server_business_openapi_inventory",
+        _PUBLIC,
+    ),
+    "security_network::native authentication or authorization": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_public_contract_has_no_401_403_or_security_scheme",
+        _SECURITY,
+    ),
+    "security_network::rate limiting or anti-abuse policy": _negative_targets(
+        _PUBLIC, _SECURITY
+    ),
+    "security_network::native server certificate management": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+        _SECURITY,
+    ),
+    "security_network::certificate rotation or reload": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+        _SECURITY,
+    ),
+    "security_network::mTLS or client certificates": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_cli_https_verifies_trust_and_hostname_without_bypass",
+        _SECURITY,
+    ),
+    "security_network::certificate pinning or TOFU": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_cli_https_verifies_trust_and_hostname_without_bypass"
+    ),
+    "security_network::CLI insecure TLS bypass": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_cli_https_verifies_trust_and_hostname_without_bypass",
+        "tests/test_m2_s05_registry.py::test_s05_has_no_repl_or_insecure_option_surface",
+    ),
+    "security_network::reverse-proxy or firewall automation": _negative_targets(
+        _DEPLOYMENT
+    ),
+    "security_network::VPN or load-balancer configuration": _negative_targets(
+        _DEPLOYMENT
+    ),
+    "security_network::a separate Health listener": _negative_targets(
+        "tests/test_health_api.py::test_health_is_the_only_operational_route",
+        _SECURITY,
+    ),
+    "deployment_platform::Docker or Kubernetes assets": _negative_targets(_DEPLOYMENT),
+    "deployment_platform::systemd unit or custom process manager": _negative_targets(
+        _DEPLOYMENT
+    ),
+    "deployment_platform::start-at-boot or automatic restart": _negative_targets(
+        "tests/test_m2_s07_linux.py::test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+        _DEPLOYMENT,
+    ),
+    (
+        "deployment_platform::service discovery, clustering or high availability"
+    ): _negative_targets(_DEPLOYMENT),
+    "deployment_platform::multi-region operation": _negative_targets(_DEPLOYMENT),
+    (
+        "deployment_platform::rolling, blue/green, canary or zero-downtime upgrade"
+    ): _negative_targets(_DEPLOYMENT),
+    "deployment_platform::application/schema rollback procedure": _negative_targets(
+        "tests/test_m2_s07_linux.py::test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+        _DEPLOYMENT,
+    ),
+    "deployment_platform::artifact registry or transfer automation": _negative_targets(
+        _DEPLOYMENT
+    ),
+    "deployment_platform::CI/CD deployment pipeline": _negative_targets(_DEPLOYMENT),
+    "deployment_platform::automatic installation or upgrade": _negative_targets(
+        "tests/test_m2_s07_linux.py::test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+        _DEPLOYMENT,
+    ),
+    "data_protection::backup or restore automation": _negative_targets(_DEPLOYMENT),
+    "data_protection::point-in-time recovery procedure": _negative_targets(_DEPLOYMENT),
+    "data_protection::PostgreSQL replica management": _negative_targets(_DEPLOYMENT),
+    "data_protection::data-retention policy": _negative_targets(_DEPLOYMENT),
+    "data_protection::disaster-recovery orchestration": _negative_targets(_DEPLOYMENT),
+    "data_protection::business-continuity SLA": _negative_targets(_DEPLOYMENT),
+    "observability::logging redesign or structured logging contract": _negative_targets(
+        _OBSERVABILITY, _DEPLOYMENT
+    ),
+    "observability::correlation/request identifiers": _negative_targets(_OBSERVABILITY),
+    "observability::distributed tracing": _negative_targets(
+        _OBSERVABILITY, _DEPLOYMENT
+    ),
+    "observability::metrics endpoint or Prometheus integration": _negative_targets(
+        _OBSERVABILITY, _DEPLOYMENT
+    ),
+    "observability::dashboards or alerting": _negative_targets(_DEPLOYMENT),
+    "observability::central log shipping or rotation": _negative_targets(_DEPLOYMENT),
+    "observability::compliance audit logs": _negative_targets(
+        _OBSERVABILITY, _DEPLOYMENT
+    ),
+    "cli::direct application-service or database access": _negative_targets(
+        "tests/test_m2_s05_registry.py::test_cli_import_closure_has_no_server_or_database_boundary",
+        _CLI,
+    ),
+    "cli::implicit/default server connection": _negative_targets(
+        "tests/test_m2_s06_state.py::test_initial_state_and_exact_local_inventory_are_closed"
+    ),
+    "cli::automatic instance discovery": _negative_targets(_CLI),
+    "cli::named persistent connection profiles": _negative_targets(_CLI),
+    "cli::mandatory persistence of endpoint or output mode": _negative_targets(
+        "tests/test_m2_s06_state.py::test_initial_state_and_exact_local_inventory_are_closed",
+        "tests/test_m2_s06_process.py::test_repl_creates_no_persistent_history_file",
+    ),
+    "cli::credential storage": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+        _CLI,
+    ),
+    "cli::dynamic OpenAPI command generation": _negative_targets(
+        "tests/test_m2_s05_registry.py::test_registry_is_exactly_the_server_business_openapi_inventory"
+    ),
+    "cli::CLI plugin framework": _negative_targets(_CLI),
+    "cli::custom nested value DSL": _negative_targets(
+        "tests/test_m2_s05_parser.py::test_structured_parameter_failures_are_finite"
+    ),
+    "cli::domain identities invented for convenience": _negative_targets(
+        "tests/test_m2_s05_registry.py::test_every_registry_spec_is_complete_and_path_metadata_is_closed"
+    ),
+    "cli::hidden post-mutation GET": _negative_targets(
+        "tests/test_m2_s05_http_client.py::test_selector_deduplication_cookie_isolation_and_primary_trace"
+    ),
+    "cli::a cross-release compatibility protocol": _negative_targets(
+        "tests/test_m2_s07_distribution.py::test_installed_cli_import_boundary_and_user_agent_use_distribution_version"
+    ),
+    "cli::a granular exit-code taxonomy": _negative_targets(
+        "tests/test_m2_s05_process.py::test_console_local_failure_has_exact_output_channels_and_exit"
+    ),
+    "cli::a full-screen TUI, macro language or offline mode": _negative_targets(
+        "tests/test_m2_s06_state.py::test_initial_state_and_exact_local_inventory_are_closed",
+        _CLI,
+    ),
+    "cli::persistent history across CLI process restarts": _negative_targets(
+        "tests/test_m2_s06_process.py::test_repl_creates_no_persistent_history_file"
+    ),
+    "health::generic GET /health aggregation": _negative_targets(
+        "tests/test_health_api.py::test_health_is_the_only_operational_route",
+        _OBSERVABILITY,
+    ),
+    "health::dynamic health registry or plugin health framework": _negative_targets(
+        _OBSERVABILITY
+    ),
+    "health::health dependency graph": _negative_targets(_OBSERVABILITY),
+    "health::warning/degraded/unknown state model": _negative_targets(
+        "tests/test_health.py::test_health_exact_vocabulary_classification_and_one_attempt",
+        _OBSERVABILITY,
+    ),
+    "health::metrics or extended diagnostics payload": _negative_targets(
+        "tests/test_health_api.py::test_health_openapi_uses_one_dto_for_200_and_503",
+        _OBSERVABILITY,
+    ),
+    "health::schema-revision validation inside Health": _negative_targets(
+        _OBSERVABILITY
+    ),
+    "health::automatic remediation": _negative_targets(_OBSERVABILITY),
+    "health::readiness checks for future unincluded capabilities": _negative_targets(
+        "tests/test_health_api.py::test_health_is_the_only_operational_route",
+        _OBSERVABILITY,
+    ),
+    "health::PostgreSQL internal diagnostics": _negative_targets(
+        "tests/test_health_api.py::test_health_unready_response_is_exact_safe_and_non_cacheable",
+        _OBSERVABILITY,
+    ),
+    "alembic::M1-to-M2 in-place data migration": _negative_targets(
+        "tests/test_migrations.py::test_durable_root_structure_drift_repeatability_and_owned_downgrade",
+        _SCHEMA,
+    ),
+    (
+        "alembic::preservation or stamping of pre-baseline development databases"
+    ): _negative_targets(
+        "tests/test_runtime_schema_guard.py::test_startup_guard_source_has_no_revision_constant_migration_or_repair",
+        _SCHEMA,
+    ),
+    "alembic::dual-schema read/write compatibility": _negative_targets(
+        "tests/test_migrations.py::test_durable_root_structure_drift_repeatability_and_owned_downgrade"
+    ),
+    "alembic::online backfill or expand/contract rollout": _negative_targets(
+        "tests/test_migrations.py::test_durable_root_structure_drift_repeatability_and_owned_downgrade"
+    ),
+    "alembic::automatic migration at startup": _negative_targets(
+        "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_follows_wrappers_and_allows_introspection",
+        "tests/test_http_composition.py::test_fastapi_lifespan_does_not_execute_migrations",
+    ),
+    "alembic::conditional downgrade to M1": _negative_targets(
+        "tests/test_migrations.py::test_durable_root_structure_drift_repeatability_and_owned_downgrade"
+    ),
+    "alembic::data-preserving head-to-base downgrade": _negative_targets(
+        "tests/test_migrations.py::test_durable_root_structure_drift_repeatability_and_owned_downgrade"
+    ),
+    "alembic::multiple Alembic heads": _negative_targets(
+        "tests/test_runtime_schema_guard.py::test_installed_graph_rejects_non_unique_base_or_head",
+        _SCHEMA,
+    ),
+    (
+        "performance_availability::quantitative throughput, latency, maximum-dataset, "
+        "horizontal-scaling, benchmark, availability or zero-lock DDL SLA"
+    ): _negative_targets(
+        "tests/test_m2_s07_linux.py::test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+        _DEPLOYMENT,
+    ),
+    "verification_public::generic PUT endpoints": _negative_targets(_PUBLIC),
+    "verification_public::action DSL": _negative_targets(_PUBLIC),
+    "verification_public::runtime Relationship-resolution CRUD": _negative_targets(
+        _REL_MODEL, _PUBLIC
+    ),
+    "verification_public::schema migration endpoint": _negative_targets(_PUBLIC),
+    (
+        "verification_public::auth/login/logout/token/account/role routes"
+    ): _negative_targets(_PUBLIC, _SECURITY),
+    "verification_public::401/403 native contract": _negative_targets(
+        "tests/test_m2_s07_trust.py::test_installed_public_contract_has_no_401_403_or_security_scheme",
+        _SECURITY,
+    ),
+    "verification_public::JSON Schema projection": _negative_targets(
+        _REL_MODEL, _PUBLIC
+    ),
+    "verification_schema::Relationship property-value rows": _negative_targets(
+        _REL_MODEL, _SCHEMA
+    ),
+    "verification_schema::Relationship effective-schema cache": _negative_targets(
+        _REL_MODEL, _SCHEMA
+    ),
+    "verification_schema::compiled generic schema": _negative_targets(_SCHEMA),
+    "verification_schema::reverse-dependency materialization": _negative_targets(
+        _SCHEMA
+    ),
+    (
+        "verification_schema::surrogate RDV/declaration/runtime-resolution IDs"
+    ): _negative_targets(_REL_MODEL, _SCHEMA),
+    "verification_schema::event-set grouping identity": _negative_targets(
+        _LIFECYCLE, _SCHEMA
+    ),
+    "verification_schema::GIN on Object/Relationship properties": _negative_targets(
+        "tests/test_schema_metadata.py::test_persist_15_lifecycle_read_indices_match_frozen_shapes",
+        _SCHEMA,
+    ),
+    "verification_schema::GIN/expression lifecycle snapshot indexes": _negative_targets(
+        "tests/test_schema_metadata.py::test_persist_15_lifecycle_read_indices_match_frozen_shapes",
+        _SCHEMA,
+    ),
+    "verification_schema::standalone default_version indexes": _negative_targets(
+        _SCHEMA
+    ),
+    "verification_schema::duplicate PUBLISHED-only indexes": _negative_targets(_SCHEMA),
+    "verification_schema::second factual-identity index": _negative_targets(_SCHEMA),
+    "verification_schema::event-set grouping index": _negative_targets(_SCHEMA),
+    "verification_schema::executable disposable M1 revisions": _negative_targets(
+        "tests/test_migrations.py::test_durable_root_structure_drift_repeatability_and_owned_downgrade",
+        _SCHEMA,
+    ),
+    (
+        "verification_runtime::application factory migration/stamp/repair"
+    ): _negative_targets(
+        "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_follows_wrappers_and_allows_introspection",
+        "tests/test_http_composition.py::test_app_factory_uses_injected_settings_without_database_connection",
+    ),
+    "verification_runtime::ASGI lifespan migration/stamp/repair": _negative_targets(
+        "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_follows_wrappers_and_allows_introspection",
+        "tests/test_http_composition.py::test_fastapi_lifespan_does_not_execute_migrations",
+    ),
+    "verification_runtime::CLI migration/stamp/repair": _negative_targets(
+        "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_follows_wrappers_and_allows_introspection",
+        "tests/test_m2_s05_registry.py::test_cli_import_closure_has_no_server_or_database_boundary",
+    ),
+    (
+        "verification_runtime::wheel installation migration/stamp/repair"
+    ): _negative_targets(
+        "tests/test_m2_s07_distribution.py::test_clean_release_sync_and_no_deps_install_are_exact_and_source_isolated",
+        _SCHEMA,
+    ),
+    "wip_authority::production dependency on M2 WIP": _negative_targets(_WIP),
+    (
+        "wip_authority::test dependency on an execution prompt as semantic authority"
+    ): _negative_targets(_WIP),
+    "wip_authority::unclassified historical WIP document": _negative_targets(_WIP),
+    (
+        "normative_placeholder::unresolved normative TBD/TODO/FIXME/open question"
+    ): _negative_targets(_PLACEHOLDER),
+    (
+        "normative_placeholder::unresolved candidate or open design/contract point"
+    ): _negative_targets(_PLACEHOLDER),
+    "normative_placeholder::PARTIALLY REOPENED authority": _negative_targets(
+        _PLACEHOLDER
+    ),
 }
 
 M2_CONTRACT_QUALITY_GATES = frozenset(f"M2-CQG-{number:02d}" for number in range(1, 11))
@@ -2333,19 +2701,24 @@ _S08_TRACEABILITY_TARGETS = frozenset(
         "tests/test_m2_traceability.py::test_s08_all_bundles_are_implemented_nonempty_and_resolvable",
     }
 )
-_S08_NEGATIVE_TARGETS = frozenset(_NEGATIVE_CATEGORY_TARGET.values()) | frozenset(
+_S08_NEGATIVE_TARGETS = frozenset(
+    target
+    for targets in M2_NEGATIVE_SURFACE_TO_TARGETS.values()
+    for target in targets
+    if target.startswith("tests/test_m2_s08_negative_surface.py::")
+) | frozenset(
     {
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_contract_non_goal_registry_matches_frozen_contract",
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_wip_provenance_is_complete_and_never_implementation_authority",
-        "tests/test_m2_s08_negative_surface.py::"
-        "test_normative_corpus_has_no_unresolved_placeholder_or_reopen",
+        "tests/test_m2_s08_negative_surface.py::test_contract_non_goal_registry_matches_frozen_contract",
+        "tests/test_m2_s08_negative_surface.py::test_negative_surface_mapping_is_entry_specific_and_semantically_owned",
+        "tests/test_m2_s08_negative_surface.py::test_automatic_migration_analysis_resolves_import_aliases",
+        "tests/test_m2_s08_negative_surface.py::test_deployment_asset_audit_checks_nested_paths_and_basenames",
     }
 )
 _S08_EVIDENCE_TARGETS = frozenset(
     {
         "tests/test_m2_s08_evidence.py::test_evidence_schema_accepts_one_complete_stable_record",
+        "tests/test_m2_s08_evidence.py::test_evidence_schema_accepts_finite_reviewer_phase_decisions",
+        "tests/test_m2_s08_evidence.py::test_evidence_schema_allows_http_endpoints_without_userinfo",
         "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_identifier_shape_and_count_drift",
         "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_secrets_and_implementer_review_decision",
         "tests/test_m2_s08_evidence.py::test_evidence_documentation_matches_validator_and_reserves_s09_record",
@@ -3556,7 +3929,11 @@ def test_s08_all_bundles_are_implemented_nonempty_and_resolvable() -> None:
         evidence.state == "IMPLEMENTED" and evidence.targets
         for evidence in M2_EVIDENCE_TO_TARGETS.values()
     )
-    assert set(M2_NEGATIVE_SURFACE_CONTRACT) == set(_NEGATIVE_CATEGORY_TARGET)
+    assert set(M2_NEGATIVE_SURFACE_TO_TARGETS) == {
+        f"{category}::{entry}"
+        for category, entries in M2_NEGATIVE_SURFACE_CONTRACT.items()
+        for entry in entries
+    }
     assert len(M2_NEGATIVE_SURFACE_TO_TARGETS) == sum(
         len(entries) for entries in M2_NEGATIVE_SURFACE_CONTRACT.values()
     )

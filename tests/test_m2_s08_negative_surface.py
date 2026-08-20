@@ -7,12 +7,18 @@ from collections import deque
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from netauto.cli.registry import BUSINESS_OPERATION_SET, COMMAND_REGISTRY
 from netauto.cli.repl import LOCAL_COMMAND_REGISTRY
 from netauto.entrypoints.api.errors import PUBLIC_STATUS_BY_CODE
 from netauto.entrypoints.http import build_app
 from netauto.persistence.metadata import metadata
 from netauto.settings import Settings
+from tests.support.s08_static import (
+    find_reachable_alembic_mutations,
+    forbidden_deployment_assets,
+)
 from tests.test_m2_traceability import (
     CLI_REMOTE_OPERATION_COVERAGE,
     HEALTH_LOCAL_COMMAND_COVERAGE,
@@ -102,6 +108,31 @@ def test_contract_non_goal_registry_matches_frozen_contract() -> None:
     assert all(M2_NEGATIVE_SURFACE_TO_TARGETS.values())
 
 
+def test_negative_surface_mapping_is_entry_specific_and_semantically_owned() -> None:
+    expected_keys = {
+        f"{category}::{entry}"
+        for category, entries in M2_NEGATIVE_SURFACE_CONTRACT.items()
+        for entry in entries
+    }
+    assert set(M2_NEGATIVE_SURFACE_TO_TARGETS) == expected_keys
+    assert len(set(M2_NEGATIVE_SURFACE_TO_TARGETS.values())) >= 50
+    assert M2_NEGATIVE_SURFACE_TO_TARGETS[
+        "cli::persistent history across CLI process restarts"
+    ] == {"tests/test_m2_s06_process.py::test_repl_creates_no_persistent_history_file"}
+    assert (
+        "tests/test_relationship_semantic_concurrency.py::"
+        "test_snap_01_delete_event_keeps_one_pre_rename_name_snapshot"
+        in M2_NEGATIVE_SURFACE_TO_TARGETS[
+            "lifecycle_history::retroactive historical metadata renaming"
+        ]
+    )
+    assert (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_automatic_migration_analysis_follows_wrappers_and_allows_introspection"
+        in M2_NEGATIVE_SURFACE_TO_TARGETS["alembic::automatic migration at startup"]
+    )
+
+
 def test_relationship_model_non_goals_and_finite_public_surface() -> None:
     all_columns = {
         column.name for table in metadata.tables.values() for column in table.columns
@@ -154,6 +185,19 @@ def test_lifecycle_and_history_non_goals_are_absent() -> None:
         for _, path in operations
         for fragment in ("/event-sets", "/transitions", "/relationship-timeline")
     )
+    production = "\n".join(
+        path.read_text().lower()
+        for path in sorted((ROOT / "src/netauto").rglob("*.py"))
+    )
+    for forbidden in (
+        "compliance_ledger",
+        "event_sourcing",
+        "replay_current_state",
+        "retention_policy",
+        "archive_policy",
+        "temporal_reconstruction",
+    ):
+        assert forbidden not in production
 
 
 def test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact() -> None:
@@ -200,6 +244,39 @@ def test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact() -
     assert all(
         fragment not in path for fragment in forbidden_fragments for path in paths
     )
+    assert not any(
+        route.__class__.__name__ == "WebSocketRoute"
+        for route in build_app(
+            Settings(database_url="postgresql+psycopg://unused@example.test/netauto")
+        ).routes
+    )
+    parameter_names: set[str] = set()
+    response_codes: set[str] = set()
+    for path_item in _mapping(document["paths"]).values():
+        for operation in _mapping(path_item).values():
+            operation_mapping = _mapping(operation)
+            raw_parameters = operation_mapping.get("parameters", [])
+            assert isinstance(raw_parameters, list)
+            for parameter in cast(list[object], raw_parameters):
+                parameter_names.add(str(_mapping(parameter).get("name", "")).lower())
+            raw_responses = operation_mapping.get("responses", {})
+            response_codes.update(_mapping(raw_responses))
+    assert (
+        not {
+            "offset",
+            "page",
+            "page_number",
+            "sort",
+            "order",
+            "include_total",
+            "total_count",
+            "idempotency-key",
+            "if-match",
+            "snapshot_token",
+        }
+        & parameter_names
+    )
+    assert not {"401", "403", "429"} & response_codes
 
 
 def _imports(path: Path) -> frozenset[str]:
@@ -228,6 +305,15 @@ def _module_path(module: str) -> Path | None:
     if source.is_file():
         return source
     return None
+
+
+def _production_module_sources() -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for path in sorted((ROOT / "src/netauto").rglob("*.py")):
+        relative = path.relative_to(ROOT / "src").with_suffix("")
+        parts = relative.parts[:-1] if relative.name == "__init__" else relative.parts
+        sources[".".join(parts)] = path.read_text()
+    return sources
 
 
 def test_cli_operation_coverage_import_closure_and_negative_surface_are_exact() -> None:
@@ -307,6 +393,10 @@ def test_cli_operation_coverage_import_closure_and_negative_surface_are_exact() 
         "persistent_history",
         "credential_store",
         "profile_store",
+        "instance_discovery",
+        "plugin_registry",
+        "macro_language",
+        "offline_mode",
     ):
         assert forbidden_text not in source
 
@@ -347,31 +437,93 @@ def test_schema_alembic_and_automatic_migration_surfaces_are_exact() -> None:
     }
     assert assignments == {"revision": "0001_m2_kernel", "down_revision": None}
 
-    automatic_migration_roots = {
-        ROOT / "src/netauto/entrypoints/http.py",
-        ROOT / "src/netauto/runtime/schema_guard.py",
-        *sorted((ROOT / "src/netauto/cli").glob("*.py")),
+    sources = _production_module_sources()
+    execution_roots = {
+        module
+        for module in sources
+        if module == "netauto.entrypoints.http"
+        or module == "netauto.runtime"
+        or module.startswith("netauto.runtime.")
+        or module == "netauto.cli"
+        or module.startswith("netauto.cli.")
     }
-    migration_calls = {"upgrade", "downgrade", "stamp", "revision", "merge"}
-    for path in automatic_migration_roots:
-        tree = ast.parse(path.read_text(), filename=str(path))
-        aliases: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "alembic.command":
-                aliases.update(alias.asname or alias.name for alias in node.names)
-            elif isinstance(node, ast.Import):
-                aliases.update(
-                    alias.asname or alias.name
-                    for alias in node.names
-                    if alias.name == "alembic.command"
-                )
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if isinstance(node.func, ast.Name):
-                assert node.func.id not in aliases & migration_calls, path
-            if isinstance(node.func, ast.Attribute):
-                assert node.func.attr not in migration_calls, path
+    assert "netauto.entrypoints.http" in execution_roots
+    assert "netauto.runtime.schema_guard" in execution_roots
+    assert "netauto.cli.main" in execution_roots
+    assert find_reachable_alembic_mutations(sources, execution_roots) == ()
+
+
+@pytest.mark.parametrize(
+    ("import_statement", "invocation", "target"),
+    [
+        (
+            "from alembic.command import upgrade as apply_head",
+            "apply_head(None, 'head')",
+            "alembic.command.upgrade",
+        ),
+        (
+            "from alembic import command as operations",
+            "operations.stamp(None, 'head')",
+            "alembic.command.stamp",
+        ),
+        (
+            "import alembic.command as operations",
+            "operations.downgrade(None, 'base')",
+            "alembic.command.downgrade",
+        ),
+    ],
+)
+def test_automatic_migration_analysis_resolves_import_aliases(
+    import_statement: str, invocation: str, target: str
+) -> None:
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.runtime": f"{import_statement}\n\ndef start():\n    {invocation}\n",
+        },
+        {"sample.runtime"},
+    )
+    assert tuple(item.target for item in findings) == (target,)
+
+
+def test_automatic_migration_analysis_follows_wrappers_and_allows_introspection() -> (
+    None
+):
+    findings = find_reachable_alembic_mutations(
+        {
+            "sample.server": (
+                "from sample.migration_adapter import apply\n\n"
+                "async def lifespan():\n"
+                "    apply()\n"
+            ),
+            "sample.migration_adapter": (
+                "from alembic.command import upgrade as run_upgrade\n\n"
+                "def apply():\n"
+                "    run_upgrade(None, 'head')\n"
+            ),
+        },
+        {"sample.server"},
+    )
+    assert len(findings) == 1
+    assert findings[0].target == "alembic.command.upgrade"
+    assert findings[0].call_path == (
+        "sample.server.lifespan",
+        "sample.migration_adapter.apply",
+    )
+
+    introspection_only = {
+        "sample.runtime": (
+            "from alembic.config import Config as AlembicConfig\n"
+            "from alembic.runtime.migration import MigrationContext as Context\n"
+            "from alembic.script import ScriptDirectory as Scripts\n\n"
+            "def inspect(connection):\n"
+            "    config = AlembicConfig()\n"
+            "    Scripts.from_config(config).get_heads()\n"
+            "    Context.configure(connection).get_current_heads()\n"
+        )
+    }
+    assert (
+        find_reachable_alembic_mutations(introspection_only, {"sample.runtime"}) == ()
+    )
 
 
 def test_security_transport_and_secret_surfaces_remain_external() -> None:
@@ -382,7 +534,7 @@ def test_security_transport_and_secret_surfaces_remain_external() -> None:
         for _, path in operations
         for fragment in ("auth", "login", "logout", "token", "account", "role")
     )
-    assert "401" not in repr(document) and "403" not in repr(document)
+    assert all(code not in repr(document) for code in ("401", "403", "429"))
     settings = set(Settings.model_fields)
     assert settings == {
         "database_url",
@@ -410,27 +562,35 @@ def test_runtime_deployment_data_protection_and_performance_surfaces_are_absent(
         capture_output=True,
         text=True,
     )
-    repository_files = {line.lower() for line in result.stdout.splitlines() if line}
-    forbidden_names = {
-        "dockerfile",
-        "docker-compose.yml",
-        "compose.yml",
-        "deployment.yaml",
-        "statefulset.yaml",
-        "netauto.service",
-        "backup.sh",
-        "restore.sh",
-        ".gitlab-ci.yml",
-    }
-    assert not (repository_files & forbidden_names)
-    assert not any(
-        path.startswith(("k8s/", "kubernetes/", "helm/", ".github/workflows/"))
-        for path in repository_files
-    )
+    repository_files = {line for line in result.stdout.splitlines() if line}
+    assert forbidden_deployment_assets(repository_files) == frozenset()
     pyproject = (ROOT / "pyproject.toml").read_text()
     assert "gunicorn" not in pyproject.lower()
     assert "prometheus" not in pyproject.lower()
     assert "opentelemetry" not in pyproject.lower()
+
+
+def test_deployment_asset_audit_checks_nested_paths_and_basenames() -> None:
+    candidates = {
+        "Dockerfile",
+        "ops/prod/Dockerfile.worker",
+        "deploy/base/deployment.yaml",
+        "packaging/systemd/netauto.service",
+        "ops/recovery/backup.sh",
+        ".github/workflows/release.yml",
+        "docs/milestones/M2/architecture/runtime-deployment.md",
+        "src/netauto/runtime/schema_guard.py",
+    }
+    assert forbidden_deployment_assets(candidates) == frozenset(
+        {
+            "dockerfile",
+            "ops/prod/dockerfile.worker",
+            "deploy/base/deployment.yaml",
+            "packaging/systemd/netauto.service",
+            "ops/recovery/backup.sh",
+            ".github/workflows/release.yml",
+        }
+    )
 
 
 def test_observability_and_health_non_goals_are_absent() -> None:
@@ -496,12 +656,20 @@ def test_wip_provenance_is_complete_and_never_implementation_authority() -> None
     assert "implementation dependency on WIP              0" in provenance
 
     wip_files = {path.name for path in (ROOT / "docs/milestones/M2/wip").glob("*.md")}
-    permitted_non_disposition_files = {
-        "M2-S08-codex-prompt.md",
+    closure_records = {
         "steps-consistency-closure.md",
         "wip-extraction-closure.md",
     }
-    assert wip_files == set(rows) | permitted_non_disposition_files
+    optional_active_execution_aids = {"M2-S08-codex-prompt.md"}
+    permanent_wip_census = set(rows) | closure_records
+    assert wip_files - optional_active_execution_aids == permanent_wip_census
+    assert wip_files <= permanent_wip_census | optional_active_execution_aids
+    assert (wip_files - optional_active_execution_aids) | closure_records == (
+        permanent_wip_census
+    )
+
+    simulated_after_reviewer_removal = wip_files - optional_active_execution_aids
+    assert simulated_after_reviewer_removal == permanent_wip_census
 
     normative = {
         ROOT / "docs/milestones/M2/contract.md",

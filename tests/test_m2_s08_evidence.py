@@ -7,6 +7,7 @@ import pytest
 
 from tests.support.m2_evidence import (
     EVIDENCE_STATES,
+    REVIEWER_DECISIONS,
     ArtifactEvidence,
     CommandEvidence,
     EnvironmentEvidence,
@@ -104,6 +105,34 @@ def test_evidence_schema_accepts_one_complete_stable_record() -> None:
     }
 
 
+def test_evidence_schema_accepts_finite_reviewer_phase_decisions() -> None:
+    assert set(REVIEWER_DECISIONS) == {"ACCEPTED", "REVIEW CHANGES REQUIRED"}
+    for decision in REVIEWER_DECISIONS:
+        record = replace(_record(), reviewer_decision=decision)
+        validate_evidence_record(record, EXPECTATIONS, phase="reviewer")
+        assert f'"reviewer_decision":"{decision}"' in stable_evidence_json(record)
+
+
+def test_evidence_schema_allows_http_endpoints_without_userinfo() -> None:
+    record = replace(
+        _record(),
+        commands=(
+            replace(
+                _record().commands[0],
+                argv=(
+                    "netauto",
+                    "-n",
+                    "https://api.example.test/netauto",
+                    "datatype",
+                    "list",
+                    "callback=http://127.0.0.1:8080/ready",
+                ),
+            ),
+        ),
+    )
+    validate_evidence_record(record, EXPECTATIONS)
+
+
 @pytest.mark.parametrize(
     "invalid",
     [
@@ -135,21 +164,37 @@ def test_evidence_schema_rejects_identifier_shape_and_count_drift(
 
 
 def test_evidence_schema_rejects_secrets_and_implementer_review_decision() -> None:
-    unsafe = replace(
-        _record(),
-        commands=(
-            replace(
-                _record().commands[0],
-                argv=("tool", "postgresql+psycopg://user:pass@example.test/db"),
-            ),
-        ),
+    unsafe_values = (
+        "postgresql+psycopg://example.test/netauto",
+        "host=db.example.test dbname=netauto user=operator",
+        "https://operator@example.test/netauto",
+        "https://operator:password@example.test/netauto",
+        "secret=sentinel",
+        "Authorization: Bearer sentinel",
     )
-    with pytest.raises(EvidenceValidationError, match="secret or URL-like"):
-        validate_evidence_record(unsafe, EXPECTATIONS)
+    for unsafe_value in unsafe_values:
+        unsafe = replace(
+            _record(),
+            commands=(
+                replace(
+                    _record().commands[0],
+                    argv=("tool", unsafe_value),
+                ),
+            ),
+        )
+        with pytest.raises(EvidenceValidationError):
+            validate_evidence_record(unsafe, EXPECTATIONS)
 
     reviewer_owned = replace(_record(), reviewer_decision="ACCEPTED")
     with pytest.raises(EvidenceValidationError, match="reviewer-owned"):
         validate_evidence_record(reviewer_owned, EXPECTATIONS)
+
+    with pytest.raises(EvidenceValidationError, match="requires one finite"):
+        validate_evidence_record(_record(), EXPECTATIONS, phase="reviewer")
+
+    invalid_decision = replace(_record(), reviewer_decision="DELIVERED")
+    with pytest.raises(EvidenceValidationError, match="requires one finite"):
+        validate_evidence_record(invalid_decision, EXPECTATIONS, phase="reviewer")
 
 
 def test_evidence_documentation_matches_validator_and_reserves_s09_record() -> None:

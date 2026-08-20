@@ -7,21 +7,30 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Literal, cast
+from urllib.parse import urlsplit
 
 type EvidenceState = Literal["DESIGNED", "IMPLEMENTED", "PASS", "FAIL", "BLOCKED"]
+type EvidencePhase = Literal["implementer", "reviewer"]
+type ReviewerDecision = Literal["ACCEPTED", "REVIEW CHANGES REQUIRED"]
 
 EVIDENCE_STATES = frozenset({"DESIGNED", "IMPLEMENTED", "PASS", "FAIL", "BLOCKED"})
+REVIEWER_DECISIONS = frozenset({"ACCEPTED", "REVIEW CHANGES REQUIRED"})
 _HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+_URL = re.compile(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
+_DSN_OR_SECRET_ASSIGNMENT = re.compile(
+    r"(?:^|\s)(?:database_url|dbname|dsn|host|password|passwd|private_key|"
+    r"secret|token|user|username)\s*[:=]",
+    re.IGNORECASE,
+)
 _FORBIDDEN_KEY_PARTS = frozenset(
     {"credential", "database_url", "dsn", "password", "private_key", "secret", "token"}
 )
 _FORBIDDEN_VALUE_PARTS = (
-    "://",
-    "password=",
-    "secret=",
-    "credential=",
+    "authorization:",
     "bearer ",
+    "credential=",
+    "jdbc:postgresql:",
 )
 
 
@@ -127,7 +136,7 @@ class FinalEvidenceRecord:
     installed_t9: EvidenceState
     runtime_census: RuntimeCensus
     open_findings: tuple[str, ...]
-    reviewer_decision: str | None = None
+    reviewer_decision: ReviewerDecision | None = None
 
 
 def _require(condition: bool, message: str) -> None:
@@ -172,12 +181,34 @@ def _validate_secret_free(value: object, path: str = "record") -> None:
         lowered = value.lower()
         _require(
             not any(part in lowered for part in _FORBIDDEN_VALUE_PARTS),
-            f"secret or URL-like value at {path}",
+            f"secret-bearing value at {path}",
         )
+        _require(
+            _DSN_OR_SECRET_ASSIGNMENT.search(value) is None,
+            f"database DSN or secret-bearing value at {path}",
+        )
+        for match in _URL.finditer(value):
+            raw_url = match.group(0).rstrip(").,;]}")
+            parsed = urlsplit(raw_url)
+            _require(
+                parsed.scheme.lower() in {"http", "https"},
+                f"database or unsupported URL at {path}",
+            )
+            _require(
+                parsed.hostname is not None,
+                f"invalid HTTP endpoint at {path}",
+            )
+            _require(
+                parsed.username is None and parsed.password is None,
+                f"URL userinfo is forbidden at {path}",
+            )
 
 
 def validate_evidence_record(
-    record: FinalEvidenceRecord, expectations: EvidenceExpectations
+    record: FinalEvidenceRecord,
+    expectations: EvidenceExpectations,
+    *,
+    phase: EvidencePhase = "implementer",
 ) -> None:
     """Validate exact ledgers, safe values and reviewer ownership."""
     _require(record.schema_version == 1, "unsupported evidence schema version")
@@ -259,7 +290,17 @@ def validate_evidence_record(
             getattr(record.runtime_census, field_name),
             f"runtime_census.{field_name}",
         )
-    _require(record.reviewer_decision is None, "reviewer decision is reviewer-owned")
+    _require(phase in {"implementer", "reviewer"}, "invalid evidence validation phase")
+    if phase == "implementer":
+        _require(
+            record.reviewer_decision is None,
+            "reviewer decision is reviewer-owned during implementer phase",
+        )
+    else:
+        _require(
+            record.reviewer_decision in REVIEWER_DECISIONS,
+            "reviewer phase requires one finite reviewer decision",
+        )
     _validate_secret_free(asdict(record))
 
 
