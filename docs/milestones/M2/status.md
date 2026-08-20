@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — IN PROGRESS
-current task    record the failed exact-remote S06 PTY gate and await authority
-blockers        S06 PTY target is outside this bounded hard scope; M2-S09 remains blocked
+current slice   M2-S08 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the PTY-closure corrected S08 candidate
+blockers        none inside M2-S08; M2-S09 remains dependency-blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | IN PROGRESS | `M2-S07 COMPLETED` |
+| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The bounded package-parent initializer defect in `S08-VRF-05` is corrected; `S08-VRF-06` and `S08-VRF-07` remain closed. The exact-remote S06 gate failed after publication in the PTY reverse-search target, which is outside the file scope of the package-initializer correction. M2-S08 therefore remains in progress and M2-S09 remains dependency-blocked.
+No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The bounded package-parent initializer defect in `S08-VRF-05` remains corrected; `S08-VRF-06` and `S08-VRF-07` remain closed. The reviewer-authorized test-only correction now proves the preserved S06 process-local reverse-search behavior through structured command execution with a pending-aware PTY reader. M2-S08 is a candidate for reviewer inspection and M2-S09 remains dependency-blocked.
 
 `TEST_DATABASE_URL` is externally supplied when it is explicitly provided by the environment and NETAUTO test code does not provision, invent or silently substitute it. A loopback or local hostname is not itself a blocker. The implementer must verify that the configured URL uses the supported PostgreSQL/Psycopg form, reaches real PostgreSQL, and identifies the dedicated test target required by the existing test-support safety checks.
 
@@ -67,7 +67,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         IN PROGRESS
+M2-S08                         CANDIDATE READY FOR REVIEW
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -82,9 +82,12 @@ final review-fix commit        c159dd9e38c4a6650669166499958f2d436d9e62
 candidate evidence/status      fc81d55a84eddbe441b3e4e078aa57874a83481c
 package-closure review reopen  3e57bd2b7e604803defc676d1afecfa19351ea68
 package-closure test commit    29e47eca66667b0e8ba8aefea410476d6dd0710f
-package-closure evidence       recorded by the commit containing this status
+package-closure evidence       b53de79eb831c8da6fd965fa07c0562f2b010482
+failed exact-remote record     3bfa3ab62e28c6309dde8c8d916cb3b0fada07bb
+PTY test correction            954fd86f576f3b4a0ec4efb8849cf059c801dfef
+PTY-closure candidate evidence recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                not submitted; exact-remote gate failed
+review decision                not submitted; implementer candidate only
 ```
 
 Reviewer outcome for `fc81d55a84eddbe441b3e4e078aa57874a83481c`:
@@ -152,7 +155,68 @@ GitHub Actions workflow or run, tag, GitHub Release, acceptance record or
 artifact publication was created. M2-S08 is not `COMPLETED`; M2-S09 remains
 `BLOCKED` and has not started.
 
-### Exact-remote gate failure
+### PTY-closure corrected candidate
+
+The synchronized starting HEAD is
+`3bfa3ab62e28c6309dde8c8d916cb3b0fada07bb`, which contains the package
+initializer candidate, its failed exact-remote record and every required
+ancestry baseline. The reviewer-authorized test-only correction is
+`954fd86f576f3b4a0ec4efb8849cf059c801dfef`; the candidate evidence/status
+commit is the commit containing this record.
+
+The local `_PtyProcess` reader rejects an empty sentinel, searches buffered
+bytes first, recognizes a sentinel split across reads, returns exactly through
+the sentinel and preserves every following byte. PTY closure and timeout
+diagnostics are bounded to the final 2000 bytes. Cleanup sends Ctrl-C and
+`/exit`, waits for a bounded interval and uses `terminate` only as final
+cleanup without masking a primary test failure. Every S06 PTY test uses this
+reader. The preserved Ctrl-R node now proves process-local history by executing
+the recalled `/help` command and checking its structured response; it does not
+treat a literal match repaint as authority. The exact S08 review-fix registry
+remains `S08-VRF-01 ... S08-VRF-07`, and the package-parent initializer closure
+is unchanged.
+
+```text
+focused Ctrl-R target          1 passed — 1.47 s, no rerun
+complete PTY process file      7 passed — 4.54 s
+complete S06                   73 passed — 5.03 s
+package-initializer focused    6 selected / 6 unique / 6 passed — 1.16 s
+S08-VRF-05                     13 selected / 13 unique / 14 passed — 1.65 s
+S08 review-fix registry        7 exact keys / 26 selected / 25 unique / 38 passed — 6.02 s
+M2-VER-31                      31 selected / 31 unique / 39 passed — 21.89 s
+M2-VER-32                      47 selected / 47 unique / 64 passed — 16.82 s
+S08/T10 and traceability       114 passed — 32.90 s
+51 delivered scenarios        51 IDs / 97 selected / 91 unique / 95 passed — 58.84 s
+complete S07/T9                18 passed — 42.41 s
+API/error/CLI                  247 passed / 1 known warning — 50.05 s
+schema/Alembic                 28 passed / compare_metadata [] — 13.72 s
+runtime/schema-guard/Health    121 passed / 1 known warning — 15.46 s
+PostgreSQL/concurrency         254 passed / 600 deselected / 1 known warning — 189.70 s
+non-PostgreSQL                 600 passed / 254 deselected / 1 known warning — 79.58 s
+complete repository           854 passed / 1 known warning — 266.65 s
+collection                    854 — 1.79 s
+skip / xfail / rerun          0 / 0 / 0
+supported 40P01 / 40001       0 / 0
+negative controls             40P01 x1 / 40001 x2, exact expected census
+```
+
+`uv lock --check`, `uv sync --locked`, `uv build`, Ruff format, Ruff lint and
+Pyright pass. The wheel remains 165978 bytes / 77 members, SHA-256
+`38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60`.
+The embedded runtime lock remains 48238 bytes, SHA-256
+`0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf`.
+The externally supplied real target reports PostgreSQL 16.14
+(`16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)`), database identity `netautotest`,
+and a successful bounded `SELECT 1` probe. The only warning is the already
+censused Starlette/FastAPI TestClient deprecation.
+
+Production, API, CLI behavior and grammar, Health, metadata, schema,
+migration, dependencies, `uv.lock`, the embedded runtime lock and artifact
+content are unchanged. No PR, GitHub Actions workflow or run, tag, GitHub
+Release, acceptance record or artifact publication was created. M2-S08 is not
+`COMPLETED`; M2-S09 remains `BLOCKED` and has not started.
+
+### Superseded exact-remote gate failure
 
 The candidate commits were pushed to `origin/M2` and synchronized at
 `b53de79eb831c8da6fd965fa07c0562f2b010482`. Exact-remote lock, sync, build,
