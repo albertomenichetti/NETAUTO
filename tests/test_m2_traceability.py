@@ -76,6 +76,734 @@ M2_ACCEPTANCE_TO_EVIDENCE = {
     f"M2-AC-{number:02d}": f"M2-VER-{number:02d}" for number in range(1, 33)
 }
 
+M2_ARCHITECTURE_OWNERS = frozenset(
+    f"docs/milestones/M2/architecture/{name}.md"
+    for name in (
+        "relationship",
+        "api",
+        "persistence",
+        "concurrency-matrix",
+        "concurrency",
+        "health",
+        "cli",
+        "runtime-deployment",
+        "verification",
+    )
+)
+_RELATIONSHIP_OWNER = "docs/milestones/M2/architecture/relationship.md"
+_API_OWNER = "docs/milestones/M2/architecture/api.md"
+_PERSISTENCE_OWNER = "docs/milestones/M2/architecture/persistence.md"
+_MATRIX_OWNER = "docs/milestones/M2/architecture/concurrency-matrix.md"
+_CONCURRENCY_OWNER = "docs/milestones/M2/architecture/concurrency.md"
+_HEALTH_OWNER = "docs/milestones/M2/architecture/health.md"
+_CLI_OWNER = "docs/milestones/M2/architecture/cli.md"
+_RUNTIME_OWNER = "docs/milestones/M2/architecture/runtime-deployment.md"
+_VERIFICATION_OWNER = "docs/milestones/M2/architecture/verification.md"
+
+M2_OUTCOME_TO_ARCHITECTURE_OWNERS: dict[str, frozenset[str]] = {
+    "M2-OUT-01": frozenset({_RELATIONSHIP_OWNER, _API_OWNER, _PERSISTENCE_OWNER}),
+    "M2-OUT-02": frozenset({_RELATIONSHIP_OWNER, _MATRIX_OWNER, _CONCURRENCY_OWNER}),
+    "M2-OUT-03": frozenset({_RELATIONSHIP_OWNER, _PERSISTENCE_OWNER, _API_OWNER}),
+    "M2-OUT-04": frozenset(
+        {_RELATIONSHIP_OWNER, _API_OWNER, _MATRIX_OWNER, _CONCURRENCY_OWNER}
+    ),
+    "M2-OUT-05": frozenset({_RELATIONSHIP_OWNER, _PERSISTENCE_OWNER}),
+    "M2-OUT-06": frozenset({_API_OWNER, _PERSISTENCE_OWNER}),
+    "M2-OUT-07": frozenset({_RELATIONSHIP_OWNER, _API_OWNER, _PERSISTENCE_OWNER}),
+    "M2-OUT-08": frozenset({_MATRIX_OWNER, _CONCURRENCY_OWNER, _PERSISTENCE_OWNER}),
+    "M2-OUT-09": frozenset({_PERSISTENCE_OWNER}),
+    "M2-OUT-10": frozenset({_RUNTIME_OWNER, _PERSISTENCE_OWNER}),
+    "M2-OUT-11": frozenset({_HEALTH_OWNER, _API_OWNER}),
+    "M2-OUT-12": frozenset({_CLI_OWNER, _API_OWNER}),
+    "M2-OUT-13": frozenset({_RUNTIME_OWNER, _CLI_OWNER}),
+    "M2-OUT-14": frozenset({_RUNTIME_OWNER}),
+    "M2-OUT-15": frozenset({_RUNTIME_OWNER, _CLI_OWNER}),
+    "M2-OUT-16": M2_ARCHITECTURE_OWNERS,
+}
+M2_ARCHITECTURE_OWNER_TO_OUTCOMES: dict[str, frozenset[str]] = {
+    owner: frozenset(
+        outcome
+        for outcome, owners in M2_OUTCOME_TO_ARCHITECTURE_OWNERS.items()
+        if owner in owners
+    )
+    for owner in M2_ARCHITECTURE_OWNERS
+}
+
+M2_AUTHORITY_COMPOSITION: dict[str, frozenset[str]] = {
+    "delivered_as_is": frozenset(
+        f"docs/architecture/{name}.md"
+        for name in (
+            "README",
+            "datatype",
+            "objecttemplate",
+            "object",
+            "relationship",
+            "persistence",
+            "concurrency-matrix",
+            "concurrency",
+            "api",
+            "verification",
+            "verification-concurrency-registry",
+        )
+    ),
+    "m2_contract": frozenset({"docs/milestones/M2/contract.md"}),
+    "m2_architecture": M2_ARCHITECTURE_OWNERS
+    | frozenset(
+        {
+            "docs/milestones/M2/architecture/README.md",
+            "docs/milestones/M2/architecture/provenance.md",
+        }
+    ),
+    "technology": frozenset({"docs/general/technology_baseline.md"}),
+    "operations": frozenset(
+        {"docs/milestones/M2/steps.md", "docs/milestones/M2/status.md"}
+    ),
+    "non_authoritative_history": frozenset({"docs/milestones/M2/wip"}),
+}
+
+M2_PRIMARY_BUNDLE_OWNER: dict[str, str] = {
+    **{
+        f"M2-VER-{number:02d}": "M2-S01" for number in (1, 2, 3, 4, 5, 6, 7, 10, 20, 21)
+    },
+    **{f"M2-VER-{number:02d}": "M2-S02" for number in (8, 9, 11, 12, 13, 14)},
+    **{f"M2-VER-{number:02d}": "M2-S03" for number in range(15, 20)},
+    **{f"M2-VER-{number:02d}": "M2-S04" for number in (22, 23)},
+    "M2-VER-27": "M2-S05",
+    **{f"M2-VER-{number:02d}": "M2-S06" for number in (25, 26, 28)},
+    **{f"M2-VER-{number:02d}": "M2-S07" for number in (24, 29, 30)},
+    **{f"M2-VER-{number:02d}": "M2-S08" for number in (31, 32)},
+}
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityTrace:
+    objectives: frozenset[str]
+    outcomes: frozenset[str]
+    acceptance: frozenset[str]
+    evidence: frozenset[str]
+    owners: frozenset[str]
+
+
+M2_CAPABILITY_PORTFOLIO: dict[str, frozenset[str]] = {
+    "in_scope": frozenset(
+        {
+            "Versioned Relationship property model",
+            "Core Health API",
+            "NETAUTO CLI",
+            "Runtime configuration and production deployment",
+        }
+    ),
+    "cross_cutting_foundation": frozenset({"First durable Alembic kernel baseline"}),
+    "explicitly_outside_m2": frozenset({"Logging operational review / introduction"}),
+}
+
+
+def _capability_trace(
+    *,
+    objectives: tuple[str, ...],
+    outcome_numbers: tuple[int, ...],
+    acceptance_numbers: tuple[int, ...],
+    owners: frozenset[str],
+) -> CapabilityTrace:
+    acceptance = frozenset(f"M2-AC-{number:02d}" for number in acceptance_numbers)
+    return CapabilityTrace(
+        objectives=frozenset(objectives),
+        outcomes=frozenset(f"M2-OUT-{number:02d}" for number in outcome_numbers),
+        acceptance=acceptance,
+        evidence=frozenset(M2_ACCEPTANCE_TO_EVIDENCE[item] for item in acceptance),
+        owners=owners,
+    )
+
+
+_CROSS_CUTTING_OBJECTIVE = "Cross-cutting objective clause"
+M2_CAPABILITY_TRACE: dict[str, CapabilityTrace] = {
+    "Versioned Relationship property model": _capability_trace(
+        objectives=(
+            "Objective 1 — Versioned Relationship state",
+            "Objective 2 — Safe Relationship evolution",
+            "Objective 3 — Preserve the delivered Relationship model",
+            _CROSS_CUTTING_OBJECTIVE,
+        ),
+        outcome_numbers=(*tuple(range(1, 9)), 16),
+        acceptance_numbers=(*tuple(range(1, 20)), 31, 32),
+        owners=frozenset(
+            {
+                _RELATIONSHIP_OWNER,
+                _API_OWNER,
+                _PERSISTENCE_OWNER,
+                _MATRIX_OWNER,
+                _CONCURRENCY_OWNER,
+                _VERIFICATION_OWNER,
+            }
+        ),
+    ),
+    "Core Health API": _capability_trace(
+        objectives=(
+            "Objective 5 — Establish a defined operable runtime",
+            _CROSS_CUTTING_OBJECTIVE,
+        ),
+        outcome_numbers=(11, 15, 16),
+        acceptance_numbers=(23, 30, 31, 32),
+        owners=frozenset(
+            {_HEALTH_OWNER, _API_OWNER, _RUNTIME_OWNER, _VERIFICATION_OWNER}
+        ),
+    ),
+    "NETAUTO CLI": _capability_trace(
+        objectives=(
+            "Objective 6 — Provide an official public-API client",
+            _CROSS_CUTTING_OBJECTIVE,
+        ),
+        outcome_numbers=(12, 13, 15, 16),
+        acceptance_numbers=(24, 25, 26, 27, 28, 30, 31, 32),
+        owners=frozenset({_CLI_OWNER, _API_OWNER, _RUNTIME_OWNER, _VERIFICATION_OWNER}),
+    ),
+    "Runtime configuration and production deployment": _capability_trace(
+        objectives=(
+            "Objective 5 — Establish a defined operable runtime",
+            _CROSS_CUTTING_OBJECTIVE,
+        ),
+        outcome_numbers=(9, 10, 11, 13, 14, 15, 16),
+        acceptance_numbers=(20, 21, 22, 23, 24, 29, 30, 31, 32),
+        owners=frozenset(
+            {_RUNTIME_OWNER, _PERSISTENCE_OWNER, _HEALTH_OWNER, _VERIFICATION_OWNER}
+        ),
+    ),
+    "First durable Alembic kernel baseline": _capability_trace(
+        objectives=(
+            "Objective 4 — Establish the first durable kernel baseline",
+            _CROSS_CUTTING_OBJECTIVE,
+        ),
+        outcome_numbers=(9, 10, 13, 16),
+        acceptance_numbers=(20, 21, 22, 24, 31, 32),
+        owners=frozenset({_PERSISTENCE_OWNER, _RUNTIME_OWNER, _VERIFICATION_OWNER}),
+    ),
+}
+
+PUBLIC_HTTP_OPERATIONS = BUSINESS_OPERATION_SET | frozenset({("GET", "/health/core")})
+CLI_REMOTE_OPERATION_COVERAGE = frozenset(
+    (spec.method, spec.path_template) for spec in COMMAND_REGISTRY.values()
+)
+HEALTH_LOCAL_COMMAND_COVERAGE = frozenset({"/connect", "/status"})
+
+M2_AS_IS_GUARANTEE_TO_TARGETS: dict[str, frozenset[str]] = {
+    "stable RelationshipDefinition topology and symmetry": frozenset(
+        {
+            "tests/test_relationshipdefinition_domain.py::"
+            "test_non_symmetric_derivation_is_order_independent_and_reciprocal",
+            "tests/test_relationshipdefinition_domain.py::"
+            "test_symmetric_derivation_has_frozen_same_and_different_template_shapes",
+        }
+    ),
+    "RelationshipResolution identity, membership and endpoint lineages": frozenset(
+        {
+            "tests/test_relationshipdefinition_domain.py::"
+            "test_complete_rename_preserves_ids_endpoints_and_membership"
+        }
+    ),
+    "mutable Resolution name as non-key metadata": frozenset(
+        {
+            "tests/test_relationshipdefinition_domain.py::"
+            "test_complete_rename_preserves_ids_endpoints_and_membership",
+            "tests/test_schema_metadata.py::"
+            "test_relationship_resolution_name_is_not_part_of_a_unique_key",
+        }
+    ),
+    (
+        "Definition equivalence and cross-Definition Resolution conflict semantics"
+    ): frozenset(
+        {
+            "tests/test_relationshipdefinition_domain.py::"
+            "test_cross_definition_conflict_requires_name_and_both_space_overlaps",
+            "tests/test_relationshipdefinition_api.py::"
+            "test_relationship_definition_strict_shapes_and_finite_failures",
+        }
+    ),
+    "Relationship factual identity": frozenset(
+        {
+            "tests/test_relationship_api.py::"
+            "test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock"
+        }
+    ),
+    "symmetric/non-symmetric factual uniqueness": frozenset(
+        {
+            "tests/test_relationship_semantic_concurrency.py::"
+            "test_arb_05_reciprocal_create_uses_pk_and_rejects_loser",
+            "tests/test_relationship_semantic_concurrency.py::"
+            "test_arb_05_symmetric_inverse_and_overlap_create_reject_loser",
+        }
+    ),
+    "self-loop support": frozenset(
+        {
+            "tests/test_relationship_domain.py::"
+            "test_symmetric_same_template_distinct_pair_and_self_loop",
+            "tests/test_relationship_api.py::"
+            "test_strict_operands_missing_resources_incompatibility_and_self_loop",
+        }
+    ),
+    "exact runtime-view identity": frozenset(
+        {
+            "tests/test_relationship_domain.py::"
+            "test_non_symmetric_closure_preserves_selected_factual_orientation"
+        }
+    ),
+    "complete deterministic runtime-resolution closure": frozenset(
+        {
+            "tests/test_relationship_domain.py::"
+            "test_persisted_incomplete_closure_is_rejected",
+            "tests/test_relationship_semantic_concurrency.py::"
+            "test_create_event_failure_rolls_back_header_and_complete_closure",
+        }
+    ),
+    "Object stable-lineage endpoint admission": frozenset(
+        {
+            "tests/test_relationship_domain.py::"
+            "test_endpoint_admission_uses_stable_lineage_and_reports_operand"
+        }
+    ),
+    "Object and RelationshipDefinition delete blockers": frozenset(
+        {
+            "tests/test_relationship_api.py::"
+            "test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock",
+            "tests/test_relationshipdefinition_api.py::"
+            "test_definition_references_block_lineage_and_factual_rows_block_delete",
+        }
+    ),
+    "Object-relative semantic-view deduplication": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_m2_s02_all_transition_families_use_distinct_semantic_fanout"
+        }
+    ),
+    "/api/v1/core business namespace": frozenset(
+        {"tests/test_object_scope.py::test_s08_public_route_and_error_catalog_closure"}
+    ),
+    "strict request bodies": frozenset(
+        {
+            "tests/test_relationshipdefinition_api.py::"
+            "test_relationship_definition_strict_shapes_and_finite_failures",
+            "tests/test_relationship_api.py::"
+            "test_m2_s02_data_schema_change_lifecycle_and_strict_contract",
+        }
+    ),
+    "failure-class boundary": frozenset(
+        {"tests/test_object_scope.py::test_s08_public_route_and_error_catalog_closure"}
+    ),
+    "bounded error details and no SQL/internal leakage": frozenset(
+        {
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_ot_property_fk_is_bounded",
+            "tests/test_s08_delete_diagnostics.py::"
+            "test_datatype_delete_final_rdv_property_fk_is_bounded",
+        }
+    ),
+    "opaque keyset pagination": frozenset(
+        {
+            "tests/test_relationship_api.py::"
+            "test_object_relative_keyset_cursor_and_filter_identity",
+            "tests/test_relationshipdefinition_api.py::"
+            "test_definition_list_uses_id_keyset_cursor_and_complete_items",
+        }
+    ),
+    "single-request coherent reads": frozenset(
+        {
+            "tests/test_m2_s02_semantic_concurrency.py::"
+            "test_relationship_snapshot_cut_commits_between_physical_reads"
+        }
+    ),
+}
+
+M2_DELTA_ALLOWLIST = frozenset(
+    {
+        "RelationshipDefinition CREATE includes v1 DRAFT",
+        "capability requires one PUBLISHED RDV",
+        "Relationship CREATE request/projection adds exact pin and properties",
+        "duplicate Relationship CREATE becomes relationship_fact_conflict",
+        "missing Relationship DELETE becomes resource_not_found",
+        "Relationship lifecycle adds before/after state and new change kinds",
+        "startup requires exact shipped Alembic revision",
+        "one fresh durable root baseline replaces disposable development history",
+        "new Health, CLI, release and Linux-runtime surfaces",
+    }
+)
+M2_PUBLIC_WIRE_DELTA_ALLOWLIST = frozenset(
+    {
+        "RelationshipDefinition.CREATE response becomes {relationship_definition, "
+        "version}; initial version is v1 DRAFT revision 1; optional initial "
+        "properties schema added",
+        "RelationshipDefinition stable DTO adds default_version",
+        "RelationshipDefinitionVersion adds nested command/read routes and DTOs",
+        "Relationship capability item adds default_version and is omitted without a "
+        "PUBLISHED RDV",
+        "Relationship.CREATE body adds optional relationship_definition_version and "
+        "properties",
+        "Relationship.CREATE duplicate returns 409 relationship_fact_conflict "
+        "instead of successful convergence",
+        "Relationship DTOs add relationship_definition_version and properties",
+        "Relationship.DATA_CHANGE and SCHEMA_CHANGE add routes and request/response "
+        "DTOs",
+        "Relationship.DELETE absent target returns 404 instead of idempotent 204",
+        "Relationship lifecycle adds before/after state to CREATED/DELETED and "
+        "DATA_CHANGE/SCHEMA_CHANGE kinds",
+        "GET /health/core adds one operational route",
+    }
+)
+M2_DELIVERED_SCENARIO_DELTA_ALLOWLIST: dict[str, str] = {
+    "ARB-05": "loser becomes relationship_fact_conflict with no loser mutation/event",
+    "ARB-06": "same-ID delete waiter becomes resource_not_found / HTTP 404",
+    "ARB-07": (
+        "winner disappearance restarts and current winner conflicts, never converges "
+        "successfully"
+    ),
+    "SNAP-01": (
+        "Definition/Resolution rename variants add DATA_CHANGE and SCHEMA_CHANGE"
+    ),
+    "SNAP-02": "Object rename variants add DATA_CHANGE and SCHEMA_CHANGE",
+    "ATOMIC-02": (
+        "collision rollback keeps atomicity and classifies loser as "
+        "relationship_fact_conflict"
+    ),
+    "ATOMIC-03": (
+        "delete rollback keeps atomicity and successful waiter semantics become 204/404"
+    ),
+}
+M2_SCHEMA_RUNTIME_DELTA_ALLOWLIST = frozenset(
+    {
+        "13 delivered tables become the exact 15-table M2 schema",
+        "RelationshipDefinitionVersion and property declarations add exact schema "
+        "state",
+        "Relationship exact pin, canonical properties, runtime closure and lifecycle "
+        "snapshots are persisted",
+        "one root/base/head 0001_m2_kernel replaces disposable development revisions",
+        "startup exact-revision guard precedes serving and never migrates",
+        "Health, CLI and installed-release runtime surfaces are additive",
+    }
+)
+
+M2_NEGATIVE_SURFACE_CONTRACT: dict[str, frozenset[str]] = {
+    "relationship_model": frozenset(
+        {
+            "versioned Relationship topology or Resolution membership",
+            "required Relationship properties",
+            "nullable present Relationship values",
+            "Relationship property create defaults or migration defaults",
+            "normal LIST -> SCALAR narrowing",
+            "caller remediation during SCHEMA_CHANGE",
+            "automatic factual schema migration",
+            "floating binding to default/latest/highest",
+            "property- or version-based multi-edge factual identity",
+            "runtime property EAV",
+            "property-value search API",
+            "effective or inherited Relationship schema",
+            "standalone property-declaration CRUD",
+            "standalone RelationshipResolution CRUD",
+        }
+    ),
+    "lifecycle_history": frozenset(
+        {
+            "a separate Relationship timeline",
+            "public event-set or transition aggregate",
+            "event_set_id or transition_id",
+            "a compliance-grade immutable ledger",
+            "event sourcing or replay as current-state authority",
+            "temporal current-state reconstruction",
+            "retention or archive policy",
+            "snapshot property search",
+            "live history foreign keys",
+            "retroactive historical metadata renaming",
+        }
+    ),
+    "api_protocol": frozenset(
+        {
+            "a new business API version",
+            "generic query or sorting DSL",
+            "offset/page-number pagination",
+            "automatic total counts",
+            "bulk or batch mutation protocol",
+            "generic PATCH semantics",
+            "WebSocket, SSE or CDC subscription",
+            "generic idempotency-key framework",
+            "general ETag / If-Match protocol",
+            "cross-request database snapshot tokens",
+            "dynamic semantic extension through OpenAPI",
+        }
+    ),
+    "security_network": frozenset(
+        {
+            "native authentication or authorization",
+            "rate limiting or anti-abuse policy",
+            "native server certificate management",
+            "certificate rotation or reload",
+            "mTLS or client certificates",
+            "certificate pinning or TOFU",
+            "CLI insecure TLS bypass",
+            "reverse-proxy or firewall automation",
+            "VPN or load-balancer configuration",
+            "a separate Health listener",
+        }
+    ),
+    "deployment_platform": frozenset(
+        {
+            "Docker or Kubernetes assets",
+            "systemd unit or custom process manager",
+            "start-at-boot or automatic restart",
+            "service discovery, clustering or high availability",
+            "multi-region operation",
+            "rolling, blue/green, canary or zero-downtime upgrade",
+            "application/schema rollback procedure",
+            "artifact registry or transfer automation",
+            "CI/CD deployment pipeline",
+            "automatic installation or upgrade",
+        }
+    ),
+    "data_protection": frozenset(
+        {
+            "backup or restore automation",
+            "point-in-time recovery procedure",
+            "PostgreSQL replica management",
+            "data-retention policy",
+            "disaster-recovery orchestration",
+            "business-continuity SLA",
+        }
+    ),
+    "observability": frozenset(
+        {
+            "logging redesign or structured logging contract",
+            "correlation/request identifiers",
+            "distributed tracing",
+            "metrics endpoint or Prometheus integration",
+            "dashboards or alerting",
+            "central log shipping or rotation",
+            "compliance audit logs",
+        }
+    ),
+    "cli": frozenset(
+        {
+            "direct application-service or database access",
+            "implicit/default server connection",
+            "automatic instance discovery",
+            "named persistent connection profiles",
+            "mandatory persistence of endpoint or output mode",
+            "credential storage",
+            "dynamic OpenAPI command generation",
+            "CLI plugin framework",
+            "custom nested value DSL",
+            "domain identities invented for convenience",
+            "hidden post-mutation GET",
+            "a cross-release compatibility protocol",
+            "a granular exit-code taxonomy",
+            "a full-screen TUI, macro language or offline mode",
+            "persistent history across CLI process restarts",
+        }
+    ),
+    "health": frozenset(
+        {
+            "generic GET /health aggregation",
+            "dynamic health registry or plugin health framework",
+            "health dependency graph",
+            "warning/degraded/unknown state model",
+            "metrics or extended diagnostics payload",
+            "schema-revision validation inside Health",
+            "automatic remediation",
+            "readiness checks for future unincluded capabilities",
+            "PostgreSQL internal diagnostics",
+        }
+    ),
+    "alembic": frozenset(
+        {
+            "M1-to-M2 in-place data migration",
+            "preservation or stamping of pre-baseline development databases",
+            "dual-schema read/write compatibility",
+            "online backfill or expand/contract rollout",
+            "automatic migration at startup",
+            "conditional downgrade to M1",
+            "data-preserving head-to-base downgrade",
+            "multiple Alembic heads",
+        }
+    ),
+    "performance_availability": frozenset(
+        {
+            "quantitative throughput, latency, maximum-dataset, horizontal-scaling, "
+            "benchmark, availability or zero-lock DDL SLA"
+        }
+    ),
+    "verification_public": frozenset(
+        {
+            "generic PUT endpoints",
+            "action DSL",
+            "runtime Relationship-resolution CRUD",
+            "schema migration endpoint",
+            "auth/login/logout/token/account/role routes",
+            "401/403 native contract",
+            "JSON Schema projection",
+        }
+    ),
+    "verification_schema": frozenset(
+        {
+            "Relationship property-value rows",
+            "Relationship effective-schema cache",
+            "compiled generic schema",
+            "reverse-dependency materialization",
+            "surrogate RDV/declaration/runtime-resolution IDs",
+            "event-set grouping identity",
+            "GIN on Object/Relationship properties",
+            "GIN/expression lifecycle snapshot indexes",
+            "standalone default_version indexes",
+            "duplicate PUBLISHED-only indexes",
+            "second factual-identity index",
+            "event-set grouping index",
+            "executable disposable M1 revisions",
+        }
+    ),
+    "verification_runtime": frozenset(
+        {
+            "application factory migration/stamp/repair",
+            "ASGI lifespan migration/stamp/repair",
+            "CLI migration/stamp/repair",
+            "wheel installation migration/stamp/repair",
+        }
+    ),
+    "wip_authority": frozenset(
+        {
+            "production dependency on M2 WIP",
+            "test dependency on an execution prompt as semantic authority",
+            "unclassified historical WIP document",
+        }
+    ),
+    "normative_placeholder": frozenset(
+        {
+            "unresolved normative TBD/TODO/FIXME/open question",
+            "unresolved candidate or open design/contract point",
+            "PARTIALLY REOPENED authority",
+        }
+    ),
+}
+
+_NEGATIVE_CATEGORY_TARGET = {
+    "relationship_model": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_relationship_model_non_goals_and_finite_public_surface"
+    ),
+    "lifecycle_history": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_lifecycle_and_history_non_goals_are_absent"
+    ),
+    "api_protocol": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact"
+    ),
+    "security_network": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_security_transport_and_secret_surfaces_remain_external"
+    ),
+    "deployment_platform": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
+    ),
+    "data_protection": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
+    ),
+    "observability": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_observability_and_health_non_goals_are_absent"
+    ),
+    "cli": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_cli_operation_coverage_import_closure_and_negative_surface_are_exact"
+    ),
+    "health": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_observability_and_health_non_goals_are_absent"
+    ),
+    "alembic": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
+    ),
+    "performance_availability": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_runtime_deployment_data_protection_and_performance_surfaces_are_absent"
+    ),
+    "verification_public": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_public_http_inventory_error_catalog_and_forbidden_surface_are_exact"
+    ),
+    "verification_schema": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
+    ),
+    "verification_runtime": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_schema_alembic_and_automatic_migration_surfaces_are_exact"
+    ),
+    "wip_authority": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_wip_provenance_is_complete_and_never_implementation_authority"
+    ),
+    "normative_placeholder": (
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_normative_corpus_has_no_unresolved_placeholder_or_reopen"
+    ),
+}
+M2_NEGATIVE_SURFACE_TO_TARGETS: dict[str, frozenset[str]] = {
+    f"{category}::{entry}": frozenset({_NEGATIVE_CATEGORY_TARGET[category]})
+    for category, entries in M2_NEGATIVE_SURFACE_CONTRACT.items()
+    for entry in entries
+}
+
+M2_CONTRACT_QUALITY_GATES = frozenset(f"M2-CQG-{number:02d}" for number in range(1, 11))
+M2_CONTRACT_QUALITY_GATE_TO_TARGETS: dict[str, frozenset[str]] = {
+    "M2-CQG-01": frozenset(
+        {
+            "tests/test_m2_traceability.py::test_s08_capability_portfolio_and_trace_are_exact"
+        }
+    ),
+    "M2-CQG-02": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_normative_corpus_has_no_unresolved_placeholder_or_reopen"
+        }
+    ),
+    "M2-CQG-03": frozenset(
+        {
+            "tests/test_m2_s08_regression.py::test_m2_delta_allowlists_are_exact_and_closed"
+        }
+    ),
+    "M2-CQG-04": frozenset(
+        {
+            "tests/test_m2_traceability.py::test_s08_capability_portfolio_and_trace_are_exact"
+        }
+    ),
+    "M2-CQG-05": frozenset(
+        {
+            "tests/test_m2_traceability.py::test_s08_dependency_graph_and_authority_direction_are_closed"
+        }
+    ),
+    "M2-CQG-06": frozenset(
+        {
+            "tests/test_m2_s08_negative_surface.py::test_contract_non_goal_registry_matches_frozen_contract"
+        }
+    ),
+    "M2-CQG-07": frozenset(
+        {
+            "tests/test_m2_s08_regression.py::test_all_preserved_guarantees_have_concrete_collected_targets"
+        }
+    ),
+    "M2-CQG-08": frozenset(
+        {
+            "tests/test_m2_traceability.py::test_s08_deferred_choices_do_not_change_observable_outcomes"
+        }
+    ),
+    "M2-CQG-09": frozenset(
+        {
+            "tests/test_m2_traceability.py::test_s08_frozen_vocabulary_and_identifier_hygiene_are_exact"
+        }
+    ),
+    "M2-CQG-10": frozenset(
+        {
+            "tests/test_m2_traceability.py::test_s08_freeze_and_formal_reopen_rules_remain_explicit"
+        }
+    ),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class EvidenceBundle:
@@ -1574,6 +2302,66 @@ S07_REVIEW_FIX_TARGETS: dict[str, frozenset[str]] = {
         }
     ),
 }
+_S08_REGRESSION_TARGETS = frozenset(
+    {
+        "tests/test_m2_s08_regression.py::"
+        "test_all_preserved_guarantees_have_concrete_collected_targets",
+        "tests/test_m2_s08_regression.py::"
+        "test_delivered_scenario_targets_recipes_predicates_and_deltas_are_closed",
+        "tests/test_m2_s08_regression.py::test_m2_delta_allowlists_are_exact_and_closed",
+        "tests/test_m2_s08_regression.py::"
+        "test_public_route_error_and_schema_runtime_deltas_are_exact",
+        "tests/test_object_scope.py::test_s08_public_route_and_error_catalog_closure",
+        "tests/test_m2_s05_registry.py::"
+        "test_registry_is_exactly_the_server_business_openapi_inventory",
+        "tests/test_schema_metadata.py::"
+        "test_metadata_contains_exactly_the_frozen_fifteen_tables",
+        "tests/test_migrations.py::"
+        "test_durable_root_structure_drift_repeatability_and_owned_downgrade",
+    }
+)
+_S08_TRACEABILITY_TARGETS = frozenset(
+    {
+        "tests/test_m2_traceability.py::test_s08_primary_bundle_ownership_is_exact",
+        "tests/test_m2_traceability.py::"
+        "test_s08_outcome_owner_acceptance_evidence_target_chain_is_complete",
+        "tests/test_m2_traceability.py::test_s08_capability_portfolio_and_trace_are_exact",
+        "tests/test_m2_traceability.py::test_s08_dependency_graph_and_authority_direction_are_closed",
+        "tests/test_m2_traceability.py::test_s08_deferred_choices_do_not_change_observable_outcomes",
+        "tests/test_m2_traceability.py::test_s08_frozen_vocabulary_and_identifier_hygiene_are_exact",
+        "tests/test_m2_traceability.py::test_s08_freeze_and_formal_reopen_rules_remain_explicit",
+        "tests/test_m2_traceability.py::test_s08_all_bundles_are_implemented_nonempty_and_resolvable",
+    }
+)
+_S08_NEGATIVE_TARGETS = frozenset(_NEGATIVE_CATEGORY_TARGET.values()) | frozenset(
+    {
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_contract_non_goal_registry_matches_frozen_contract",
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_wip_provenance_is_complete_and_never_implementation_authority",
+        "tests/test_m2_s08_negative_surface.py::"
+        "test_normative_corpus_has_no_unresolved_placeholder_or_reopen",
+    }
+)
+_S08_EVIDENCE_TARGETS = frozenset(
+    {
+        "tests/test_m2_s08_evidence.py::test_evidence_schema_accepts_one_complete_stable_record",
+        "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_identifier_shape_and_count_drift",
+        "tests/test_m2_s08_evidence.py::test_evidence_schema_rejects_secrets_and_implementer_review_decision",
+        "tests/test_m2_s08_evidence.py::test_evidence_documentation_matches_validator_and_reserves_s09_record",
+    }
+)
+S08_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
+    "M2-VER-31": _S08_REGRESSION_TARGETS
+    | frozenset(
+        target
+        for targets in M2_AS_IS_GUARANTEE_TO_TARGETS.values()
+        for target in targets
+    ),
+    "M2-VER-32": _S08_TRACEABILITY_TARGETS
+    | _S08_NEGATIVE_TARGETS
+    | _S08_EVIDENCE_TARGETS,
+}
 M2_EVIDENCE_TO_TARGETS = {
     bundle_id: EvidenceBundle(
         "IMPLEMENTED"
@@ -1586,6 +2374,7 @@ M2_EVIDENCE_TO_TARGETS = {
         or bundle_id in S06_PRIMARY_BUNDLE_TARGETS
         or bundle_id in S07_PRIMARY_BUNDLE_TARGETS
         or bundle_id in S07_INSTALLED_SUPPORT_TARGETS
+        or bundle_id in S08_PRIMARY_BUNDLE_TARGETS
         else "DESIGNED",
         S01_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S02_BUNDLE_TARGETS.get(bundle_id, frozenset())
@@ -1595,7 +2384,8 @@ M2_EVIDENCE_TO_TARGETS = {
         | S05_SUPPORTING_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S06_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
         | S07_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset())
-        | S07_INSTALLED_SUPPORT_TARGETS.get(bundle_id, frozenset()),
+        | S07_INSTALLED_SUPPORT_TARGETS.get(bundle_id, frozenset())
+        | S08_PRIMARY_BUNDLE_TARGETS.get(bundle_id, frozenset()),
     )
     for bundle_id in M2_EVIDENCE_BUNDLES
 }
@@ -1692,24 +2482,50 @@ S03_REVIEW_FIX_TARGETS = {
 
 S01_PUBLIC_ROUTE_DELTA = frozenset(
     {
-        ("POST", "/api/v1/core/relationship-definitions/{id}/create-next"),
-        ("POST", "/api/v1/core/relationship-definitions/{id}/set-default"),
-        ("POST", "/api/v1/core/relationship-definitions/{id}/clear-default"),
-        ("GET", "/api/v1/core/relationship-definitions/{id}/versions"),
-        ("GET", "/api/v1/core/relationship-definitions/{id}/versions/{version}"),
         (
             "POST",
-            "/api/v1/core/relationship-definitions/{id}/versions/{version}/revise",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/create-next",
         ),
         (
             "POST",
-            "/api/v1/core/relationship-definitions/{id}/versions/{version}/publish",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/set-default",
         ),
         (
             "POST",
-            "/api/v1/core/relationship-definitions/{id}/versions/{version}/deprecate",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/clear-default",
         ),
-        ("DELETE", "/api/v1/core/relationship-definitions/{id}/versions/{version}"),
+        (
+            "GET",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions",
+        ),
+        (
+            "GET",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/versions/{version}",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/versions/{version}/revise",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/versions/{version}/publish",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/versions/{version}/deprecate",
+        ),
+        (
+            "DELETE",
+            "/api/v1/core/relationship-definitions/"
+            "{relationship_definition_id}/versions/{version}",
+        ),
     }
 )
 
@@ -1741,6 +2557,11 @@ def _assert_target_exists(target: str) -> None:
     assert target in collected or any(
         node.startswith(f"{target}[") for node in collected
     ), target
+
+
+def assert_target_exists(target: str) -> None:
+    """Public S08 helper for validating one exact collected pytest node ID."""
+    _assert_target_exists(target)
 
 
 @cache
@@ -1788,7 +2609,7 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
         "M2-VER-21",
     }
     for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items():
-        if (
+        assert (
             bundle_id in S01_BUNDLE_TARGETS
             or bundle_id in S02_BUNDLE_TARGETS
             or bundle_id in S03_BUNDLE_TARGETS
@@ -1798,11 +2619,10 @@ def test_s02_bundle_states_and_targets_are_honest_and_resolvable() -> None:
             or bundle_id in S06_PRIMARY_BUNDLE_TARGETS
             or bundle_id in S07_PRIMARY_BUNDLE_TARGETS
             or bundle_id in S07_INSTALLED_SUPPORT_TARGETS
-        ):
-            assert evidence.state == "IMPLEMENTED"
-            assert evidence.targets
-        else:
-            assert evidence == EvidenceBundle("DESIGNED", frozenset())
+            or bundle_id in S08_PRIMARY_BUNDLE_TARGETS
+        )
+        assert evidence.state == "IMPLEMENTED"
+        assert evidence.targets
         for target in evidence.targets:
             _assert_target_exists(target)
 
@@ -1940,10 +2760,10 @@ def test_s05_primary_and_supporting_bundle_targets_are_honest() -> None:
         and node.name.startswith("test_")
     }
     assert S05_PRIMARY_BUNDLE_TARGETS["M2-VER-27"] == defined_s05_targets
-    for designed in ("M2-VER-31", "M2-VER-32"):
-        assert M2_EVIDENCE_TO_TARGETS[designed] == EvidenceBundle(
-            "DESIGNED", frozenset()
-        )
+    for s08_bundle in ("M2-VER-31", "M2-VER-32"):
+        assert M2_PRIMARY_BUNDLE_OWNER[s08_bundle] == "M2-S08"
+        assert M2_EVIDENCE_TO_TARGETS[s08_bundle].state == "IMPLEMENTED"
+        assert M2_EVIDENCE_TO_TARGETS[s08_bundle].targets
 
 
 def test_s06_primary_bundle_targets_are_honest_complete_and_resolvable() -> None:
@@ -2006,9 +2826,9 @@ def test_s06_review_fix_registry_is_exact_resolvable_and_bundle_mapped() -> None
         | S07_INSTALLED_SUPPORT_TARGETS["M2-VER-27"]
     )
     for bundle_id in ("M2-VER-31", "M2-VER-32"):
-        assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
-            "DESIGNED", frozenset()
-        )
+        assert M2_PRIMARY_BUNDLE_OWNER[bundle_id] == "M2-S08"
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].state == "IMPLEMENTED"
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].targets
 
 
 def test_s07_primary_and_installed_support_registries_are_exact_and_resolvable() -> (
@@ -2067,9 +2887,9 @@ def test_s07_primary_and_installed_support_registries_are_exact_and_resolvable()
         == (S07_PRIMARY_BUNDLE_TARGETS["M2-VER-29"])
     )
     for bundle_id in ("M2-VER-31", "M2-VER-32"):
-        assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
-            "DESIGNED", frozenset()
-        )
+        assert M2_PRIMARY_BUNDLE_OWNER[bundle_id] == "M2-S08"
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].state == "IMPLEMENTED"
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].targets
 
 
 def test_s07_review_fix_registry_and_complete_bundle_membership() -> None:
@@ -2136,9 +2956,9 @@ def test_s07_review_fix_registry_and_complete_bundle_membership() -> None:
     }
     assert all(S07_INSTALLED_SUPPORT_TARGETS.values())
     for bundle_id in ("M2-VER-31", "M2-VER-32"):
-        assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
-            "DESIGNED", frozenset()
-        )
+        assert M2_PRIMARY_BUNDLE_OWNER[bundle_id] == "M2-S08"
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].state == "IMPLEMENTED"
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id].targets
 
     defined_s07_targets = {
         f"{path.as_posix()}::{node.name}"
@@ -2354,20 +3174,12 @@ def test_s04_review_fix_registry_and_exact_bundle_membership() -> None:
         for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
         if evidence.state == "IMPLEMENTED"
     }
-    assert implemented == {
-        *(f"M2-VER-{number:02d}" for number in range(1, 25)),
-        "M2-VER-25",
-        "M2-VER-26",
-        "M2-VER-27",
-        "M2-VER-28",
-        "M2-VER-29",
-        "M2-VER-30",
-    }
+    assert implemented == M2_EVIDENCE_BUNDLES
     assert {
         bundle_id
         for bundle_id, evidence in M2_EVIDENCE_TO_TARGETS.items()
         if evidence.state == "DESIGNED"
-    } == {"M2-VER-31", "M2-VER-32"}
+    } == set()
 
 
 def test_s03_mutation_registry_is_exact_central_and_executable() -> None:
@@ -2541,4 +3353,217 @@ def test_s03_primary_bundles_are_implemented_with_exact_scenario_membership() ->
             *(M2_SCENARIO_TO_TARGETS[item] for item in scenario_ids)
         )
         for target in evidence.targets:
+            _assert_target_exists(target)
+
+
+def test_s08_primary_bundle_ownership_is_exact() -> None:
+    assert set(M2_PRIMARY_BUNDLE_OWNER) == M2_EVIDENCE_BUNDLES
+    assert set(M2_PRIMARY_BUNDLE_OWNER.values()) == {
+        f"M2-S{number:02d}" for number in range(1, 9)
+    }
+    expected_counts = {
+        "M2-S01": 10,
+        "M2-S02": 6,
+        "M2-S03": 5,
+        "M2-S04": 2,
+        "M2-S05": 1,
+        "M2-S06": 3,
+        "M2-S07": 3,
+        "M2-S08": 2,
+    }
+    assert {
+        owner: tuple(M2_PRIMARY_BUNDLE_OWNER.values()).count(owner)
+        for owner in sorted(set(M2_PRIMARY_BUNDLE_OWNER.values()))
+    } == expected_counts
+    assert set(S08_PRIMARY_BUNDLE_TARGETS) == {"M2-VER-31", "M2-VER-32"}
+    assert all(S08_PRIMARY_BUNDLE_TARGETS.values())
+
+
+def test_s08_outcome_owner_acceptance_evidence_target_chain_is_complete() -> None:
+    assert set(M2_OUTCOME_TO_ARCHITECTURE_OWNERS) == M2_OUTCOMES
+    assert set(M2_ARCHITECTURE_OWNER_TO_OUTCOMES) == M2_ARCHITECTURE_OWNERS
+    expected_inverse = {
+        owner: frozenset(
+            outcome
+            for outcome, owners in M2_OUTCOME_TO_ARCHITECTURE_OWNERS.items()
+            if owner in owners
+        )
+        for owner in M2_ARCHITECTURE_OWNERS
+    }
+    assert M2_ARCHITECTURE_OWNER_TO_OUTCOMES == expected_inverse
+    assert all(expected_inverse.values())
+
+    for owner in M2_ARCHITECTURE_OWNERS:
+        text = Path(owner).read_text()
+        assert "FINAL / FROZEN" in text, owner
+        assert Path(owner).is_file()
+    for outcome in M2_OUTCOMES:
+        owners = M2_OUTCOME_TO_ARCHITECTURE_OWNERS[outcome]
+        acceptance = M2_OUTCOME_TO_ACCEPTANCE[outcome]
+        assert owners and owners <= M2_ARCHITECTURE_OWNERS
+        assert acceptance and acceptance <= M2_ACCEPTANCE_CRITERIA
+        for criterion in acceptance:
+            bundle = M2_ACCEPTANCE_TO_EVIDENCE[criterion]
+            evidence = M2_EVIDENCE_TO_TARGETS[bundle]
+            assert evidence.state == "IMPLEMENTED"
+            assert evidence.targets
+            for target in evidence.targets:
+                _assert_target_exists(target)
+
+
+def test_s08_capability_portfolio_and_trace_are_exact() -> None:
+    assert M2_CAPABILITY_PORTFOLIO == {
+        "in_scope": frozenset(
+            {
+                "Versioned Relationship property model",
+                "Core Health API",
+                "NETAUTO CLI",
+                "Runtime configuration and production deployment",
+            }
+        ),
+        "cross_cutting_foundation": frozenset(
+            {"First durable Alembic kernel baseline"}
+        ),
+        "explicitly_outside_m2": frozenset(
+            {"Logging operational review / introduction"}
+        ),
+    }
+    traced = (
+        M2_CAPABILITY_PORTFOLIO["in_scope"]
+        | M2_CAPABILITY_PORTFOLIO["cross_cutting_foundation"]
+    )
+    assert set(M2_CAPABILITY_TRACE) == traced
+    contract = Path("docs/milestones/M2/contract.md").read_text()
+    for capability, trace in M2_CAPABILITY_TRACE.items():
+        assert capability in contract
+        assert trace.objectives
+        assert trace.outcomes <= M2_OUTCOMES
+        assert trace.acceptance <= M2_ACCEPTANCE_CRITERIA
+        assert trace.evidence == frozenset(
+            M2_ACCEPTANCE_TO_EVIDENCE[item] for item in trace.acceptance
+        )
+        assert trace.owners <= M2_ARCHITECTURE_OWNERS
+        assert trace.outcomes and trace.acceptance and trace.evidence and trace.owners
+        assert all(item in contract for item in trace.objectives)
+
+    assert M2_CONTRACT_QUALITY_GATES == {
+        f"M2-CQG-{number:02d}" for number in range(1, 11)
+    }
+    assert set(M2_CONTRACT_QUALITY_GATE_TO_TARGETS) == M2_CONTRACT_QUALITY_GATES
+    for targets in M2_CONTRACT_QUALITY_GATE_TO_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+
+
+def test_s08_dependency_graph_and_authority_direction_are_closed() -> None:
+    graph: dict[str, frozenset[str]] = {
+        "unique_alembic_head": frozenset({"startup_schema_guard", "explicit_alembic"}),
+        "explicit_alembic": frozenset({"startup_schema_guard"}),
+        "startup_schema_guard": frozenset({"http_serving"}),
+        "http_serving": frozenset({"business_api", "health"}),
+        "business_api": frozenset({"cli_remote"}),
+        "health": frozenset({"cli_connection", "readiness_verification"}),
+        "cli_remote": frozenset(),
+        "cli_connection": frozenset(),
+        "readiness_verification": frozenset(),
+    }
+    permanent: set[str] = set()
+    temporary: set[str] = set()
+
+    def visit(node: str) -> None:
+        assert node not in temporary, node
+        if node in permanent:
+            return
+        temporary.add(node)
+        for child in graph[node]:
+            visit(child)
+        temporary.remove(node)
+        permanent.add(node)
+
+    for node in graph:
+        visit(node)
+    assert permanent == set(graph)
+
+    contract = Path("docs/milestones/M2/contract.md").read_text()
+    assert (
+        "No HTTP endpoint enters serving and no migration is executed automatically."
+        in contract
+    )
+    assert "Deployment requires explicit schema realization" in contract
+    assert "The server never depends on the CLI." in contract
+    assert set(M2_AUTHORITY_COMPOSITION) == {
+        "delivered_as_is",
+        "m2_contract",
+        "m2_architecture",
+        "technology",
+        "operations",
+        "non_authoritative_history",
+    }
+    assert M2_ARCHITECTURE_OWNERS <= M2_AUTHORITY_COMPOSITION["m2_architecture"]
+    assert all(Path(path).is_file() for path in M2_ARCHITECTURE_OWNERS)
+    assert not any("/wip/" in path for path in M2_ARCHITECTURE_OWNERS)
+
+
+def test_s08_deferred_choices_do_not_change_observable_outcomes() -> None:
+    contract = Path("docs/milestones/M2/contract.md").read_text()
+    assert (
+        "may determine how, but not whether or with what observable result" in contract
+    )
+    assert (
+        "No other observable divergence from the delivered AS-IS is authorized"
+        in contract
+    )
+    assert "Logging operational review / introduction" in contract
+    assert "Logging remains a candidate capability for a future milestone" in contract
+
+
+def test_s08_frozen_vocabulary_and_identifier_hygiene_are_exact() -> None:
+    contract = Path("docs/milestones/M2/contract.md").read_text()
+    verification = Path("docs/milestones/M2/architecture/verification.md").read_text()
+    for identifiers, text in (
+        (M2_OUTCOMES, contract),
+        (M2_ACCEPTANCE_CRITERIA, contract),
+        (M2_CONTRACT_QUALITY_GATES, contract),
+        (M2_EVIDENCE_BUNDLES, verification),
+    ):
+        assert all(identifier in text for identifier in identifiers)
+    for distinct_pair in (
+        ("readiness", "schema compatibility"),
+        ("event row", "event set"),
+        ("exact version", "default policy"),
+    ):
+        assert all(term in contract.lower() for term in distinct_pair)
+
+
+def test_s08_freeze_and_formal_reopen_rules_remain_explicit() -> None:
+    contract = Path("docs/milestones/M2/contract.md").read_text()
+    architecture = Path("docs/milestones/M2/architecture/README.md").read_text()
+    steps = Path("docs/milestones/M2/steps.md").read_text()
+    assert "This contract is `FINAL / FROZEN`." in contract
+    assert "Open contract points\n\nNone." in contract
+    assert "formal contract reopening" in contract.lower()
+    assert architecture.startswith(
+        "# M2 Architecture\n\n**Architecture set status:** FINAL / FROZEN"
+    )
+    assert "no relevant open, contradictory or partially reopened" in architecture
+    assert "FINAL / FROZEN" in steps
+
+
+def test_s08_all_bundles_are_implemented_nonempty_and_resolvable() -> None:
+    assert set(M2_EVIDENCE_TO_TARGETS) == M2_EVIDENCE_BUNDLES
+    assert all(
+        evidence.state == "IMPLEMENTED" and evidence.targets
+        for evidence in M2_EVIDENCE_TO_TARGETS.values()
+    )
+    assert set(M2_NEGATIVE_SURFACE_CONTRACT) == set(_NEGATIVE_CATEGORY_TARGET)
+    assert len(M2_NEGATIVE_SURFACE_TO_TARGETS) == sum(
+        len(entries) for entries in M2_NEGATIVE_SURFACE_CONTRACT.values()
+    )
+    assert all(M2_NEGATIVE_SURFACE_TO_TARGETS.values())
+    for targets in (
+        *S08_PRIMARY_BUNDLE_TARGETS.values(),
+        *M2_NEGATIVE_SURFACE_TO_TARGETS.values(),
+    ):
+        for target in targets:
             _assert_target_exists(target)
