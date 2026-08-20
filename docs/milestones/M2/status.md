@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — REVIEW CHANGES REQUIRED
-current task    execute the bounded S08-VRF-05 / 06 / 07 review-fix
-blockers        M2-S09 remains blocked; three verification-harness findings are open
+current slice   M2-S08 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the corrected S08 candidate
+blockers        M2-S09 remains blocked pending reviewer-owned completion of M2-S08
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | REVIEW CHANGES REQUIRED | `M2-S07 COMPLETED` |
+| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or infrastructure blocker is open. Three bounded verification-harness findings remain open in M2-S08: import-time Alembic mutation closure, semantic coverage of abstract negative surfaces, and reviewer-acceptance coherence in the future evidence-record validator.
+No contract, architecture, implementation-planning, technology or verification blocker is open for the corrected S08 candidate. The bounded S08-VRF-05 / 06 / 07 corrections are implemented and their focused, integrated and complete repository gates pass. The reviewer-authorized mechanical Ruff formatting of the active execution aid closes the repository-wide quality-gate blocker without changing its semantics or scope.
 
 `TEST_DATABASE_URL` is externally supplied when it is explicitly provided by the environment and NETAUTO test code does not provision, invent or silently substitute it. A loopback or local hostname is not itself a blocker. The implementer must verify that the configured URL uses the supported PostgreSQL/Psycopg form, reaches real PostgreSQL, and identifies the dedicated test target required by the existing test-support safety checks.
 
@@ -67,7 +67,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         REVIEW CHANGES REQUIRED
+M2-S08                         CANDIDATE READY FOR REVIEW
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -77,8 +77,11 @@ corrective handoff              02a3a98ce5fc14419bcc795a8520ad1659140805
 verification review-fix        42843b4c885ee550a3e7b3dfc21896d9ae8a1ba1
 corrected candidate evidence   e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5
 review reopen                  recorded by the commit containing this status
+reviewer-aid format commit     a070391d3ffdf3540bc7ceaecfd9cb24d44cfe67
+final review-fix commit        c159dd9e38c4a6650669166499958f2d436d9e62
+candidate evidence/status      recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                REVIEW CHANGES REQUIRED / reviewer-owned
+review decision                pending reviewer inspection / reviewer-owned
 ```
 
 Reviewer outcome for `e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5`:
@@ -94,6 +97,53 @@ The findings are implementation defects in the S08 test/evidence harness. They d
 ```text
 docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
 ```
+
+### Final S08-VRF-05 / 06 / 07 corrective candidate
+
+The synchronized starting HEAD is
+`e5b30e6725c13f3e065ef90cc3cdf41995d0e55e`, which contains the required
+`e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5` ancestry and the reviewer-owned
+reopen. The corrected candidate closes the three bounded findings without
+changing production, API, CLI, schema, migration, dependency or lock content:
+
+```text
+S08-VRF-05  module/class initialization, definition-time calls and lexical alias scope covered
+S08-VRF-06  finite capability policy plus required synthetic positive/negative counterexamples covered
+S08-VRF-07  reviewer ACCEPTED conditional all-pass coherence covered
+focused S08-VRF-05/06/07      13 selected / 13 unique / 24 passed — 1.76 s
+review-fix registry            7 exact keys / 19 selected / 18 unique / 31 passed — 2.24 s
+M2-VER-31                      31 selected / 31 unique / 39 passed — 22.46 s
+M2-VER-32                      41 selected / 41 unique / 58 passed — 16.83 s
+S08/T10 and traceability       91 passed — 28.84 s
+51 delivered scenarios        51 IDs / 91 unique targets / 95 passed — 59.16 s
+complete S06                   72 passed — 5.12 s
+complete S07/T9               18 passed — 42.03 s
+API/error/CLI                  61 passed / 1 known warning — 28.80 s
+schema/Alembic                22 passed / compare_metadata [] — 11.46 s
+runtime/schema-guard/Health   107 passed / 1 known warning — 9.78 s
+PostgreSQL/concurrency        254 passed / 593 deselected / 1 known warning — 190.42 s
+non-PostgreSQL                593 passed / 254 deselected / 1 known warning — 78.45 s
+complete repository          847 passed / 1 known warning — 266.14 s
+collection                   847 — 1.82 s
+skip / xfail / rerun          0 / 0 / 0
+supported 40P01 / 40001       0 / 0
+negative controls             40P01 x1 / 40001 x2, exact expected census
+```
+
+`uv lock --check`, `uv sync --locked`, `uv build`, Ruff format, Ruff lint and
+Pyright pass. The reviewer-authorized execution aid formatting commit
+`a070391d3ffdf3540bc7ceaecfd9cb24d44cfe67` contains only the mechanical Ruff
+formatter delta in
+`docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md`.
+The artifact remains 165978 bytes / 77 members with SHA-256
+`38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60`;
+the 48238-byte embedded lock remains SHA-256
+`0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf`.
+The real external test target reports PostgreSQL 16.14 and database identity
+`netautotest`; the bounded `SELECT 1` probe succeeds.
+
+The candidate is ready for reviewer inspection only; M2-S08 is not declared
+`COMPLETED`, no final acceptance is claimed, and M2-S09 remains `BLOCKED`.
 
 The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. That failed candidate was not handed off; its execution correctly returned S08 to `IN PROGRESS` before the later authorized continuation recorded below.
 
