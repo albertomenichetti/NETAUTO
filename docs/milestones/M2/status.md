@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S07 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S07 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S07 — IN PROGRESS
-current task    implement the authorized M2-S07 release and installed-runtime baseline
-blockers        externally supplied TEST_DATABASE_URL is unavailable for mandatory T9/PostgreSQL gates
+current slice   M2-S07 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published M2-S07 candidate
+blockers        none for M2-S07 candidate review; M2-S08 remains dependency-blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | IN PROGRESS — `M2-S07` ONLY |
+| Implementation | CANDIDATE READY FOR REVIEW — `M2-S07` ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -46,7 +46,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
-| `M2-S07` | IN PROGRESS | `M2-S06 COMPLETED` |
+| `M2-S07` | CANDIDATE READY FOR REVIEW | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
@@ -54,29 +54,35 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning or technology blocker is open for `M2-S07`. The externally supplied `TEST_DATABASE_URL` is currently unavailable, so PostgreSQL-backed T9 and complete repository gates remain blocked while bounded implementation continues.
+No contract, architecture, implementation-planning, technology or infrastructure
+blocker is open for `M2-S07` candidate review. The externally supplied
+`TEST_DATABASE_URL` was available for the mandatory PostgreSQL-backed T9,
+concurrency and complete repository gates.
 
 `M2-S07` is limited to the versioned wheel, installed Alembic graph and documented/executed Linux operating baseline. It must consume the completed server, runtime, Health and CLI capabilities without changing their frozen public or semantic contracts. It must not begin `M2-S08` integrated traceability/negative-surface closure before reviewer-owned completion.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
-## M2-S07 in-progress implementation record
+## M2-S07 candidate record
 
-The bounded release implementation is present but is not a candidate-ready handoff.
-The required external PostgreSQL target was not present in the execution
-environment, so the installed migration/server T9 targets, PostgreSQL regressions,
-concurrency gate, complete suite, and exact-remote post-push rerun have not passed.
+The bounded release implementation and its mandatory external-PostgreSQL evidence
+are candidate-ready for reviewer inspection. This state is not reviewer-owned
+completion and does not authorize `M2-S08`.
 
-Implemented boundaries:
+Candidate lineage and implemented boundaries:
 
 ```text
+initial implementation           0934671324cca40e8e5e0608449c5a5b3524e662
+initial evidence/status          dd58e8b342fae12639a731b86953a323e3da5b62
+corrective implementation        a81dd3a4b85795d4f153580d2b9407bd482df363
+candidate evidence/status        this commit
 release version                  0.2.0
 canonical wheel                  netauto-0.2.0-py3-none-any.whl
 embedded runtime lock            netauto/release/runtime.pylock.toml
 runtime package census           29 total / 27 applicable on Linux CPython
-installed target                 wheel-only / outside checkout / --no-deps app install
-installed Alembic                package-resource graph and explicit real-PG harness
-Linux operation                  versioned layout, protected secret, foreground lifecycle
+installed target                 wheel-only / outside checkout / exact sync / --no-deps
+installed Alembic                package-resource graph / explicit real-PG migration
+Linux operation                  versioned layout / ownership handoff / atomic current
 CLI operation                    installed PTY and HTTP/HTTPS subprocess harness
 traceability                     M2-VER-24 / 29 / 30 plus installed support 22/23/25-28
 schema / migration DDL           unchanged
@@ -84,50 +90,85 @@ API / CLI semantics              unchanged
 M2-S08 / M2-S09                  not started
 ```
 
-Verified before partial publication:
+Closed continuation findings:
+
+```text
+PTY split sentinel               exact netau + to>tail regression; tail preserved
+Linux lock regeneration          same relative uv output path as permanent evidence
+Linux target ownership           privileged root creation then dedicated-user handoff
+Linux release selection          successful migration precedes atomic current symlink
+Linux lock extraction            newly-created venv Python; no global python3.14 command
+installed Alembic secret source  NETAUTO_SECRETS_DIR selector honored by composition
+orderly process stop             locked Uvicorn SIGTERM plus complete shutdown markers
+T9 session disposal census       observer engines excluded from worker application_name
+```
+
+Pre-publication verification:
 
 ```text
 uv lock --check                  PASS — 46 packages resolved
-uv sync --locked                 PASS
-uv build                         PASS — 0.2.0 sdist + canonical wheel
+uv sync --locked                 PASS — 44 packages checked
+uv build / verbose build         PASS — sdist + wheel; Hatchling 1.32.0 observed
 Ruff format / lint               PASS — 230 files / no findings
-Pyright strict                   PASS — 0 errors / warnings
-pytest collection                780 tests / 1 locked deprecation warning
-focused S07 non-PostgreSQL       11 passed / 3 real-PG targets deselected
-M2 traceability                  21 passed
-all non-PostgreSQL               526 passed / 254 deselected / 1 warning
-skip / xfail / rerun             0 / 0 / 0 in executed gates
+Pyright strict                   PASS — 0 errors / warnings / informations
+pytest collection                781 tests in 1.70s / 1 locked warning
+PTY + guide + registry           3 passed in 4.21s
+S07 PostgreSQL                   3 passed / 12 deselected in 23.45s
+S07 non-PostgreSQL               12 passed / 3 deselected in 16.92s
+S07 complete / T9                15 passed in 36.02s
+M2-VER-24 primary + support      14 passed in 17.45s
+M2-VER-29 primary                5 passed in 25.01s
+M2-VER-30 primary + support      34 passed in 22.00s
+installed support 22/23/25-28   7 passed in 31.57s
+M2 traceability                  21 passed in 13.52s
+schema / runtime / migration     123 passed in 16.37s
+all S05                          126 passed in 19.21s
+all S06                          72 passed in 4.84s
+Health / S04                     39 passed in 11.30s
+M1 / S00 / M2 traceability      28 passed in 14.69s
+PostgreSQL concurrency           182 passed / 599 deselected in 112.76s
+all non-PostgreSQL               527 passed / 254 deselected in 58.34s
+complete repository              781 passed in 243.80s
+skip / xfail / rerun             0 / 0 / 0
+warning census                   1 locked StarletteDeprecationWarning
+supported 40P01 / 40001          0 / 0
+negative-control 40P01 / 40001   1 / 2
 ```
 
-Pre-publication release facts:
+Candidate release and environment facts:
 
 ```text
-wheel size / members             166001 bytes / 77
-wheel SHA-256                    16618ff26686fb6a44b994593f28c252bf2a0409790d7d59a68d5e324f02e503
+wheel size / members             165978 bytes / 77
+wheel SHA-256                    38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
 runtime lock size                48238 bytes
 runtime lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 migration checksum               379165a1eda83c226a6c1e5dc4f493c7fa0d0c8dba39449a1d004751aaa39c57
-CPython / uv / target OS         3.14.7 / 0.12.3 / Ubuntu 24.04.4 LTS x86_64
+CPython / uv / build backend     3.14.7 / 0.12.3 / Hatchling 1.32.0
+Linux                            Ubuntu 24.04.4 LTS / kernel 6.8.0-134-generic
+PostgreSQL                       16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 ```
 
-`uv 0.12.3` accepts only `pylock.toml` or `pylock.<name>.toml` as a
-PEP 751 input/output basename. Generation and synchronization therefore use the
-byte-identical temporary carrier `pylock.runtime.toml`, while the committed and
-installed canonical package resource remains `runtime.pylock.toml`. Permanent
-verification regenerates the same relative carrier in a disposable project copy
-and requires byte-for-byte equality.
+The S07 baseline changes `pyproject.toml` and the project record in `uv.lock`
+from `0.1.0` to `0.2.0`. Both lockfiles retain 46 records, including 45
+third-party records; the third-party name, version, source and hash diff census is
+zero added, zero removed and zero changed. The 29-package embedded PEP 751 runtime
+lock is the only new lock artifact. Its permanent regeneration uses the exact
+relative `src/netauto/release/pylock.runtime.toml` carrier recorded in the generated
+header, then requires byte-for-byte equality with `runtime.pylock.toml`.
 
-Blocked verification:
+Unchanged-boundary verification:
 
 ```text
-TEST_DATABASE_URL                missing
-S07 installed explicit migration not executed
-S07 pre-start/start/Health/stop/restart/mismatch not executed
-S07 real-PG transport-cut 503    not executed
-PostgreSQL concurrency gate      not executed
-complete repository suite        not executed
-post-push exact-remote T9/suite  not eligible while the mandatory target is absent
-candidate-ready transition       forbidden
+authoritative tables             15
+Alembic graph                    one base / one head (0001_m2_kernel)
+migration DDL                    unchanged / compare_metadata == []
+mutations / reads                41 / 22
+Health routes                    1
+total public HTTP operations     64
+CLI remote specs                 63
+CLI local commands               8
+registry examples                65
+secret leakage                   absent from logs/argv/Health/CLI/config/artifacts
 ```
 
 ## M2-S06 completion record
@@ -497,7 +538,7 @@ No blocking review finding remains open for `M2-S00`.
 
 ## Immediate next action
 
-Prepare the implementation execution aid and execute:
+Review the published candidate for:
 
 ```text
 M2-S07 — Versioned wheel, installed Alembic and Linux operating baseline
