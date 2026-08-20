@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S08 REVIEW CHANGES REQUIRED
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the corrected M2-S08 candidate
-blockers        M2-S09 remains blocked on reviewer-owned M2-S08 completion
+current slice   M2-S08 — REVIEW CHANGES REQUIRED
+current task    execute the bounded S08-VRF-05 / 06 / 07 review-fix
+blockers        M2-S09 remains blocked; three verification-harness findings are open
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,16 +47,18 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
+| `M2-S08` | REVIEW CHANGES REQUIRED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology, infrastructure or verification blocker is open in the corrected M2-S08 candidate. Reviewer inspection is pending.
+No contract, architecture, implementation-planning, technology or infrastructure blocker is open. Three bounded verification-harness findings remain open in M2-S08: import-time Alembic mutation closure, semantic coverage of abstract negative surfaces, and reviewer-acceptance coherence in the future evidence-record validator.
 
-`M2-S08` is limited to integrated regression, complete machine-checkable traceability, the M2 delta allowlist and positive/negative surface closure. It must preserve the completed kernel, runtime, Health, CLI and installed-release capabilities. It must not begin `M2-S09` final acceptance before reviewer-owned completion of S08.
+`TEST_DATABASE_URL` is externally supplied when it is explicitly provided by the environment and NETAUTO test code does not provision, invent or silently substitute it. A loopback or local hostname is not itself a blocker. The implementer must verify that the configured URL uses the supported PostgreSQL/Psycopg form, reaches real PostgreSQL, and identifies the dedicated test target required by the existing test-support safety checks.
+
+`M2-S08` remains limited to integrated regression, complete machine-checkable traceability, the M2 delta allowlist and positive/negative surface closure. It must preserve the completed kernel, runtime, Health, CLI and installed-release capabilities. It must not begin `M2-S09` final acceptance before reviewer-owned completion of S08.
 
 Any implementation finding that exposes an incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process.
 
@@ -65,7 +67,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         CANDIDATE READY FOR REVIEW
+M2-S08                         REVIEW CHANGES REQUIRED
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -73,9 +75,24 @@ first candidate evidence       b8c78c712d61514998281ea170e7606e1eb99781
 post-push corrective commit    9027b02b7f2b949cd7674adfa7c3fe3758eacda3
 corrective handoff              02a3a98ce5fc14419bcc795a8520ad1659140805
 verification review-fix        42843b4c885ee550a3e7b3dfc21896d9ae8a1ba1
-corrected candidate evidence   recorded by the commit containing this status
+corrected candidate evidence   e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5
+review reopen                  recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                pending / reviewer-owned
+review decision                REVIEW CHANGES REQUIRED / reviewer-owned
+```
+
+Reviewer outcome for `e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5`:
+
+```text
+S08-VRF-05  detect mutating Alembic calls executed during module/class initialization
+S08-VRF-06  give abstract deployment/security/data-protection negatives sufficient semantic audits
+S08-VRF-07  allow reviewer ACCEPTED only for an internally all-pass final-evidence record
+```
+
+The findings are implementation defects in the S08 test/evidence harness. They do not reopen the frozen architecture and do not authorize production, schema, migration, API, CLI, dependency or lock changes. The authorized execution aid is:
+
+```text
+docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
 ```
 
 The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. That failed candidate was not handed off; its execution correctly returned S08 to `IN PROGRESS` before the later authorized continuation recorded below.
@@ -469,13 +486,13 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Review the corrected candidate for:
+Execute the bounded corrective aid:
 
 ```text
-M2-S08 — Integrated regression, traceability and negative-surface closure
+docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
 ```
 
-Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
+The only permitted implementer handoff is `M2-S08 CANDIDATE READY FOR REVIEW`. Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
 
 ## Current status vocabulary
 
