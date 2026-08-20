@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — REVIEW CHANGES REQUIRED
-current task    execute the bounded S08-VRF-05 package-initializer closure
-blockers        M2-S09 remains blocked; package-parent initializer closure is open
+current slice   M2-S08 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the package-closure corrected S08 candidate
+blockers        M2-S09 remains blocked pending reviewer-owned S08 completion
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | REVIEW CHANGES REQUIRED | `M2-S07 COMPLETED` |
+| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or infrastructure blocker is open. One bounded verification-harness finding remains open in M2-S08: `S08-VRF-05` does not yet model every existing package-parent initializer executed before a submodule import. `S08-VRF-06` and `S08-VRF-07` remain closed.
+No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The bounded package-parent initializer defect in `S08-VRF-05` is corrected in the candidate below; `S08-VRF-06` and `S08-VRF-07` remain closed. Reviewer inspection of S08 is pending and M2-S09 remains dependency-blocked.
 
 `TEST_DATABASE_URL` is externally supplied when it is explicitly provided by the environment and NETAUTO test code does not provision, invent or silently substitute it. A loopback or local hostname is not itself a blocker. The implementer must verify that the configured URL uses the supported PostgreSQL/Psycopg form, reaches real PostgreSQL, and identifies the dedicated test target required by the existing test-support safety checks.
 
@@ -67,7 +67,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         REVIEW CHANGES REQUIRED
+M2-S08                         CANDIDATE READY FOR REVIEW
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -80,9 +80,11 @@ review reopen                  recorded by the earlier reviewer-owned status com
 reviewer-aid format commit     a070391d3ffdf3540bc7ceaecfd9cb24d44cfe67
 final review-fix commit        c159dd9e38c4a6650669166499958f2d436d9e62
 candidate evidence/status      fc81d55a84eddbe441b3e4e078aa57874a83481c
-package-closure review reopen  recorded by the commit containing this status
+package-closure review reopen  3e57bd2b7e604803defc676d1afecfa19351ea68
+package-closure test commit    29e47eca66667b0e8ba8aefea410476d6dd0710f
+package-closure evidence       recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                REVIEW CHANGES REQUIRED / reviewer-owned
+review decision                pending / reviewer-owned
 ```
 
 Reviewer outcome for `fc81d55a84eddbe441b3e4e078aa57874a83481c`:
@@ -93,7 +95,62 @@ S08-VRF-06  CLOSED — finite abstract-negative capability audit remains accepte
 S08-VRF-07  CLOSED — reviewer ACCEPTED all-pass coherence remains accepted
 ```
 
-The remaining defect is test-only. Python imports existing parent package initializers before a submodule, but the permanent Alembic mutation audit can currently omit those parents when only the deepest module is a root or imported target. The bounded correction must add parent-to-child initializer closure without inventing absent namespace-package initializers, without adding a new finding identifier and without modifying production, API, CLI, schema, migration, dependencies or locks.
+The rejected defect was test-only. Python imports existing parent package initializers before a submodule, but the permanent Alembic mutation audit could omit those parents when only the deepest module was a root or imported target. The bounded correction now adds parent-to-child initializer closure without inventing absent namespace-package initializers, without adding a new finding identifier and without modifying production, API, CLI, schema, migration, dependencies or locks.
+
+### Package-parent initializer corrected candidate
+
+The synchronized starting HEAD and reviewer reopen is
+`3e57bd2b7e604803defc676d1afecfa19351ea68`, which contains the rejected
+candidate baseline `fc81d55a84eddbe441b3e4e078aa57874a83481c`. The test-only
+implementation is `29e47eca66667b0e8ba8aefea410476d6dd0710f`; the candidate
+evidence/status commit is the commit containing this record.
+
+The bounded audit now computes the deterministic parent-to-child chain of
+only those module initializers present in the supplied module-source map. It
+applies that chain to root and import closure, preserves relative and absolute
+import handling, terminates on cycles, deduplicates findings, and bounds
+diagnostic call paths to eight entries. Permanent regressions cover root,
+imported and nested parent initializers, safe and missing namespace chains,
+cycles, and the real NETAUTO root families. The real production audit remains
+empty.
+
+```text
+S08-VRF-05 focused             13 selected / 13 unique / 14 passed — 1.75 s
+S08 review-fix registry        7 exact keys / 25 selected / 24 unique / 37 passed — 2.30 s
+M2-VER-31                      31 selected / 31 unique / 39 passed — 22.62 s
+M2-VER-32                      47 selected / 47 unique / 64 passed — 17.25 s
+S08/T10 and traceability       114 passed — 32.95 s
+51 delivered scenarios        51 IDs / 91 unique targets / 95 passed — 60.11 s
+complete S06                   72 passed — 5.10 s
+complete S07/T9                18 passed — 42.53 s
+API/error/CLI                  246 passed / 1 known warning — 50.09 s
+schema/Alembic                 28 passed / compare_metadata [] — 13.70 s
+runtime/schema-guard/Health    121 passed / 1 known warning — 15.51 s
+PostgreSQL/concurrency         254 passed / 599 deselected / 1 known warning — 190.16 s
+non-PostgreSQL                 599 passed / 254 deselected / 1 known warning — 79.06 s
+complete repository           853 passed / 1 known warning — 265.87 s
+collection                    853 — 1.78 s
+skip / xfail / rerun          0 / 0 / 0
+supported 40P01 / 40001       0 / 0
+negative controls             40P01 x1 / 40001 x2, exact expected census
+```
+
+`uv lock --check`, `uv sync --locked`, `uv build`, Ruff format, Ruff lint and
+Pyright pass. The release remains version `0.2.0`; the wheel remains
+`netauto-0.2.0-py3-none-any.whl`, 165978 bytes / 77 members, SHA-256
+`38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60`.
+The embedded runtime lock remains 48238 bytes, SHA-256
+`0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf`.
+The externally supplied real target reports PostgreSQL 16.14
+(`16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)`), database identity `netautotest`,
+and a successful bounded `SELECT 1` probe. The only warning is the already
+censused Starlette/FastAPI TestClient deprecation.
+
+Production, API, CLI, Health, metadata, schema, migration, dependencies,
+`uv.lock`, the embedded runtime lock and wheel content are unchanged. No PR,
+GitHub Actions workflow or run, tag, GitHub Release, acceptance record or
+artifact publication was created. M2-S08 is not `COMPLETED`; M2-S09 remains
+`BLOCKED` and has not started.
 
 Prior reviewer outcome for `e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5`:
 
@@ -548,13 +605,13 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Execute the bounded package-parent initializer closure for:
+Review the published package-closure corrected candidate for:
 
 ```text
 S08-VRF-05 — import-time Alembic mutation closure
 ```
 
-The exact scope is the existing package initializer chain for roots and imported modules; do not add a new finding identifier. The only permitted implementer handoff is `M2-S08 CANDIDATE READY FOR REVIEW`. Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
+The exact correction is the existing package initializer chain for roots and imported modules under `S08-VRF-05`; the finding registry remains exactly `S08-VRF-01 ... S08-VRF-07`. The implementer handoff is `M2-S08 CANDIDATE READY FOR REVIEW`. Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
 
 ## Current status vocabulary
 
