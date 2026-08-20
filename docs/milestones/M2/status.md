@@ -59,7 +59,7 @@ Candidate identity:
 ```text
 starting reviewer-owned HEAD   98405300ffd009a96ba187c8e5fe6f93d489303e
 harness / candidate commit     b0546b1109c66a57195c50294291cb4a32ad48f2
-evidence/status publication    commit containing this record
+evidence/status publication    0b1de73487061f68ed96ef78f48ad67866f11867
 candidate evidence             docs/milestones/M2/evidence/candidate-b0546b1109c66a57195c50294291cb4a32ad48f2.json
 acceptance summary              docs/milestones/M2/acceptance.md
 reviewer_decision              null
@@ -121,6 +121,50 @@ Production, public API, CLI, Health, schema, migration, dependency, version,
 `uv.lock`, runtime-lock, and artifact-content boundaries are unchanged. No PR,
 GitHub Action, tag, Release, artifact publication, AS-IS consolidation, merge,
 or M2 delivery action was performed.
+
+### Exact-remote publication integrity
+
+The complete integrity gate was executed on exact remote evidence HEAD:
+
+```text
+evidence remote HEAD            0b1de73487061f68ed96ef78f48ad67866f11867
+HEAD / origin / remote          equal
+ahead / behind                  0 / 0
+working tree                    clean
+uv lock / sync / build          PASS / PASS / PASS
+Ruff format / lint              239 files / PASS
+Pyright strict                  PASS — 0 errors / 0 warnings
+collection                      868
+real S09 record/acceptance      5 passed
+traceability                    44 passed
+bundle union                    369 unique targets / 516 passed / 32 of 32 PASS
+scenario/predicate union        166 unique targets / 190 passed
+canonical scenarios             83 of 83 PASS
+safety predicates               21 of 21 PASS
+S06 / T8                        73 passed
+S07 / T9                        18 passed
+S08 / T10                       99 passed
+schema / Alembic                33 passed / compare_metadata []
+API / error / CLI               277 passed
+runtime / schema guard / Health 121 passed
+PostgreSQL / concurrency        254 passed / 614 deselected
+non-PostgreSQL                  614 passed / 254 deselected
+full repository                 868 passed
+skip / xfail / rerun            0 / 0 / 0
+warning                         1 unchanged Starlette deprecation
+supported 40P01 / 40001         0 / 0
+negative controls               40P01 x1 / 40001 x2
+wheel size / members            165978 bytes / 77
+wheel SHA-256                   38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size / packages    48238 bytes / 29
+runtime lock SHA-256            0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+The committed candidate JSON is deliberately excluded from the post-publication
+Ruff formatter invocation because its compact, sorted byte representation is
+the tested `stable_evidence_json()` contract. Ruff lint checks the complete
+tree; all other 239 formatter-discovered files pass. The candidate SHA itself,
+which contains no record JSON, passed the exact `ruff format --check .` gate.
 
 ## M2-S08 reviewer-owned completion
 
