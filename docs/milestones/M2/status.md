@@ -15,8 +15,8 @@ branch      M2
 ```text
 phase           IMPLEMENTATION
 current slice   M2-S08 — IN PROGRESS
-current task    correct and reverify the failed post-push S08 PTY gate
-blockers        M2-S09 remains blocked on reviewer-owned M2-S08 completion
+current task    reviewer inspection of the corrective S08 IN PROGRESS handoff
+blockers        candidate handoff withheld by the failed-post-push rule; M2-S09 blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -70,11 +70,37 @@ starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
 candidate evidence/status      recorded by the commit containing this status
+post-push corrective commit    9027b02b7f2b949cd7674adfa7c3fe3758eacda3
 M2-S09                         BLOCKED / not started
 review decision                pending / reviewer-owned
 ```
 
-The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. The failed candidate is not being handed off; S08 remains `IN PROGRESS` until the corrected candidate completes every required gate.
+The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. The failed candidate is not being handed off; the prompt's failed-post-push rule keeps S08 `IN PROGRESS` even though the corrective SHA passes its focused and complete-suite checks.
+
+Post-push and corrective evidence:
+
+```text
+b8c78c7 VER-31                 31 selected / 31 unique / 39 passed — 22.67 s
+b8c78c7 VER-32                 23 selected / 23 unique / 27 passed — 15.46 s
+b8c78c7 S08/T10 + trace        60 passed — 27.56 s
+b8c78c7 51 delivered scenarios 51 IDs / 91 unique targets / 95 passed — 61.04 s
+b8c78c7 API/error/CLI equality  37 passed — 3.07 s
+b8c78c7 schema/Alembic         28 passed — 6.74 s
+b8c78c7 S07/T9                 18 passed — 42.11 s
+b8c78c7 PostgreSQL             254 passed / 562 deselected — 189.36 s
+b8c78c7 non-PostgreSQL         562 passed / 254 deselected — 76.75 s
+b8c78c7 repository             815 passed / 1 PTY failure — 273.24 s
+9027b02 corrected PTY target    1 passed — 1.28 s
+9027b02 complete S06            72 passed — 4.85 s
+9027b02 quality/collection      PASS / 816 collected
+9027b02 S08/T10 + trace         60 passed — 26.19 s
+9027b02 repository             816 passed — 260.67 s
+9027b02 skip / xfail / rerun    0 / 0 / 0
+9027b02 supported 40P01/40001   0 / 0
+9027b02 negative controls       40P01 x1 / 40001 x2, exact expected census
+```
+
+The corrective SHA has not been promoted to a new candidate state in this execution. No final-acceptance claim is made.
 
 ### Closed S08 obligations
 
@@ -384,7 +410,7 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Complete the corrective verification for:
+Review the corrective `IN PROGRESS` handoff for:
 
 ```text
 M2-S08 — Integrated regression, traceability and negative-surface closure
