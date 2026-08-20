@@ -19,6 +19,30 @@ and worker count are Uvicorn/deployment settings, not NETAUTO settings. The
 operator owns `NETAUTO_SECRETS_DIR`, the database URL secret, its directory and
 file permissions, and the PostgreSQL connection policy.
 
+## Exact NETAUTO Settings inventory
+
+The following table is the complete operator-facing Settings contract. Values
+supplied through the environment or the explicitly selected secret directory are
+parsed only as the stated canonical scalar forms.
+
+| Canonical environment name | Required or default | Accepted domain and invalid boundary | Meaning and fail-fast consequence |
+|---|---|---|---|
+| `NETAUTO_DATABASE_URL` | Required; no default | Complete SQLAlchemy URL with the exact `postgresql+psycopg` driver; missing, malformed, or another driver is invalid | Sole database transport and credential authority; invalid input fails Settings bootstrap before serving |
+| `NETAUTO_LOG_LEVEL` | Default `INFO` | Exactly `CRITICAL`, `ERROR`, `WARNING`, `INFO`, or `DEBUG`; every other value is invalid | Application log threshold; invalid input fails Settings bootstrap before serving |
+| `NETAUTO_POOL_SIZE` | Default `10` | Integer greater than or equal to `1`; zero, negative, fractional, and boolean values are invalid | Persistent pool capacity per worker; invalid input fails Settings bootstrap before serving |
+| `NETAUTO_MAX_OVERFLOW` | Default `20` | Integer greater than or equal to `0`; `-1`/unlimited, fractional, and boolean values are forbidden | Temporary pool capacity per worker; invalid input fails Settings bootstrap before serving |
+| `NETAUTO_POOL_TIMEOUT` | Default `5.0` seconds | Finite number strictly greater than `0`; zero, negative, NaN, and infinity are invalid | Maximum pool checkout wait; invalid input fails Settings bootstrap before serving |
+| `NETAUTO_POOL_RECYCLE` | Disabled when omitted | Positive whole seconds when supplied; zero, negative, fractional, and boolean values are invalid | Optional connection-age recycle threshold; invalid input fails Settings bootstrap before serving |
+| `NETAUTO_POOL_PRE_PING` | Default `false` | Boolean source value, with canonical forms `true` or `false`; all other source values are invalid | Enables or disables a checkout liveness ping; invalid input fails Settings bootstrap before serving |
+
+Host, port, and worker count remain Uvicorn/deployment inputs; they are not
+NETAUTO Settings, and no application environment aliases exist for those
+deployment inputs. Invalid Settings cause a bootstrap failure before serving.
+Separately, an installed schema mismatch causes the startup revision guard to
+fail before serving. A PostgreSQL failure after successful startup does not erase
+the HTTP boundary: the process remains HTTP-capable and Health returns a bounded
+503 response.
+
 ## Reference filesystem layout
 
 ```text
@@ -194,6 +218,7 @@ Start one foreground worker on loopback:
 ```bash
 env \
   NETAUTO_SECRETS_DIR=/opt/netauto/secrets \
+  NETAUTO_LOG_LEVEL=INFO \
   NETAUTO_POOL_SIZE=10 \
   NETAUTO_MAX_OVERFLOW=20 \
   NETAUTO_POOL_TIMEOUT=5 \

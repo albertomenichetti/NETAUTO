@@ -126,6 +126,11 @@ def test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility() -
         "script_location = netauto:migrations",
         "path_separator = os",
         "NETAUTO_SECRETS_DIR=/opt/netauto/secrets",
+        "## Exact NETAUTO Settings inventory",
+        "NETAUTO_LOG_LEVEL=INFO",
+        "Invalid Settings cause a bootstrap failure before serving",
+        "schema mismatch causes the startup revision guard to",
+        "process remains HTTP-capable and Health returns",
         "--host 127.0.0.1",
         "--workers 1",
         "GET /health/core",
@@ -146,6 +151,9 @@ def test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility() -
     assert "sqlalchemy.url =" not in document
     assert "postgresql+psycopg://" not in document
     assert "NETAUTO_DATABASE_URL=" not in document
+    assert "NETAUTO_HOST" not in document
+    assert "NETAUTO_PORT" not in document
+    assert "NETAUTO_WORKERS" not in document
     assert "python3.14 -" not in document
     assert "--host 0.0.0.0" not in document
     assert "--insecure" not in document
@@ -160,6 +168,253 @@ def test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility() -
     assert document.index("mv -T /opt/netauto/.current-0.2.0") < document.index(
         "## Foreground start"
     )
+    settings_section = document.split("## Exact NETAUTO Settings inventory\n", 1)[
+        1
+    ].split("\n## ", 1)[0]
+    rows = tuple(
+        line for line in settings_section.splitlines() if line.startswith("| `NETAUTO_")
+    )
+    assert tuple(row.split("|", 2)[1].strip() for row in rows) == (
+        "`NETAUTO_DATABASE_URL`",
+        "`NETAUTO_LOG_LEVEL`",
+        "`NETAUTO_POOL_SIZE`",
+        "`NETAUTO_MAX_OVERFLOW`",
+        "`NETAUTO_POOL_TIMEOUT`",
+        "`NETAUTO_POOL_RECYCLE`",
+        "`NETAUTO_POOL_PRE_PING`",
+    )
+    required_row_fragments = {
+        "NETAUTO_DATABASE_URL": (
+            "Required; no default",
+            "exact `postgresql+psycopg` driver",
+            "Sole database transport and credential authority",
+        ),
+        "NETAUTO_LOG_LEVEL": (
+            "Default `INFO`",
+            "`CRITICAL`, `ERROR`, `WARNING`, `INFO`, or `DEBUG`",
+        ),
+        "NETAUTO_POOL_SIZE": (
+            "Default `10`",
+            "greater than or equal to `1`",
+        ),
+        "NETAUTO_MAX_OVERFLOW": (
+            "Default `20`",
+            "greater than or equal to `0`",
+            "`-1`/unlimited",
+        ),
+        "NETAUTO_POOL_TIMEOUT": (
+            "Default `5.0` seconds",
+            "Finite number strictly greater than `0`",
+            "infinity",
+        ),
+        "NETAUTO_POOL_RECYCLE": (
+            "Disabled when omitted",
+            "Positive whole seconds",
+        ),
+        "NETAUTO_POOL_PRE_PING": (
+            "Default `false`",
+            "canonical forms `true` or `false`",
+        ),
+    }
+    assert len(rows) == len(required_row_fragments)
+    for row, (name, fragments) in zip(
+        rows, required_row_fragments.items(), strict=True
+    ):
+        assert f"`{name}`" in row
+        assert all(fragment in row for fragment in fragments)
+        assert "invalid input fails Settings bootstrap before serving" in row
+
+
+def test_installed_settings_contract_matches_operator_guide_and_rejects_invalid_values(
+    s07_release: InstalledRelease,
+) -> None:
+    sentinel = "M2-S07-RF-SETTINGS-SENTINEL"
+    password = "operator-password-must-not-leak"
+    database_url = (
+        f"postgresql+psycopg://operator:{password}@example.invalid/netauto"
+        f"?application_name={sentinel}"
+    )
+    script = """
+import json
+import os
+import socket
+import sys
+from importlib.metadata import version
+from pathlib import Path
+
+database_url = os.environ.pop("S07_RF_DATABASE_URL")
+canonical_names = (
+    "NETAUTO_DATABASE_URL",
+    "NETAUTO_LOG_LEVEL",
+    "NETAUTO_POOL_SIZE",
+    "NETAUTO_MAX_OVERFLOW",
+    "NETAUTO_POOL_TIMEOUT",
+    "NETAUTO_POOL_RECYCLE",
+    "NETAUTO_POOL_PRE_PING",
+)
+for name in tuple(os.environ):
+    if name.startswith("NETAUTO_"):
+        del os.environ[name]
+
+network_attempts = 0
+def reject_connect(*args, **kwargs):
+    global network_attempts
+    network_attempts += 1
+    raise AssertionError("Settings validation attempted network I/O")
+socket.socket.connect = reject_connect
+
+from netauto.settings import Settings, SettingsBootstrapError, load_settings
+
+valid = Settings(database_url=database_url)
+fields = Settings.model_fields
+invalid_cases = {
+    "missing_database_url": {},
+    "wrong_database_driver": {
+        "NETAUTO_DATABASE_URL": database_url.replace(
+            "postgresql+psycopg", "postgresql+asyncpg", 1
+        )
+    },
+    "invalid_log_level": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_LOG_LEVEL": "TRACE",
+    },
+    "pool_size_zero": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_POOL_SIZE": "0",
+    },
+    "max_overflow_unlimited": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_MAX_OVERFLOW": "-1",
+    },
+    "pool_timeout_zero": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_POOL_TIMEOUT": "0",
+    },
+    "pool_timeout_infinity": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_POOL_TIMEOUT": "inf",
+    },
+    "pool_recycle_zero": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_POOL_RECYCLE": "0",
+    },
+    "invalid_pool_pre_ping": {
+        "NETAUTO_DATABASE_URL": database_url,
+        "NETAUTO_POOL_PRE_PING": "yes",
+    },
+}
+failures = {}
+for case, environment in invalid_cases.items():
+    for name in canonical_names:
+        os.environ.pop(name, None)
+    os.environ.update(environment)
+    try:
+        load_settings()
+    except SettingsBootstrapError as error:
+        failures[case] = {
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+    else:
+        raise AssertionError(f"invalid installed Settings case accepted: {case}")
+
+print(json.dumps({
+    "version": version("netauto"),
+    "module_path": str(Path(sys.modules["netauto"].__file__).resolve()),
+    "cwd": str(Path.cwd().resolve()),
+    "fields": list(fields),
+    "aliases": {name: field.validation_alias for name, field in fields.items()},
+    "required": [name for name, field in fields.items() if field.is_required()],
+    "defaults": {
+        name: field.default for name, field in fields.items() if not field.is_required()
+    },
+    "valid_defaults": {
+        name: value for name, value in valid.model_dump().items()
+        if name != "database_url"
+    },
+    "failures": failures,
+    "network_attempts": network_attempts,
+}, sort_keys=True))
+"""
+    result = s07_release.run(
+        [str(s07_release.python), "-c", script],
+        environment={"S07_RF_DATABASE_URL": database_url},
+    )
+    require_success(result, secrets=(database_url, sentinel, password))
+    assert result.stderr == ""
+    assert len(result.stdout) < 6_000
+    for secret in (database_url, sentinel, password):
+        assert secret not in result.stdout + result.stderr
+        assert secret not in " ".join(result.args)
+
+    payload = json.loads(result.stdout)
+    assert payload["version"] == "0.2.0"
+    assert payload["cwd"] == str(s07_release.target_root.resolve())
+    module_path = Path(payload["module_path"])
+    assert s07_release.venv.resolve() in module_path.parents
+    assert ROOT.resolve() not in module_path.parents
+    expected_fields = [
+        "database_url",
+        "log_level",
+        "pool_size",
+        "max_overflow",
+        "pool_timeout",
+        "pool_recycle",
+        "pool_pre_ping",
+    ]
+    assert payload["fields"] == expected_fields
+    assert payload["required"] == ["database_url"]
+    assert payload["aliases"] == {
+        "database_url": "NETAUTO_DATABASE_URL",
+        "log_level": "NETAUTO_LOG_LEVEL",
+        "pool_size": "NETAUTO_POOL_SIZE",
+        "max_overflow": "NETAUTO_MAX_OVERFLOW",
+        "pool_timeout": "NETAUTO_POOL_TIMEOUT",
+        "pool_recycle": "NETAUTO_POOL_RECYCLE",
+        "pool_pre_ping": "NETAUTO_POOL_PRE_PING",
+    }
+    expected_defaults = {
+        "log_level": "INFO",
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_timeout": 5.0,
+        "pool_recycle": None,
+        "pool_pre_ping": False,
+    }
+    assert payload["defaults"] == expected_defaults
+    assert payload["valid_defaults"] == expected_defaults
+    assert payload["network_attempts"] == 0
+    expected_invalid_cases = {
+        "missing_database_url",
+        "wrong_database_driver",
+        "invalid_log_level",
+        "pool_size_zero",
+        "max_overflow_unlimited",
+        "pool_timeout_zero",
+        "pool_timeout_infinity",
+        "pool_recycle_zero",
+        "invalid_pool_pre_ping",
+    }
+    assert set(payload["failures"]) == expected_invalid_cases
+    assert all(
+        failure
+        == {
+            "type": "SettingsBootstrapError",
+            "message": "runtime settings are invalid",
+        }
+        for failure in payload["failures"].values()
+    )
+
+    document = OPERATING_GUIDE.read_text()
+    assert all(alias in document for alias in payload["aliases"].values())
+    assert "NETAUTO_LOG_LEVEL=INFO" in document
+    assert "Default `INFO`" in document
+    assert "Default `10`" in document
+    assert "Default `20`" in document
+    assert "Default `5.0` seconds" in document
+    assert "Disabled when omitted" in document
+    assert "Default `false`" in document
+    assert not ({"host", "port", "workers"} & set(payload["fields"]))
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="T9 PTY evidence is Linux-owned")

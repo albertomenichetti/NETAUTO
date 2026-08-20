@@ -1431,8 +1431,12 @@ S06_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
 S07_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     "M2-VER-24": frozenset(
         {
+            "tests/test_m2_traceability.py::"
+            "test_s07_review_fix_registry_and_complete_bundle_membership",
             "tests/test_m2_s07_distribution.py::"
             "test_pty_read_until_preserves_split_needle_and_exact_tail",
+            "tests/test_m2_s07_distribution.py::"
+            "test_installed_server_import_and_factory_are_independent_from_cli",
             "tests/test_m2_s07_distribution.py::"
             "test_candidate_wheel_has_exact_version_content_entrypoint_and_exclusions",
             "tests/test_m2_s07_distribution.py::"
@@ -1445,14 +1449,22 @@ S07_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
             "test_installed_distribution_discovers_exact_single_package_resource_graph",
             "tests/test_m2_s07_alembic.py::"
             "test_root_revision_payload_checksum_is_unchanged_from_s07_baseline",
+            "tests/test_m2_s07_alembic.py::"
+            "test_installed_alembic_explicitly_realizes_exact_schema_without_cli_cross_action",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
         }
     ),
     "M2-VER-29": frozenset(
         {
+            "tests/test_m2_traceability.py::"
+            "test_s07_review_fix_registry_and_complete_bundle_membership",
             "tests/test_m2_s07_alembic.py::"
             "test_installed_alembic_explicitly_realizes_exact_schema_without_cli_cross_action",
             "tests/test_m2_s07_linux.py::"
             "test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_settings_contract_matches_operator_guide_and_rejects_invalid_values",
             "tests/test_m2_s07_linux.py::"
             "test_installed_cli_local_repl_and_noninteractive_http_need_no_database",
             "tests/test_m2_s07_linux.py::"
@@ -1463,12 +1475,20 @@ S07_PRIMARY_BUNDLE_TARGETS: dict[str, frozenset[str]] = {
     ),
     "M2-VER-30": frozenset(
         {
+            "tests/test_m2_traceability.py::"
+            "test_s07_review_fix_registry_and_complete_bundle_membership",
             "tests/test_m2_s07_linux.py::"
             "test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_worker_returns_complete_503_when_real_pg_transport_is_cut",
             "tests/test_m2_s07_trust.py::"
             "test_installed_cli_https_verifies_trust_and_hostname_without_bypass",
             "tests/test_m2_s07_trust.py::"
             "test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+            "tests/test_m2_s07_trust.py::"
+            "test_installed_public_contract_has_no_401_403_or_security_scheme",
             "tests/test_m2_s07_trust.py::"
             "test_secret_sentinel_is_absent_from_artifact_docs_config_and_server_argv",
         }
@@ -1523,6 +1543,34 @@ S07_INSTALLED_SUPPORT_TARGETS: dict[str, frozenset[str]] = {
             "test_installed_cli_https_verifies_trust_and_hostname_without_bypass",
             "tests/test_m2_s07_trust.py::"
             "test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass",
+        }
+    ),
+}
+S07_REVIEW_FIX_TARGETS: dict[str, frozenset[str]] = {
+    "S07-RF-01": frozenset(
+        {
+            "tests/test_m2_s07_linux.py::"
+            "test_linux_operator_document_is_exact_bounded_and_has_no_hidden_facility",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_settings_contract_matches_operator_guide_and_rejects_invalid_values",
+            "tests/test_m2_traceability.py::"
+            "test_s07_review_fix_registry_and_complete_bundle_membership",
+        }
+    ),
+    "S07-RF-02": frozenset(
+        {
+            "tests/test_m2_s07_alembic.py::"
+            "test_installed_alembic_explicitly_realizes_exact_schema_without_cli_cross_action",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch",
+            "tests/test_m2_s07_linux.py::"
+            "test_installed_worker_returns_complete_503_when_real_pg_transport_is_cut",
+            "tests/test_m2_s07_distribution.py::"
+            "test_installed_server_import_and_factory_are_independent_from_cli",
+            "tests/test_m2_s07_trust.py::"
+            "test_installed_public_contract_has_no_401_403_or_security_scheme",
+            "tests/test_m2_traceability.py::"
+            "test_s07_review_fix_registry_and_complete_bundle_membership",
         }
     ),
 }
@@ -1994,7 +2042,11 @@ def test_s07_primary_and_installed_support_registries_are_exact_and_resolvable()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name.startswith("test_")
     }
-    assert all_s07_targets == defined_s07_targets
+    review_trace_target = (
+        "tests/test_m2_traceability.py::"
+        "test_s07_review_fix_registry_and_complete_bundle_membership"
+    )
+    assert all_s07_targets == defined_s07_targets | {review_trace_target}
     for bundle_id, targets in {
         **S07_PRIMARY_BUNDLE_TARGETS,
         **S07_INSTALLED_SUPPORT_TARGETS,
@@ -2018,6 +2070,92 @@ def test_s07_primary_and_installed_support_registries_are_exact_and_resolvable()
         assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
             "DESIGNED", frozenset()
         )
+
+
+def test_s07_review_fix_registry_and_complete_bundle_membership() -> None:
+    assert set(S07_REVIEW_FIX_TARGETS) == {"S07-RF-01", "S07-RF-02"}
+    assert len(S07_REVIEW_FIX_TARGETS["S07-RF-01"]) == 3
+    assert len(S07_REVIEW_FIX_TARGETS["S07-RF-02"]) == 6
+    for targets in S07_REVIEW_FIX_TARGETS.values():
+        assert targets
+        for target in targets:
+            _assert_target_exists(target)
+
+    assert (
+        S07_REVIEW_FIX_TARGETS["S07-RF-01"] <= (S07_PRIMARY_BUNDLE_TARGETS["M2-VER-29"])
+    )
+    assert S07_REVIEW_FIX_TARGETS["S07-RF-02"] <= (
+        S07_PRIMARY_BUNDLE_TARGETS["M2-VER-24"]
+        | S07_PRIMARY_BUNDLE_TARGETS["M2-VER-30"]
+    )
+
+    explicit_alembic = (
+        "tests/test_m2_s07_alembic.py::"
+        "test_installed_alembic_explicitly_realizes_exact_schema_without_cli_cross_action"
+    )
+    lifecycle = (
+        "tests/test_m2_s07_linux.py::"
+        "test_installed_server_migration_start_health_cli_stop_restart_and_mismatch"
+    )
+    transport_cut = (
+        "tests/test_m2_s07_linux.py::"
+        "test_installed_worker_returns_complete_503_when_real_pg_transport_is_cut"
+    )
+    server_no_cli = (
+        "tests/test_m2_s07_distribution.py::"
+        "test_installed_server_import_and_factory_are_independent_from_cli"
+    )
+    settings_contract = (
+        "tests/test_m2_s07_linux.py::"
+        "test_installed_settings_contract_matches_operator_guide_and_rejects_invalid_values"
+    )
+    no_native_security = (
+        "tests/test_m2_s07_trust.py::"
+        "test_installed_public_contract_has_no_401_403_or_security_scheme"
+    )
+    assert {explicit_alembic, lifecycle, server_no_cli} <= (
+        S07_PRIMARY_BUNDLE_TARGETS["M2-VER-24"]
+    )
+    assert settings_contract in S07_PRIMARY_BUNDLE_TARGETS["M2-VER-29"]
+    assert {no_native_security, lifecycle, transport_cut} <= (
+        S07_PRIMARY_BUNDLE_TARGETS["M2-VER-30"]
+    )
+
+    for bundle_id in ("M2-VER-24", "M2-VER-30"):
+        assert S05_SUPPORTING_BUNDLE_TARGETS[bundle_id]
+        assert S05_SUPPORTING_BUNDLE_TARGETS[bundle_id] <= (
+            M2_EVIDENCE_TO_TARGETS[bundle_id].targets
+        )
+    assert set(S07_INSTALLED_SUPPORT_TARGETS) == {
+        "M2-VER-22",
+        "M2-VER-23",
+        "M2-VER-25",
+        "M2-VER-26",
+        "M2-VER-27",
+        "M2-VER-28",
+    }
+    assert all(S07_INSTALLED_SUPPORT_TARGETS.values())
+    for bundle_id in ("M2-VER-31", "M2-VER-32"):
+        assert M2_EVIDENCE_TO_TARGETS[bundle_id] == EvidenceBundle(
+            "DESIGNED", frozenset()
+        )
+
+    defined_s07_targets = {
+        f"{path.as_posix()}::{node.name}"
+        for path in sorted(Path("tests").glob("test_m2_s07_*.py"))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    mapped_s07_targets: frozenset[str] = frozenset(
+        target
+        for targets in (
+            *S07_PRIMARY_BUNDLE_TARGETS.values(),
+            *S07_INSTALLED_SUPPORT_TARGETS.values(),
+        )
+        for target in targets
+    )
+    assert defined_s07_targets <= mapped_s07_targets
 
 
 def test_s05_review_fix_registry_is_exact_and_resolvable() -> None:

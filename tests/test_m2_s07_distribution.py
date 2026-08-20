@@ -65,6 +65,95 @@ def test_pty_read_until_preserves_split_needle_and_exact_tail() -> None:
     assert pty.pending == bytearray()
 
 
+def test_installed_server_import_and_factory_are_independent_from_cli(
+    s07_release: InstalledRelease,
+) -> None:
+    script = """
+import builtins
+import json
+import socket
+import sys
+from importlib.metadata import version
+from pathlib import Path
+
+real_import = builtins.__import__
+rejected_imports = []
+def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if name == "netauto.cli" or name.startswith("netauto.cli."):
+        rejected_imports.append(name)
+        raise AssertionError(f"server imported forbidden CLI module: {name}")
+    return real_import(name, globals, locals, fromlist, level)
+builtins.__import__ = guarded_import
+
+network_attempts = 0
+def reject_connect(*args, **kwargs):
+    global network_attempts
+    network_attempts += 1
+    raise AssertionError("app construction attempted network I/O")
+socket.socket.connect = reject_connect
+
+from netauto.entrypoints.http import build_app
+from netauto.settings import Settings
+
+app = build_app(
+    Settings(
+        database_url=(
+            "postgresql+psycopg://installed-server-guard:"
+            "non-secret@example.invalid/netauto"
+        )
+    )
+)
+schema = app.openapi()
+operations = sorted(
+    (method.upper(), path)
+    for path, path_item in schema["paths"].items()
+    for method in path_item
+    if method in {"get", "post", "put", "patch", "delete"}
+)
+print(json.dumps({
+    "version": version("netauto"),
+    "module_path": str(Path(sys.modules["netauto"].__file__).resolve()),
+    "cwd": str(Path.cwd().resolve()),
+    "operation_count": len(operations),
+    "path_count": len(schema["paths"]),
+    "has_health": ("GET", "/health/core") in operations,
+    "has_business_read": (
+        "GET", "/api/v1/core/datatypes"
+    ) in operations,
+    "has_business_mutation": (
+        "POST", "/api/v1/core/datatypes"
+    ) in operations,
+    "cli_modules": sorted(
+        name for name in sys.modules
+        if name == "netauto.cli" or name.startswith("netauto.cli.")
+    ),
+    "rejected_imports": rejected_imports,
+    "network_attempts": network_attempts,
+}, sort_keys=True))
+"""
+    result = s07_release.run([str(s07_release.python), "-c", script])
+    require_success(result)
+    assert result.stderr == ""
+    assert len(result.stdout) < 4_000
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "cli_modules": [],
+        "cwd": str(s07_release.target_root.resolve()),
+        "has_business_mutation": True,
+        "has_business_read": True,
+        "has_health": True,
+        "module_path": payload["module_path"],
+        "network_attempts": 0,
+        "operation_count": 64,
+        "path_count": 52,
+        "rejected_imports": [],
+        "version": RELEASE_VERSION,
+    }
+    module_path = Path(payload["module_path"])
+    assert s07_release.venv.resolve() in module_path.parents
+    assert ROOT.resolve() not in module_path.parents
+
+
 def test_candidate_wheel_has_exact_version_content_entrypoint_and_exclusions(
     s07_release: InstalledRelease,
 ) -> None:

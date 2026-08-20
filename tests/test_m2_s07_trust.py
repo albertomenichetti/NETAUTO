@@ -254,6 +254,123 @@ def test_installed_cli_and_settings_expose_no_credentials_or_tls_bypass(
     )
 
 
+def test_installed_public_contract_has_no_401_403_or_security_scheme(
+    s07_release: InstalledRelease,
+) -> None:
+    script = """
+import json
+import socket
+import sys
+from importlib.metadata import version
+from pathlib import Path
+
+network_attempts = 0
+def reject_connect(*args, **kwargs):
+    global network_attempts
+    network_attempts += 1
+    raise AssertionError("OpenAPI construction attempted network I/O")
+socket.socket.connect = reject_connect
+
+from netauto.entrypoints.http import build_app
+from netauto.settings import Settings
+
+app = build_app(
+    Settings(
+        database_url=(
+            "postgresql+psycopg://installed-contract:"
+            "non-secret@example.invalid/netauto"
+        )
+    )
+)
+schema = app.openapi()
+operation_security = []
+header_parameters = []
+auth_responses = []
+operation_count = 0
+methods = {"get", "post", "put", "patch", "delete"}
+for path, path_item in schema["paths"].items():
+    for parameter in path_item.get("parameters", []):
+        if parameter.get("in") == "header":
+            header_parameters.append([path, "PATH", parameter.get("name")])
+    for method, operation in path_item.items():
+        if method not in methods:
+            continue
+        operation_count += 1
+        if "security" in operation:
+            operation_security.append([path, method.upper(), operation["security"]])
+        for parameter in operation.get("parameters", []):
+            if parameter.get("in") == "header":
+                header_parameters.append(
+                    [path, method.upper(), parameter.get("name")]
+                )
+        for status in operation.get("responses", {}):
+            if str(status) in {"401", "403"}:
+                auth_responses.append([path, method.upper(), str(status)])
+
+forbidden_route_segments = {
+    "login", "logout", "token", "tokens", "account", "accounts", "role", "roles"
+}
+auth_routes = sorted(
+    path for path in schema["paths"]
+    if forbidden_route_segments & set(path.lower().strip("/").split("/"))
+)
+credential_tokens = (
+    "auth", "credential", "username", "password", "token", "api_key", "tls"
+)
+settings_fields = list(Settings.model_fields)
+credential_settings = sorted(
+    field for field in settings_fields
+    if any(token in field.lower() for token in credential_tokens)
+)
+components = schema.get("components", {})
+print(json.dumps({
+    "version": version("netauto"),
+    "module_path": str(Path(sys.modules["netauto"].__file__).resolve()),
+    "cwd": str(Path.cwd().resolve()),
+    "path_count": len(schema["paths"]),
+    "operation_count": operation_count,
+    "top_level_security_present": "security" in schema,
+    "security_schemes_present": "securitySchemes" in components,
+    "operation_security": operation_security,
+    "header_parameters": header_parameters,
+    "auth_responses": auth_responses,
+    "auth_routes": auth_routes,
+    "credential_settings": credential_settings,
+    "settings_fields": settings_fields,
+    "network_attempts": network_attempts,
+}, sort_keys=True))
+"""
+    result = s07_release.run([str(s07_release.python), "-c", script])
+    require_success(result)
+    assert result.stderr == ""
+    assert len(result.stdout) < 5_000
+    payload = json.loads(result.stdout)
+    assert payload["version"] == "0.2.0"
+    assert payload["cwd"] == str(s07_release.target_root.resolve())
+    module_path = Path(payload["module_path"])
+    assert s07_release.venv.resolve() in module_path.parents
+    assert ROOT.resolve() not in module_path.parents
+    assert payload["path_count"] == 52
+    assert payload["operation_count"] == 64
+    assert payload["top_level_security_present"] is False
+    assert payload["security_schemes_present"] is False
+    assert payload["operation_security"] == []
+    assert payload["header_parameters"] == []
+    assert payload["auth_responses"] == []
+    assert payload["auth_routes"] == []
+    assert payload["credential_settings"] == []
+    assert payload["settings_fields"] == [
+        "database_url",
+        "log_level",
+        "pool_size",
+        "max_overflow",
+        "pool_timeout",
+        "pool_recycle",
+        "pool_pre_ping",
+    ]
+    assert payload["network_attempts"] == 0
+
+
 def test_secret_sentinel_is_absent_from_artifact_docs_config_and_server_argv(
     s07_release: InstalledRelease,
 ) -> None:
