@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S07 REVIEW CHANGES REQUIRED
+**Milestone status:** IMPLEMENTATION — M2-S07 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S07 — REVIEW CHANGES REQUIRED
-current task    close S07-RF-01 and S07-RF-02, then republish the exact candidate
-blockers        none inside the bounded S07 correction; M2-S08 is dependency-blocked
+current slice   M2-S07 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the published S07 review-fix candidate
+blockers        none for S07 review; M2-S08 remains dependency-blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -30,7 +30,7 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | REVIEW CHANGES REQUIRED — `M2-S07` ONLY |
+| Implementation | CANDIDATE READY FOR REVIEW — `M2-S07` ONLY |
 | Final acceptance | BLOCKED — requires `M2-S00 ... M2-S08` reviewer-owned `COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
@@ -46,25 +46,36 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S04` | COMPLETED | `M2-S03 COMPLETED` |
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
-| `M2-S07` | REVIEW CHANGES REQUIRED | `M2-S06 COMPLETED` |
+| `M2-S07` | CANDIDATE READY FOR REVIEW | `M2-S06 COMPLETED` |
 | `M2-S08` | BLOCKED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
-`M2-S00` through `M2-S06` are reviewer-owned `COMPLETED`. `M2-S07` is reopened only for the bounded findings below. No later implementation slice is completed or authorized.
+`M2-S00` through `M2-S06` are reviewer-owned `COMPLETED`. `M2-S07` is a
+published implementer candidate for reviewer inspection, not reviewer-owned
+`COMPLETED`. No later implementation slice is completed or authorized.
 
 ## Current blockers and reviewed findings
 
-No contract, architecture, implementation-planning, technology or infrastructure contradiction is open. The S07 wheel, installed Alembic realization, Linux T9 harness, PostgreSQL lifecycle evidence and trust/TLS behavior remain the candidate baseline.
+No contract, architecture, implementation-planning, technology or infrastructure
+contradiction is open. `S07-RF-01` and `S07-RF-02` are closed in candidate
+implementation `e6de007f34d081c8a898c7a5453f54f0413b661e`; reviewer acceptance is
+pending. The S07 wheel, installed Alembic realization, Linux T9 harness,
+PostgreSQL lifecycle evidence and trust/TLS behavior remain the candidate
+baseline.
 
-A late reviewer inspection found two bounded completion gaps after candidate commit `c8402a222c537ab6d874b0d7bdb2b4ec6d23f7f8`:
+A late reviewer inspection found two bounded completion gaps after candidate
+commit `c8402a222c537ab6d874b0d7bdb2b4ec6d23f7f8`. Both are now closed in the
+current implementer candidate:
 
 ```text
 S07-RF-01
+    state: CLOSED IN CANDIDATE / REVIEW PENDING
     The Linux operating guide does not document the complete installed Settings
     contract required by M2-AC-29 / M2-VER-29: canonical environment names,
     required/default values, validation boundaries and fail-fast consequences.
 
 S07-RF-02
+    state: CLOSED IN CANDIDATE / REVIEW PENDING
     The S07 primary bundle registries do not assign all already-required evidence
     to M2-VER-24 / 29 / 30, and lack explicit installed evidence for server
     independence from CLI plus absence of a 401/403/native-auth contract.
@@ -81,27 +92,33 @@ was appended before these late findings were recorded. It remains in immutable h
 
 Any implementation finding that exposes a genuinely incomplete or contradictory frozen decision places the affected work in `STOP` and follows the explicit reopen/revalidate/propagate/re-freeze process. The two current findings do not require an architecture reopen.
 
-## M2-S07 reopened review record
+## M2-S07 reopened review-fix candidate record
 
-Reviewer result:
+Last reviewer result and current implementer state:
 
 ```text
-M2-S07                         REVIEW CHANGES REQUIRED
+last reviewer result            REVIEW CHANGES REQUIRED
+current implementer state       M2-S07 CANDIDATE READY FOR REVIEW
 original implementation prompt bf498153c458f585cd1a6914a9ac4aa904ebd34c
 initial implementation         0934671324cca40e8e5e0608449c5a5b3524e662
 initial evidence/status        dd58e8b342fae12639a731b86953a323e3da5b62
 continuation implementation    a81dd3a4b85795d4f153580d2b9407bd482df363
 candidate evidence/status      c8402a222c537ab6d874b0d7bdb2b4ec6d23f7f8
 superseded acceptance          a487e7c51c0b6ff0b15e1f3cfcb3702a9618f7ef
-reopen record                  recorded by the commit containing this status
+reopen baseline                1558d5cd1a7125e5810d923274e5809852061214
+review-fix starting HEAD       9e4544e4919af233c8444999c9bbc908d8207440
+review-fix implementation      e6de007f34d081c8a898c7a5453f54f0413b661e
+review-fix evidence/status     recorded by the commit containing this status
+closed findings                S07-RF-01 / S07-RF-02
 M2-S08                         BLOCKED / not started
 ```
 
-### `S07-RF-01` — Installed Settings contract is incomplete in operator guidance
+### `S07-RF-01` — Reviewed Settings gap, closed in candidate
 
 Frozen acceptance requires the Linux procedure to cover the database URL, pool settings, log level, bind, workers, explicit Alembic, orderly shutdown and Health. Verification additionally requires `database_url` and pool defaults/validation.
 
-The guide currently lists logical setting names and demonstrates some values, but it does not present one complete operator-facing inventory for:
+The reviewed baseline listed logical setting names and demonstrated some values,
+but did not present one complete operator-facing inventory for:
 
 ```text
 NETAUTO_DATABASE_URL
@@ -135,7 +152,7 @@ NETAUTO_POOL_PRE_PING
     canonical true | false source values
 ```
 
-Required correction:
+Candidate closure requirements:
 
 ```text
 Linux guide
@@ -153,9 +170,15 @@ installed evidence
 
 Documentation string-presence checks alone are insufficient.
 
-### `S07-RF-02` — Primary bundle membership is not complete against frozen obligations
+The candidate guide now contains the finite inventory and canonical
+`NETAUTO_LOG_LEVEL=INFO` start input. Installed-wheel evidence correlates the
+guide with the exact Settings fields/defaults and rejects all representative
+invalid boundaries without DB I/O, source-tree import or secret leakage.
 
-The current tests largely implement the required behavior, but primary bundle ownership is incomplete.
+### `S07-RF-02` — Reviewed bundle-membership gap, closed in candidate
+
+The reviewed baseline tests largely implemented the required behavior, but
+primary bundle ownership was incomplete.
 
 Required `M2-VER-24` membership must include evidence for:
 
@@ -185,7 +208,7 @@ real Health/logging secret non-leakage
 
 At minimum, add an installed finite no-401/403/no-security-scheme target and include the existing real-PG lifecycle/transport-cut targets that prove secrets are absent from process output and Health failure bodies.
 
-Create a permanent review-fix registry:
+The candidate adds the permanent review-fix registry:
 
 ```text
 S07_REVIEW_FIX_TARGETS = {
@@ -197,6 +220,97 @@ S07_REVIEW_FIX_TARGETS = {
 and machine-check that each finding target exists, is collected and belongs to the required complete bundle union. Tests may legitimately belong to more than one evidence bundle.
 
 The traceability gate must assert the required cross-memberships explicitly; merely proving that every `test_m2_s07_*` function occurs somewhere is not sufficient.
+
+The candidate now assigns explicit Alembic, lifecycle and installed server/CLI
+independence to `M2-VER-24`; installed Settings validation to `M2-VER-29`; and
+installed no-auth plus real lifecycle/transport-cut evidence to `M2-VER-30`.
+The dedicated traceability target proves every finding target exists and belongs
+to its required complete bundle union while preserving all installed support
+roles and S08-owned designed bundles.
+
+## M2-S07 review-fix candidate evidence
+
+The bounded correction changes only the Linux operating guide and permanent S07
+tests/traceability. It adds no production source, dependency, schema, migration,
+API, Health or CLI-semantic change.
+
+Candidate identity and environment:
+
+```text
+branch                           M2
+reopen baseline                  1558d5cd1a7125e5810d923274e5809852061214
+review-fix starting HEAD         9e4544e4919af233c8444999c9bbc908d8207440
+review-fix implementation        e6de007f34d081c8a898c7a5453f54f0413b661e
+review-fix evidence/status       recorded by the commit containing this status
+closed findings                  S07-RF-01 / S07-RF-02
+platform                         Ubuntu 24.04.4 LTS; Linux 6.8.0-134-generic x86_64
+CPython / uv / Hatchling         3.14.7 / 0.12.3 / 1.32.0
+PostgreSQL                       16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+```
+
+Quality and collection gates on the candidate implementation:
+
+```text
+uv lock --check                  passed; 46 packages resolved
+uv sync --locked                passed; 44 packages checked
+uv build                         passed; sdist and wheel, 1.46 s
+ruff format --check .            passed; 230 files already formatted
+ruff check .                     passed
+pyright                          passed; 0 errors / 0 warnings, 23.47 s
+pytest --collect-only -q         passed; 785 collected, 2.51 s
+```
+
+Focused, bundle and installed/T9 evidence:
+
+```text
+focused review-fix union         8 passed, 32.35 s
+M2-VER-24 selected/unique/pass   18 / 18 / 18, 37.87 s
+M2-VER-29 selected/unique/pass   7 / 7 / 7, 30.17 s
+M2-VER-30 selected/unique/pass   15 / 15 / 38 parametrized, 47.06 s
+installed support selected/uniq  13 / 7; 7 passed, 32.06 s
+S07/T9 + M2 traceability         40 passed, 55.03 s
+M2 traceability alone            22 passed, 14.31 s
+```
+
+Regression and final gates:
+
+```text
+all S05 + all S06                198 passed, 23.02 s
+Settings/runtime/schema/Health   151 passed, 26.73 s
+PostgreSQL + concurrency         182 passed / 603 deselected, 114.84 s
+non-PostgreSQL                   531 passed / 254 deselected, 65.00 s
+complete repository              785 passed, 252.84 s
+skip / xfail / rerun             0 / 0 / 0
+warnings                         1 unchanged third-party Starlette deprecation
+supported 40P01 / 40001          0 / 0
+negative-control 40P01 / 40001   1 / 2, expected
+```
+
+Final artifact and preserved-boundary facts:
+
+```text
+wheel                            netauto-0.2.0-py3-none-any.whl
+wheel size / members             165978 bytes / 77
+wheel SHA-256                    38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size                48238 bytes
+runtime package census           29 total / 27 applicable on Linux CPython
+runtime lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+migration checksum               379165a1eda83c226a6c1e5dc4f493c7fa0d0c8dba39449a1d004751aaa39c57
+project / installed version      0.2.0 / 0.2.0
+authoritative tables             15
+Alembic graph                    one base / one head (0001_m2_kernel)
+compare_metadata                 []
+third-party uv.lock records      unchanged
+business / operational HTTP     63 / 1; 64 total public operations
+CLI local / remote operations    8 / 63
+registry examples                65
+canonical scenarios/predicates   83 / 21
+native auth / server TLS         absent
+```
+
+The wheel and sdist created by the local build gate were not committed or
+published. No PR, GitHub Action, tag, Release or artifact publication was
+created. `M2-S08` remains `BLOCKED / not started`.
 
 ## Candidate capability retained during correction
 
