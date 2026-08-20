@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S08 REVIEW CHANGES REQUIRED
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the corrected S08 candidate
-blockers        M2-S09 remains blocked pending reviewer-owned completion of M2-S08
+current slice   M2-S08 — REVIEW CHANGES REQUIRED
+current task    execute the bounded S08-VRF-05 package-initializer closure
+blockers        M2-S09 remains blocked; package-parent initializer closure is open
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
+| `M2-S08` | REVIEW CHANGES REQUIRED | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or verification blocker is open for the corrected S08 candidate. The bounded S08-VRF-05 / 06 / 07 corrections are implemented and their focused, integrated and complete repository gates pass. The reviewer-authorized mechanical Ruff formatting of the active execution aid closes the repository-wide quality-gate blocker without changing its semantics or scope.
+No contract, architecture, implementation-planning, technology or infrastructure blocker is open. One bounded verification-harness finding remains open in M2-S08: `S08-VRF-05` does not yet model every existing package-parent initializer executed before a submodule import. `S08-VRF-06` and `S08-VRF-07` remain closed.
 
 `TEST_DATABASE_URL` is externally supplied when it is explicitly provided by the environment and NETAUTO test code does not provision, invent or silently substitute it. A loopback or local hostname is not itself a blocker. The implementer must verify that the configured URL uses the supported PostgreSQL/Psycopg form, reaches real PostgreSQL, and identifies the dedicated test target required by the existing test-support safety checks.
 
@@ -67,7 +67,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         CANDIDATE READY FOR REVIEW
+M2-S08                         REVIEW CHANGES REQUIRED
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -76,15 +76,26 @@ post-push corrective commit    9027b02b7f2b949cd7674adfa7c3fe3758eacda3
 corrective handoff              02a3a98ce5fc14419bcc795a8520ad1659140805
 verification review-fix        42843b4c885ee550a3e7b3dfc21896d9ae8a1ba1
 corrected candidate evidence   e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5
-review reopen                  recorded by the commit containing this status
+review reopen                  recorded by the earlier reviewer-owned status commit
 reviewer-aid format commit     a070391d3ffdf3540bc7ceaecfd9cb24d44cfe67
 final review-fix commit        c159dd9e38c4a6650669166499958f2d436d9e62
-candidate evidence/status      recorded by the commit containing this status
+candidate evidence/status      fc81d55a84eddbe441b3e4e078aa57874a83481c
+package-closure review reopen  recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                pending reviewer inspection / reviewer-owned
+review decision                REVIEW CHANGES REQUIRED / reviewer-owned
 ```
 
-Reviewer outcome for `e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5`:
+Reviewer outcome for `fc81d55a84eddbe441b3e4e078aa57874a83481c`:
+
+```text
+S08-VRF-05  OPEN — add existing package-parent initializers to root and import closure
+S08-VRF-06  CLOSED — finite abstract-negative capability audit remains accepted
+S08-VRF-07  CLOSED — reviewer ACCEPTED all-pass coherence remains accepted
+```
+
+The remaining defect is test-only. Python imports existing parent package initializers before a submodule, but the permanent Alembic mutation audit can currently omit those parents when only the deepest module is a root or imported target. The bounded correction must add parent-to-child initializer closure without inventing absent namespace-package initializers, without adding a new finding identifier and without modifying production, API, CLI, schema, migration, dependencies or locks.
+
+Prior reviewer outcome for `e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5`:
 
 ```text
 S08-VRF-05  detect mutating Alembic calls executed during module/class initialization
@@ -92,11 +103,13 @@ S08-VRF-06  give abstract deployment/security/data-protection negatives sufficie
 S08-VRF-07  allow reviewer ACCEPTED only for an internally all-pass final-evidence record
 ```
 
-The findings are implementation defects in the S08 test/evidence harness. They do not reopen the frozen architecture and do not authorize production, schema, migration, API, CLI, dependency or lock changes. The authorized execution aid is:
+The findings are implementation defects in the S08 test/evidence harness. They do not reopen the frozen architecture and do not authorize production, schema, migration, API, CLI, dependency or lock changes. The previous corrective execution aid remains non-normative historical support:
 
 ```text
 docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
 ```
+
+The current bounded authorization is this reviewer-owned status plus the package-initializer correction instructions supplied to the implementer.
 
 ### Final S08-VRF-05 / 06 / 07 corrective candidate
 
@@ -142,8 +155,7 @@ the 48238-byte embedded lock remains SHA-256
 The real external test target reports PostgreSQL 16.14 and database identity
 `netautotest`; the bounded `SELECT 1` probe succeeds.
 
-The candidate is ready for reviewer inspection only; M2-S08 is not declared
-`COMPLETED`, no final acceptance is claimed, and M2-S09 remains `BLOCKED`.
+The candidate was published for reviewer inspection only; it is superseded operationally by the package-closure reopen above. M2-S08 is not `COMPLETED`, no final acceptance is claimed, and M2-S09 remains `BLOCKED`.
 
 The first post-push repository gate on `b8c78c712d61514998281ea170e7606e1eb99781` produced `815 passed / 1 failed`: `tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history` waited for a literal prompt repaint after cancelling reverse search. Prompt Toolkit may legally perform a differential terminal redraw without retransmitting that literal. The bounded test-only correction synchronizes on the structured `/exit` acknowledgement after Ctrl-C, which proves that reverse search was cancelled and command input resumed. That failed candidate was not handed off; its execution correctly returned S08 to `IN PROGRESS` before the later authorized continuation recorded below.
 
@@ -536,13 +548,13 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Execute the bounded corrective aid:
+Execute the bounded package-parent initializer closure for:
 
 ```text
-docs/milestones/M2/wip/M2-S08-review-fixes-codex-prompt.md
+S08-VRF-05 — import-time Alembic mutation closure
 ```
 
-The only permitted implementer handoff is `M2-S08 CANDIDATE READY FOR REVIEW`. Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
+The exact scope is the existing package initializer chain for roots and imported modules; do not add a new finding identifier. The only permitted implementer handoff is `M2-S08 CANDIDATE READY FOR REVIEW`. Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
 
 ## Current status vocabulary
 
