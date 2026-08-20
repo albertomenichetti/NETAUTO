@@ -591,7 +591,7 @@ Imposta `locked_environment_confirmed` e `build_confirmed` a `true` soltanto dop
 
 ### 7.3 Command ledger
 
-Il ledger contiene tutti i comandi materialmente necessari al final gate, almeno:
+Il ledger JSON contiene tutti i comandi materialmente necessari al gate eseguito sul `CANDIDATE_SHA`, almeno:
 
 ```text
 uv lock --check
@@ -614,10 +614,11 @@ runtime/schema-guard/Health
 PostgreSQL/concurrency
 non-PostgreSQL
 full repository
-post-publication evidence validation
 ```
 
 Non inserire `TEST_DATABASE_URL` o secret in argv. Passali soltanto tramite environment.
+
+Il record JSON appartiene al gate del candidate e non contiene comandi eseguiti dopo il commit che pubblica il record stesso. La verifica exact-remote dell’evidence publication HEAD è un integrity gate successivo: registrane l’esito in `status.md` e nel report finale, senza modificare ricorsivamente il JSON per tentare di descrivere la propria pubblicazione.
 
 ### 7.4 Exact ledgers
 
@@ -1201,6 +1202,8 @@ full repository
 
 Ricostruisci la wheel dall’evidence HEAD e richiedi lo stesso hash del candidate artifact. Poiché la pubblicazione è docs/test-only, una differenza indica drift e blocca il handoff.
 
+Questi risultati post-publication sono evidence di integrità della pubblicazione. Registrali in `status.md` e nel report finale; non aggiornare il candidate JSON dopo ogni integrity run, perché ciò creerebbe una regressione infinita di commit che tentano di descrivere se stessi.
+
 Se qualunque post-publication gate fallisce:
 
 ```text
@@ -1256,6 +1259,7 @@ warning census
 SQLSTATE census
 compare_metadata
 open findings
+post-publication integrity gate
 
 file modificati
 production/schema/API/CLI/dependency boundaries invariati
