@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S08 CANDIDATE READY FOR REVIEW
+**Milestone status:** IMPLEMENTATION — M2-S08 IN PROGRESS
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S08 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the package-closure corrected S08 candidate
-blockers        M2-S09 remains blocked pending reviewer-owned S08 completion
+current slice   M2-S08 — IN PROGRESS
+current task    record the failed exact-remote S06 PTY gate and await authority
+blockers        S06 PTY target is outside this bounded hard scope; M2-S09 remains blocked
 ```
 
 The M2 contract, architecture set and implementation decomposition are `FINAL / FROZEN`.
@@ -47,14 +47,14 @@ Implementation or review-fix work is authorized only for the exact slice marked 
 | `M2-S05` | COMPLETED | `M2-S04 COMPLETED` |
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
-| `M2-S08` | CANDIDATE READY FOR REVIEW | `M2-S07 COMPLETED` |
+| `M2-S08` | IN PROGRESS | `M2-S07 COMPLETED` |
 | `M2-S09` | BLOCKED | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S07` are reviewer-owned `COMPLETED`. No later implementation slice is completed.
 
 ## Current blockers and findings
 
-No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The bounded package-parent initializer defect in `S08-VRF-05` is corrected in the candidate below; `S08-VRF-06` and `S08-VRF-07` remain closed. Reviewer inspection of S08 is pending and M2-S09 remains dependency-blocked.
+No contract, architecture, implementation-planning, technology or infrastructure blocker is open. The bounded package-parent initializer defect in `S08-VRF-05` is corrected; `S08-VRF-06` and `S08-VRF-07` remain closed. The exact-remote S06 gate failed after publication in the PTY reverse-search target, which is outside the file scope of the package-initializer correction. M2-S08 therefore remains in progress and M2-S09 remains dependency-blocked.
 
 `TEST_DATABASE_URL` is externally supplied when it is explicitly provided by the environment and NETAUTO test code does not provision, invent or silently substitute it. A loopback or local hostname is not itself a blocker. The implementer must verify that the configured URL uses the supported PostgreSQL/Psycopg form, reaches real PostgreSQL, and identifies the dedicated test target required by the existing test-support safety checks.
 
@@ -67,7 +67,7 @@ Any implementation finding that exposes an incomplete or contradictory frozen de
 Candidate state:
 
 ```text
-M2-S08                         CANDIDATE READY FOR REVIEW
+M2-S08                         IN PROGRESS
 starting prompt ancestry       1f8e82de73d953830a6b31045ec96dfe19116dd9
 starting synchronized HEAD     8ee9e540d24ecf07c8688350a03162a89d0991ce
 implementation/tests commit    3d794d25317425254440f4e4b711ebfb63113edf
@@ -84,7 +84,7 @@ package-closure review reopen  3e57bd2b7e604803defc676d1afecfa19351ea68
 package-closure test commit    29e47eca66667b0e8ba8aefea410476d6dd0710f
 package-closure evidence       recorded by the commit containing this status
 M2-S09                         BLOCKED / not started
-review decision                pending / reviewer-owned
+review decision                not submitted; exact-remote gate failed
 ```
 
 Reviewer outcome for `fc81d55a84eddbe441b3e4e078aa57874a83481c`:
@@ -97,7 +97,7 @@ S08-VRF-07  CLOSED — reviewer ACCEPTED all-pass coherence remains accepted
 
 The rejected defect was test-only. Python imports existing parent package initializers before a submodule, but the permanent Alembic mutation audit could omit those parents when only the deepest module was a root or imported target. The bounded correction now adds parent-to-child initializer closure without inventing absent namespace-package initializers, without adding a new finding identifier and without modifying production, API, CLI, schema, migration, dependencies or locks.
 
-### Package-parent initializer corrected candidate
+### Rejected package-parent initializer corrected candidate
 
 The synchronized starting HEAD and reviewer reopen is
 `3e57bd2b7e604803defc676d1afecfa19351ea68`, which contains the rejected
@@ -151,6 +151,35 @@ Production, API, CLI, Health, metadata, schema, migration, dependencies,
 GitHub Actions workflow or run, tag, GitHub Release, acceptance record or
 artifact publication was created. M2-S08 is not `COMPLETED`; M2-S09 remains
 `BLOCKED` and has not started.
+
+### Exact-remote gate failure
+
+The candidate commits were pushed to `origin/M2` and synchronized at
+`b53de79eb831c8da6fd965fa07c0562f2b010482`. Exact-remote lock, sync, build,
+Ruff format/lint, Pyright and collection passed. The focused package tests,
+S08-VRF-05, exact seven-finding registry, M2-VER-31, M2-VER-32, S08/T10 and
+the direct union of the 51 delivered scenarios also passed:
+
+```text
+new package-initializer tests  6 passed — 1.17 s
+S08-VRF-05                     13 targets / 14 passed — 1.68 s
+S08 review-fix registry        7 keys / 25 selected / 24 unique / 37 passed — 2.24 s
+M2-VER-31                      31 targets / 39 passed — 22.10 s
+M2-VER-32                      47 targets / 64 passed — 16.84 s
+S08/T10 and traceability       114 passed — 32.65 s
+51 delivered scenarios        51 IDs / 91 targets / 95 passed — 59.56 s
+complete S06                   71 passed / 1 failed — 24.98 s
+```
+
+The failing target was
+`tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history`.
+After Ctrl-R, the PTY emitted the reverse-search prompt but did not emit the
+expected `/help` history match within the bounded ten-second read; the cleanup
+then also exceeded its ten-second process wait. No retry was used. The
+remaining exact-remote S07/T9, API/error/CLI, schema/Alembic,
+runtime/schema-guard/Health, PostgreSQL/concurrency, non-PostgreSQL and full
+repository gates were not executed after this mandatory failure. The candidate
+is not handed off for review.
 
 Prior reviewer outcome for `e39f1aca2f2f4ad4f14d3487b8b0c0c8918964b5`:
 
@@ -605,13 +634,13 @@ Detailed implementation, finding and evidence records remain in their acceptance
 
 ## Immediate next action
 
-Review the published package-closure corrected candidate for:
+Resolve the exact-remote gate failure for:
 
 ```text
-S08-VRF-05 — import-time Alembic mutation closure
+tests/test_m2_s06_process.py::test_ctrl_r_searches_only_current_in_memory_history
 ```
 
-The exact correction is the existing package initializer chain for roots and imported modules under `S08-VRF-05`; the finding registry remains exactly `S08-VRF-01 ... S08-VRF-07`. The implementer handoff is `M2-S08 CANDIDATE READY FOR REVIEW`. Do not start `M2-S09` before reviewer-owned completion of `M2-S08`.
+The package initializer correction under `S08-VRF-05` and the exact seven-finding registry remain green. The current bounded hard scope does not authorize a modification to the S06 PTY test, so further correction requires explicit scope authorization or reviewer action. Do not hand off a candidate and do not start `M2-S09` before all exact-remote gates pass and reviewer-owned completion of `M2-S08`.
 
 ## Current status vocabulary
 
