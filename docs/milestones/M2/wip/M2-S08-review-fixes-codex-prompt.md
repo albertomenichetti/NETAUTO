@@ -250,11 +250,13 @@ Devono essere rilevate almeno queste forme:
 
 ```python
 from alembic.command import upgrade as migrate
+
 migrate(config, "head")
 ```
 
 ```python
 from alembic import command as alembic_command
+
 
 class Runtime:
     state = alembic_command.stamp(config, "head")
@@ -264,11 +266,13 @@ class Runtime:
 # sample.server
 import sample.adapter
 
-def build_app():
-    ...
+
+def build_app(): ...
+
 
 # sample.adapter
 from alembic.command import downgrade as reset_schema
+
 reset_schema(config, "base")
 ```
 
