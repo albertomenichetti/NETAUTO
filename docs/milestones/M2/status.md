@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — M2-S09 COMPLETED / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION READY / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -13,17 +13,27 @@ branch      M2
 ## Current operational state
 
 ```text
-phase           POST-IMPLEMENTATION
-current slice   M2-S09 — COMPLETED
-current task    reviewer/human-owned AS-IS consolidation and delivery closure
-blockers        none at the accepted final-gate boundary
-M2              NOT DELIVERED
+phase                       POST-IMPLEMENTATION
+last implementation slice   M2-S09 — COMPLETED
+current gate                AS-IS consolidation — READY
+next gate                   consistency closure — BLOCKED
+blockers                    none at the accepted final-gate boundary
+M2                          NOT DELIVERED
 ```
 
 The M2 contract, architecture set and implementation decomposition remain
 `FINAL / FROZEN`. No architecture reopen is active. Implementation and the
-M2-S09 final-acceptance gate are complete; AS-IS consolidation, milestone
-delivery and merge remain separate reviewer/human-owned activities.
+M2-S09 final-acceptance gate are complete.
+
+The only authorized work is the reviewer-scoped documentation consolidation
+specified by:
+
+```text
+docs/milestones/M2/as-is-consolidation.md
+```
+
+This work produces a current-state architecture candidate. It does not authorize
+new product semantics, implementation changes, delivery or merge.
 
 ## Design and delivery gates
 
@@ -34,8 +44,10 @@ delivery and merge remain separate reviewer/human-owned activities.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | NOT STARTED |
+| AS-IS consolidation | READY |
+| Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
 | Delivery | NOT DELIVERED |
+| Merge | NOT EXECUTED |
 
 ## Slice registry
 
@@ -52,7 +64,8 @@ delivery and merge remain separate reviewer/human-owned activities.
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
 | `M2-S09` | COMPLETED | `M2-S00 ... M2-S08 COMPLETED` |
 
-All implementation slices are reviewer-owned `COMPLETED`.
+All implementation slices are reviewer-owned `COMPLETED`. Consolidation is a
+separate post-implementation gate and is not a new implementation slice.
 
 ## Reviewer-owned final acceptance
 
@@ -65,11 +78,11 @@ replacement-cycle commit       5db3ad31a4b51b14a2bd0e5e77d9dbcb1a7dd6dd
 final lifecycle test commit    88533bbcb319c24eb57d47c960620418eeb56085
 accepted candidate SHA         87de783462b24f17b5da5aa31ce002c19734e0eb
 evidence/status publication    e794093bd6b2dae7ffe27a028ddebead8c14941e
+S09 acceptance commit          1e9c40161fb7b9d26a6491295c6e393d0eacf60d
 reviewer decision              ACCEPTED
-review decision commit         recorded by the commit containing this status
 evidence record                candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
 acceptance.md                  reviewer acceptance summary present
-active execution aid           retired
+S09 execution aid              retired
 M2-S09                         COMPLETED
 M2                             NOT DELIVERED
 ```
@@ -78,48 +91,32 @@ The rejected candidate and its reviewer decision remain preserved in immutable
 Git history. The accepted replacement record is the only candidate JSON in the
 working tree.
 
-## Closed review findings
-
-### S09-RF-01 — Reviewer lifecycle coherence
-
-Closed by the shared five-state lifecycle validator and permanent regressions.
-The accepted state requires one record with `reviewer_decision = ACCEPTED`, an
-acceptance-phase summary, all final ledgers passing, no open findings, and no
-active S09 execution aid.
-
-### S09-RF-02 — Fail-closed final-gate runner
-
-Closed by the effective-status policy. Raw pytest failure, any requested target
-that is `FAIL` or `BLOCKED`, SKIP, XFAIL, XPASS, RERUN, or missing JUnit evidence
-produces a non-zero public gate status. Reviewed warnings alone do not fail the
-gate.
-
 ## Accepted exact-candidate and exact-remote evidence
 
 ```text
-M2-VER                         32 / 32 PASS
-M2-AC                          32 / 32 PASS
-M2-OUT                         16 / 16 covered
-canonical scenarios            83 / 83 PASS
-safety predicates              21 / 21 PASS
-bundle union                   369 unique targets / 516 passed
-scenario union                 166 unique targets / 190 passed
-S06 / T8                       73 passed
-S07 / T9                       18 passed
-S08 / T10                      99 passed
-schema / Alembic               33 passed / compare_metadata []
-API / error / CLI              277 passed
+M2-VER                          32 / 32 PASS
+M2-AC                           32 / 32 PASS
+M2-OUT                          16 / 16 covered
+canonical scenarios             83 / 83 PASS
+safety predicates               21 / 21 PASS
+bundle union                    369 unique targets / 516 passed
+scenario union                  166 unique targets / 190 passed
+S06 / T8                        73 passed
+S07 / T9                        18 passed
+S08 / T10                       99 passed
+schema / Alembic                33 passed / compare_metadata []
+API / error / CLI               277 passed
 runtime / schema guard / Health 121 passed
-PostgreSQL / concurrency       254 passed
-non-PostgreSQL                 642 passed
-full repository                896 passed
-collection                     896
-skip / xfail / rerun           0 / 0 / 0
-supported 40P01                0
-unexpected 40001               0
-negative controls              40P01 x1 / 40001 x2
-warning census                 1 reviewed Starlette deprecation
-open findings                  0
+PostgreSQL / concurrency        254 passed
+non-PostgreSQL                  642 passed
+full repository                 896 passed
+collection                      896
+skip / xfail / rerun            0 / 0 / 0
+supported 40P01                 0
+unexpected 40001                0
+negative controls               40P01 x1 / 40001 x2
+warning census                  1 reviewed Starlette deprecation
+open findings                   0
 ```
 
 Verified execution environment:
@@ -154,25 +151,149 @@ above are the implementer's exact-candidate and exact-remote evidence; the
 reviewer independently inspected the commit chain, record, lifecycle, runner,
 regressions and acceptance boundary.
 
-## Delivery boundary
+## AS-IS consolidation gate
+
+The consolidation must produce one autonomous description of the system that
+exists at the accepted M2 boundary.
+
+Non-negotiable rules:
 
 ```text
-M2-S09                 COMPLETED
-M2                     NOT DELIVERED
-AS-IS consolidation    NOT STARTED
-consistency closure    NOT STARTED
-merge                  NOT EXECUTED
+current state, not a sequence of changes
+present tense, not milestone chronology
+one normative owner per decision
+no requirement to reconstruct M1 or M2
+no M2-OUT / M2-AC / M2-VER / slice / SHA leakage into current semantics
+no candidate counts or review evidence in docs/architecture
+no copy/paste of the M2 TO-BE corpus
 ```
 
-No implementation work, delivery claim, AS-IS consolidation, merge, PR,
-workflow, tag, Release, or artifact publication is authorized by this completion
-record alone.
+Invalid semantic wording includes forms such as:
+
+```text
+M1 had X, M2 added Y
+previously ... now ...
+new in M2
+introduced by M2-Snn
+preserved from the old baseline
+```
+
+The current AS-IS states the resulting entities, invariants, commands, failures,
+persistence, concurrency, runtime and verification obligations directly.
+
+Cycle names are allowed only in the concise provenance section of
+`docs/architecture/README.md` and in links to historical records.
+
+## Consolidation target
+
+Expected updated or added owners/projections:
+
+```text
+docs/architecture/README.md
+docs/architecture/relationship.md
+docs/architecture/persistence.md
+docs/architecture/concurrency-matrix.md
+docs/architecture/concurrency.md
+docs/architecture/api.md
+docs/architecture/health.md
+docs/architecture/cli.md
+docs/architecture/runtime-deployment.md
+docs/architecture/linux-operating-baseline.md
+docs/architecture/verification.md
+docs/architecture/verification-concurrency-registry.md
+```
+
+The existing DataType, ObjectTemplate and Object owners must be audited and may
+change only where their current statements or cross-references are no longer
+exact.
+
+The target corpus must describe, without historical narration:
+
+```text
+versioned RelationshipDefinition semantics and factual Relationship state
+fifteen-table PostgreSQL authority and 0001_m2_kernel as the sole root/head
+41 mutation primitives, 861 interaction cells and 21 safety predicates
+63 business HTTP operations plus GET /health/core
+Core Health behavior
+63-operation HTTP-only CLI, 8 local commands and REPL/process behavior
+Settings, wheel/runtime-lock, startup guard and trusted-boundary deployment
+current Linux installation and operation procedure
+T0–T10 verification, 83 scenarios and 21 predicates
+```
+
+Milestone-only outcomes, acceptance criteria, evidence-bundle IDs, commit hashes
+and pass ledgers remain in the historical M2 record.
+
+## Authorized delta
+
+The consolidation candidate may modify only:
+
+```text
+docs/architecture/*.md
+docs/milestones/M2/status.md
+```
+
+Explicitly permitted new files:
+
+```text
+docs/architecture/health.md
+docs/architecture/cli.md
+docs/architecture/runtime-deployment.md
+docs/architecture/linux-operating-baseline.md
+```
+
+It must not modify:
+
+```text
+src/netauto/
+tests/
+schema or migrations
+pyproject.toml
+uv.lock
+src/netauto/release/runtime.pylock.toml
+README.md root
+AGENTS.md
+docs/general/
+docs/milestones/M2/contract.md
+docs/milestones/M2/architecture/
+docs/milestones/M2/steps.md
+docs/milestones/M2/acceptance.md
+docs/milestones/M2/evidence/
+```
+
+A need to change any forbidden area is a `STOP` and a reviewer finding.
+
+## Candidate and review boundary
+
+The coding agent may move the consolidation gate through:
+
+```text
+READY -> IN PROGRESS -> CANDIDATE READY FOR REVIEW
+```
+
+A failed gate remains `IN PROGRESS`. The agent must not assign:
+
+```text
+AS-IS consolidation    COMPLETED
+consistency closure    READY / COMPLETED
+M2                     DELIVERED
+```
+
+Reviewer acceptance of the consolidation opens the separate whole-corpus
+consistency-closure gate. Only after both reviewer-owned gates complete may M2
+be marked `DELIVERED`.
 
 ## Immediate next action
 
-Begin the separate reviewer/human-owned AS-IS consolidation of the delivered
-TO-BE into `docs/architecture/`, followed by consistency closure. Only after
-those gates pass may M2 transition to `DELIVERED`. Merge remains human-owned.
+Execute `docs/milestones/M2/as-is-consolidation.md` from the current `M2` branch.
+Produce a complete current-state candidate, run the specified preliminary
+consistency and repository gates, push only to `M2`, and hand off:
+
+```text
+AS-IS consolidation    CANDIDATE READY FOR REVIEW
+consistency closure    BLOCKED
+M2                     NOT DELIVERED
+```
 
 ## Current status vocabulary
 
