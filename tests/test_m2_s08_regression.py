@@ -299,14 +299,16 @@ def test_public_route_error_and_schema_runtime_deltas_are_exact() -> None:
     owner_text = (ROOT / concurrency_owner).read_text()
     assert "Every target named by the command" not in owner_text
     assert "retained/inserted targets" not in owner_text
+    assert "changed component target" not in owner_text
+    assert "unchanged component target" not in owner_text
 
     ot_revise_plan = lock_plans["OT.R"][1]
     for sentinel in (
         "unchanged parent: no target reacquisition",
         "changed explicit parent: `OT.H@KS + OT.V@S`",
         "changed implicit parent: `OT.H@S + OT.V@S`",
-        "changed component target: `OT.H@KS`",
-        "unchanged component target: no outgoing target lock",
+        "changed or physically reinserted component declaration: `OT.H@KS`",
+        "unchanged physical component declaration: no outgoing target lock",
         "removed component declaration: no outgoing target lock",
         "unchanged property declaration: no outgoing target lock",
         "removed property declaration: no outgoing target lock",
