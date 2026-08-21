@@ -19,6 +19,7 @@ from tests.support.m2_evidence import (
     ArtifactEvidence,
     CommandEvidence,
     EnvironmentEvidence,
+    EvidenceExpectations,
     EvidenceState,
     FinalEvidenceRecord,
     OperationCensus,
@@ -27,6 +28,7 @@ from tests.support.m2_evidence import (
     RuntimeLockEvidence,
     SchemaEvidence,
     TestCensus,
+    validate_evidence_record,
 )
 from tests.test_m2_traceability import (
     CLI_REMOTE_OPERATION_COVERAGE,
@@ -48,7 +50,11 @@ from tests.test_m2_traceability import (
 )
 
 type S09State = Literal[
-    "READY", "IN PROGRESS", "CANDIDATE READY FOR REVIEW", "COMPLETED"
+    "READY",
+    "IN PROGRESS",
+    "CANDIDATE READY FOR REVIEW",
+    "REVIEW CHANGES REQUIRED",
+    "COMPLETED",
 ]
 type CaseState = Literal["PASS", "FAIL", "SKIP", "XFAIL", "RERUN"]
 
@@ -123,6 +129,15 @@ _SUMMARY_COUNT = {
     name: re.compile(rf"(?<![\w-])(\d+) {name}s?(?![\w-])")
     for name in ("warning", "xfailed", "xpassed", "rerun")
 }
+_S09_STATES = frozenset(
+    {
+        "READY",
+        "IN PROGRESS",
+        "CANDIDATE READY FOR REVIEW",
+        "REVIEW CHANGES REQUIRED",
+        "COMPLETED",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +158,7 @@ def s09_state(status_text: str) -> S09State:
     if match is None:
         raise ValueError("M2-S09 status row is missing")
     state = match.group(1).strip()
-    if state not in {"READY", "IN PROGRESS", "CANDIDATE READY FOR REVIEW", "COMPLETED"}:
+    if state not in _S09_STATES:
         raise ValueError(f"unsupported M2-S09 state: {state}")
     return cast(S09State, state)
 
@@ -179,6 +194,127 @@ def validate_evidence_lifecycle(root: Path, state: S09State) -> Path | None:
     if len(candidates) != 1 or not acceptance.is_file():
         raise ValueError("candidate state requires one record and acceptance.md")
     return candidates[0]
+
+
+def _normalized_lines(text: str) -> frozenset[str]:
+    return frozenset(" ".join(line.split()) for line in text.splitlines())
+
+
+def _validate_acceptance_summary(text: str, state: S09State) -> None:
+    lines = _normalized_lines(text)
+    if state == "CANDIDATE READY FOR REVIEW":
+        required = {
+            "# M2 Final Acceptance Candidate",
+            "Status: CANDIDATE READY FOR REVIEW",
+            "reviewer decision PENDING / reviewer-owned",
+            "M2-S09 is not COMPLETED",
+            "M2 is not DELIVERED",
+        }
+        forbidden = {
+            "Status: REVIEW CHANGES REQUIRED",
+            "Status: ACCEPTED",
+            "reviewer decision REVIEW CHANGES REQUIRED",
+            "reviewer decision ACCEPTED",
+            "M2-S09 REVIEW CHANGES REQUIRED",
+            "M2-S09 COMPLETED",
+        }
+    elif state == "REVIEW CHANGES REQUIRED":
+        required = {
+            "# M2 Final Acceptance Review",
+            "Status: REVIEW CHANGES REQUIRED",
+            "reviewer decision REVIEW CHANGES REQUIRED",
+            "M2-S09 REVIEW CHANGES REQUIRED",
+            "M2 NOT DELIVERED",
+        }
+        forbidden = {
+            "# M2 Final Acceptance Candidate",
+            "Status: CANDIDATE READY FOR REVIEW",
+            "Status: ACCEPTED",
+            "reviewer decision PENDING / reviewer-owned",
+            "reviewer decision ACCEPTED",
+            "M2-S09 is not COMPLETED",
+            "M2-S09 COMPLETED",
+        }
+    elif state == "COMPLETED":
+        required = {
+            "# M2 Final Acceptance Review",
+            "Status: ACCEPTED",
+            "reviewer decision ACCEPTED",
+            "M2-S09 COMPLETED",
+            "M2 NOT DELIVERED",
+        }
+        forbidden = {
+            "# M2 Final Acceptance Candidate",
+            "Status: CANDIDATE READY FOR REVIEW",
+            "Status: REVIEW CHANGES REQUIRED",
+            "reviewer decision PENDING / reviewer-owned",
+            "reviewer decision REVIEW CHANGES REQUIRED",
+            "M2-S09 is not COMPLETED",
+            "M2-S09 REVIEW CHANGES REQUIRED",
+        }
+    else:
+        raise ValueError(f"acceptance summary is not valid for {state}")
+    missing = required - lines
+    if missing:
+        raise ValueError(f"acceptance summary markers missing: {sorted(missing)}")
+    stale = forbidden & lines
+    if stale:
+        raise ValueError(f"stale acceptance summary markers: {sorted(stale)}")
+
+
+def _require_all_pass_candidate(record: FinalEvidenceRecord) -> None:
+    for ledger_name, ledger in (
+        ("evidence_bundles", record.evidence_bundles),
+        ("scenarios", record.scenarios),
+        ("predicates", record.predicates),
+    ):
+        if not all(state == "PASS" for state in ledger.values()):
+            raise ValueError(
+                f"candidate state requires every {ledger_name} entry to PASS"
+            )
+    if record.installed_t9 != "PASS":
+        raise ValueError("candidate state requires installed_t9 to PASS")
+    if record.open_findings:
+        raise ValueError("candidate state requires open_findings to be empty")
+
+
+def validate_s09_lifecycle(
+    root: Path,
+    state: S09State,
+    expectations: EvidenceExpectations,
+) -> FinalEvidenceRecord | None:
+    """Validate the exact S09 state, decision, summary, evidence, and aid matrix."""
+    record_path = validate_evidence_lifecycle(root, state)
+    aid = root / "docs" / "milestones" / "M2" / "wip" / "M2-S09-codex-prompt.md"
+    if (state == "COMPLETED") == aid.exists():
+        raise ValueError(f"active S09 aid lifecycle is incoherent for {state}")
+    if record_path is None:
+        return None
+
+    record = final_evidence_from_json(record_path.read_bytes())
+    candidate_sha = record_path.name.removeprefix("candidate-").removesuffix(".json")
+    if record.candidate_commit != candidate_sha:
+        raise ValueError("candidate filename does not match candidate_commit")
+    acceptance = (root / "docs/milestones/M2/acceptance.md").read_text()
+    _validate_acceptance_summary(acceptance, state)
+
+    if state == "CANDIDATE READY FOR REVIEW":
+        validate_evidence_record(record, expectations, phase="implementer")
+        if record.reviewer_decision is not None:
+            raise ValueError("candidate state requires a null reviewer decision")
+        _require_all_pass_candidate(record)
+    elif state == "REVIEW CHANGES REQUIRED":
+        validate_evidence_record(record, expectations, phase="reviewer")
+        if record.reviewer_decision != "REVIEW CHANGES REQUIRED":
+            raise ValueError("review-changes state requires its matching decision")
+    elif state == "COMPLETED":
+        validate_evidence_record(record, expectations, phase="reviewer")
+        if record.reviewer_decision != "ACCEPTED":
+            raise ValueError("completed state requires an ACCEPTED decision")
+        _require_all_pass_candidate(record)
+    else:
+        raise ValueError(f"candidate evidence is not valid for {state}")
+    return record
 
 
 def _target_matches_node(target: str, node_id: str) -> bool:
@@ -272,6 +408,17 @@ def parse_pytest_junit(
         target_states=target_states,
         output_tail=output[-2000:],
     )
+
+
+def gate_exit_status(parsed: ParsedPytestRun) -> int:
+    """Return the fail-closed public status for one final-gate pytest run."""
+    if parsed.exit_status != 0:
+        return max(1, abs(parsed.exit_status))
+    if any(state != "PASS" for state in parsed.target_states.values()):
+        return 1
+    if parsed.census.skipped or parsed.census.xfailed or parsed.census.rerun:
+        return 1
+    return 0
 
 
 def derive_ledger(
@@ -504,13 +651,34 @@ def final_evidence_from_json(data: bytes) -> FinalEvidenceRecord:
     )
 
 
-def _run_group(group: str) -> int:
+def _group_targets(group: str) -> frozenset[str]:
     if group == "bundles":
-        targets = S09_BUNDLE_TARGET_UNION
-    elif group == "scenarios":
-        targets = S09_SCENARIO_TARGET_UNION | {S09_PREDICATE_ASSERTION_TARGET}
-    else:
-        raise ValueError(f"unknown gate group: {group}")
+        return S09_BUNDLE_TARGET_UNION
+    if group == "scenarios":
+        return S09_SCENARIO_TARGET_UNION | {S09_PREDICATE_ASSERTION_TARGET}
+    raise ValueError(f"unknown gate group: {group}")
+
+
+def blocked_pytest_run(
+    targets: frozenset[str],
+    *,
+    argv: Sequence[str],
+    exit_status: int,
+    duration_seconds: float,
+    output: str,
+) -> ParsedPytestRun:
+    """Represent a missing JUnit document as bounded BLOCKED evidence."""
+    return ParsedPytestRun(
+        argv=tuple(argv),
+        exit_status=exit_status,
+        duration_seconds=round(duration_seconds, 3),
+        census=TestCensus(0, 0, 0, 0, 0, 0),
+        target_states={target: "BLOCKED" for target in targets},
+        output_tail=(output + "\npytest did not produce JUnit XML")[-2000:],
+    )
+
+
+def execute_group(group: str, targets: frozenset[str]) -> ParsedPytestRun:
     public_argv = (
         "uv",
         "run",
@@ -550,25 +718,39 @@ def _run_group(group: str) -> int:
                 output=output,
             )
         else:
-            parsed = ParsedPytestRun(
+            parsed = blocked_pytest_run(
+                targets,
                 argv=public_argv,
                 exit_status=completed.returncode,
-                duration_seconds=round(duration, 3),
-                census=TestCensus(0, 0, 0, 0, 0, 0),
-                target_states={target: "BLOCKED" for target in targets},
-                output_tail=output[-2000:],
+                duration_seconds=duration,
+                output=output,
             )
+    return parsed
+
+
+def gate_result(
+    group: str,
+    parsed: ParsedPytestRun,
+    targets: frozenset[str],
+) -> dict[str, object]:
+    """Build the public bounded JSON result using the effective gate status."""
+    effective_status = gate_exit_status(parsed)
 
     result: dict[str, object] = {
         "argv": parsed.argv,
-        "exit_status": parsed.exit_status,
+        "exit_status": effective_status,
+        "pytest_exit_status": parsed.exit_status,
         "duration_seconds": parsed.duration_seconds,
         "census": asdict(parsed.census),
         "unique_targets": len(targets),
         "failed_targets": sorted(
             target for target, state in parsed.target_states.items() if state != "PASS"
         ),
-        "output_tail": parsed.output_tail if parsed.exit_status else "",
+        "output_tail": (
+            parsed.output_tail[-2000:] or "final gate rejected non-PASS evidence"
+            if effective_status
+            else ""
+        ),
     }
     if group == "bundles":
         result["evidence_bundles"] = derive_ledger(
@@ -583,8 +765,15 @@ def _run_group(group: str) -> int:
                 parsed.target_states.get(S09_PREDICATE_ASSERTION_TARGET) == "PASS"
             ),
         )
+    return result
+
+
+def run_group(group: str) -> int:
+    targets = _group_targets(group)
+    parsed = execute_group(group, targets)
+    result = gate_result(group, parsed, targets)
     print(json.dumps(result, sort_keys=True))
-    return completed.returncode
+    return cast(int, result["exit_status"])
 
 
 def _main(argv: Sequence[str] | None = None) -> int:
@@ -595,7 +784,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.command != "run":
         parser.error("unsupported command")
-    return _run_group(cast(str, arguments.group))
+    return run_group(cast(str, arguments.group))
 
 
 if __name__ == "__main__":

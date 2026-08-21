@@ -23,9 +23,8 @@ from tests.support.m2_evidence import (
 )
 from tests.support.m2_evidence import TestCensus as EvidenceTestCensus
 from tests.support.s09_acceptance import (
-    final_evidence_from_json,
     s09_state,
-    validate_evidence_lifecycle,
+    validate_s09_lifecycle,
 )
 from tests.test_m2_traceability import (
     M2_CONCURRENCY_SCENARIOS,
@@ -293,6 +292,7 @@ def test_evidence_documentation_matches_validator_and_reserves_s09_record() -> N
     readme = ROOT / "docs/milestones/M2/evidence/README.md"
     assert readme.is_file()
     text = readme.read_text()
+    normalized_text = " ".join(text.split())
     for required in (
         "non-normative evidence-format guidance",
         "M2-S09",
@@ -308,20 +308,24 @@ def test_evidence_documentation_matches_validator_and_reserves_s09_record() -> N
         "PASS",
         "FAIL",
         "BLOCKED",
+        "reviewer-owned `REVIEW CHANGES REQUIRED`",
+        "replacement cycle starts from `IN PROGRESS`",
+        "Git history preserves the rejection",
+        "future candidate uses a new commit SHA",
     ):
-        assert required in text
+        assert required in normalized_text
     assert "S08 does not create or populate" in text
     state = s09_state((ROOT / "docs/milestones/M2/status.md").read_text())
-    record_path = validate_evidence_lifecycle(ROOT, state)
+    record = validate_s09_lifecycle(ROOT, state, EXPECTATIONS)
     if state in {"READY", "IN PROGRESS"}:
-        assert record_path is None
+        assert record is None
         return
 
-    assert record_path is not None
-    record = final_evidence_from_json(record_path.read_bytes())
+    assert record is not None
     if state == "CANDIDATE READY FOR REVIEW":
-        validate_evidence_record(record, EXPECTATIONS, phase="implementer")
         assert record.reviewer_decision is None
+    elif state == "REVIEW CHANGES REQUIRED":
+        assert record.reviewer_decision == "REVIEW CHANGES REQUIRED"
     else:
-        validate_evidence_record(record, EXPECTATIONS, phase="reviewer")
-        assert record.reviewer_decision in REVIEWER_DECISIONS
+        assert state == "COMPLETED"
+        assert record.reviewer_decision == "ACCEPTED"

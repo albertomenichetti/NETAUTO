@@ -8,10 +8,15 @@ The lifecycle inventory is finite. While M2-S09 is `READY` or `IN PROGRESS`,
 this README is the only file in this directory and `acceptance.md` is absent.
 The implementer candidate state adds exactly one
 `candidate-<candidate_commit>.json` plus `acceptance.md`, with
-`reviewer_decision` still null. A later reviewer-owned `COMPLETED` transition
-keeps that same record, records one finite reviewer decision, and retires the
-active execution aid. Additional candidate records or unclassified evidence
-files are not permitted.
+`reviewer_decision` still null. A reviewer-owned `REVIEW CHANGES REQUIRED`
+transition keeps that record, records the finite rejection decision, preserves
+the rejection summary in `acceptance.md`, and retains the active execution aid.
+A later replacement cycle starts from `IN PROGRESS`: it retires the rejected
+record and summary from the working tree while Git history preserves the
+rejection. Its future candidate uses a new commit SHA and becomes the sole
+candidate record. A reviewer-owned `COMPLETED` transition keeps that candidate
+record, records `ACCEPTED`, and retires the active execution aid. Additional
+candidate records or unclassified evidence files are not permitted.
 
 ## Representation
 
