@@ -1,5 +1,6 @@
-"""M2-S08 exact AS-IS preservation and authorized-delta closure."""
+"""M2-S08 exact current AS-IS and historical-delta closure."""
 
+import ast
 import re
 from pathlib import Path
 
@@ -41,6 +42,35 @@ def _normalized_operations(
     return frozenset(
         (method, re.sub(r"\{[^{}]+\}", "{}", path)) for method, path in operations
     )
+
+
+def _documented_table_inventory(relative: str) -> frozenset[str]:
+    text = (ROOT / relative).read_text()
+    section = re.search(
+        r"^## Authoritative table map\n(?P<body>.*?)^## Exact column inventory$",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert section is not None
+    blocks = re.findall(r"```text\n(.*?)```", section.group("body"), re.DOTALL)
+    return frozenset(
+        line.strip()
+        for block in blocks
+        for line in block.splitlines()
+        if re.fullmatch(r"[a-z][a-z0-9_]*", line.strip())
+    )
+
+
+def _migration_identity(path: Path) -> tuple[object, object]:
+    assignments: dict[str, object] = {}
+    for node in ast.parse(path.read_text(), filename=str(path)).body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.value is None:
+            continue
+        if node.target.id in {"revision", "down_revision"}:
+            assignments[node.target.id] = ast.literal_eval(node.value)
+    return assignments["revision"], assignments["down_revision"]
 
 
 def test_all_preserved_guarantees_have_concrete_collected_targets() -> None:
@@ -137,48 +167,40 @@ def test_m2_delta_allowlists_are_exact_and_closed() -> None:
 
 
 def test_public_route_error_and_schema_runtime_deltas_are_exact() -> None:
-    delivered = _documented_business_operations("docs/architecture/api.md")
-    current = _documented_business_operations("docs/milestones/M2/architecture/api.md")
-    additions = S01_PUBLIC_ROUTE_DELTA | S02_PUBLIC_ROUTE_DELTA
-    assert len(delivered) == 52
-    assert len(current) == 63
-    assert _normalized_operations(current) - _normalized_operations(delivered) == (
-        _normalized_operations(additions)
+    documented_current = _documented_business_operations("docs/architecture/api.md")
+    frozen_m2 = _documented_business_operations(
+        "docs/milestones/M2/architecture/api.md"
     )
-    assert _normalized_operations(delivered) - _normalized_operations(current) == set()
+    additions = S01_PUBLIC_ROUTE_DELTA | S02_PUBLIC_ROUTE_DELTA
+
+    assert _normalized_operations(documented_current) == _normalized_operations(
+        BUSINESS_OPERATION_SET
+    )
+    assert len(documented_current) == len(BUSINESS_OPERATION_SET) == 63
+    assert _normalized_operations(frozen_m2) == _normalized_operations(
+        BUSINESS_OPERATION_SET
+    )
+    assert len(frozen_m2) == 63
+    assert len(S01_PUBLIC_ROUTE_DELTA) == 9
+    assert len(S02_PUBLIC_ROUTE_DELTA) == 2
     assert len(additions) == 11
-    assert PUBLIC_HTTP_OPERATIONS == BUSINESS_OPERATION_SET | S04_PUBLIC_ROUTE_DELTA
+    assert S01_PUBLIC_ROUTE_DELTA.isdisjoint(S02_PUBLIC_ROUTE_DELTA)
+    assert _normalized_operations(additions) <= _normalized_operations(
+        BUSINESS_OPERATION_SET
+    )
     assert S04_PUBLIC_ROUTE_DELTA == {("GET", "/health/core")}
+    assert PUBLIC_HTTP_OPERATIONS == BUSINESS_OPERATION_SET | S04_PUBLIC_ROUTE_DELTA
     assert len(PUBLIC_HTTP_OPERATIONS) == 64
     assert len(PUBLIC_STATUS_BY_CODE) == 23
 
-    delivered_tables = {
-        "datatypes",
-        "datatype_versions",
-        "object_templates",
-        "object_template_versions",
-        "object_template_properties",
-        "object_template_components",
-        "relationship_definitions",
-        "relationship_resolutions",
-        "objects",
-        "object_components",
-        "relationships",
-        "runtime_relationship_resolutions",
-        "object_lifecycle_events",
-    }
-    assert len(delivered_tables) == 13
-    delivered_persistence = (ROOT / "docs/architecture/persistence.md").read_text()
-    assert all(
-        re.search(rf"^\s*{table}\s*$", delivered_persistence, re.MULTILINE)
-        for table in delivered_tables
-    )
-    assert len(EXPECTED_TABLES) == 15
+    documented_tables = _documented_table_inventory("docs/architecture/persistence.md")
+    assert documented_tables == EXPECTED_TABLES
+    assert len(documented_tables) == len(EXPECTED_TABLES) == 15
     assert set(metadata.tables) == EXPECTED_TABLES
-    assert delivered_tables <= EXPECTED_TABLES
-    migration_files = sorted(
-        path.name
+    migration_paths = sorted(
+        path
         for path in (ROOT / "src/netauto/migrations/versions").glob("*.py")
         if path.name != "__init__.py"
     )
-    assert migration_files == ["0001_m2_durable_kernel.py"]
+    assert [path.name for path in migration_paths] == ["0001_m2_durable_kernel.py"]
+    assert _migration_identity(migration_paths[0]) == ("0001_m2_kernel", None)
