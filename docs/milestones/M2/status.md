@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION READY / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -15,9 +15,9 @@ branch      M2
 ```text
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
-current gate                AS-IS consolidation — READY
+current gate                AS-IS consolidation — CANDIDATE READY FOR REVIEW
 next gate                   consistency closure — BLOCKED
-blockers                    none at the accepted final-gate boundary
+blockers                    none at the implementer candidate boundary
 M2                          NOT DELIVERED
 ```
 
@@ -44,7 +44,7 @@ new product semantics, implementation changes, delivery or merge.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | READY |
+| AS-IS consolidation | CANDIDATE READY FOR REVIEW |
 | Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
 | Delivery | NOT DELIVERED |
 | Merge | NOT EXECUTED |
@@ -152,6 +152,62 @@ reviewer independently inspected the commit chain, record, lifecycle, runner,
 regressions and acceptance boundary.
 
 ## AS-IS consolidation gate
+
+Verification-transition closure:
+
+```text
+starting AS-IS HEAD            422ce3c490c82d7d2f24ac60d777d75bca40374e
+reviewer amendment             8e74df8fa6e3da1cf1be7c210ded57a8e2b8b178
+verification-transition commit 1abd90c474ebf0abdfc7d1415cee26b6f3cab9c9
+AS-IS corpus commit            8315b6c4a1d5f5ef8247ea02e37765ef2a1dc336
+```
+
+The reviewer-authorized S08 regression transition now compares the current API
+and persistence documents with the exact current 63-operation and fifteen-table
+authorities while preserving all historical delta registries. Its stable node
+identity is unchanged.
+
+Pre-push consolidation evidence:
+
+```text
+target files / internal links       15 / 35; missing or unresolved 0 / 0
+temporal-delta / milestone-ID leak   0 / 0
+placeholder / open-point findings   0 / 0
+API / CLI / Health                  63 business / 63 remote / 8 local / 1 Health
+tables / explicit indexes           15 / 29
+Settings fields                     7
+mutations / family blocks / cells   41 / 15 / 861
+scenarios / predicates / recipes    83 / 21 / 11
+focused transition                  1 passed
+S08 regression                      4 passed
+traceability/documentation policy   117 passed
+schema / Alembic                    33 passed; compare_metadata []
+API / error / CLI                   277 passed
+runtime / schema guard / Health     121 passed
+PostgreSQL / concurrency            254 passed
+non-PostgreSQL                      642 passed
+full repository                     896 passed
+collection                          896
+skip / xfail / rerun                0 / 0 / 0
+supported 40P01 / unexpected 40001  0 / 0
+negative controls                   40P01 x1 / 40001 x2
+warning census                      1 reviewed Starlette deprecation
+```
+
+Verified environment and invariant artifact identity:
+
+```text
+PostgreSQL          16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+database identity   netautotest
+bounded SELECT 1    PASS
+wheel size/members  165978 byte / 77
+wheel SHA-256       38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size   48238 byte
+runtime-lock SHA-256 0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Production code, API implementation, CLI implementation, schema, migration,
+dependencies and locks are unchanged by the consolidation candidate.
 
 The consolidation must produce one autonomous description of the system that
 exists at the accepted M2 boundary.
