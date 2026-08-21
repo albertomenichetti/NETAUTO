@@ -1,94 +1,102 @@
-# M2 Final Acceptance Candidate
+# M2 Final Acceptance Review
 
-Status: CANDIDATE READY FOR REVIEW
+Status: REVIEW CHANGES REQUIRED
 
-This is durable evidence for reviewer inspection, not a semantic authority or
-a reviewer acceptance decision.
+This is the reviewer-owned decision for the final-acceptance candidate. It is
+durable evidence, not semantic authority.
 
-## Candidate identity and artifact
-
-```text
-candidate commit    b0546b1109c66a57195c50294291cb4a32ad48f2
-evidence record     docs/milestones/M2/evidence/candidate-b0546b1109c66a57195c50294291cb4a32ad48f2.json
-branch              M2
-release             0.2.0
-wheel               netauto-0.2.0-py3-none-any.whl
-wheel size          165978 bytes
-wheel members       77
-wheel SHA-256       38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
-runtime lock size   48238 bytes
-runtime packages    29
-runtime SHA-256     0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
-```
-
-Two independent clean builds from the candidate commit produced identical
-wheel bytes, member inventories, metadata version, and embedded runtime-lock
-bytes.
-
-## Environment and database
+## Candidate identity
 
 ```text
-CPython             3.14.7
-uv                  0.12.3
-Hatchling           1.32.0
-pytest              8.4.2
-Ruff                0.16.3
-Pyright             1.1.411
-Linux               Ubuntu 24.04 / 6.8.0-134-generic / x86_64
-PostgreSQL          16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
-database identity   netautotest
-bounded SELECT 1    PASS
+candidate commit       b0546b1109c66a57195c50294291cb4a32ad48f2
+evidence publication   0b1de73487061f68ed96ef78f48ad67866f11867
+integrity record       c8e4fc04874da6ef28d80115bd6c4d7aaeb4441f
+evidence record        docs/milestones/M2/evidence/candidate-b0546b1109c66a57195c50294291cb4a32ad48f2.json
+branch                 M2
+reviewer decision      REVIEW CHANGES REQUIRED
 ```
 
-PostgreSQL was supplied and managed outside the NETAUTO test process. No
-Docker, Testcontainers, SQLite, fake, embedded database, provisioning, or
-fallback was used.
-
-## Final-gate result
+The executed candidate evidence remains materially green:
 
 ```text
-M2-VER evidence bundles       32 / 32 PASS
-M2 acceptance criteria        32 / 32 PASS through their exact bundles
-M2 outcomes                   16 / 16 covered through frozen traceability
-canonical scenarios           83 / 83 PASS
-safety predicates             21 / 21 PASS
-blocking/progress assertions  PASS
-installed T9                  PASS
-schema tables                 15
-Alembic base/head/current      0001_m2_kernel / 0001_m2_kernel / 0001_m2_kernel
-compare_metadata              []
-business API / Health         63 / 1
-CLI remote / local/examples   63 / 8 / 65
-collection                    868
-full repository               868 passed
-skip / xfail / rerun          0 / 0 / 0
-warnings                      1 reviewed Starlette deprecation
-supported 40P01               0
-unexpected 40001              0
-negative controls             40P01 x1 / 40001 x2
-open findings                 0
+evidence bundles             32 / 32 PASS
+acceptance criteria          32 / 32 PASS
+outcomes                     16 / 16 covered
+canonical scenarios          83 / 83 PASS
+safety predicates            21 / 21 PASS
+installed T9                 PASS
+full repository              868 passed
+skip / xfail / rerun         0 / 0 / 0
+supported 40P01              0
+unexpected 40001             0
+compare_metadata             []
+open runtime findings        0
 ```
 
-The exact 32-bundle run selected 369 unique targets and passed 516 concrete
-instances. The exact 83-scenario run selected 166 unique targets including the
-predicate assertion and passed 190 concrete instances. The committed JSON is
-the exact per-identifier and per-command ledger.
-
-Quality, locked sync, both builds, Ruff format/lint, Pyright strict,
-traceability, S06/T8, installed S07/T9, S08/T10, schema/Alembic,
-API/error/CLI, runtime/schema-guard/Health, PostgreSQL/concurrency,
-non-PostgreSQL, and the complete repository suite all passed on the candidate
-commit.
-
-## Ownership and next state
+Artifact identity remains:
 
 ```text
-reviewer decision       PENDING / reviewer-owned
-M2-S09 is not COMPLETED
-M2 is not DELIVERED
-AS-IS consolidation     not started
-merge                    not executed
+wheel SHA-256
+38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+
+runtime-lock SHA-256
+0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
-The exact-remote evidence-publication integrity gate is recorded in
-`status.md`; it does not recursively change this candidate-run record.
+## Reviewer findings
+
+### S09-RF-01 — Reviewer lifecycle coherence
+
+The permanent S09 lifecycle does not currently model
+`REVIEW CHANGES REQUIRED`. It can also admit incoherent combinations such as
+`COMPLETED` with a non-accepted reviewer decision and requires candidate-state
+wording even after completion.
+
+The lifecycle must become an exact state/decision matrix:
+
+```text
+READY / IN PROGRESS
+    no candidate record
+    no acceptance.md
+
+CANDIDATE READY FOR REVIEW
+    one record
+    reviewer_decision = null
+    candidate/pending acceptance summary
+
+REVIEW CHANGES REQUIRED
+    one rejected record
+    reviewer_decision = REVIEW CHANGES REQUIRED
+    reviewer rejection summary
+    active S09 aid retained
+
+COMPLETED
+    one accepted record
+    reviewer_decision = ACCEPTED
+    reviewer acceptance summary
+    active S09 aid retired
+```
+
+### S09-RF-02 — Fail-closed final-gate runner
+
+The bundle/scenario runner currently returns only the raw pytest exit status.
+It must return non-zero whenever any requested target is `FAIL` or `BLOCKED`,
+or when the collected census contains a skip, xfail, xpass or rerun, even when
+pytest itself exits zero.
+
+## Decision boundary
+
+The findings are confined to the test-only S09 acceptance harness and lifecycle
+documentation. They do not demonstrate a production, API, CLI, Health, schema,
+migration, dependency, lock or artifact defect.
+
+The current candidate is rejected as the final S09 candidate because correcting
+the harness changes the candidate commit. The next candidate must use a new SHA
+and must repeat the entire exact-candidate and exact-remote final gate.
+
+```text
+M2-S09                 REVIEW CHANGES REQUIRED
+M2                     NOT DELIVERED
+AS-IS consolidation    not started
+merge                  not executed
+```
