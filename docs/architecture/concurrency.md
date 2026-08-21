@@ -1,314 +1,235 @@
-# Concurrency and Unit of Work — Current AS-IS
+# PostgreSQL Concurrency and Unit of Work — Current AS-IS
 
 ## Purpose and authority
 
-Concurrency is part of semantic correctness. A domain invariant is not considered guaranteed if a supported legal interleaving can violate it.
+This document owns the PostgreSQL realization of the semantic interaction rules
+in [`concurrency-matrix.md`](concurrency-matrix.md). It defines transaction,
+locking, ordering, arbitration and restart mechanisms. It does not create domain
+outcomes; persistence shapes are owned by [`persistence.md`](persistence.md), and
+deterministic evidence by
+[`verification-concurrency-registry.md`](verification-concurrency-registry.md).
 
-The architecture separates:
+## Unit of Work boundary
 
-```text
-semantic safety predicate
-    -> required guarantee
-    -> persistence / transaction authority
-    -> PostgreSQL realization
-    -> deterministic real-PostgreSQL verification
-```
-
-Authority is divided deliberately:
+One semantic mutation is one write Unit of Work. An attempt contains, as
+applicable:
 
 ```text
-concurrency-matrix.md
-    -> canonical mutation census
-    -> semantic interaction scopes
-    -> safety-predicate definitions
-    -> allowed outcomes
-
-this document
-    -> Unit of Work boundaries
-    -> isolation, locks, gates and constraint realization
-    -> retry / convergence realization
-
-verification-concurrency-registry.md
-    -> stable deterministic scenarios and recipes
+candidate discovery
+complete lock-plan construction
+advisory-gate acquisition
+ordered row-lock acquisition
+fresh protected-state reread
+dependency admission and semantic validation
+header/current-state DML
+deterministic child or closure DML
+complete lifecycle-event insertion
+one commit or complete rollback
 ```
 
-The semantic guarantee is authoritative; PostgreSQL mechanisms realize it and must not silently redefine it. This document therefore uses predicate IDs defined in `concurrency-matrix.md` without duplicating their normative catalog.
+Mutation isolation is PostgreSQL `READ COMMITTED`. Correctness comes from the
+complete lock plan, database constraints and fresh post-wait derivation, not from
+an initial read snapshot. Multi-statement coherent public reads use
+`REPEATABLE READ READ ONLY`; a single authoritative projection statement may use
+its statement snapshot.
 
-## Semantic Unit of Work
+The transaction baseline has no generic `SERIALIZABLE` retry policy. SQLSTATE
+`40P01` and `40001` are never automatically retried.
 
-One semantic kernel mutation is one PostgreSQL write Unit of Work.
+## Centralized LockPlan
 
-A mutation UoW includes, as applicable:
-
-1. state-dependent admission reads;
-2. default/dependency resolution;
-3. candidate derivation and canonical validation;
-4. stabilization/locking of relevant predicates;
-5. required current-state writes;
-6. complete required lifecycle-event set;
-7. atomic commit or rollback.
-
-Repository/DAO operations do not own independent commits. The transaction boundary belongs to the application semantic command/UoW.
-
-Pure syntactic parsing/validation that does not depend on mutable persisted state may occur before opening the transaction. Any correctness predicate dependent on current state must be evaluated and stabilized inside the UoW.
-
-Failure rolls back the entire semantic UoW. When a race requires retry or convergence, the retry normally restarts the **entire semantic UoW** from fresh state rather than retrying an internal repository fragment with stale assumptions.
-
-## Isolation baseline
-
-Mutation baseline:
+Every one of the 41 mutation primitives is registered with one centralized
+planner. Before current-state DML, the application constructs one complete,
+immutable `LockPlan`:
 
 ```text
-READ COMMITTED
+optional AdvisoryGate
+ordered tuple of RowLockIntent(RowLockKey, RowLockMode)
 ```
 
-Strong consistency is not achieved by globally using SERIALIZABLE. It is achieved by combining:
+The plan is acquired once. Lock intent cannot be appended after DML begins. If a
+fresh protected reread reveals a different dependency set, the attempt raises
+`LockPlanStale`, rolls back completely and may start a fresh Unit of Work within
+the bounded policy.
 
-- explicit row locks with predicate-appropriate strength;
-- exact PK/UNIQUE authority;
-- FK lifetime authority;
-- optimistic DRAFT generation checks;
-- logical transaction advisory gates for the few global predicates;
-- fresh re-read/re-validation after stabilization.
+Duplicate row intents coalesce to the strongest required mode. A normal path
+does not acquire a weaker mode and later upgrade it.
 
-After a lock wait or gate acquisition, a mutation must re-read the relevant current predicate. A candidate derived solely from a pre-lock snapshot cannot be committed without revalidation.
+## Row-lock modes
 
-Ordinary single-statement reads use READ COMMITTED snapshot semantics. A multi-statement read that truly requires one stable read snapshot may use `REPEATABLE READ READ ONLY` when it cannot reasonably be expressed as one coherent statement.
+The exact mode vocabulary and SQL are:
 
-SERIALIZABLE is not the current mutation baseline and would require an explicit architecture decision plus retry contract if introduced.
+| Code | PostgreSQL clause | Purpose |
+|---|---|---|
+| `KS` | `FOR KEY SHARE` | Hold referenced identity/key lifetime while allowing non-key updates. |
+| `S` | `FOR SHARE` | Stabilize lifecycle/admission state that must remain unchanged through commit. |
+| `NKU` | `FOR NO KEY UPDATE` | Serialize non-key current-state mutation. |
+| `U` | `FOR UPDATE` | Delete, key-affecting mutation and strongest owner serialization. |
 
-## Lock-strength baseline
+Lock SQL identifies one table explicitly with `OF`, uses deterministic ordering,
+and contains no `NOWAIT` or `SKIP LOCKED`. Missing planned rows are returned to
+the caller as protected-state absence; they are not silently ignored.
 
-When a row is the concurrency owner of a mutation that does not delete the row or modify a referenced key:
+## Canonical row ordering
+
+Rows are sorted by a fixed class order:
 
 ```text
-SELECT ... FOR NO KEY UPDATE
+ObjectTemplate lineage headers and ancestors
+DataType lineage headers
+RelationshipDefinition headers
+Object headers
+Relationship headers
+exact version rows within their owner
+owned declaration / closure authorities where explicitly locked
 ```
 
-When the mutation deletes the row or changes a referenced key/identity:
+Within a class, owner UUID, exact version and remaining key components use a
+stable ascending order. ObjectTemplate ancestors are ordered root-to-leaf before
+the dependent lineage. Target identity is locked before an existing owner when a
+direct FK is rebound. A child/reference target is locked before child DML.
+
+The same ordering applies regardless of discovery order or input array order.
+
+## Advisory gates
+
+At most one transaction-scoped advisory gate may appear in a plan. It is always
+acquired before any NETAUTO row lock.
+
+| Gate | Stable signed key | Scope |
+|---|---:|---|
+| `OWNERSHIP_GRAPH_WRITE_GATE` | `0x4E45544100000001` | Ownership edge addition and cycle-safe graph certification. |
+| `RELATIONSHIP_DEFINITION_CONFLICT_GATE` | `0x4E45544100000002` | Global Definition equivalence/conflict candidate set. |
+| `MODEL_ROOT_DELETE_GATE` | `0x4E45544100000003` | Model-root deletion where mutually referencing roots could invert row order. |
+
+A gate waiter owns no planned NETAUTO row lock. After gate acquisition it reads
+the protected predicate from a fresh statement. Gates are internal
+serialization mechanisms, not public busy/conflict outcomes.
+
+## Versioned model realization
+
+### Allocation and DRAFT generations
+
+CREATE_NEXT serializes on the stable lineage header, rereads the version set and
+allocates `max(existing) + 1`. Cloned exact dependency targets receive lifetime
+holds in the initial plan.
+
+REVISE, PUBLISH and DELETE_DRAFT lock the stable header before the exact DRAFT,
+stabilize the generation and recheck `expected_revision` and status. Differential
+declaration replacement locks retained/inserted targets before child DML and
+performs deterministic delete/upsert ordering. It never creates a transient
+logical gap visible to a competing target delete.
+
+### Publication, defaults and active graph
+
+Publication re-certifies the complete version/member history while holding the
+lineage/version authorities required by `VH`. Exact direct dependencies are held
+`FOR SHARE` and rechecked PUBLISHED. Default set/clear, first publication and
+deprecation serialize the stable header/default predicate.
+
+A PUBLISHED consumer and dependency deprecation rendezvous through compatible
+header/version locks and a fresh reverse active-consumer scan. The scan does not
+invent a reverse-dependency table.
+
+### Root deletion and reference lifetime
+
+Model-root deletion acquires `MODEL_ROOT_DELETE_GATE`, then the complete aggregate
+in canonical order and performs fresh blocker reads. Cross-aggregate references
+remain protected by target-before-child planning and PostgreSQL `RESTRICT`.
+CASCADE removes only owned child state after semantic admission.
+
+## Object and ownership realization
+
+The Object row is the concurrency owner for its complete current exact schema and
+canonical property map. RENAME, DATA_CHANGE, SCHEMA_CHANGE and DELETE reread it
+after locking. Real transitions and their lifecycle event sets commit atomically;
+a DATA_CHANGE no-op performs neither UPDATE nor event insertion.
+
+ATTACH plans the ownership gate first, then all relevant parent/child and template
+rows. It certifies one current slot and a cycle-free graph from a fresh snapshot.
+The `object_components` child primary key is final single-owner arbitration.
+DETACH never removes a different edge and does not acquire the graph gate because
+removal cannot create a cycle.
+
+## RelationshipDefinition realization
+
+CREATE and RENAME use `RELATIONSHIP_DEFINITION_CONFLICT_GATE` and certify the
+complete Definition/Resolution set. Resolution names are non-key metadata;
+Definition identity and membership remain stable.
+
+Exact-version mutations lock Definition header before exact version. CREATE_NEXT,
+REVISE, PUBLISH, defaults, deprecation and DRAFT deletion follow the versioned
+model rules above. RDV property publication uses history recertification and
+exact DataTypeVersion admission/lifetime holds.
+
+Definition deletion uses the model-root gate, locks its aggregate and relies on
+non-cascading factual and cross-model references as blockers. It does not use the
+conflict gate: removing a Definition cannot introduce a conflicting candidate.
+
+## Factual Relationship realization
+
+CREATE stabilizes Resolution, endpoint Objects, Definition header, selected exact
+RDV and exact DTV dependencies before DML. It derives one deterministic complete
+runtime closure and inserts header, closure and CREATED events atomically.
+
+The exact runtime-view primary key
+`(resolution_id, from_object_id, to_object_id)` is final factual arbitration.
+After any collision the failed transaction is rolled back before classification.
+If a current owner exists, the loser reports `relationship_fact_conflict`. If the
+owner disappeared, the approved fresh-UoW restart path may rederive the fact.
+
+DATA_CHANGE and SCHEMA_CHANGE lock the factual Relationship row, reread exact pin
+and complete properties, derive from that state and update the one factual row.
+SCHEMA_CHANGE also stabilizes the exact target PUBLISHED RDV and dependencies.
+DELETE locks the exact factual ID and never targets a recreated equivalent ID.
+Closure rows remain unchanged for data/schema changes and cascade only after
+successful factual DELETE admission.
+
+Relationship event metadata is captured through one coherent statement. Object
+or Resolution rename may progress where required; the event set sees one
+committed metadata observation and is never half-old/half-new.
+
+## Bounded whole-UoW restart
+
+The maximum is exactly four total attempts. Restart is permitted only for:
 
 ```text
-SELECT ... FOR UPDATE
+LockPlanStale
+exact-view collision whose observed owner no longer exists
 ```
 
-This distinction preserves same-owner writer exclusion while allowing referential key-share protection to coexist with non-key metadata/state changes when semantics permit it.
-
-### Lifecycle-sensitive dependency admission
-
-When a mutation creates/certifies a new exact dependency that must remain PUBLISHED through commit:
+Every restart uses a fresh connection/Unit of Work and redoes discovery,
+planning, locking, validation and candidate derivation. It is forbidden for:
 
 ```text
-SELECT ... FOR SHARE
+semantic/application failure
+known current-owner uniqueness conflict
+unknown constraint or SQLSTATE
+40P01 deadlock
+40001 serialization failure
 ```
 
-is taken on the exact dependency row, followed by PUBLISHED recheck.
-
-`FOR KEY SHARE` is insufficient for lifecycle admission because status changes are non-key updates that must conflict with admission.
-
-### Deterministic multi-resource ordering
-
-When equivalent sets of rows must be locked, lock ordering is deterministic. For versioned model dependencies the conceptual ordering key is:
-
-```text
-(kind, lineage_uuid, resource_rank, version)
-```
-
-with lineage header before exact version for the same lineage when both are required.
-
-Deadlock detection remains a fallback/retry safety mechanism, not the normal semantic serialization strategy.
-
-## Versioned model locking
-
-### Create-next / version allocation
-
-The stable lineage header is the concurrency owner for version-set allocation:
-
-```text
-lineage header FOR NO KEY UPDATE
-```
-
-After stabilization, `max(existing)+1` and source eligibility are derived from the current version set.
-
-### DRAFT mutation
-
-REVISE/PUBLISH use the exact DRAFT as non-key mutation owner:
-
-```text
-exact DRAFT FOR NO KEY UPDATE
-```
-
-DRAFT delete uses lineage stabilization plus:
-
-```text
-exact DRAFT FOR UPDATE
-```
-
-because the exact row is removed.
-
-After locking:
-
-```text
-status == DRAFT
-revision == expected_revision
-```
-
-must still hold.
-
-### Default mutation
-
-Set default:
-
-```text
-lineage header FOR NO KEY UPDATE
--> target exact version FOR SHARE
--> recheck PUBLISHED
-```
-
-Clear default uses the lineage owner lock.
-
-Implicit default binding:
-
-```text
-lineage header FOR SHARE
--> resolve default_version
--> target exact version FOR SHARE
--> recheck PUBLISHED
--> persist exact pin
-```
-
-Explicit new binding takes `FOR SHARE` on the selected exact dependency and rechecks PUBLISHED.
-
-### Publish active consumer
-
-ObjectTemplate publication stabilizes the consumer DRAFT and then locks every direct lifecycle-sensitive exact dependency with `FOR SHARE` in deterministic order before PUBLISHED recheck.
-
-The entire transitive dependency graph is not locked: direct active-model validity is sufficient because each PUBLISHED dependency-owning model is itself certified.
-
-### Deprecation
-
-Exact-version deprecation stabilizes lineage/default/lifecycle state, then checks direct active PUBLISHED consumers. It cannot commit if it would break the active model graph.
-
-### Whole-lineage delete
-
-The lineage header is taken `FOR UPDATE`. Semantic blockers are checked in the UoW and cross-aggregate `RESTRICT` FKs remain the final race authority against references that win concurrently.
-
-## Object concurrency
-
-The Object row is concurrency owner for complete intrinsic current state.
-
-```text
-RENAME / DATA_CHANGE / SCHEMA_CHANGE
-    -> Object FOR NO KEY UPDATE
-
-DELETE
-    -> Object FOR UPDATE
-```
-
-After lock acquisition the complete current Object is reloaded and the candidate is rederived/revalidated from the stabilized state.
-
-SCHEMA_CHANGE additionally admits the target exact PUBLISHED ObjectTemplateVersion through `FOR SHARE`.
-
-## Ownership concurrency
-
-The parent Object row is the local concurrency owner for:
-
-```text
-ATTACH(parent)
-DETACH(parent)
-SCHEMA_CHANGE(parent)
-```
-
-using `FOR NO KEY UPDATE`.
-
-This serializes current parent exact schema and outgoing ownership-edge state.
-
-### Single-owner authority
-
-The child is not generically Object-row locked solely for ATTACH. Final different-owner exclusion is the ownership table `PRIMARY KEY(child_object_id)` together with fresh semantic re-evaluation.
-
-### Ownership cycle gate
-
-A real ownership edge addition acquires a transaction advisory gate representing ownership-graph writes:
-
-```text
-pg_advisory_xact_lock(OWNERSHIP_GRAPH_WRITE_GATE)
-```
-
-After waiting on the gate, ownership/cycle predicates are re-read in a **subsequent statement** so READ COMMITTED observes a fresh protected graph snapshot.
-
-DETACH does not take the cycle-add gate because removing an edge cannot create a cycle.
-
-## RelationshipDefinition concurrency
-
-CREATE/RENAME can alter the globally certified Definition interpretation set and therefore use a transaction advisory conflict gate.
-
-Conceptual RENAME ordering:
-
-```text
-Definition header FOR NO KEY UPDATE
--> global Definition conflict gate
--> fresh complete/global conflict read
--> atomic complete Resolution-name update
-```
-
-Resolution names are non-key metadata; RENAME deliberately does not require key-changing row locks solely because factual runtime rows reference Resolution identity.
-
-Definition DELETE takes its header `FOR UPDATE` and relies on `RESTRICT` factual-reference lifetime authority. It does not need the global conflict gate because removal cannot introduce a new equivalence/conflict.
-
-## Runtime Relationship convergence
-
-Equivalent concurrent Relationship CREATE has no pre-existing factual header that can universally serve as lock owner.
-
-The baseline therefore uses exact-view uniqueness rather than a global Relationship graph lock:
-
-```text
-load selected Resolution + endpoint Objects
--> validate stable-lineage admission
--> lookup exact current view
--> if present: converge
--> else derive complete closure
--> attempt aggregate insert
-```
-
-Final collision authority:
-
-```text
-PRIMARY KEY (resolution_id, from_object_id, to_object_id)
-```
-
-A colliding candidate UoW is rolled back completely and the semantic operation restarts in a fresh UoW. Fresh re-evaluation either converges on the current winner or creates a new factual identity if no equivalent fact remains.
-
-Relationship DELETE takes the factual Relationship header `FOR UPDATE`, reloads the complete current closure and required semantic-view event set, then atomically deletes closure/header and emits the real deletion events.
-
-## Referential lifetime
-
-Immediate PostgreSQL FK `RESTRICT` is a final correctness authority for current cross-aggregate references.
-
-```text
-reference wins
-    -> target delete cannot commit
-
-target delete wins
-    -> new reference cannot commit
-
-reference removed first
-    -> delete may become admissible
-```
-
-Semantic admission is still performed by the owning UoW; FK failure is the final race backstop, not a substitute for domain validation.
-
-## Lifecycle-event atomicity and snapshots
-
-Required lifecycle events are inserted in the same write UoW as the semantic mutation.
-
-No current-state transition may commit without its complete required real event set, and no event set may commit for a mutation that rolled back.
-
-Relationship event metadata is observed coherently. Definition rename and Relationship factual transition do not need generic serialization when snapshot coherence can be achieved through the designed observation/locking path.
-
-## Parallelism policy
-
-The architecture accepts some intentional over-serialization where it simplifies correctness, provided semantic independence remains documented and verified.
-
-It also protects intended non-serialization where stronger locks would create unnecessary coupling. A key example is keeping `RelationshipResolution.name` out of FK-referencable key structures so pure Definition rename does not unnecessarily block runtime Relationship FK insertion.
-
-Correctness predicates dominate throughput; lock strength should still be no stronger than required by the predicate defined in `concurrency-matrix.md`.
+Constraint classification occurs only after rollback and uses a finite mapping of
+known SQLSTATE plus exact constraint name. Unknown names or failure shapes cross
+the safe internal-error boundary.
+
+## Wait-for graph and parallelism
+
+Supported paths have no row-to-gate edge, use one gate at most, acquire canonical
+row classes once and order target before owner/child. The resulting supported
+wait-for graph is acyclic by construction. Any observed supported-path `40P01` is
+an architecture or implementation defect, never a transient success path.
+
+Locks protect semantic predicates, not a goal of maximum serialization. Distinct
+lineages, exact versions, factual Relationships and metadata operations make
+progress where the matrix classifies them independent. Physical
+over-serialization is permitted only when documented and must not be reinterpreted
+as a domain invariant.
+
+## Verification boundary
+
+The 83 stable scenarios and 21 predicates in
+[`verification-concurrency-registry.md`](verification-concurrency-registry.md)
+prove blocking, progress, arbitration, rollback, restart and deadlock absence on
+real PostgreSQL. Timeouts are hang guards; sleep and automatic rerun are not
+ordering or correctness authorities.

@@ -1,8 +1,10 @@
 # Public API — Current AS-IS
 
-## Boundary
+## Purpose and authority
 
 The public kernel API is an HTTP/JSON adapter over the authoritative application command/query contract.
+
+This document owns the public HTTP namespace, operation inventory, wire DTOs, success mapping, pagination and finite safe failure catalogue. Domain meaning, persistence and runtime deployment remain owned by their current architecture documents.
 
 ```text
 HTTP request / wire DTO
@@ -78,11 +80,11 @@ template_version = null
 Public contracts preserve the distinction between stable lineage and exact version identity.
 
 ```text
-stable DataType/ObjectTemplate lineage
+stable DataType/ObjectTemplate/RelationshipDefinition lineage
     id, namespace, name, default_version, ...
 
-exact DataTypeVersion/ObjectTemplateVersion
-    datatype_id/template_id, version, revision, status, ...
+exact DataTypeVersion/ObjectTemplateVersion/RelationshipDefinitionVersion
+    owning lineage id, version, revision, status, ...
 ```
 
 No API-only surrogate version ID exists.
@@ -126,6 +128,14 @@ ObjectTemplate REVISE
 ObjectTemplate property declaration/revision
     datatype_version omitted
     -> intentional DataType.default_version binding/rebinding
+
+Relationship CREATE
+    relationship_definition_version omitted
+    -> RelationshipDefinition.default_version
+
+RelationshipDefinition property declaration/revision
+    datatype_version omitted
+    -> intentional DataType.default_version binding/rebinding
 ```
 
 Preserving a previous exact property or parent pin requires supplying that exact version; omission does not mean "keep current".
@@ -138,6 +148,9 @@ ObjectTemplate CREATE_NEXT source_version
 DataType SET_DEFAULT version
 ObjectTemplate SET_DEFAULT version
 Object SCHEMA_CHANGE target_version
+RelationshipDefinition CREATE_NEXT source_version
+RelationshipDefinition SET_DEFAULT version
+Relationship SCHEMA_CHANGE target_version
 ```
 
 Every implicit resolution materializes the resulting exact pin.
@@ -152,7 +165,7 @@ PUBLISH
 DELETE_DRAFT
 ```
 
-for DataTypeVersion and ObjectTemplateVersion require:
+for DataTypeVersion, ObjectTemplateVersion and RelationshipDefinitionVersion require:
 
 ```text
 ?expected_revision=<positive-decimal-integer>
@@ -232,22 +245,31 @@ POST   /api/v1/core/objects/{parent_object_id}/detach
 DELETE /api/v1/core/objects/{object_id}
 ```
 
-### RelationshipDefinition — 3
+### RelationshipDefinition — 10
 
 ```text
 POST   /api/v1/core/relationship-definitions
 POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/rename
+POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/create-next
+POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/set-default
+POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/clear-default
+POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/revise
+POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/publish
+POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/deprecate
+DELETE /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}
 DELETE /api/v1/core/relationship-definitions/{relationship_definition_id}
 ```
 
-### Relationship — 2
+### Relationship — 4
 
 ```text
 POST   /api/v1/core/relationships
+POST   /api/v1/core/relationships/{relationship_id}/data-change
+POST   /api/v1/core/relationships/{relationship_id}/schema-change
 DELETE /api/v1/core/relationships/{relationship_id}
 ```
 
-The current mutation inventory is exactly **32** routes.
+The current mutation inventory is exactly **41** routes.
 
 ## Command-specific wire rules
 
@@ -341,6 +363,12 @@ ATTACH/DETACH bodies are exactly `slot_name + child_object_id`. Object DELETE ha
 
 RelationshipDefinition CREATE/RENAME preserve complete certified symmetric/non-symmetric aggregate semantics without forward/reverse array-order meaning.
 
+Definition CREATE accepts optional complete `properties` declarations and
+returns the stable Definition plus exact version 1 DRAFT. CREATE_NEXT, REVISE,
+PUBLISH, SET_DEFAULT, CLEAR_DEFAULT, DEPRECATE and DELETE_DRAFT use the same exact
+version/default/generation carriers as the other versioned model resources.
+REVISE requires a complete `properties` array, including `[]`.
+
 Definition, Resolution and Relationship IDs are kernel-generated at creation.
 
 Relationship CREATE body is exactly:
@@ -349,13 +377,19 @@ Relationship CREATE body is exactly:
 resolution_id
 from_object_id
 to_object_id
+relationship_definition_version, optional
+properties, optional complete object
 ```
 
-Self-loop is not structurally rejected at transport level. Relationship DELETE is exact-ID based and has no cascade or semantic-tuple alternative.
+DATA_CHANGE requires a non-empty `operations` array of unique SET/REMOVE property
+operations. SCHEMA_CHANGE requires one positive `target_version` and accepts no
+remediation values. Self-loop is not structurally rejected at transport level.
+Relationship DELETE is exact-ID based and has no cascade or semantic-tuple
+alternative.
 
 ## Canonical read routes
 
-Current read/list surface contains exactly **20** routes.
+Current business read/list surface contains exactly **22** routes.
 
 ### DataType — 4
 
@@ -388,11 +422,13 @@ GET /api/v1/core/objects/{object_id}/relationships
 GET /api/v1/core/objects/{object_id}/lifecycle-events
 ```
 
-### RelationshipDefinition — 2
+### RelationshipDefinition — 4
 
 ```text
 GET /api/v1/core/relationship-definitions
 GET /api/v1/core/relationship-definitions/{relationship_definition_id}
+GET /api/v1/core/relationship-definitions/{relationship_definition_id}/versions
+GET /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}
 ```
 
 ### Relationship — 1
@@ -497,6 +533,7 @@ relationship_definition_id
 name
 from_template_id
 to_template_id
+default_version: integer|null
 ```
 
 `from_template_id` remains explicit because capability may be inherited from an ancestor compatibility space.
@@ -547,12 +584,32 @@ RelationshipDefinition GET returns the complete aggregate:
 ```text
 id
 symmetric
+default_version: integer|null
 resolutions[]
     resolution_id
     name
     from_template_id
     to_template_id
 ```
+
+Exact RelationshipDefinitionVersion projection:
+
+```text
+relationship_definition_id
+version
+revision
+status
+properties[]
+    name
+    position
+    datatype_id
+    datatype_version
+    value_mode
+```
+
+The stable Definition does not inline versions. Exact declarations are ordered by
+position. Version lists are ordered by ascending version and may filter exact
+status.
 
 There is no standalone RelationshipResolution public resource.
 
@@ -561,6 +618,8 @@ Relationship GET returns:
 ```text
 id
 relationship_definition_id
+relationship_definition_version
+properties
 views[]
     object_id
     destination_object_id
@@ -574,6 +633,8 @@ Object-relative Relationship item is self-contained:
 ```text
 relationship_id
 relationship_definition_id
+relationship_definition_version
+properties
 object_id
 destination_object_id
 name
@@ -608,10 +669,17 @@ Relationship kinds:
 
 ```text
 RELATIONSHIP_CREATED
+RELATIONSHIP_DATA_CHANGE
+RELATIONSHIP_SCHEMA_CHANGE
 RELATIONSHIP_DELETED
 ```
 
 include object/destination identities and names plus `relationship_id`, `relationship_definition_id` and historical `relationship_name`; they do not expose source/target direction or Resolution IDs.
+
+Their `before`/`after` members are factual states containing exactly
+`relationship_definition_version + properties`. CREATED has only `after`,
+DELETED only `before`, DATA_CHANGE has equal versions and different properties,
+and SCHEMA_CHANGE has a strictly increasing version.
 
 `occurred_at` is canonical UTC `Z` datetime; ordering semantics remain `(occurred_at, id)` rather than strict global commit chronology.
 
@@ -680,6 +748,10 @@ Object relationships
 RelationshipDefinitions
     order id ASC
 
+RelationshipDefinition versions
+    order version ASC
+    filter status
+
 lifecycle events
     order (occurred_at, id) DESC
     global filters:
@@ -721,7 +793,8 @@ Boundary rules:
 - Missing command/body operands are semantic validation, normally `referenced_resource_not_found`/422.
 - Malformed input decidable without mutable persisted-state interpretation is 400.
 - A meaningful command blocked by mutable current state is 409.
-- Domain-defined idempotent no-op/convergence is success.
+- Domain-defined no-op is success only where the owning command explicitly says
+  so. Duplicate Relationship CREATE and missing Relationship DELETE are failures.
 - Unexpected invariant/integrity/server failure is 500 with no SQL/stack/constraint leakage.
 
 ## Canonical error body
@@ -804,6 +877,8 @@ Not-found codes expose bounded semantic selector fields such as `resource_type`,
 
 `schema_change_blocked` exposes one sufficient semantic blocker diagnostic, for example object/target, blocker type, member name and optional child identity.
 
+`relationship_fact_conflict` exposes the bounded current `relationship_id`.
+
 All other details remain code-specific, bounded and transport-semantic. SQL, table/column, constraint and stack details are forbidden.
 
 ## Success mapping
@@ -816,14 +891,15 @@ New public resources return `201 Created`, `Location` and the command-specific r
 - ObjectTemplate CREATE: lineage + created v1 DRAFT;
 - CREATE_NEXT: created exact version;
 - Object CREATE: Object DTO;
-- RelationshipDefinition CREATE: complete aggregate;
-- new Relationship CREATE: factual Relationship DTO.
+- RelationshipDefinition CREATE: stable aggregate + created v1 DRAFT;
+- RelationshipDefinition CREATE_NEXT: created exact version;
+- Relationship CREATE: factual Relationship DTO.
 
 Normal semantic mutations return `200` with the resulting canonical projection when they have a body.
 
 ```text
-Relationship CREATE existing semantic fact
-    -> 200 + current factual Relationship
+Relationship CREATE occupied semantic fact
+    -> 409 relationship_fact_conflict
 
 ATTACH real or already-current exact edge
     -> 200 + current component projection
@@ -835,7 +911,7 @@ successful delete
     -> 204
 
 Relationship DELETE already-absent exact id
-    -> 204
+    -> 404 resource_not_found
 ```
 
 The API does not return generic `{success:true}`, `{changed:false}`, SQL affected-row counts or `202 Accepted` for synchronous kernel commands.
@@ -850,6 +926,47 @@ ObjectTemplateComponent
 RelationshipResolution
 RuntimeRelationshipResolution
 ObjectLifecycleEvent
+RelationshipDefinitionProperty
 ```
 
-The current API also excludes implicit Object MOVE, cross-lineage Object reclassification, Relationship endpoint mutation/reversal, ObjectTemplate parent change, JSON Schema compilation/projection and generic CRUD bypasses of semantic commands.
+The current API also excludes implicit Object MOVE, cross-lineage Object
+reclassification, Relationship endpoint mutation/reversal, ObjectTemplate parent
+change, property-value search, event-set resources, default/latest/highest selector
+tokens, JSON Schema compilation/projection and generic CRUD bypasses of semantic
+commands.
+
+## Core Health operation
+
+The sole operational route is:
+
+```text
+GET /health/core
+```
+
+It is separate from `/api/v1/core`, is not one of the 63 business operations and
+accepts no query parameter or body. A valid response always uses the exact shape:
+
+```json
+{
+  "app_status": {"status": "ok"},
+  "db_status": {"status": "ok"},
+  "execution_time_ms": 1
+}
+```
+
+Each component status is `ok` or `error`; `message` is omitted when absent.
+Ready returns `200`, PostgreSQL not-ready returns `503` with the complete same
+DTO, and both carry `Cache-Control: no-store`. Malformed Health input is
+`400 invalid_request`; an unexpected defect is a safe canonical `500`, not a
+false readiness result. Probe and runtime semantics are owned by
+[`health.md`](health.md).
+
+## Exact surface census
+
+```text
+/api/v1/core mutations       41
+/api/v1/core reads           22
+business operations          63
+/health/core operations       1
+total public HTTP operations 64
+```

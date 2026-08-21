@@ -1,8 +1,10 @@
 # ObjectTemplate — Current AS-IS
 
-## Responsibility
+## Purpose and authority
 
 An `ObjectTemplate` lineage is the stable identity of an entity type. An `ObjectTemplateVersion` is an exact, versioned schema snapshot for that type.
+
+This document owns ObjectTemplate identity, inheritance, version lifecycle, declarations, effective-schema derivation and model-plane dependency rules. Persistence, public transport and concurrency realization belong to their respective current owners.
 
 ObjectTemplate defines:
 
@@ -153,7 +155,7 @@ PropertySemanticKey = (declaring_template_id, name)
 
 The declaring lineage is the lineage that locally owns the declaration.
 
-A property introduced only in DRAFT and never published remains editorial. Before first publication its declaration may be revised, provided the DRAFT remains well-formed.
+A property declared only in DRAFT and never published remains editorial. Until first publication its declaration may be revised, provided the DRAFT remains well-formed.
 
 After first publication, normal evolution preserves historical property identity:
 
@@ -199,7 +201,7 @@ Slot continuity uses:
 SlotSemanticKey = (declaring_template_id, name)
 ```
 
-A slot introduced only in DRAFT and never published remains editorial.
+A slot declared only in DRAFT and never published remains editorial.
 
 After first publication the slot name is stable under normal evolution. A published slot may be removed in a later version. If the **same declaring lineage** later reintroduces the same name, historical semantic identity and target-evolution constraints continue across the gap. Remove/re-add cannot be used to bypass target-widening rules.
 

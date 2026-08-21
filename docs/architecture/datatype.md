@@ -1,8 +1,10 @@
 # DataType — Current AS-IS
 
-## Responsibility
+## Purpose and authority
 
 A `DataType` is a stable, named and versioned scalar domain. A `DataTypeVersion` describes the validity of one atomic value through one kernel `PrimitiveType` plus optional constraints.
+
+This document owns DataType identity, version lifecycle, scalar constraints, defaults and value semantics. Persistence, public transport and concurrency realization belong to their respective current owners.
 
 DataType does not model object structure, entity identity, relationships, ownership or collection cardinality. Collection semantics belong to ObjectTemplate properties.
 
@@ -112,7 +114,7 @@ PUBLISHED:
 
 DEPRECATED:
 
-- immutable historical/legacy snapshot;
+- immutable historical snapshot;
 - existing exact bindings remain valid;
 - not eligible for new direct bindings;
 - valid source for `create-next`;

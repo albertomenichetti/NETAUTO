@@ -1,8 +1,10 @@
 # Object — Current AS-IS
 
-## Responsibility
+## Purpose and authority
 
 An `Object` is a runtime entity with stable identity, stable ObjectTemplate lineage assignment, an exact current ObjectTemplateVersion pin and canonical mutable property state.
+
+This document owns intrinsic Object state, schema admission and migration, ownership/component semantics and lifecycle meaning. Persistence, public transport and concurrency realization belong to their respective current owners.
 
 Current intrinsic state:
 
@@ -27,7 +29,7 @@ Current generation contract:
 - opaque and non-semantic;
 - no separate historical non-reuse infrastructure beyond UUID generation and current PK authority.
 
-External cloud/resource/serial/legacy identifiers are distinct domain data and are never aliases for `Object.id`.
+External cloud, resource, serial or imported identifiers are distinct domain data and are never aliases for `Object.id`.
 
 `template_id` is the stable runtime type assignment. Normal current operations do not reclassify an Object to another ObjectTemplate lineage.
 
@@ -183,7 +185,7 @@ SlotSemanticKey = (declaring_template_id, slot_name)
 
 A schema change cannot commit if an outgoing edge would lose the same current semantic slot or its child would become incompatible.
 
-Schema change never implicitly detaches children. A persisted edge that cannot be resolved against the Object's current exact schema is invariant corruption, not supported legacy state.
+Schema change never implicitly detaches children. A persisted edge that cannot be resolved against the Object's current exact schema is unsupported invariant corruption.
 
 Incoming ownership does not require revalidation merely because the child changes exact schema: stable `template_id` remains unchanged.
 

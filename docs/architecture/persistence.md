@@ -24,6 +24,8 @@ object_template_versions
 object_template_properties
 object_template_components
 relationship_definitions
+relationship_definition_versions
+relationship_definition_properties
 relationship_resolutions
 ```
 
@@ -42,7 +44,51 @@ runtime_relationship_resolutions
 object_lifecycle_events
 ```
 
-Total authoritative tables: **13**.
+Total authoritative tables: **15**.
+
+## Exact column inventory
+
+```text
+datatypes
+    id, namespace, name, description, default_version
+datatype_versions
+    datatype_id, version, revision, status, base_type, constraints
+object_templates
+    id, namespace, name, description, abstract, default_version,
+    parent_template_id
+object_template_versions
+    template_id, version, revision, status, parent_template_id,
+    parent_version
+object_template_properties
+    template_id, template_version, name, position, datatype_id,
+    datatype_version, value_mode, required, migration_default
+object_template_components
+    template_id, template_version, name, position, target_template_id
+relationship_definitions
+    id, symmetric, default_version
+relationship_definition_versions
+    relationship_definition_id, version, revision, status
+relationship_definition_properties
+    relationship_definition_id, relationship_definition_version, name,
+    position, datatype_id, datatype_version, value_mode
+relationship_resolutions
+    id, relationship_definition_id, from_template_id, to_template_id, name
+objects
+    id, canonical_name, template_id, template_version, properties
+object_components
+    child_object_id, parent_object_id, slot_name
+relationships
+    id, relationship_definition_id, relationship_definition_version,
+    properties
+runtime_relationship_resolutions
+    relationship_id, relationship_definition_id, resolution_id,
+    from_object_id, to_object_id
+object_lifecycle_events
+    id, occurred_at, kind, object_id, canonical_name,
+    destination_object_id, destination_canonical_name,
+    slot_declaring_template_id, slot_name, relationship_id,
+    relationship_definition_id, relationship_name, before_state, after_state
+```
 
 The current architecture has no authoritative table for:
 
@@ -67,6 +113,12 @@ ObjectTemplateVersion:
 
 ```text
 PRIMARY KEY (template_id, version)
+```
+
+RelationshipDefinitionVersion:
+
+```text
+PRIMARY KEY (relationship_definition_id, version)
 ```
 
 Version numbers are positive integers and are lineage-local. No API-only or persistence-only surrogate version identity exists.
@@ -98,7 +150,7 @@ Physical local declaration identity:
 (template_id, template_version, name)
 ```
 
-No `property_id` or `slot_id` surrogate is introduced.
+No `property_id` or `slot_id` surrogate exists.
 
 Properties persist:
 
@@ -179,7 +231,7 @@ The authoritative current slot semantic key is derived from the parent Object's 
 SlotSemanticKey = (declaring_template_id, slot_name)
 ```
 
-A current persisted edge that does not resolve exactly one current effective slot is invariant corruption, not supported legacy state.
+A current persisted edge that does not resolve exactly one current effective slot is unsupported invariant corruption.
 
 ## Relationship persistence
 
@@ -188,7 +240,29 @@ A current persisted edge that does not resolve exactly one current effective slo
 ```text
 relationship_definitions(
     id,
-    symmetric
+    symmetric,
+    default_version
+)
+```
+
+```text
+relationship_definition_versions(
+    relationship_definition_id,
+    version,
+    revision,
+    status
+)
+```
+
+```text
+relationship_definition_properties(
+    relationship_definition_id,
+    relationship_definition_version,
+    name,
+    position,
+    datatype_id,
+    datatype_version,
+    value_mode
 )
 ```
 
@@ -206,6 +280,16 @@ Both IDs are UUID primary keys.
 
 Definition owns Resolution child rows and may cascade-delete them only after semantic Definition-delete admission.
 
+Definition also owns its exact versions and their declaration rows. Version
+identity is composite; declarations have no surrogate identity. Declaration
+name and position are each unique within one exact version. Exact DataTypeVersion
+references use `RESTRICT`. The semantic-history index on
+`(relationship_definition_id, name, relationship_definition_version DESC)`
+supports history recertification without creating a second identity authority.
+
+`relationship_definitions.default_version` is a nullable same-lineage composite
+FK to the exact version with `RESTRICT` behavior.
+
 Endpoint template-lineage references use `RESTRICT`.
 
 `RelationshipResolution.name` is mutable non-key metadata. There is no business/exact-child UNIQUE on:
@@ -221,7 +305,9 @@ A technical UNIQUE on `(id, relationship_definition_id)` exists only to support 
 ```text
 relationships(
     id,
-    relationship_definition_id
+    relationship_definition_id,
+    relationship_definition_version,
+    properties
 )
 ```
 
@@ -244,6 +330,12 @@ PRIMARY KEY (resolution_id, from_object_id, to_object_id)
 No surrogate runtime-row identity exists.
 
 Relationship owns its runtime-resolution child rows; those child rows cascade only with the owning factual Relationship after semantic deletion admission.
+
+The factual header's
+`(relationship_definition_id, relationship_definition_version)` is a composite
+`RESTRICT` FK to the exact version. `properties` is non-null JSONB constrained to
+a top-level object. The exact pin and complete property map change atomically in
+the same row during SCHEMA_CHANGE; DATA_CHANGE replaces only the complete map.
 
 Resolution and Object references use `RESTRICT`.
 
@@ -280,7 +372,10 @@ before_state
 after_state
 ```
 
-Intrinsic before/after state uses canonical JSONB. Structural event metadata uses typed columns rather than a generic event payload object.
+Intrinsic and factual before/after state uses canonical JSONB. Relationship
+factual snapshots contain exactly `relationship_definition_version` and
+`properties`. Structural event metadata uses typed columns rather than a generic
+event payload object.
 
 Historical identity/name columns deliberately have no live FK to current tables.
 
@@ -300,7 +395,7 @@ Append-only lifecycle behavior is an application/kernel contract, not a complian
 - booleans use native BOOLEAN;
 - identifiers use TEXT plus semantic CHECK/validation rather than CITEXT/VARCHAR as authority;
 - DataType constraints use canonical non-null JSONB object;
-- Object properties and intrinsic lifecycle snapshots use canonical JSONB.
+- Object/Relationship properties and lifecycle snapshots use canonical JSONB.
 
 ## Primitive persistence codec
 
@@ -340,61 +435,96 @@ DataType               -> DataTypeVersion
 ObjectTemplate         -> ObjectTemplateVersion
 ObjectTemplateVersion  -> local Property/Component
 RelationshipDefinition -> RelationshipResolution
+RelationshipDefinition -> RelationshipDefinitionVersion
+RelationshipDefinitionVersion -> RelationshipDefinitionProperty
 Relationship           -> RuntimeRelationshipResolution
 ```
 
-Current cross-aggregate/domain references use `RESTRICT`, including exact parent/version dependencies, DataType property pins, Object exact schema pins, ownership references, Relationship/Resolution/Object references and current model dependencies.
+Current cross-aggregate/domain references use `RESTRICT`, including exact parent/version dependencies, DataType property pins, Object and Relationship exact schema pins, ownership references, Relationship/Resolution/Object references and current model dependencies.
 
 No `SET NULL` baseline exists for current semantic references.
 
 Cascade is physical cleanup **after** semantic root-delete admission; it is not the delete-admission mechanism itself.
 
-## Baseline indices
+## Explicit index inventory
 
-Indices exist where justified by constraint support, invariant lookup or current API/read paths.
-
-Model/dependency:
+Constraint-owned PK/UNIQUE indexes are not duplicated. The exact explicit index inventory is:
 
 ```text
-object_template_properties(datatype_id, datatype_version)
-object_template_versions(parent_template_id, parent_version)
-object_templates(parent_template_id)
-object_template_components(target_template_id)
-relationship_resolutions(from_template_id)
-relationship_resolutions(to_template_id)
+ix_datatype_versions_status_datatype_version
+    datatype_versions(status, datatype_id, version)
+ix_object_template_properties_datatype_version
+    object_template_properties(datatype_id, datatype_version)
+ix_object_template_properties_semantic_history
+    object_template_properties(template_id, name, template_version DESC)
+ix_object_template_components_semantic_history
+    object_template_components(template_id, name, template_version DESC)
+ix_object_template_versions_parent_version
+    object_template_versions(parent_template_id, parent_version)
+ix_object_template_versions_status_template_version
+    object_template_versions(status, template_id, version)
+ix_object_templates_parent
+    object_templates(parent_template_id)
+ix_object_template_components_target
+    object_template_components(target_template_id)
+ix_relationship_resolutions_from_template
+    relationship_resolutions(from_template_id)
+ix_relationship_resolutions_to_template
+    relationship_resolutions(to_template_id)
+ix_relationship_definition_versions_status_definition_version
+    relationship_definition_versions(status, relationship_definition_id, version)
+ix_relationship_definition_properties_datatype_version
+    relationship_definition_properties(datatype_id, datatype_version)
+ix_relationship_definition_properties_semantic_history
+    relationship_definition_properties(
+        relationship_definition_id,
+        name,
+        relationship_definition_version DESC
+    )
+ix_relationship_resolutions_definition_id
+    relationship_resolutions(relationship_definition_id, id)
+ix_relationship_resolutions_name_id
+    relationship_resolutions(name, id)
+ix_objects_template_version
+    objects(template_id, template_version)
+ix_objects_canonical_name_id
+    objects(canonical_name, id)
+ix_object_components_parent_slot_child
+    object_components(parent_object_id, slot_name, child_object_id)
+ix_relationships_definition_version
+    relationships(relationship_definition_id, relationship_definition_version)
+ix_runtime_resolutions_from_object_page
+    runtime_relationship_resolutions(
+        from_object_id, relationship_id, to_object_id, resolution_id
+    ) INCLUDE (relationship_definition_id)
+ix_runtime_resolutions_to_object_relationship
+    runtime_relationship_resolutions(to_object_id, relationship_id)
+ix_runtime_resolutions_relationship
+    runtime_relationship_resolutions(relationship_id)
+ix_lifecycle_events_occurred
+    object_lifecycle_events(occurred_at, id)
+ix_lifecycle_events_object
+    object_lifecycle_events(object_id, occurred_at, id)
+ix_lifecycle_events_destination
+    object_lifecycle_events(destination_object_id, occurred_at, id)
+    WHERE destination_object_id IS NOT NULL
+ix_lifecycle_events_relationship
+    object_lifecycle_events(relationship_id, occurred_at, id)
+    WHERE relationship_id IS NOT NULL
+ix_lifecycle_events_definition
+    object_lifecycle_events(relationship_definition_id, occurred_at, id)
+    WHERE relationship_definition_id IS NOT NULL
+ix_lifecycle_events_kind
+    object_lifecycle_events(kind, occurred_at, id)
+ix_lifecycle_events_relationship_name
+    object_lifecycle_events(relationship_name, occurred_at, id)
+    WHERE relationship_name IS NOT NULL
 ```
 
-Object/ownership:
-
-```text
-objects(template_id, template_version)
-objects(canonical_name, id)
-object_components(parent_object_id, slot_name, child_object_id)
-```
-
-Relationship runtime:
-
-```text
-runtime_relationship_resolutions PK(resolution_id, from_object_id, to_object_id)
-runtime_relationship_resolutions(from_object_id)
-runtime_relationship_resolutions(to_object_id)
-runtime_relationship_resolutions(relationship_id)
-relationships(relationship_definition_id)
-```
-
-Lifecycle:
-
-```text
-(occurred_at, id)
-(object_id, occurred_at, id)
-(destination_object_id, occurred_at, id)
-(relationship_id, occurred_at, id)
-(relationship_definition_id, occurred_at, id)
-(kind, occurred_at, id)
-(relationship_name, occurred_at, id) WHERE relationship_name IS NOT NULL
-```
-
-No baseline GIN index exists on Object properties or historical snapshots. No ancestry closure or reverse-dependency materialization is authoritative.
+No GIN/expression index exists on Object/Relationship properties or historical
+snapshots. There is no standalone default-version index, duplicate
+PUBLISHED-only index, second factual-identity index or event-set grouping index.
+No ancestry closure or reverse-dependency materialization is authoritative.
 
 ## Intentional denormalizations
 
@@ -423,6 +553,40 @@ TEST_DATABASE_URL
 ```
 
 The application does not provision or manage the PostgreSQL server lifecycle. Schema migration is explicit administration rather than implicit application-startup behavior.
+
+## Alembic and startup revision authority
+
+The installed package contains exactly one durable migration graph:
+
+```text
+script location     netauto:migrations
+base                0001_m2_kernel
+head                0001_m2_kernel
+down_revision       None
+authoritative tables 15
+```
+
+The root revision creates the complete current schema from an empty PostgreSQL
+database. `head -> base` removes all and only NETAUTO structures; it is destructive
+verification, not an operating rollback procedure. There is no in-place path
+from a pre-baseline development schema.
+
+Migration DDL is self-contained and does not import mutable application metadata
+as its authority. Development verification requires `compare_metadata == []` and
+exact table, column, key, constraint, index, predicate and INCLUDE inventories.
+
+Server startup discovers the unique shipped head from the installed package and
+reads the database's current heads through the process runtime engine. Serving is
+permitted only for exact singleton equality:
+
+```text
+actual_heads == ("0001_m2_kernel",)
+```
+
+Missing, base, older, newer, unknown, multiple or unreadable revision state
+rejects startup. Installation, application startup, Health and the CLI never
+upgrade, downgrade, stamp, create or repair schema. Alembic administration is a
+separate explicit process.
 
 ## Enforcement boundary summary
 

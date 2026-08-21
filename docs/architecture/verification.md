@@ -1,278 +1,306 @@
-# Verification — Current AS-IS
+# Verification Architecture — Current AS-IS
 
 ## Purpose and authority
 
-Verification is part of the architecture when it is required to demonstrate a semantic, persistence or concurrency guarantee.
+This document owns durable verification layers, environment rules and acceptance
+quality gates for the current architecture. It does not redefine semantic,
+persistence, API, Health, CLI or runtime behavior.
 
-Tests are evidence of the architecture; they do not redefine the semantic contract.
+[`verification-concurrency-registry.md`](verification-concurrency-registry.md)
+owns stable concurrency scenario IDs, predicates and deterministic recipes.
+Concrete pytest node IDs and run ledgers are implementation/evidence
+registries, not semantic authority.
 
-General traceability target:
+## Evidence policy
 
-```text
-required property / invariant
-    -> architecture decision
-    -> implementation mechanism
-    -> concrete verification
-```
+A normative guarantee passes only through every required layer. A skipped,
+xfailed, missing, blocked, timed-out or automatically rerun normative target is
+not a pass. Fakes may prove pure orchestration; they never substitute for a real
+PostgreSQL, public HTTP or installed-artifact claim.
 
-For concurrency-sensitive guarantees:
-
-```text
-semantic rule and safety predicate
-    -> PostgreSQL realization
-    -> deterministic real-PostgreSQL scenario
-```
-
-Authority is divided as follows:
-
-```text
-concurrency-matrix.md
-    -> semantic mutation interactions and safety predicates
-
-concurrency.md
-    -> PostgreSQL / Unit of Work realization
-
-verification-concurrency-registry.md
-    -> canonical deterministic scenario IDs,
-       coverage mapping and orchestration recipes
-
-this document
-    -> verification layers, evidence policy and closure obligations
-```
+Durable architecture describes what must be proven. Exact commands, environment
+versions, pass counts, durations, hashes and review decisions belong to cycle
+evidence records.
 
 ## Verification layers
 
 ### T0 — Pure domain
 
-Purpose:
+Proves plain-Python entity/value semantics, canonicalization, version/property
+evolution, factual state transformations, lifecycle transition shapes, runtime
+closure and semantic-view derivation.
 
-- value semantics;
-- domain-state validity;
-- lifecycle transition rules independent of persistence;
-- primitive canonicalization and domain invariants that do not require PostgreSQL.
+### T1 — Application and Unit of Work orchestration
 
-Mocks/fakes are acceptable only when they are not used to claim PostgreSQL guarantees.
+Proves transport-neutral command/query behavior, candidate construction, one
+semantic operation/one UoW intent, no-op and bounded-restart decisions, store
+coordination and finite failure selection.
 
-### T1 — Application / orchestration
-
-Purpose:
-
-- application command/query contracts;
-- semantic Unit of Work orchestration;
-- candidate derivation and domain-service composition;
-- transport-neutral failure/result semantics.
-
-T1 does not substitute for persistence/concurrency evidence.
+Mocks/fakes are permitted only where the asserted property is independent of
+PostgreSQL.
 
 ### T2 — Real PostgreSQL persistence
 
-Purpose:
+Proves live metadata/schema behavior, PK/UNIQUE/FK/CHECK/delete actions, canonical
+JSONB codecs, aggregate commit/rollback, lock-plan SQL, constraint classification,
+read snapshots and active Health query behavior.
 
-- SQLAlchemy/Alembic schema realization;
-- PK/UNIQUE/FK/CHECK/delete semantics;
-- canonical persistence representations;
-- Unit of Work commit/rollback behavior;
-- DB/application integration.
-
-Guarantees attributed to PostgreSQL require a real PostgreSQL server.
+T2 requires the externally supplied `TEST_DATABASE_URL`.
 
 ### T3 — Deterministic real-PostgreSQL concurrency
 
-Purpose:
+Proves supported interleavings, required blocking/progress, fresh post-wait reads,
+advisory-gate visibility, PK/UNIQUE/FK arbitration, bounded whole-UoW restart and
+supported-path deadlock absence through independent sessions.
 
-- supported concurrent interleavings;
-- row-lock/gate/constraint behavior;
-- post-wait fresh-snapshot rules;
-- uniqueness/FK race outcomes;
-- convergence/retry behavior;
-- preservation of the safety predicates owned by `concurrency-matrix.md`.
+Stress and sleep are not correctness authorities.
 
-T3 is correctness evidence, not probabilistic stress testing.
+### T4 — Public HTTP contract
 
-A valid scenario uses independent database sessions/transactions and deterministic orchestration that demonstrates the intended blocker, gate, constraint or progress relationship. Arbitrary `sleep()` timing is not a correctness contract.
+Proves the exact 63 business plus one Health operation inventory, strict request
+carriers, omission/null distinction, DTO/status/Location/failure mapping, bounded
+details, projection/filter/order/cursor behavior, OpenAPI closure and forbidden
+surfaces. Lifespan-sensitive cases use the real ASGI lifespan.
 
-### T4 — Public API contract / integration
+### T5 — Migration, schema lifecycle and startup compatibility
 
-Purpose:
-
-- exact route surface;
-- strict request DTO semantics;
-- omission vs explicit null/input;
-- PrimitiveType wire forms;
-- application-to-HTTP failure mapping;
-- success status/body/Location;
-- read/list projection, filter, ordering and pagination.
-
-Where the architecture defines a finite closed surface, verification compares exact expected inventories; minimum-count assertions are insufficient.
-
-### T5 — Migration / schema lifecycle
-
-Purpose:
-
-- clean Alembic base-to-head upgrade;
-- migration composition;
-- expected downgrade/upgrade behavior where supported;
-- schema structure matching authoritative metadata;
-- no unintended metadata drift;
-- cleanup limited to NETAUTO-owned schema objects;
-- application startup does not apply migrations implicitly.
+Proves the installed one-root `0001_m2_kernel` graph, fresh upgrade, owned
+downgrade/repeatability, exact fifteen-table schema, metadata drift `[]`, package
+resource discovery, startup revision equality and absence of automatic migration.
 
 ### T6 — Targeted property-based verification
 
-Purpose:
+Applies where algebraic coverage is materially stronger than examples, including
+primitive canonicalization, factual property maps, data/schema change
+transformations, cursor binding and lock-plan sorting/coalescence. It supplements
+deterministic examples.
 
-- algebraic/canonicalization properties where examples alone are weak;
-- exact-decimal normalization;
-- byte-size exactness;
-- primitive parse/canonicalization closure and similar bounded properties.
+### T7 — Supplementary randomized/stress verification
 
-Property-based tests supplement deterministic contract examples.
+Discovers problems but never replaces a stable deterministic scenario. A material
+finding is reduced to a deterministic regression where reasonably possible.
 
-### T7 — Randomized / stress
+### T8 — CLI client, terminal and process
 
-Randomized/stress testing is supplementary discovery tooling. It does not replace deterministic T3 evidence or architecture traceability.
+Proves parsing, selector planning, session transitions, HTTP trace truthfulness,
+FORMATTED/JSON rendering, PTY-visible editing/history, stdout/stderr/exit behavior,
+HTTPS validation and HTTP-only authority.
 
-## Canonical concurrency verification
+### T9 — Installed artifact and Linux operation
 
-The exact current scenario census, scenario semantics, safety-predicate coverage and orchestration recipes are owned exclusively by:
+Runs against a wheel installed outside the repository import path in a clean
+release environment. It proves package contents, exact lock sync, console and
+Alembic entrypoints, explicit migration, startup guard, server/Health/CLI,
+stop/restart/disposal and the material operator procedure.
 
-```text
-docs/architecture/verification-concurrency-registry.md
-```
+### T10 — Static traceability and negative surface
 
-This document intentionally does not duplicate that registry.
+Proves exact finite inventories and absences: route/CLI/schema/settings/scenario
+censuses, constraints/indexes, import boundaries, no automatic migration, no
+native auth/TLS/insecure CLI, no deployment/backup/observability assets, no
+unresolved normative placeholder and no historical execution aid as authority.
 
-Every non-`I` semantic rule in `concurrency-matrix.md` must map to at least one concrete or explicitly equivalent deterministic scenario. A future mutation or new concurrency guarantee must update:
+Static evidence does not replace runtime evidence where behavior is material.
 
-1. the semantic matrix;
-2. the PostgreSQL realization;
-3. the canonical verification registry;
-4. the machine-checkable implementation traceability.
+## Toolchain and environment
 
-## Deterministic concurrency harness requirements
+The ratified toolchain is CPython 3.14.x, `uv` with committed lock, pytest and
+pytest-asyncio, HTTPX, real PostgreSQL, Hypothesis where justified, Ruff, Pyright
+strict and coverage.py as diagnostic evidence.
 
-The harness must, as applicable:
-
-- use independent PostgreSQL connections/sessions;
-- expose explicit transaction boundaries;
-- observe blockers/gates/constraint waits when the mechanism matters;
-- coordinate candidate and winner/loser phases deterministically;
-- apply bounded timeouts as safety nets;
-- capture useful failure diagnostics without changing semantics;
-- execute fresh statements where READ COMMITTED post-wait visibility is required;
-- prove important non-blocking through positive progress while the other transaction remains open.
-
-Stress/random scheduling may be layered on top, but the deterministic recipe remains the normative evidence.
-
-## Required invariant classes
-
-Verification must remain capable of demonstrating at least the following.
-
-### Domain/model
-
-- DataType and ObjectTemplate lifecycle monotonicity;
-- DRAFT `expected_revision` freshness;
-- exact pinning/default admission;
-- effective-schema validity;
-- canonical primitive/constraint behavior;
-- RelationshipDefinition aggregate/equivalence/conflict semantics.
-
-### Cross-domain
-
-- active PUBLISHED model consumers never point to non-PUBLISHED exact dependencies;
-- Object state remains valid under its exact schema;
-- schema change preserves or rejects values/ownership deterministically;
-- ownership edges remain compatible with the parent's current exact schema;
-- factual Relationship endpoints remain compatible with stable template lineages.
-
-### Persistence
-
-- authoritative 13-table schema and intended keys/FKs/checks/indices;
-- ownership single-owner PK authority;
-- exact Relationship resolved-view PK authority;
-- same-Definition runtime composite FK coherence;
-- current cross-aggregate reference lifetime through `RESTRICT`;
-- canonical JSON/primitive representations.
-
-### Atomicity
-
-- every semantic mutation is all-or-nothing;
-- required lifecycle events are atomic with the real mutation;
-- failed concurrent candidates leak no partial aggregate/header/event state.
-
-### Concurrency
-
-- all current non-independent safety predicates remain covered;
-- advisory gates serialize their protected predicates;
-- intended non-serialization remains possible where required;
-- retry/convergence restarts from fresh state;
-- exact-ID Relationship delete preserves ABA semantics.
-
-### API
-
-- exactly the supported mutation/read surface exists;
-- forbidden generic and autonomous owned-child surfaces remain absent;
-- public error catalog stays aligned with application failures;
-- no SQL/constraint/internal detail leaks publicly;
-- list cursor/order/filter semantics remain route-specific and deterministic.
-
-## Runtime/test database separation
-
-Real-PostgreSQL automated tests use a target logically separate from the application runtime database.
+Canonical project gates are:
 
 ```text
-NETAUTO_DATABASE_URL
-    -> runtime / application / migration target
-
-TEST_DATABASE_URL
-    -> automated verification target
+uv lock --check
+uv sync --locked
+uv build
+uv run ruff format --check .
+uv run ruff check .
+uv run pyright
+uv run pytest --collect-only -q
+required focused and integrated pytest selections
+full repository pytest suite
 ```
 
-Provisioning is externally managed. No credential or concrete database URL belongs in architecture or acceptance documentation.
+`NETAUTO_DATABASE_URL` is the runtime/administrative target.
+`TEST_DATABASE_URL` is the automated real-PostgreSQL target. Tests do not
+provision or silently replace PostgreSQL and never fall back to SQLite, a fake,
+Docker or Testcontainers.
 
-## Migration authority checks
+Concurrent tests use unique semantic identities and independent connections.
+Interfering PostgreSQL suites do not use unsafe database-level parallelism.
+Cleanup begins only after participating sessions terminate.
 
-Migration verification must detect:
+T9 uses a clean directory/venv, wheel-only application install, embedded-lock
+dependency sync, no checkout import path and a dedicated test database. HTTPS
+uses a controlled CA and covers trusted matching hostname, untrusted CA and
+hostname mismatch; no external network is required.
 
-- failure to migrate from clean base to current head;
-- mismatch between migrated schema and authoritative SQLAlchemy metadata;
-- loss or unexpected change of PK/UNIQUE/FK/CHECK/index structures;
-- accidental reintroduction of the removed RelationshipResolution name-based key;
-- modification of objects outside the NETAUTO schema boundary during downgrade/cleanup;
-- application-lifespan code attempting to run migrations implicitly.
+## Exact current inventories
 
-Migration changes require both migration execution evidence and schema metadata/constraint verification.
+Machine-checkable registries require:
 
-## API surface closure checks
+```text
+mutation primitives             41
+semantic family blocks          15
+unordered interaction cells    861
+safety predicates               21
+canonical concurrency scenarios 83
+authoritative tables            15
+Alembic base/head                 1 / 1 = 0001_m2_kernel
+business HTTP operations         63 = 41 mutation + 22 read
+Health operations                 1
+CLI remote operations            63
+CLI local commands                8
+public error codes               23
+```
 
-The current API architecture defines a finite surface owned by `api.md`.
+Every finite inventory compares exact sets, never a minimum count. Public
+operation, CLI registry and generated OpenAPI sets are equal where applicable.
+Every stable concurrency scenario maps to a concrete collected target and one
+primary deterministic recipe. Every safety predicate maps to one or more
+scenarios.
 
-Verification compares generated OpenAPI/public registries to exact expected sets so accidental extra or missing routes/codes are detected.
+## Deterministic concurrency harness
 
-Negative surface checks include absence of:
+Roles are:
 
-- generic PUT/PATCH kernel mutation;
-- action DSL bypasses;
-- autonomous RelationshipResolution mutation;
-- autonomous ObjectComponent mutation;
-- JSON Schema endpoints or schema-compilation capability.
+```text
+CTL  orchestration only
+OBS  fresh observation/introspection
+B    optional real PostgreSQL blocker
+T1/T2/T3 independent semantic workers
+```
 
-## Reproducibility gates
+Stable observable phases include UoW start, discovery complete, lock plan built,
+gate/row waiting and acquired, protected reread, stale plan, dependencies
+stabilized, DML/closure/metadata/event writes, constraint arbitration, commit,
+rollback and UoW restart.
 
-A delivery/closure candidate passes the project-ratified gates applicable at that time, including:
+A test-only interceptor may pause or observe a named phase only when it does not
+change candidate data, issue semantic SQL, acquire a production lock, alter
+isolation, commit/rollback, change failure mapping or choose another production
+path.
 
-- locked dependency consistency;
-- clean environment synchronization from the lock;
-- package build;
-- formatting/linting;
-- static type checking;
-- the automated suites required by the cycle;
-- migration/schema checks when persistence is affected.
+Required blocking is proved primarily with `pg_blocking_pids(waiter_pid)`
+containing the known blocker. Required progress is a positive production phase
+reached while another transaction remains open. Timeouts are bounded hang guards.
 
-Exact tools and command selections are owned by the technology baseline, project configuration and active cycle evidence rather than duplicated here.
+Every worker records SQLSTATE structurally. Any supported scenario observing
+`40P01` fails immediately; it is never retried. Unexpected `40001` is equally
+forbidden. Negative controls have their own exact finite expected census and do
+not weaken supported-path requirements.
 
-## Evidence durability
+## Domain and persistence obligations
 
-Cycle acceptance records may contain command ledgers, transient counts and commit-specific evidence. Those remain in the historical cycle record.
+Verification preserves:
 
-This AS-IS document preserves durable verification obligations. Stable scenario identities needed to evolve concurrency safely are preserved in `verification-concurrency-registry.md`.
+- stable/version identities, lifecycle/default/generation rules and exact pins;
+- complete property/component/Relationship declaration histories;
+- primitive canonicalization and optional/non-null value rules;
+- Object DATA_CHANGE/SCHEMA_CHANGE and ownership semantics;
+- Relationship topology, capability admission, complete closure and factual
+  CREATE/DATA_CHANGE/SCHEMA_CHANGE/DELETE;
+- lifecycle transition codecs, semantic-view fan-out and history independent of
+  live metadata;
+- coherent before-or-after aggregate/page reads and full corruption failure;
+- all-or-nothing header/child/closure/event behavior;
+- reference lifetime, delete blockers and exact-ID ABA safety.
+
+Real PostgreSQL schema checks assert exact columns/types/nullability/defaults,
+named PK/UNIQUE/CHECK/FK/delete actions and exact explicit indexes, sort order,
+partial predicates and INCLUDE columns. Forbidden GIN/expression/duplicate
+indexes and unowned schema objects are checked negatively.
+
+The migration suite proves empty database to head, head to base ownership,
+base/head repeatability, failure rollback, external sentinel survival, one graph
+root/head and `compare_metadata == []`.
+
+## HTTP, Health and CLI obligations
+
+HTTP tests assert all strict invalid-input families, exact success and error
+envelopes, safe bounded details, keyset cursor binding, complete projections,
+route-specific ordering and absence of generic PUT/PATCH/action, auth, migration,
+autonomous Resolution/declaration and property-search surfaces.
+
+Health tests separate application classification, exact `SELECT 1`, timeout
+cleanup and HTTP mapping. Real PostgreSQL proves shared-engine use, connection
+return, deterministic pool starvation and recovery. Responses never expose
+database/driver/secret details.
+
+CLI verification derives help/dispatch from one static registry, covers every
+parameter and selector family, requires fresh command-local ledger/memo state,
+records every actual HTTP exchange once, proves mutation no-enrichment and
+GET-only bounded read enrichment, and checks interactive PTY and non-interactive
+process contracts. Static imports prove no direct server kernel/database path.
+
+## Runtime, distribution and trust obligations
+
+Build evidence proves the one wheel contains server, CLI, neutral DTOs, installed
+migration graph and exact runtime lock, with consistent distribution version and
+no source/development/deployment content.
+
+Source-isolated installation proves exact dependency synchronization, wheel
+`--no-deps` install, explicit Alembic, unique graph discovery, no automatic
+migration, startup failure for every non-exact revision, healthy start, runtime
+Health 503 after transport loss, orderly disposal and fresh restart guard.
+
+Settings tests cover the exact seven-field inventory, defaults, strict boundaries,
+source precedence and absence of dotenv/global load. Trust evidence proves no
+native authentication/authorization/401/403/security scheme, no unsafe universal
+bind guidance, verified CLI HTTPS, no insecure bypass, database transport solely
+in `database_url`, and no secret in argv/log/Health/CLI/config/artifact.
+
+## Negative-surface policy
+
+The repository contains no implemented product surface for:
+
+```text
+Relationship property EAV/search/default remediation
+autonomous Resolution or declaration CRUD
+event-set resource or event-sourced current state
+generic query/sort/PATCH/bulk/action protocol
+native auth, credentials, server TLS or insecure CLI
+container/orchestrator/process-manager/deployment pipeline
+cluster/multi-region/high-availability operation
+backup/restore/PITR/replica/disaster-recovery automation
+metrics/tracing/dashboard/log-shipping platform
+automatic migration/stamp/repair
+multiple heads or alternate schema compatibility
+```
+
+Normative architecture may state these exclusions without being mistaken for an
+implementation asset. Static policy audits tracked code, scripts, dependencies,
+entrypoints, config/deployment assets and non-normative operator documents.
+
+## Repository and release gate
+
+Release verification passes only when all applicable
+focused and integrated layers are green and:
+
+```text
+normative skip / xfail / rerun        0 / 0 / 0
+supported-path 40P01                  0
+unexpected 40001                      0
+negative-control SQLSTATE             exact expected census
+schema compare_metadata               []
+new unexplained warnings              0
+locked environment and build          PASS
+artifact reproducibility/invariance   PASS as applicable
+blocking findings                     0
+```
+
+A reviewed third-party deprecation may be censused without imposing an arbitrary
+zero-warning semantic rule.
+
+## Evidence durability and evolution
+
+Permanent registries preserve domain invariant codes, 41 mutation names, 83
+scenario IDs, 21 predicate codes, recipes, public error/route identifiers,
+settings and schema-object names. Cycle outcome/acceptance/evidence IDs, slice
+names, review findings, commit hashes and run counts remain historical
+evidence and are not current architecture identifiers.
+
+A semantic change updates its owner, dependent owners, finite registry, focused
+regression and required integrated gate together. Coverage percentage and raw
+test count never compensate for a missing semantic proof.
