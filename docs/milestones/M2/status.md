@@ -68,10 +68,12 @@ rejected candidate             b0546b1109c66a57195c50294291cb4a32ad48f2
 review rejection               2afc3eb1d86bb829185981279d8c6fe9a1667b11
 review-fix starting HEAD       49bed9eaf80ea00e515088f53a7125d55e3c7694
 review-fix commit              56e3a1766e37893a0f4c91166f130bfffbab425b
-replacement-cycle commit       recorded by the commit containing this status
+replacement-cycle commit       5db3ad31a4b51b14a2bd0e5e77d9dbcb1a7dd6dd
+final lifecycle test commit    88533bbcb319c24eb57d47c960620418eeb56085
 candidate record inventory     empty
 acceptance.md                  absent
 active execution aid          present
+candidate SHA                  not frozen while the PostgreSQL gate is blocked
 M2-S09                         IN PROGRESS
 M2                             NOT DELIVERED
 ```
@@ -156,17 +158,39 @@ preserved in Git history.
 ## Replacement gate progress
 
 ```text
-S09-RF-01 / S09-RF-02 focused closure       PASS
-rejected-state focused + traceability         87 passed / 0 non-PASS
-Ruff format / lint                            PASS
-Pyright strict                                PASS
+S09-RF-01 / S09-RF-02 focused closure        PASS
+S09 + M1/M2 traceability                     72 passed
+S06 / T8                                     73 passed
+S08 / T10                                    99 passed
+non-PostgreSQL                               642 passed / 254 deselected
+collection                                   896 collected / 1 known warning
+skip / xfail / rerun                         0 / 0 / 0
+negative controls                            40P01 x1 / 40001 x2
+supported 40P01 / unexpected 40001           0 / 0
+Ruff format / lint                           PASS
+Pyright strict                               PASS
+locked sync                                  PASS — 44 packages checked
+two independent builds                       PASS — byte-identical wheel
 review-fix commit published                  PASS
 M2-S09 transition to IN PROGRESS             PASS
 rejected JSON / acceptance.md retirement     PASS
-new clean candidate SHA                      pending this commit publication
-complete exact-candidate final gate          BLOCKED — TEST_DATABASE_URL absent
-new candidate record / summary               NOT CREATED
+PostgreSQL probe and complete PG suite        BLOCKED — TEST_DATABASE_URL absent
+bundle / scenario unions and full suite       BLOCKED — require real PostgreSQL
+new candidate record / summary                NOT CREATED
 exact-remote publication-integrity gate       NOT STARTED
+```
+
+Verified execution environment:
+
+```text
+CPython             3.14.7
+uv                  0.12.3
+Hatchling build env 1.32.0
+pytest              8.4.2
+Ruff                0.16.3
+Pyright             1.1.411
+Linux               Ubuntu 24.04.4 LTS / 6.8.0-134-generic / x86_64
+PostgreSQL           not probed — TEST_DATABASE_URL absent
 ```
 
 No isolated rerun or reuse of the old JSON can substitute for the new full gate.
@@ -195,14 +219,16 @@ supported 40P01 / 40001       0 / 0
 negative controls             40P01 x1 / 40001 x2
 ```
 
-Artifact identity:
+Artifact identity, reverified twice from the latest test-only harness HEAD:
 
 ```text
-wheel SHA-256
-38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
-
-runtime-lock SHA-256
-0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+wheel                 netauto-0.2.0-py3-none-any.whl
+wheel size            165978 byte
+wheel members         77
+wheel SHA-256         38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size     48238 byte
+runtime packages      29
+runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
 These counts are historical context only. They are not reused in a replacement
