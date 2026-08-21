@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -15,25 +15,22 @@ branch      M2
 ```text
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
-current gate                AS-IS consolidation — CANDIDATE READY FOR REVIEW
+current gate                AS-IS consolidation — REVIEW CHANGES REQUIRED
 next gate                   consistency closure — BLOCKED
-blockers                    none at the implementer candidate boundary
+blockers                    ASIS-RF-01 ... ASIS-RF-04
 M2                          NOT DELIVERED
+merge                       NOT EXECUTED
 ```
 
 The M2 contract, architecture set and implementation decomposition remain
 `FINAL / FROZEN`. No architecture reopen is active. Implementation and the
 M2-S09 final-acceptance gate are complete.
 
-The only authorized work is the reviewer-scoped documentation consolidation
-specified by:
-
-```text
-docs/milestones/M2/as-is-consolidation.md
-```
-
-This work produces a current-state architecture candidate. It does not authorize
-new product semantics, implementation changes, delivery or merge.
+The consolidation candidate at
+`b8a7d60b111288cd5b9931723d99adb477b3cc22` is rejected only for bounded
+current-AS-IS completeness and lifecycle findings. The accepted product,
+schema, API, CLI, Health, runtime behavior and final M2-S09 evidence are not
+reopened.
 
 ## Design and delivery gates
 
@@ -44,7 +41,7 @@ new product semantics, implementation changes, delivery or merge.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | CANDIDATE READY FOR REVIEW |
+| AS-IS consolidation | REVIEW CHANGES REQUIRED |
 | Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
 | Delivery | NOT DELIVERED |
 | Merge | NOT EXECUTED |
@@ -65,12 +62,12 @@ new product semantics, implementation changes, delivery or merge.
 | `M2-S09` | COMPLETED | `M2-S00 ... M2-S08 COMPLETED` |
 
 All implementation slices are reviewer-owned `COMPLETED`. Consolidation is a
-separate post-implementation gate and is not a new implementation slice.
+separate post-implementation gate and is not an implementation slice.
 
 ## Reviewer-owned final acceptance
 
 ```text
-rejected candidate             b0546b1109c66a57195c50294291cb4a32ad48f2
+rejected S09 candidate          b0546b1109c66a57195c50294291cb4a32ad48f2
 review rejection               2afc3eb1d86bb829185981279d8c6fe9a1667b11
 review-fix starting HEAD       49bed9eaf80ea00e515088f53a7125d55e3c7694
 review-fix commit              56e3a1766e37893a0f4c91166f130bfffbab425b
@@ -81,15 +78,12 @@ evidence/status publication    e794093bd6b2dae7ffe27a028ddebead8c14941e
 S09 acceptance commit          1e9c40161fb7b9d26a6491295c6e393d0eacf60d
 reviewer decision              ACCEPTED
 evidence record                candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
-acceptance.md                  reviewer acceptance summary present
-S09 execution aid              retired
 M2-S09                         COMPLETED
 M2                             NOT DELIVERED
 ```
 
-The rejected candidate and its reviewer decision remain preserved in immutable
-Git history. The accepted replacement record is the only candidate JSON in the
-working tree.
+The accepted replacement record is the only S09 candidate JSON in the working
+tree. The rejected candidate and its decision remain preserved in Git history.
 
 ## Accepted exact-candidate and exact-remote evidence
 
@@ -116,10 +110,10 @@ supported 40P01                 0
 unexpected 40001                0
 negative controls               40P01 x1 / 40001 x2
 warning census                  1 reviewed Starlette deprecation
-open findings                   0
+open product findings           0
 ```
 
-Verified execution environment:
+Verified environment:
 
 ```text
 CPython             3.14.7
@@ -146,28 +140,23 @@ runtime packages      29
 runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
-The reviewer did not independently rerun the 896-test suite. Runtime results
-above are the implementer's exact-candidate and exact-remote evidence; the
-reviewer independently inspected the commit chain, record, lifecycle, runner,
-regressions and acceptance boundary.
-
-## AS-IS consolidation gate
-
-Verification-transition closure:
+## AS-IS consolidation candidate record
 
 ```text
-starting AS-IS HEAD            422ce3c490c82d7d2f24ac60d777d75bca40374e
-reviewer amendment             8e74df8fa6e3da1cf1be7c210ded57a8e2b8b178
-verification-transition commit 1abd90c474ebf0abdfc7d1415cee26b6f3cab9c9
-AS-IS corpus commit            8315b6c4a1d5f5ef8247ea02e37765ef2a1dc336
+starting AS-IS HEAD             422ce3c490c82d7d2f24ac60d777d75bca40374e
+reviewer verification amendment 8e74df8fa6e3da1cf1be7c210ded57a8e2b8b178
+verification-transition commit  1abd90c474ebf0abdfc7d1415cee26b6f3cab9c9
+AS-IS corpus commit             8315b6c4a1d5f5ef8247ea02e37765ef2a1dc336
+candidate evidence/status       b8a7d60b111288cd5b9931723d99adb477b3cc22
+reviewer decision               REVIEW CHANGES REQUIRED
 ```
 
-The reviewer-authorized S08 regression transition now compares the current API
-and persistence documents with the exact current 63-operation and fifteen-table
-authorities while preserving all historical delta registries. Its stable node
-identity is unchanged.
+The S08 regression transition correctly compares current API and persistence
+documents with the exact current 63-operation and fifteen-table authorities,
+while retaining historical M2 delta registries. Its pytest node identity remains
+unchanged.
 
-Pre-push consolidation evidence:
+Candidate evidence accepted as non-regression evidence:
 
 ```text
 target files / internal links       15 / 35; missing or unresolved 0 / 0
@@ -194,25 +183,99 @@ negative controls                   40P01 x1 / 40001 x2
 warning census                      1 reviewed Starlette deprecation
 ```
 
-Verified environment and invariant artifact identity:
+Production code, API/CLI implementation, Health implementation, schema,
+migration, dependencies, locks and artifact identity are unchanged by the
+consolidation candidate.
+
+## Reviewer findings
+
+### ASIS-RF-01 — complete current lock-plan authority
+
+`docs/architecture/concurrency.md` does not yet preserve the complete current
+pre-DML plan for every one of the 41 mutation primitives and expresses the global
+row-class order ambiguously.
+
+Required closure:
 
 ```text
-PostgreSQL          16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
-database identity   netautotest
-bounded SELECT 1    PASS
-wheel size/members  165978 byte / 77
-wheel SHA-256       38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
-runtime lock size   48238 byte
-runtime-lock SHA-256 0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+exact global order
+    10 ObjectTemplate headers and exact versions
+    20 DataType headers and exact versions
+    30 RelationshipDefinition headers and exact versions
+    40 Object rows
+    50 factual Relationship rows
+
+exact three-gate registry
+complete 41-mutation registry
+one initial gate/row plan for every mutation
+initial KS / S / NKU / U intent where applicable
+normal-path no-upgrade rule
+direct-FK target-before-owner rule
+child/reference target-before-DML rule
 ```
 
-Production code, API implementation, CLI implementation, schema, migration,
-dependencies and locks are unchanged by the consolidation candidate.
+The owner must state the current architecture directly. It must not describe the
+registry as an M2 delta or require a future reader to recover plans from code,
+tests or milestone documents.
 
-The consolidation must produce one autonomous description of the system that
-exists at the accepted M2 boundary.
+The existing stable regression test may be extended to assert the exact 41
+mutation identifiers, global order, three gates and non-empty documented plan for
+every mutation without creating a second semantic matrix.
 
-Non-negotiable rules:
+### ASIS-RF-02 — Relationship property propagation
+
+Current Relationship property semantics must be propagated losslessly to all
+cross-cutting owners.
+
+Required corrections:
+
+```text
+docs/architecture/datatype.md
+    SCALAR/LIST belongs to both ObjectTemplateVersion and
+    RelationshipDefinitionVersion property declarations
+
+    direct active PUBLISHED consumers include both ObjectTemplateVersion
+    properties and RelationshipDefinitionVersion properties
+
+docs/architecture/api.md
+    the shared PrimitiveType lexical/canonical contract also applies to
+    Relationship current property values
+
+docs/architecture/persistence.md
+    the canonical PrimitiveType persistence codec also applies to
+    Relationship current properties and Relationship factual lifecycle
+    before_state / after_state snapshots
+```
+
+This is propagation of accepted current meaning, not new product semantics.
+
+### ASIS-RF-03 — wheel content wording
+
+`docs/architecture/runtime-deployment.md` must distinguish the packaged Settings
+implementation from external operator values.
+
+Required meaning:
+
+```text
+the wheel contains the Settings model and runtime code
+
+the wheel contains no operator-supplied settings/configuration values,
+secrets, certificates, source checkout, test/dev tooling or deployment assets
+```
+
+The phrase `contains no settings` is not acceptable because it is literally
+ambiguous and conflicts with the packaged Settings implementation.
+
+### ASIS-RF-04 — operational status coherence
+
+This status record must remain aligned with the actual review phase and
+authorized delta. The obsolete instruction to begin consolidation is retired.
+The immediate action is now the bounded correction of ASIS-RF-01 ... ASIS-RF-04.
+
+## Non-negotiable consolidation rules
+
+The consolidation produces one autonomous description of the system that exists
+at the accepted M2 boundary.
 
 ```text
 current state, not a sequence of changes
@@ -224,7 +287,7 @@ no candidate counts or review evidence in docs/architecture
 no copy/paste of the M2 TO-BE corpus
 ```
 
-Invalid semantic wording includes forms such as:
+Invalid semantic wording includes:
 
 ```text
 M1 had X, M2 added Y
@@ -234,75 +297,32 @@ introduced by M2-Snn
 preserved from the old baseline
 ```
 
-The current AS-IS states the resulting entities, invariants, commands, failures,
-persistence, concurrency, runtime and verification obligations directly.
-
 Cycle names are allowed only in the concise provenance section of
 `docs/architecture/README.md` and in links to historical records.
 
-## Consolidation target
+## Reviewer-authorized review-fix delta
 
-Expected updated or added owners/projections:
+The review-fix may modify only:
 
 ```text
-docs/architecture/README.md
-docs/architecture/relationship.md
-docs/architecture/persistence.md
-docs/architecture/concurrency-matrix.md
 docs/architecture/concurrency.md
+docs/architecture/datatype.md
 docs/architecture/api.md
-docs/architecture/health.md
-docs/architecture/cli.md
+docs/architecture/persistence.md
 docs/architecture/runtime-deployment.md
-docs/architecture/linux-operating-baseline.md
-docs/architecture/verification.md
-docs/architecture/verification-concurrency-registry.md
-```
-
-The existing DataType, ObjectTemplate and Object owners must be audited and may
-change only where their current statements or cross-references are no longer
-exact.
-
-The target corpus must describe, without historical narration:
-
-```text
-versioned RelationshipDefinition semantics and factual Relationship state
-fifteen-table PostgreSQL authority and 0001_m2_kernel as the sole root/head
-41 mutation primitives, 861 interaction cells and 21 safety predicates
-63 business HTTP operations plus GET /health/core
-Core Health behavior
-63-operation HTTP-only CLI, 8 local commands and REPL/process behavior
-Settings, wheel/runtime-lock, startup guard and trusted-boundary deployment
-current Linux installation and operation procedure
-T0–T10 verification, 83 scenarios and 21 predicates
-```
-
-Milestone-only outcomes, acceptance criteria, evidence-bundle IDs, commit hashes
-and pass ledgers remain in the historical M2 record.
-
-## Authorized delta
-
-The consolidation candidate may modify only:
-
-```text
-docs/architecture/*.md
 docs/milestones/M2/status.md
+tests/test_m2_s08_regression.py
 ```
 
-Explicitly permitted new files:
+The remaining current architecture documents must be preserved unless a direct,
+precise dependency of one listed correction demonstrates a contradiction. Such a
+case is a new STOP and reviewer finding, not implicit scope expansion.
 
-```text
-docs/architecture/health.md
-docs/architecture/cli.md
-docs/architecture/runtime-deployment.md
-docs/architecture/linux-operating-baseline.md
-```
-
-It must not modify:
+Do not modify:
 
 ```text
 src/netauto/
-tests/
+all other tests
 schema or migrations
 pyproject.toml
 uv.lock
@@ -317,33 +337,70 @@ docs/milestones/M2/acceptance.md
 docs/milestones/M2/evidence/
 ```
 
-A need to change any forbidden area is a `STOP` and a reviewer finding.
+No contract, architecture-set or implementation reopen is authorized.
+
+## Required review-fix gate
+
+Execute at least:
+
+```text
+focused current-AS-IS regression
+exact 41-mutation lock-plan documentation audit
+temporal/delta wording audit
+milestone-ID leakage audit
+Markdown link audit
+placeholder/open-point audit
+traceability and documentation-policy tests
+schema / Alembic
+API / CLI / Health / runtime
+PostgreSQL / concurrency
+non-PostgreSQL
+full repository
+quality / build / collection
+exact-remote post-push rerun
+```
+
+Required outcome:
+
+```text
+skip / xfail / rerun             0 / 0 / 0
+supported-path 40P01             0
+unexpected 40001                 0
+negative-control SQLSTATE        exact expected census
+compare_metadata                 []
+new unexplained warnings         0
+artifact identity                unchanged
+open consolidation findings      0
+```
 
 ## Candidate and review boundary
 
-The coding agent may move the consolidation gate through:
+The coding agent may move the gate only through:
 
 ```text
-READY -> IN PROGRESS -> CANDIDATE READY FOR REVIEW
+REVIEW CHANGES REQUIRED
+    -> IN PROGRESS
+    -> CANDIDATE READY FOR REVIEW
 ```
 
-A failed gate remains `IN PROGRESS`. The agent must not assign:
+A failed gate remains `IN PROGRESS`. The coding agent must not assign:
 
 ```text
 AS-IS consolidation    COMPLETED
 consistency closure    READY / COMPLETED
 M2                     DELIVERED
+merge                   EXECUTED
 ```
 
-Reviewer acceptance of the consolidation opens the separate whole-corpus
-consistency-closure gate. Only after both reviewer-owned gates complete may M2
-be marked `DELIVERED`.
+Reviewer acceptance of the corrected consolidation opens the separate
+whole-corpus consistency-closure gate. Only after both reviewer-owned gates are
+`COMPLETED` may M2 become `DELIVERED`.
 
 ## Immediate next action
 
-Execute `docs/milestones/M2/as-is-consolidation.md` from the current `M2` branch.
-Produce a complete current-state candidate, run the specified preliminary
-consistency and repository gates, push only to `M2`, and hand off:
+Apply the bounded review-fix for `ASIS-RF-01 ... ASIS-RF-04` from the current
+`M2` branch, preserve all accepted product and AS-IS material outside the explicit
+scope, rerun the complete required gate, and hand off only:
 
 ```text
 AS-IS consolidation    CANDIDATE READY FOR REVIEW
@@ -365,4 +422,5 @@ NOT STARTED
 NOT AUTHORIZED
 NOT DELIVERED
 DELIVERED
+NOT EXECUTED
 ```
