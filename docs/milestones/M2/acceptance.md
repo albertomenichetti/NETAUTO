@@ -1,15 +1,17 @@
-# M2 Final Acceptance Candidate
+# M2 Final Acceptance Review
 
-Status: CANDIDATE READY FOR REVIEW
+Status: ACCEPTED
 
-This is durable evidence for reviewer inspection, not a semantic authority or
-a reviewer acceptance decision.
+This is the reviewer-owned final-acceptance decision for the exact M2-S09
+candidate. It is durable evidence, not semantic authority, and it does not by
+itself mark the milestone as delivered.
 
 ## Candidate identity and artifact
 
 ```text
 candidate commit    87de783462b24f17b5da5aa31ce002c19734e0eb
 evidence record     docs/milestones/M2/evidence/candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
+evidence commit     e794093bd6b2dae7ffe27a028ddebead8c14941e
 branch              M2
 release             0.2.0
 wheel               netauto-0.2.0-py3-none-any.whl
@@ -44,7 +46,7 @@ PostgreSQL was supplied and managed outside the NETAUTO test process. No
 Docker, Testcontainers, SQLite, fake, embedded database, provisioning, or
 fallback was used.
 
-## Final-gate result
+## Accepted final-gate result
 
 ```text
 M2-VER evidence bundles       32 / 32 PASS
@@ -77,18 +79,19 @@ the exact per-identifier and per-command ledger.
 Quality, locked sync, both builds, Ruff format/lint, Pyright strict,
 traceability, S06/T8, installed S07/T9, S08/T10, schema/Alembic,
 API/error/CLI, runtime/schema-guard/Health, PostgreSQL/concurrency,
-non-PostgreSQL, and the complete repository suite all passed on the candidate
-commit.
+non-PostgreSQL, and the complete repository suite passed on the exact candidate.
 
-## Ownership and next state
+## Reviewer decision and delivery boundary
 
 ```text
-reviewer decision       PENDING / reviewer-owned
-M2-S09 is not COMPLETED
-M2 is not DELIVERED
+reviewer decision       ACCEPTED
+M2-S09                  COMPLETED
+M2                      NOT DELIVERED
 AS-IS consolidation     not started
 merge                    not executed
 ```
 
-The exact-remote evidence-publication integrity gate is reported in the final
-handoff; it does not recursively change this candidate-run record.
+The M2-S09 final gate is accepted. Milestone delivery remains a separate
+reviewer/human-owned transition after AS-IS consolidation and consistency
+closure. No PR, workflow, tag, Release, merge, or artifact publication is
+created by this decision.

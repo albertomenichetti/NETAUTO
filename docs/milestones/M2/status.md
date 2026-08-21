@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S09 CANDIDATE READY FOR REVIEW
+**Milestone status:** POST-IMPLEMENTATION — M2-S09 COMPLETED / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -13,19 +13,17 @@ branch      M2
 ## Current operational state
 
 ```text
-phase           IMPLEMENTATION
-current slice   M2-S09 — CANDIDATE READY FOR REVIEW
-current task    reviewer inspection of the replacement final-gate candidate
-blockers        none in the implementer candidate
+phase           POST-IMPLEMENTATION
+current slice   M2-S09 — COMPLETED
+current task    reviewer/human-owned AS-IS consolidation and delivery closure
+blockers        none at the accepted final-gate boundary
 M2              NOT DELIVERED
 ```
 
 The M2 contract, architecture set and implementation decomposition remain
-`FINAL / FROZEN`. No architecture reopen is active.
-
-Implementation or review-fix work is authorized only for the exact slice marked
-`READY`, `IN PROGRESS` or `REVIEW CHANGES REQUIRED` here. `M2-S09 COMPLETED`,
-milestone delivery, AS-IS consolidation and merge remain reviewer/human-owned.
+`FINAL / FROZEN`. No architecture reopen is active. Implementation and the
+M2-S09 final-acceptance gate are complete; AS-IS consolidation, milestone
+delivery and merge remain separate reviewer/human-owned activities.
 
 ## Design and delivery gates
 
@@ -34,8 +32,8 @@ milestone delivery, AS-IS consolidation and merge remain reviewer/human-owned.
 | Contract | FINAL / FROZEN |
 | Architecture set | FINAL / FROZEN |
 | Implementation steps | FINAL / FROZEN |
-| Implementation | AUTHORIZED — `M2-S09` replacement final gate only |
-| Final acceptance | IN PROGRESS |
+| Implementation | COMPLETED |
+| Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
 | AS-IS consolidation | NOT STARTED |
 | Delivery | NOT DELIVERED |
 
@@ -52,16 +50,11 @@ milestone delivery, AS-IS consolidation and merge remain reviewer/human-owned.
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
-| `M2-S09` | CANDIDATE READY FOR REVIEW | `M2-S00 ... M2-S08 COMPLETED` |
+| `M2-S09` | COMPLETED | `M2-S00 ... M2-S08 COMPLETED` |
 
-`M2-S00` through `M2-S08` are reviewer-owned `COMPLETED`. M2-S09 remains open
-inside the same slice.
+All implementation slices are reviewer-owned `COMPLETED`.
 
-## Replacement candidate cycle
-
-The reviewer-owned rejection is preserved in Git history. The replacement
-cycle started only after the rejected lifecycle and both corrections passed
-their focused tests:
+## Reviewer-owned final acceptance
 
 ```text
 rejected candidate             b0546b1109c66a57195c50294291cb4a32ad48f2
@@ -70,120 +63,63 @@ review-fix starting HEAD       49bed9eaf80ea00e515088f53a7125d55e3c7694
 review-fix commit              56e3a1766e37893a0f4c91166f130bfffbab425b
 replacement-cycle commit       5db3ad31a4b51b14a2bd0e5e77d9dbcb1a7dd6dd
 final lifecycle test commit    88533bbcb319c24eb57d47c960620418eeb56085
-candidate record inventory     candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
-acceptance.md                  candidate summary present
-active execution aid          present
-candidate SHA                  87de783462b24f17b5da5aa31ce002c19734e0eb
-reviewer decision              null / PENDING / reviewer-owned
-M2-S09                         CANDIDATE READY FOR REVIEW
+accepted candidate SHA         87de783462b24f17b5da5aa31ce002c19734e0eb
+evidence/status publication    e794093bd6b2dae7ffe27a028ddebead8c14941e
+reviewer decision              ACCEPTED
+review decision commit         recorded by the commit containing this status
+evidence record                candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
+acceptance.md                  reviewer acceptance summary present
+active execution aid           retired
+M2-S09                         COMPLETED
 M2                             NOT DELIVERED
 ```
 
-The rejected candidate record and rejection summary have been retired from the
-working tree. They remain recoverable from the reviewer-owned history and are
-not reusable as evidence for the replacement candidate.
+The rejected candidate and its reviewer decision remain preserved in immutable
+Git history. The accepted replacement record is the only candidate JSON in the
+working tree.
 
 ## Closed review findings
 
 ### S09-RF-01 — Reviewer lifecycle coherence
 
-Closed by one shared lifecycle validator and permanent regressions covering:
-
-```text
-READY / IN PROGRESS
-    no record or acceptance summary; active aid present
-
-CANDIDATE READY FOR REVIEW
-    one implementer-phase record; null decision; candidate summary; aid present
-
-REVIEW CHANGES REQUIRED
-    one reviewer-phase rejected record; rejection summary; aid present
-
-COMPLETED
-    one reviewer-phase ACCEPTED record; acceptance summary; aid absent
-```
-
-The tests reject every incoherent state/decision combination and stale
-phase-specific summary marker. The real rejected record passed reviewer-phase
-validation before retirement.
+Closed by the shared five-state lifecycle validator and permanent regressions.
+The accepted state requires one record with `reviewer_decision = ACCEPTED`, an
+acceptance-phase summary, all final ledgers passing, no open findings, and no
+active S09 execution aid.
 
 ### S09-RF-02 — Fail-closed final-gate runner
 
-Closed by a pure effective-status policy and a public runner result derived from
-that policy:
+Closed by the effective-status policy. Raw pytest failure, any requested target
+that is `FAIL` or `BLOCKED`, SKIP, XFAIL, XPASS, RERUN, or missing JUnit evidence
+produces a non-zero public gate status. Reviewed warnings alone do not fail the
+gate.
+
+## Accepted exact-candidate and exact-remote evidence
 
 ```text
-raw pytest non-zero                     -> non-zero
-target FAIL or BLOCKED                  -> non-zero
-SKIP / XFAIL / XPASS / RERUN            -> non-zero
-missing JUnit                            -> all targets BLOCKED / non-zero
-all targets PASS + clean census          -> zero
-reviewed warnings alone                  -> zero
-```
-
-The public JSON now reports the effective `exit_status`, the raw
-`pytest_exit_status`, every non-PASS target and bounded diagnostics.
-
-## Authorized correction boundary
-
-The correction is test/evidence-only. It may modify, as needed:
-
-```text
-tests/support/s09_acceptance.py
-tests/test_m2_s09_acceptance.py
-tests/test_m2_s08_evidence.py
-tests/test_m2_s08_negative_surface.py
-docs/milestones/M2/evidence/README.md
-docs/milestones/M2/acceptance.md
-docs/milestones/M2/evidence/candidate-*.json
-docs/milestones/M2/status.md
-```
-
-It must not modify:
-
-```text
-src/netauto/
-public API or DTOs
-CLI behavior or grammar
-Health
-schema, DDL, indexes or Alembic graph
-dependencies, uv.lock or runtime.pylock.toml
-version 0.2.0 or wheel content
-frozen contract, architecture or steps
-```
-
-The rejected record and rejection summary may be retired from the working tree
-when the implementer starts the new cycle, after their reviewer-owned state is
-preserved in Git history.
-
-## Replacement gate progress
-
-```text
-S09-RF-01 / S09-RF-02 focused closure        PASS
-S09 + M1/M2 traceability                     72 passed
-S06 / T8                                     73 passed
-S08 / T10                                    99 passed
-non-PostgreSQL                               642 passed / 254 deselected
-collection                                   896 collected / 1 known warning
-skip / xfail / rerun                         0 / 0 / 0
-negative controls                            40P01 x1 / 40001 x2
-supported 40P01 / unexpected 40001           0 / 0
-Ruff format / lint                           PASS
-Pyright strict                               PASS
-locked sync                                  PASS — 44 packages checked
-two independent builds                       PASS — byte-identical wheel
-review-fix commit published                  PASS
-M2-S09 transition to IN PROGRESS             PASS
-rejected JSON / acceptance.md retirement     PASS
-PostgreSQL probe and complete PG suite        PASS — 254 passed
-bundle union                                  PASS — 369 unique / 516 passed
-scenario / predicate union                    PASS — 166 unique / 190 passed
-M2-VER / M2-AC / M2-OUT                       32 / 32 / 16 PASS
-canonical scenarios / safety predicates       83 / 83 and 21 / 21 PASS
-schema / API / runtime groups                 33 / 277 / 121 passed
-full repository                               896 passed / 1 known warning
-new candidate record / summary                CREATED / implementer-validated
-exact-remote publication-integrity gate       PENDING after evidence publication
+M2-VER                         32 / 32 PASS
+M2-AC                          32 / 32 PASS
+M2-OUT                         16 / 16 covered
+canonical scenarios            83 / 83 PASS
+safety predicates              21 / 21 PASS
+bundle union                   369 unique targets / 516 passed
+scenario union                 166 unique targets / 190 passed
+S06 / T8                       73 passed
+S07 / T9                       18 passed
+S08 / T10                      99 passed
+schema / Alembic               33 passed / compare_metadata []
+API / error / CLI              277 passed
+runtime / schema guard / Health 121 passed
+PostgreSQL / concurrency       254 passed
+non-PostgreSQL                 642 passed
+full repository                896 passed
+collection                     896
+skip / xfail / rerun           0 / 0 / 0
+supported 40P01                0
+unexpected 40001               0
+negative controls              40P01 x1 / 40001 x2
+warning census                 1 reviewed Starlette deprecation
+open findings                  0
 ```
 
 Verified execution environment:
@@ -191,7 +127,7 @@ Verified execution environment:
 ```text
 CPython             3.14.7
 uv                  0.12.3
-Hatchling build env 1.32.0
+Hatchling           1.32.0
 pytest              8.4.2
 Ruff                0.16.3
 Pyright             1.1.411
@@ -201,33 +137,7 @@ database identity   netautotest
 bounded SELECT 1    PASS
 ```
 
-No isolated rerun or reuse of the old JSON can substitute for the new full gate.
-
-## Historical evidence from the rejected candidate
-
-```text
-evidence bundles              32 / 32 PASS
-acceptance criteria           32 / 32 PASS
-outcomes                      16 / 16 covered
-canonical scenarios           83 / 83 PASS
-safety predicates             21 / 21 PASS
-bundle union                  369 unique targets / 516 passed
-scenario union                166 unique targets / 190 passed
-S06 / T8                      73 passed
-S07 / T9                      18 passed
-S08 / T10                     99 passed
-schema / Alembic              33 passed / compare_metadata []
-API / error / CLI             277 passed
-runtime / schema guard        121 passed
-PostgreSQL / concurrency      254 passed
-non-PostgreSQL                614 passed
-full repository               868 passed
-skip / xfail / rerun          0 / 0 / 0
-supported 40P01 / 40001       0 / 0
-negative controls             40P01 x1 / 40001 x2
-```
-
-Artifact identity, reverified twice from the latest test-only harness HEAD:
+Artifact identity:
 
 ```text
 wheel                 netauto-0.2.0-py3-none-any.whl
@@ -239,25 +149,30 @@ runtime packages      29
 runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
-These counts are historical context only and were not reused in the replacement
-record. The replacement gate above was rerun from the clean candidate SHA.
+The reviewer did not independently rerun the 896-test suite. Runtime results
+above are the implementer's exact-candidate and exact-remote evidence; the
+reviewer independently inspected the commit chain, record, lifecycle, runner,
+regressions and acceptance boundary.
 
-## Active execution aid
-
-The active non-normative S09 aid remains:
+## Delivery boundary
 
 ```text
-docs/milestones/M2/wip/M2-S09-codex-prompt.md
+M2-S09                 COMPLETED
+M2                     NOT DELIVERED
+AS-IS consolidation    NOT STARTED
+consistency closure    NOT STARTED
+merge                  NOT EXECUTED
 ```
 
-It is not semantic authority. The bounded review-fix instructions in this
-status and the reviewer handoff govern the next continuation; a dedicated
-review-fix aid may replace it without adding a second active prompt.
+No implementation work, delivery claim, AS-IS consolidation, merge, PR,
+workflow, tag, Release, or artifact publication is authorized by this completion
+record alone.
 
 ## Immediate next action
 
-Reviewer inspection is the next action. M2-S09 is not `COMPLETED`; AS-IS
-consolidation, milestone delivery and merge remain unstarted and human-owned.
+Begin the separate reviewer/human-owned AS-IS consolidation of the delivered
+TO-BE into `docs/architecture/`, followed by consistency closure. Only after
+those gates pass may M2 transition to `DELIVERED`. Merge remains human-owned.
 
 ## Current status vocabulary
 
@@ -272,4 +187,5 @@ FINAL / FROZEN
 NOT STARTED
 NOT AUTHORIZED
 NOT DELIVERED
+DELIVERED
 ```
