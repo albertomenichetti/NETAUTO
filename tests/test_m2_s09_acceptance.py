@@ -477,6 +477,35 @@ def test_s09_lifecycle_rejects_incoherent_state_decision_matrix(
         validate_s09_lifecycle(tmp_path, state, EXPECTATIONS)
 
 
+def test_s09_lifecycle_allows_nonpass_rejection_but_not_candidate(
+    tmp_path: Path,
+) -> None:
+    record = _complete_record()
+    bundle = min(record.evidence_bundles)
+    nonpass = replace(
+        record,
+        commands=(replace(record.commands[0], exit_status=1),),
+        evidence_bundles=record.evidence_bundles | {bundle: "FAIL"},
+        runtime_census=replace(record.runtime_census, skipped=1),
+        open_findings=("qualitative reviewer finding",),
+    )
+    rejected = replace(nonpass, reviewer_decision="REVIEW CHANGES REQUIRED")
+    rejected_root = tmp_path / "rejected"
+    _lifecycle_tree(rejected_root, "REVIEW CHANGES REQUIRED", rejected)
+    assert (
+        validate_s09_lifecycle(rejected_root, "REVIEW CHANGES REQUIRED", EXPECTATIONS)
+        == rejected
+    )
+
+    candidate = replace(nonpass, reviewer_decision=None)
+    candidate_root = tmp_path / "candidate"
+    _lifecycle_tree(candidate_root, "CANDIDATE READY FOR REVIEW", candidate)
+    with pytest.raises(ValueError, match="candidate state requires"):
+        validate_s09_lifecycle(
+            candidate_root, "CANDIDATE READY FOR REVIEW", EXPECTATIONS
+        )
+
+
 @pytest.mark.parametrize(
     ("state", "stale_summary"),
     [
@@ -522,6 +551,17 @@ def test_s09_lifecycle_rejects_unclassified_evidence_and_wrong_aid_state(
     aid.unlink()
     with pytest.raises(ValueError, match="aid lifecycle"):
         validate_s09_lifecycle(tmp_path, "IN PROGRESS", EXPECTATIONS)
+
+    completed_root = tmp_path / "completed"
+    accepted = replace(_complete_record(), reviewer_decision="ACCEPTED")
+    _lifecycle_tree(completed_root, "COMPLETED", accepted)
+    completed_aid = (
+        completed_root / "docs" / "milestones" / "M2" / "wip" / "M2-S09-codex-prompt.md"
+    )
+    completed_aid.parent.mkdir(parents=True)
+    completed_aid.write_text("stale aid\n")
+    with pytest.raises(ValueError, match="aid lifecycle"):
+        validate_s09_lifecycle(completed_root, "COMPLETED", EXPECTATIONS)
 
 
 def test_s09_real_candidate_record_and_acceptance_follow_current_lifecycle() -> None:
