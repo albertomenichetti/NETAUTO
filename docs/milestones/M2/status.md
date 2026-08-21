@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** IMPLEMENTATION — M2-S09 IN PROGRESS
+**Milestone status:** IMPLEMENTATION — M2-S09 CANDIDATE READY FOR REVIEW
 
 ## Cycle identity
 
@@ -14,9 +14,9 @@ branch      M2
 
 ```text
 phase           IMPLEMENTATION
-current slice   M2-S09 — IN PROGRESS
-current task    execute the replacement final gate from one new clean candidate SHA
-blockers        TEST_DATABASE_URL absent in the current execution environment
+current slice   M2-S09 — CANDIDATE READY FOR REVIEW
+current task    reviewer inspection of the replacement final-gate candidate
+blockers        none in the implementer candidate
 M2              NOT DELIVERED
 ```
 
@@ -52,7 +52,7 @@ milestone delivery, AS-IS consolidation and merge remain reviewer/human-owned.
 | `M2-S06` | COMPLETED | `M2-S05 COMPLETED` |
 | `M2-S07` | COMPLETED | `M2-S06 COMPLETED` |
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
-| `M2-S09` | IN PROGRESS | `M2-S00 ... M2-S08 COMPLETED` |
+| `M2-S09` | CANDIDATE READY FOR REVIEW | `M2-S00 ... M2-S08 COMPLETED` |
 
 `M2-S00` through `M2-S08` are reviewer-owned `COMPLETED`. M2-S09 remains open
 inside the same slice.
@@ -70,11 +70,12 @@ review-fix starting HEAD       49bed9eaf80ea00e515088f53a7125d55e3c7694
 review-fix commit              56e3a1766e37893a0f4c91166f130bfffbab425b
 replacement-cycle commit       5db3ad31a4b51b14a2bd0e5e77d9dbcb1a7dd6dd
 final lifecycle test commit    88533bbcb319c24eb57d47c960620418eeb56085
-candidate record inventory     empty
-acceptance.md                  absent
+candidate record inventory     candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
+acceptance.md                  candidate summary present
 active execution aid          present
-candidate SHA                  not frozen while the PostgreSQL gate is blocked
-M2-S09                         IN PROGRESS
+candidate SHA                  87de783462b24f17b5da5aa31ce002c19734e0eb
+reviewer decision              null / PENDING / reviewer-owned
+M2-S09                         CANDIDATE READY FOR REVIEW
 M2                             NOT DELIVERED
 ```
 
@@ -174,10 +175,15 @@ two independent builds                       PASS — byte-identical wheel
 review-fix commit published                  PASS
 M2-S09 transition to IN PROGRESS             PASS
 rejected JSON / acceptance.md retirement     PASS
-PostgreSQL probe and complete PG suite        BLOCKED — TEST_DATABASE_URL absent
-bundle / scenario unions and full suite       BLOCKED — require real PostgreSQL
-new candidate record / summary                NOT CREATED
-exact-remote publication-integrity gate       NOT STARTED
+PostgreSQL probe and complete PG suite        PASS — 254 passed
+bundle union                                  PASS — 369 unique / 516 passed
+scenario / predicate union                    PASS — 166 unique / 190 passed
+M2-VER / M2-AC / M2-OUT                       32 / 32 / 16 PASS
+canonical scenarios / safety predicates       83 / 83 and 21 / 21 PASS
+schema / API / runtime groups                 33 / 277 / 121 passed
+full repository                               896 passed / 1 known warning
+new candidate record / summary                CREATED / implementer-validated
+exact-remote publication-integrity gate       PENDING after evidence publication
 ```
 
 Verified execution environment:
@@ -190,7 +196,9 @@ pytest              8.4.2
 Ruff                0.16.3
 Pyright             1.1.411
 Linux               Ubuntu 24.04.4 LTS / 6.8.0-134-generic / x86_64
-PostgreSQL           not probed — TEST_DATABASE_URL absent
+PostgreSQL          16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+database identity   netautotest
+bounded SELECT 1    PASS
 ```
 
 No isolated rerun or reuse of the old JSON can substitute for the new full gate.
@@ -231,9 +239,8 @@ runtime packages      29
 runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
-These counts are historical context only. They are not reused in a replacement
-record. The reviewer did not independently rerun the 868-test suite; the
-reviewer inspected the old commit chain, record and harness.
+These counts are historical context only and were not reused in the replacement
+record. The replacement gate above was rerun from the clean candidate SHA.
 
 ## Active execution aid
 
@@ -249,10 +256,8 @@ review-fix aid may replace it without adding a second active prompt.
 
 ## Immediate next action
 
-Provide `TEST_DATABASE_URL` and execute the complete replacement final gate
-from the exact clean replacement-cycle commit. Do not publish a candidate,
-start AS-IS consolidation, declare delivery or merge until every prescribed
-pre-publication and exact-remote gate passes.
+Reviewer inspection is the next action. M2-S09 is not `COMPLETED`; AS-IS
+consolidation, milestone delivery and merge remain unstarted and human-owned.
 
 ## Current status vocabulary
 
