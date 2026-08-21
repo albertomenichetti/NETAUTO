@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -15,9 +15,9 @@ branch      M2
 ```text
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
-current gate                AS-IS consolidation — REVIEW CHANGES REQUIRED
+current gate                AS-IS consolidation — CANDIDATE READY FOR REVIEW
 next gate                   consistency closure — BLOCKED
-blockers                    ASIS-RF-01 ... ASIS-RF-04
+blockers                    none in candidate; reviewer inspection pending
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -41,7 +41,7 @@ reopened.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | REVIEW CHANGES REQUIRED |
+| AS-IS consolidation | CANDIDATE READY FOR REVIEW |
 | Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
 | Delivery | NOT DELIVERED |
 | Merge | NOT EXECUTED |
@@ -147,8 +147,14 @@ starting AS-IS HEAD             422ce3c490c82d7d2f24ac60d777d75bca40374e
 reviewer verification amendment 8e74df8fa6e3da1cf1be7c210ded57a8e2b8b178
 verification-transition commit  1abd90c474ebf0abdfc7d1415cee26b6f3cab9c9
 AS-IS corpus commit             8315b6c4a1d5f5ef8247ea02e37765ef2a1dc336
-candidate evidence/status       b8a7d60b111288cd5b9931723d99adb477b3cc22
+rejected candidate evidence     b8a7d60b111288cd5b9931723d99adb477b3cc22
 reviewer decision               REVIEW CHANGES REQUIRED
+reviewer rejection              1e3bba0e91e561945c64f13b8f640864c0f318d0
+review-fix starting HEAD        1e3bba0e91e561945c64f13b8f640864c0f318d0
+lock-plan test commit           4d5898196cb92add9c65b04a5e9b03d09158325e
+AS-IS owner-fix commit          e2c44c38c172e912b264b0e95e304daa3fce8163
+candidate evidence/status       this commit
+review-fix state                CANDIDATE READY FOR REVIEW
 ```
 
 The S08 regression transition correctly compares current API and persistence
@@ -186,6 +192,77 @@ warning census                      1 reviewed Starlette deprecation
 Production code, API/CLI implementation, Health implementation, schema,
 migration, dependencies, locks and artifact identity are unchanged by the
 consolidation candidate.
+
+## Corrected AS-IS candidate evidence
+
+The bounded review-fix closes all four reviewer findings in the candidate:
+
+```text
+ASIS-RF-01  exact 41-entry current lock-plan registry, row-class order,
+            three advisory gates, initial KS/S/NKU/U intent and bounded parser
+ASIS-RF-02  Relationship property cardinality, active-consumer, lexical and
+            persistence-codec propagation across the owning documents
+ASIS-RF-03  wheel contains Settings/runtime implementation but no
+            operator-supplied configuration values or secrets
+ASIS-RF-04  current corrective lifecycle, authorized delta and gate evidence
+```
+
+Pre-push documentation and finite-inventory evidence:
+
+```text
+target files / internal links       15 / 35; missing or unresolved 0 / 0
+temporal-delta / milestone-ID leak   0 / 0
+placeholder / open-point findings   0 / 0
+API / CLI / Health                  63 business / 63 remote / 8 local / 1 Health
+tables / explicit indexes           15 / 29
+Settings fields                     7
+mutations / family blocks / cells   41 / 15 / 861
+advisory gates / row classes        3 / 10,20,30,40,50
+scenarios / predicates / recipes    83 / 21 / 11
+Relationship property propagation   PASS
+wheel Settings/value wording        PASS
+```
+
+Pre-push repository evidence:
+
+```text
+focused current-AS-IS regression    1 passed / 0.79s
+complete S08 regression             4 passed / 4.93s
+traceability/documentation policy   117 passed / 38.45s
+schema / Alembic                    33 passed / 19.00s; compare_metadata []
+API / error / CLI                   277 passed / 68.77s
+runtime / schema guard / Health     121 passed / 15.22s
+PostgreSQL / concurrency            254 passed / 189.89s
+non-PostgreSQL                      642 passed / 88.45s
+full repository                     896 passed / 269.36s
+collection                          896 / 1.80s
+uv lock / locked sync / build       PASS / PASS / PASS
+Ruff format / lint                  PASS / PASS
+Pyright                             0 errors / 0 warnings
+skip / xfail / rerun                0 / 0 / 0
+supported 40P01 / unexpected 40001  0 / 0
+negative controls                   40P01 x1 / 40001 x2
+warning census                      1 reviewed Starlette deprecation
+```
+
+Verified external database and artifact identity:
+
+```text
+PostgreSQL          16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+database identity   netautotest
+bounded SELECT 1    PASS
+wheel               netauto-0.2.0-py3-none-any.whl
+wheel size          165978 byte
+wheel members       77
+wheel SHA-256       38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size   48238 byte
+runtime-lock SHA-256 0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Production, public API/CLI behavior, Health, schema, migration, dependencies,
+`uv.lock`, runtime lock content and distributed artifact content remain
+unchanged. No PR, workflow, tag, Release, acceptance record or artifact
+publication is part of this candidate.
 
 ## Reviewer findings
 
@@ -398,9 +475,9 @@ whole-corpus consistency-closure gate. Only after both reviewer-owned gates are
 
 ## Immediate next action
 
-Apply the bounded review-fix for `ASIS-RF-01 ... ASIS-RF-04` from the current
-`M2` branch, preserve all accepted product and AS-IS material outside the explicit
-scope, rerun the complete required gate, and hand off only:
+Review the bounded closure of `ASIS-RF-01 ... ASIS-RF-04` on the exact published
+`M2` candidate. The consistency-closure gate remains blocked pending reviewer
+acceptance. The implementer handoff is only:
 
 ```text
 AS-IS consolidation    CANDIDATE READY FOR REVIEW
