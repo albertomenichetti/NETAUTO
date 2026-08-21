@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -15,9 +15,9 @@ branch      M2
 ```text
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
-current gate                AS-IS consolidation — REVIEW CHANGES REQUIRED
+current gate                AS-IS consolidation — CANDIDATE READY FOR REVIEW
 next gate                   consistency closure — BLOCKED
-blockers                    ASIS-RF-01 component-declaration residual
+blockers                    none in candidate; reviewer inspection pending
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -28,8 +28,9 @@ M2-S09 final-acceptance gate are complete.
 
 The residual consolidation candidate at
 `3121597e39b9a038d574b9f68f4370deffa1e50f` is rejected only for one bounded
-current-AS-IS documentation/harness inconsistency. The accepted product, schema,
-API, CLI, Health, runtime behavior and final M2-S09 evidence are not reopened.
+current-AS-IS documentation/harness inconsistency. The final residual candidate
+closes that inconsistency without reopening the accepted product, schema, API,
+CLI, Health, runtime behavior or final M2-S09 evidence.
 
 ## Design and delivery gates
 
@@ -40,7 +41,7 @@ API, CLI, Health, runtime behavior and final M2-S09 evidence are not reopened.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | REVIEW CHANGES REQUIRED |
+| AS-IS consolidation | CANDIDATE READY FOR REVIEW |
 | Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
 | Delivery | NOT DELIVERED |
 | Merge | NOT EXECUTED |
@@ -126,8 +127,12 @@ second reviewer rejection         7df7030ddb83e70a0005072dc007448e0370a789
 differential-plan test commit     f929edbec2fd81415e34c171c83d5913b88e29b0
 residual AS-IS owner commit       c92d8ca6b8114d4334792dbb60cc0ad7d235f23e
 residual candidate                3121597e39b9a038d574b9f68f4370deffa1e50f
-third reviewer rejection          this commit
-current reviewer decision         REVIEW CHANGES REQUIRED
+third reviewer rejection          4914d885163a726c3e8f180d50a258b3e318e387
+final residual starting HEAD      4914d885163a726c3e8f180d50a258b3e318e387
+component sentinel commit         49c6f0d1bf753602b4ddee8a07c9ca0c67b411c9
+component owner commit            08076564d7393d588adce8cd1942b40b3536a926
+candidate evidence/status         this commit
+current implementer state         CANDIDATE READY FOR REVIEW
 ```
 
 The exact-remote evidence reported for `3121597e...` is retained as
@@ -159,13 +164,12 @@ unchanged.
 
 ## Finite reviewer finding ledger
 
-### `ASIS-RF-01` — OPEN, bounded component-declaration residual
+### `ASIS-RF-01` — CLOSED in candidate
 
-The 41-entry registry, global row order, three advisory gates, reusable exact
-binding rules and the other differential cases are present. One `OT.R` clause
-still classifies component locking by whether the target identity changed rather
-than whether the complete physical component declaration is inserted or
-reinserted.
+The 41-entry registry, global row order, three advisory gates and reusable exact
+binding rules remain intact. The `OT.R` plan classifies component locking by
+whether the complete physical declaration is inserted or reinserted, rather than
+only by a change of target identity.
 
 Required current meaning:
 
@@ -182,9 +186,8 @@ removed component declaration
 
 The first case includes a changed `target_template_id`, a changed `position` with
 the same target, or any future change to a persisted component field that causes
-physical reinsertion. The current owner and permanent sentinel must not use
-`changed component target` / `unchanged component target` as the classification
-boundary.
+physical reinsertion. The permanent sentinel rejects the narrower
+`changed component target` / `unchanged component target` classification.
 
 ### `ASIS-RF-02` — CLOSED, unchanged
 
@@ -220,9 +223,9 @@ no copy/paste of the M2 TO-BE corpus
 Cycle names remain allowed only in the concise provenance section of
 `docs/architecture/README.md` and in links to historical records.
 
-## Reviewer-authorized final residual delta
+## Final residual delta
 
-The next bounded review-fix may modify only:
+The bounded review-fix modified only:
 
 ```text
 docs/architecture/concurrency.md
@@ -231,8 +234,8 @@ docs/milestones/M2/status.md
 ```
 
 All other current architecture owners remain frozen at the residual-candidate
-boundary. Preserve the accepted closure of `ASIS-RF-02`, `ASIS-RF-03` and
-`ASIS-RF-04`.
+boundary. The accepted closure of `ASIS-RF-02`, `ASIS-RF-03` and `ASIS-RF-04`
+is unchanged.
 
 Do not modify:
 
@@ -252,30 +255,34 @@ docs/milestones/M2/architecture/
 docs/milestones/M2/steps.md
 docs/milestones/M2/acceptance.md
 docs/milestones/M2/evidence/
-docs/milestones/M2/wip/
+docs/milestones/M2/wip/  (non-normative execution aids)
 ```
 
 No contract, architecture-set or implementation reopen is authorized.
 
-## Required final residual gate
+## Final residual candidate evidence
 
-Execute at least:
+Pre-push evidence on the complete owner/test correction tree:
 
 ```text
-focused current-AS-IS regression
-complete tests/test_m2_s08_regression.py
-traceability and documentation-policy tests
-15-file/link/temporal/milestone-ID/placeholder audits
-schema / Alembic
-API / CLI / Health / runtime
-PostgreSQL / concurrency
-non-PostgreSQL
-full repository
-quality / build / collection
-exact-remote post-push rerun
+focused current-AS-IS regression    1 passed / 0.77s
+complete S08 regression             4 passed / 4.59s
+traceability/documentation policy   117 passed / 38.56s
+target files / links                15 / 35; unresolved 0
+temporal / milestone / placeholder  0 / 0 / 0
+schema / Alembic                    33 passed / 18.91s; compare_metadata []
+API / error / CLI                   277 passed / 67.22s
+runtime / schema guard / Health     121 passed / 15.25s
+PostgreSQL / concurrency            254 passed / 187.49s
+non-PostgreSQL                      642 passed / 86.80s
+full repository                     896 passed / 274.00s
+collection                          896 / 1.82s
+uv lock / locked sync / build       PASS / PASS / PASS
+Ruff format / lint                  PASS / PASS
+Pyright                             0 errors / 0 warnings
 ```
 
-Required outcome:
+Outcome census:
 
 ```text
 skip / xfail / rerun             0 / 0 / 0
@@ -286,6 +293,18 @@ compare_metadata                 []
 new unexplained warnings         0
 artifact identity                unchanged
 open consolidation findings      0
+```
+
+Verified environment and immutable artifact evidence:
+
+```text
+PostgreSQL                       16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+database identity                netautotest
+bounded SELECT 1                 PASS
+wheel size / members             165978 byte / 77
+wheel SHA-256                    38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size                48238 byte
+runtime-lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
 ## Candidate and review boundary
@@ -313,9 +332,8 @@ may M2 become `DELIVERED`.
 
 ## Immediate next action
 
-Apply the bounded component-declaration residual closure from the current `M2`
-branch, preserve every other accepted owner and rerun the complete gate. The
-implementer handoff is only:
+Reviewer inspection of the final residual candidate is the only immediate next
+action. The implementer handoff is:
 
 ```text
 AS-IS consolidation    CANDIDATE READY FOR REVIEW
