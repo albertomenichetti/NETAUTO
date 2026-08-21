@@ -119,6 +119,18 @@ def _documented_lock_plan_registry(
     return plans
 
 
+def _documented_reusable_target_intents(relative: str) -> tuple[str, ...]:
+    text = (ROOT / relative).read_text()
+    match = re.search(
+        r"Dependency targets\nfollow these reusable initial intents:\n\n"
+        r"```text\n(?P<body>.*?)```",
+        text,
+        re.DOTALL,
+    )
+    assert match is not None
+    return tuple(line.rstrip() for line in match.group("body").splitlines())
+
+
 def test_all_preserved_guarantees_have_concrete_collected_targets() -> None:
     expected = {
         "stable RelationshipDefinition topology and symmetry",
@@ -275,3 +287,41 @@ def test_public_route_error_and_schema_runtime_deltas_are_exact() -> None:
         assert boundary, mutation
         documented_modes = set(re.findall(r"@([A-Za-z0-9_]+)", row_plan))
         assert documented_modes <= {"KS", "S", "NKU", "U"}, mutation
+
+    assert _documented_reusable_target_intents(concurrency_owner) == (
+        "explicit new or rebound exact dependency  target H@KS + target V@S",
+        "implicit new or rebound exact dependency  target H@S  + target V@S",
+        "same-pin physical reinsertion             target H@KS + target V@KS",
+        "unchanged physical declaration/reference  no outgoing target lock",
+        "removed declaration/reference             no outgoing target lock",
+        "historical clone into a new physical row  target H@KS + target V@KS",
+    )
+    owner_text = (ROOT / concurrency_owner).read_text()
+    assert "Every target named by the command" not in owner_text
+    assert "retained/inserted targets" not in owner_text
+
+    ot_revise_plan = lock_plans["OT.R"][1]
+    for sentinel in (
+        "unchanged parent: no target reacquisition",
+        "changed explicit parent: `OT.H@KS + OT.V@S`",
+        "changed implicit parent: `OT.H@S + OT.V@S`",
+        "changed component target: `OT.H@KS`",
+        "unchanged component target: no outgoing target lock",
+        "removed component declaration: no outgoing target lock",
+        "unchanged property declaration: no outgoing target lock",
+        "removed property declaration: no outgoing target lock",
+        "same-pin physical reinsertion: `DT.H@KS + DT.V@KS`",
+        "explicit new/rebound property: `DT.H@KS + DT.V@S`",
+        "implicit new/rebound property: `DT.H@S + DT.V@S`",
+    ):
+        assert sentinel in ot_revise_plan
+
+    rd_revise_plan = lock_plans["RD.R"][1]
+    for sentinel in (
+        "unchanged property declaration: no outgoing target lock",
+        "removed property declaration: no outgoing target lock",
+        "same-pin physical reinsertion: `DT.H@KS + DT.V@KS`",
+        "explicit new/rebound property: `DT.H@KS + DT.V@S`",
+        "implicit new/rebound property: `DT.H@S + DT.V@S`",
+    ):
+        assert sentinel in rd_revise_plan
