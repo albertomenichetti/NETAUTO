@@ -185,7 +185,9 @@ REVISE bodies contain only the desired mutable candidate. PUBLISH and DELETE_DRA
 
 ## PrimitiveType public lexical contract
 
-One parser/canonicalizer is reused across Object values, DataType constraints/enums and ObjectTemplate migration defaults.
+One parser/canonicalizer is reused across Object property values, Relationship
+property values, DataType constraints and enum members, and ObjectTemplate
+migration defaults.
 
 - `core.string`: JSON string; no trim/lowercase normalization.
 - `core.integer`: exact JSON integer; booleans rejected.

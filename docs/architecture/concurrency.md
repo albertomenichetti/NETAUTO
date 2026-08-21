@@ -72,22 +72,27 @@ the caller as protected-state absence; they are not silently ignored.
 
 ## Canonical row ordering
 
-Rows are sorted by a fixed class order:
+Every plan uses this exact global row-class order:
 
 ```text
-ObjectTemplate lineage headers and ancestors
-DataType lineage headers
-RelationshipDefinition headers
-Object headers
-Relationship headers
-exact version rows within their owner
-owned declaration / closure authorities where explicitly locked
+10  ObjectTemplate headers and exact versions
+20  DataType headers and exact versions
+30  RelationshipDefinition headers and exact versions
+40  Object rows
+50  factual Relationship rows
 ```
 
-Within a class, owner UUID, exact version and remaining key components use a
-stable ascending order. ObjectTemplate ancestors are ordered root-to-leaf before
-the dependent lineage. Target identity is locked before an existing owner when a
-direct FK is rebound. A child/reference target is locked before child DML.
+Within a versioned owner, the header precedes its exact versions and exact
+versions are ordered by increasing version number. ObjectTemplate ancestors are
+ordered root-to-leaf before descendants. Unrelated owners and ordinary Object or
+Relationship rows use UUID ascending as the deterministic tie-break.
+
+A direct-FK target is locked before its existing mutable owner. This applies to
+ObjectTemplate parent-version rebind, Object schema change and Relationship
+schema change. A child/reference target is locked before the child DML that
+creates or reinserts its reference. Duplicate intents coalesce to the strongest
+initial mode. A normal path performs no row-lock upgrade and adds no explicit row
+lock after DML begins.
 
 The same ordering applies regardless of discovery order or input array order.
 
@@ -105,6 +110,74 @@ acquired before any NETAUTO row lock.
 A gate waiter owns no planned NETAUTO row lock. After gate acquisition it reads
 the protected predicate from a fresh statement. Gates are internal
 serialization mechanisms, not public busy/conflict outcomes.
+
+## Complete initial lock-plan registry
+
+This registry is the current finite authority for all 41 mutation primitives.
+`H` denotes a stable header and `V` an exact version row. A target selected by a
+command follows these reusable initial intents:
+
+```text
+explicit new exact binding       target H@KS + target V@S
+implicit default binding         target H@S  + target V@S
+historical cloned exact binding  target H@KS + target V@KS
+differential declaration target  new/rebound@S; same-pin reinsertion@KS;
+                                 unchanged/removed has no outgoing target lock
+```
+
+Every target named by the command is included before acquisition. A changed
+target set discovered by the protected reread makes the plan stale and restarts
+the whole Unit of Work before DML.
+
+| Mutation | Gate | Complete initial row plan | Candidate-dependent targets | Fresh recheck / arbitration boundary |
+|---|---|---|---|---|
+| `DT.C` | `none` | none; the lineage row is new | none | qualified-name uniqueness is final arbitration |
+| `DT.CN` | `none` | own `DT.H@NKU`; exact source `DT.V@KS` | exact source | version set, maximum and source eligibility |
+| `DT.R` | `none` | own `DT.H@KS`; exact DRAFT `DT.V@NKU` | exact DRAFT | revision, status and complete constraints |
+| `DT.P` | `none` | own `DT.H@NKU`; exact DRAFT `DT.V@NKU` | exact DRAFT | revision, status, history and default policy |
+| `DT.SD` | `none` | own `DT.H@NKU`; target `DT.V@S` | selected exact version | same-lineage PUBLISHED target and default policy |
+| `DT.CD` | `none` | own `DT.H@NKU` | none | current default policy |
+| `DT.D` | `none` | own `DT.H@S`; target `DT.V@NKU` | selected exact version | lifecycle/default plus non-locking active-consumer scan |
+| `DT.DD` | `none` | own `DT.H@NKU`; exact DRAFT `DT.V@U` | exact DRAFT | revision, status and aggregate membership |
+| `DT.DL` | `MODEL_ROOT_DELETE_GATE` | root `DT.H@U` | root lineage | owned aggregate and fresh external blockers; FK RESTRICT arbitrates |
+| `DT.DESC` | `none` | own `DT.H@NKU` | none | current lineage and complete metadata value |
+| `OT.C` | `none` | parent/component target `OT.H@KS`; new explicit parent `OT.V@S`; implicit parent `OT.H@S + OT.V@S`; property target `DT.H@KS + DT.V@S`, or `DT.H@S + DT.V@S` when implicit | declared parent, component and property targets | name, ancestry, target existence and exact PUBLISHED admission |
+| `OT.CN` | `none` | cloned parent/component `OT.H@KS`; cloned parent `OT.V@KS`; cloned property `DT.H@KS + DT.V@KS`; own `OT.H@NKU`; exact source `OT.V@KS` | exact source and all cloned references | version set, source eligibility and target lifetime |
+| `OT.R` | `none` | candidate parent/component targets under the reusable rules; property targets under the differential rules; own `OT.H@KS`; exact DRAFT `OT.V@NKU` | complete replacement declarations and parent selection | revision, status, ancestry and differential target set |
+| `OT.P` | `none` | parent target `OT.H@KS + OT.V@S`; property target `DT.H@KS + DT.V@S`; own `OT.H@NKU`; exact DRAFT `OT.V@NKU` | complete effective parent/property dependency set | revision, complete member history, PUBLISHED dependencies and default policy |
+| `OT.SD` | `none` | own `OT.H@NKU`; target `OT.V@S` | selected exact version | same-lineage PUBLISHED target and default policy |
+| `OT.CD` | `none` | own `OT.H@NKU` | none | current default policy |
+| `OT.D` | `none` | own `OT.H@S`; target `OT.V@NKU` | selected exact version | lifecycle/default plus non-locking active-child scan |
+| `OT.DD` | `none` | own `OT.H@NKU`; exact DRAFT `OT.V@U` | exact DRAFT | revision, status and aggregate membership |
+| `OT.DL` | `MODEL_ROOT_DELETE_GATE` | root `OT.H@U` | root lineage | owned aggregate and fresh external blockers; FK RESTRICT arbitrates |
+| `OT.DESC` | `none` | own `OT.H@NKU` | none | current lineage and complete metadata value |
+| `OBJ.C` | `none` | selected target `OT.H@KS + OT.V@S`, or `OT.H@S + OT.V@S` when implicit | selected/default ObjectTemplateVersion | default identity, non-abstract lineage and exact PUBLISHED admission |
+| `OBJ.RN` | `none` | Object `OBJ@NKU` | exact Object | current complete Object state |
+| `OBJ.DC` | `none` | Object `OBJ@NKU` | exact Object | complete properties and exact schema pin; no-op arbitration |
+| `OBJ.SC` | `none` | target `OT.H@KS + OT.V@S`; then Object `OBJ@NKU` | exact target ObjectTemplateVersion | fresh source state, forward target and preserve-or-fail migration |
+| `OBJ.A` | `OWNERSHIP_GRAPH_WRITE_GATE` | parent Object `OBJ@NKU`; child Object `OBJ@KS`; coalesced and UUID ordered | parent, child and current slot | current ownership fact, effective slot and complete cycle predicate |
+| `OBJ.DET` | `none` | parent Object `OBJ@NKU` | parent and requested exact edge | current exact ownership fact; removal takes no child target lock |
+| `OBJ.DEL` | `none` | Object `OBJ@U` | exact Object | complete reference blockers; FK RESTRICT arbitrates |
+| `RD.C` | `RELATIONSHIP_DEFINITION_CONFLICT_GATE` | endpoint `OT.H@KS`; property target `DT.H@KS + DT.V@S`, or `DT.H@S + DT.V@S` when implicit | endpoint lineages and initial properties | certified Definition set, topology and exact PUBLISHED dependencies |
+| `RD.RN` | `RELATIONSHIP_DEFINITION_CONFLICT_GATE` | Definition `RD.H@KS` | exact Definition | complete certified Definition/Resolution set after the gate |
+| `RD.CN` | `none` | cloned property `DT.H@KS + DT.V@KS`; own `RD.H@NKU`; exact source `RD.V@KS` | exact source and all cloned property targets | version set, source eligibility and target lifetime |
+| `RD.R` | `none` | property targets under the differential rules; own `RD.H@KS`; exact DRAFT `RD.V@NKU` | complete replacement property set | revision, status, complete history and differential target set |
+| `RD.P` | `none` | property target `DT.H@KS + DT.V@S`; own `RD.H@NKU`; exact DRAFT `RD.V@NKU` | complete property dependency set | revision, complete property history, PUBLISHED dependencies and default policy |
+| `RD.SD` | `none` | own `RD.H@NKU`; target `RD.V@S` | selected exact version | same-Definition PUBLISHED target and default policy |
+| `RD.CD` | `none` | own `RD.H@NKU` | none | current default policy |
+| `RD.D` | `none` | own `RD.H@S`; target `RD.V@NKU` | selected exact version | lifecycle and default; existing factual pins remain valid |
+| `RD.DD` | `none` | own `RD.H@NKU`; exact DRAFT `RD.V@U` | exact DRAFT | revision, status and aggregate membership |
+| `RD.DL` | `MODEL_ROOT_DELETE_GATE` | root Definition `RD.H@U` | root Definition | owned aggregate and fresh factual/external blockers; FK RESTRICT arbitrates |
+| `REL.C` | `none` | Definition `RD.H@KS` for explicit selection or `RD.H@S` for implicit selection; exact target `RD.V@S`; endpoint Objects `OBJ@KS` in UUID order | selected/default RDV and endpoint pair | default, exact PUBLISHED schema, endpoints, complete closure and exact-view ownership |
+| `REL.DC` | `none` | factual Relationship `REL@NKU` | exact Relationship | complete exact pin/properties/closure; no-op arbitration |
+| `REL.SC` | `none` | Definition `RD.H@KS`; target `RD.V@S`; factual Relationship `REL@NKU` | exact target RelationshipDefinitionVersion | fresh source fact, forward PUBLISHED target and preserve-or-fail migration |
+| `REL.DEL` | `none` | factual Relationship `REL@U` | exact Relationship | exact-ID presence, complete fact and deletion event state |
+
+All row identities above are sorted through the global class and intra-class
+rules before acquisition. CREATE_NEXT holds every cloned reference for physical
+lifetime; differential declaration replacement holds every inserted or
+reinserted target before child DML. Active-consumer reverse scans remain
+non-locking so dependency ownership cannot invert into consumer ownership.
 
 ## Versioned model realization
 

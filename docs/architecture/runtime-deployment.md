@@ -126,9 +126,11 @@ netauto/release/runtime.pylock.toml
 distribution metadata
 ```
 
-It contains no settings, secrets, certificates, source checkout, test/dev tools
-or deployment assets. Installed distribution metadata is the sole release-version
-authority shared by server, CLI and migration graph.
+The wheel contains the Settings implementation and runtime composition code. It
+contains no operator-supplied settings or configuration values, secrets,
+certificates, source checkout, test/development tooling or deployment assets.
+Installed distribution metadata is the sole release-version authority shared by
+server, CLI and migration graph.
 
 ## Exact runtime dependency lock
 
@@ -280,4 +282,3 @@ failure; Health and CLI outside a checkout; start/stop/restart and transport cut
 protected secret procedure; connection capacity; HTTPS trusted, untrusted and
 hostname-mismatch behavior; and static absence of automatic migration,
 orchestration/security/secret surfaces.
-

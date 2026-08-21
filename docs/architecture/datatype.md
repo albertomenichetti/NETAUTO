@@ -6,7 +6,11 @@ A `DataType` is a stable, named and versioned scalar domain. A `DataTypeVersion`
 
 This document owns DataType identity, version lifecycle, scalar constraints, defaults and value semantics. Persistence, public transport and concurrency realization belong to their respective current owners.
 
-DataType does not model object structure, entity identity, relationships, ownership or collection cardinality. Collection semantics belong to ObjectTemplate properties.
+DataType does not model object structure, entity identity, relationships,
+ownership or collection cardinality. A DataTypeVersion determines validity of
+one atomic value. `SCALAR` / `LIST` cardinality belongs to the consuming property
+declaration: ObjectTemplateVersion properties and RelationshipDefinitionVersion
+properties are the current declaration families.
 
 ## Stable identity and naming
 
@@ -175,7 +179,11 @@ Canonicalization is performed only when it is intrinsic and unambiguous for the 
 - `core.ip_prefix`: valid canonical network; non-zero host bits are rejected rather than repaired.
 - `core.byte_size`: exact non-negative byte quantity; SI and IEC units are distinct; fractional input is valid only when it converts to an exact integer byte count.
 
-The canonical persistence representation is defined in `persistence.md` and the accepted public lexical representation in `api.md`. Object values, constraint/enum members and property `migration_default` reuse the same primitive parsing/canonicalization semantics.
+The canonical persistence representation is defined in `persistence.md` and the
+accepted public lexical representation in `api.md`. Object and Relationship
+property values, DataType constraint/enum members and ObjectTemplate property
+`migration_default` values reuse the same primitive parsing/canonicalization
+semantics.
 
 JSON Schema is not a validation language, compile target or public schema representation of DataType.
 
@@ -206,9 +214,18 @@ A current default cannot be deprecated.
 
 ## Active model graph and deprecation
 
-A PUBLISHED DataTypeVersion cannot be deprecated while a direct PUBLISHED model consumer depends on it through a lifecycle-sensitive exact binding.
+A PUBLISHED DataTypeVersion cannot be deprecated while a direct PUBLISHED model
+consumer depends on it through a lifecycle-sensitive exact binding.
 
-The principal current consumer is a PUBLISHED ObjectTemplateVersion property exact-pin to a DataTypeVersion.
+The direct active PUBLISHED consumers are:
+
+```text
+PUBLISHED ObjectTemplateVersion property exact pin
+PUBLISHED RelationshipDefinitionVersion property exact pin
+```
+
+Either family blocks deprecation of the exact DataTypeVersion on which it
+depends.
 
 DRAFT consumers and DEPRECATED consumers do not block deprecation. Direct active-consumer checks are sufficient because every PUBLISHED consumer must itself satisfy the active-model invariant.
 

@@ -401,10 +401,15 @@ Append-only lifecycle behavior is an application/kernel contract, not a complian
 
 One canonical primitive persistence mapping is reused across:
 
-- DataType constraints/enums;
-- property migration defaults;
-- Object values;
-- lifecycle intrinsic snapshots.
+- DataType constraints and enum members;
+- ObjectTemplate migration defaults;
+- Object current properties;
+- Relationship current properties;
+- Object lifecycle intrinsic snapshots;
+- Relationship lifecycle factual `before_state` / `after_state` snapshots.
+
+Relationship state uses this same codec; there is no second Relationship
+primitive representation.
 
 Mapping:
 
