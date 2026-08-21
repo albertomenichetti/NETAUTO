@@ -13,6 +13,7 @@ from tests.test_m2_traceability import (
     M2_CONCURRENCY_SCENARIOS,
     M2_DELIVERED_SCENARIO_DELTA_ALLOWLIST,
     M2_DELTA_ALLOWLIST,
+    M2_MUTATIONS,
     M2_PREDICATE_TO_SCENARIOS,
     M2_PUBLIC_WIRE_DELTA_ALLOWLIST,
     M2_SCENARIO_TO_RECIPES,
@@ -71,6 +72,51 @@ def _migration_identity(path: Path) -> tuple[object, object]:
         if node.target.id in {"revision", "down_revision"}:
             assignments[node.target.id] = ast.literal_eval(node.value)
     return assignments["revision"], assignments["down_revision"]
+
+
+def _documented_row_class_order(relative: str) -> tuple[tuple[int, str], ...]:
+    text = (ROOT / relative).read_text()
+    match = re.search(
+        r"^Every plan uses this exact global row-class order:\n\n"
+        r"```text\n(?P<body>.*?)```",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None
+    entries: list[tuple[int, str]] = []
+    for line in match.group("body").splitlines():
+        entry = re.fullmatch(r"(\d+)  (.+)", line)
+        assert entry is not None
+        entries.append((int(entry.group(1)), entry.group(2)))
+    return tuple(entries)
+
+
+def _documented_lock_plan_registry(
+    relative: str,
+) -> dict[str, tuple[str, str, str, str]]:
+    text = (ROOT / relative).read_text()
+    section = re.search(
+        r"^## Complete initial lock-plan registry\n(?P<body>.*?)"
+        r"^## Versioned model realization$",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert section is not None
+    plans: dict[str, tuple[str, str, str, str]] = {}
+    for line in section.group("body").splitlines():
+        if not line.startswith("| `"):
+            continue
+        cells = tuple(cell.strip() for cell in line.strip("|").split("|"))
+        assert len(cells) == 5
+        mutation = cells[0].removeprefix("`").removesuffix("`")
+        assert mutation not in plans
+        plans[mutation] = (
+            cells[1].removeprefix("`").removesuffix("`"),
+            cells[2],
+            cells[3],
+            cells[4],
+        )
+    return plans
 
 
 def test_all_preserved_guarantees_have_concrete_collected_targets() -> None:
@@ -204,3 +250,28 @@ def test_public_route_error_and_schema_runtime_deltas_are_exact() -> None:
     )
     assert [path.name for path in migration_paths] == ["0001_m2_durable_kernel.py"]
     assert _migration_identity(migration_paths[0]) == ("0001_m2_kernel", None)
+
+    concurrency_owner = "docs/architecture/concurrency.md"
+    assert _documented_row_class_order(concurrency_owner) == (
+        (10, "ObjectTemplate headers and exact versions"),
+        (20, "DataType headers and exact versions"),
+        (30, "RelationshipDefinition headers and exact versions"),
+        (40, "Object rows"),
+        (50, "factual Relationship rows"),
+    )
+    lock_plans = _documented_lock_plan_registry(concurrency_owner)
+    assert set(lock_plans) == M2_MUTATIONS
+    assert len(lock_plans) == 41
+    allowed_gates = {
+        "OWNERSHIP_GRAPH_WRITE_GATE",
+        "RELATIONSHIP_DEFINITION_CONFLICT_GATE",
+        "MODEL_ROOT_DELETE_GATE",
+    }
+    assert {gate for gate, *_ in lock_plans.values() if gate != "none"} == allowed_gates
+    for mutation, (gate, row_plan, targets, boundary) in lock_plans.items():
+        assert gate == "none" or gate in allowed_gates, mutation
+        assert row_plan, mutation
+        assert targets, mutation
+        assert boundary, mutation
+        documented_modes = set(re.findall(r"@([A-Za-z0-9_]+)", row_plan))
+        assert documented_modes <= {"KS", "S", "NKU", "U"}, mutation
