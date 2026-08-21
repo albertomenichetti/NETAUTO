@@ -114,20 +114,27 @@ serialization mechanisms, not public busy/conflict outcomes.
 ## Complete initial lock-plan registry
 
 This registry is the current finite authority for all 41 mutation primitives.
-`H` denotes a stable header and `V` an exact version row. A target selected by a
-command follows these reusable initial intents:
+`H` denotes a stable header and `V` an exact version row. Dependency targets
+follow these reusable initial intents:
 
 ```text
-explicit new exact binding       target H@KS + target V@S
-implicit default binding         target H@S  + target V@S
-historical cloned exact binding  target H@KS + target V@KS
-differential declaration target  new/rebound@S; same-pin reinsertion@KS;
-                                 unchanged/removed has no outgoing target lock
+explicit new or rebound exact dependency  target H@KS + target V@S
+implicit new or rebound exact dependency  target H@S  + target V@S
+same-pin physical reinsertion             target H@KS + target V@KS
+unchanged physical declaration/reference  no outgoing target lock
+removed declaration/reference             no outgoing target lock
+historical clone into a new physical row  target H@KS + target V@KS
 ```
 
-Every target named by the command is included before acquisition. A changed
-target set discovered by the protected reread makes the plan stale and restarts
-the whole Unit of Work before DML.
+Every target whose reference is created or physically reinserted, together with
+every target required by the command's semantic admission, is included in the
+complete initial plan. An unchanged reference receives no outgoing target lock.
+A removed reference receives no outgoing target lock.
+
+Target acquisition precedes the DML that creates or reinserts the reference. A
+changed target set discovered by the protected reread makes the plan stale and
+restarts the whole Unit of Work before DML; the current attempt never appends a
+lock after DML or upgrades a normal-path row lock.
 
 | Mutation | Gate | Complete initial row plan | Candidate-dependent targets | Fresh recheck / arbitration boundary |
 |---|---|---|---|---|
@@ -143,7 +150,7 @@ the whole Unit of Work before DML.
 | `DT.DESC` | `none` | own `DT.H@NKU` | none | current lineage and complete metadata value |
 | `OT.C` | `none` | parent/component target `OT.H@KS`; new explicit parent `OT.V@S`; implicit parent `OT.H@S + OT.V@S`; property target `DT.H@KS + DT.V@S`, or `DT.H@S + DT.V@S` when implicit | declared parent, component and property targets | name, ancestry, target existence and exact PUBLISHED admission |
 | `OT.CN` | `none` | cloned parent/component `OT.H@KS`; cloned parent `OT.V@KS`; cloned property `DT.H@KS + DT.V@KS`; own `OT.H@NKU`; exact source `OT.V@KS` | exact source and all cloned references | version set, source eligibility and target lifetime |
-| `OT.R` | `none` | candidate parent/component targets under the reusable rules; property targets under the differential rules; own `OT.H@KS`; exact DRAFT `OT.V@NKU` | complete replacement declarations and parent selection | revision, status, ancestry and differential target set |
+| `OT.R` | `none` | unchanged parent: no target reacquisition; changed explicit parent: `OT.H@KS + OT.V@S`; changed implicit parent: `OT.H@S + OT.V@S`; changed component target: `OT.H@KS`; unchanged component target: no outgoing target lock; removed component declaration: no outgoing target lock; unchanged property declaration: no outgoing target lock; removed property declaration: no outgoing target lock; same-pin physical reinsertion: `DT.H@KS + DT.V@KS`; explicit new/rebound property: `DT.H@KS + DT.V@S`; implicit new/rebound property: `DT.H@S + DT.V@S`; own `OT.H@KS`; exact DRAFT `OT.V@NKU` | changed or physically reinserted declarations, changed parent selection and semantic-admission targets | revision, status, ancestry and differential target set |
 | `OT.P` | `none` | parent target `OT.H@KS + OT.V@S`; property target `DT.H@KS + DT.V@S`; own `OT.H@NKU`; exact DRAFT `OT.V@NKU` | complete effective parent/property dependency set | revision, complete member history, PUBLISHED dependencies and default policy |
 | `OT.SD` | `none` | own `OT.H@NKU`; target `OT.V@S` | selected exact version | same-lineage PUBLISHED target and default policy |
 | `OT.CD` | `none` | own `OT.H@NKU` | none | current default policy |
@@ -161,7 +168,7 @@ the whole Unit of Work before DML.
 | `RD.C` | `RELATIONSHIP_DEFINITION_CONFLICT_GATE` | endpoint `OT.H@KS`; property target `DT.H@KS + DT.V@S`, or `DT.H@S + DT.V@S` when implicit | endpoint lineages and initial properties | certified Definition set, topology and exact PUBLISHED dependencies |
 | `RD.RN` | `RELATIONSHIP_DEFINITION_CONFLICT_GATE` | Definition `RD.H@KS` | exact Definition | complete certified Definition/Resolution set after the gate |
 | `RD.CN` | `none` | cloned property `DT.H@KS + DT.V@KS`; own `RD.H@NKU`; exact source `RD.V@KS` | exact source and all cloned property targets | version set, source eligibility and target lifetime |
-| `RD.R` | `none` | property targets under the differential rules; own `RD.H@KS`; exact DRAFT `RD.V@NKU` | complete replacement property set | revision, status, complete history and differential target set |
+| `RD.R` | `none` | unchanged property declaration: no outgoing target lock; removed property declaration: no outgoing target lock; same-pin physical reinsertion: `DT.H@KS + DT.V@KS`; explicit new/rebound property: `DT.H@KS + DT.V@S`; implicit new/rebound property: `DT.H@S + DT.V@S`; own `RD.H@KS`; exact DRAFT `RD.V@NKU` | changed or physically reinserted properties and semantic-admission targets | revision, status, complete history and differential target set |
 | `RD.P` | `none` | property target `DT.H@KS + DT.V@S`; own `RD.H@NKU`; exact DRAFT `RD.V@NKU` | complete property dependency set | revision, complete property history, PUBLISHED dependencies and default policy |
 | `RD.SD` | `none` | own `RD.H@NKU`; target `RD.V@S` | selected exact version | same-Definition PUBLISHED target and default policy |
 | `RD.CD` | `none` | own `RD.H@NKU` | none | current default policy |
@@ -189,9 +196,11 @@ holds in the initial plan.
 
 REVISE, PUBLISH and DELETE_DRAFT lock the stable header before the exact DRAFT,
 stabilize the generation and recheck `expected_revision` and status. Differential
-declaration replacement locks retained/inserted targets before child DML and
-performs deterministic delete/upsert ordering. It never creates a transient
-logical gap visible to a competing target delete.
+declaration replacement locks every target for a physically inserted or
+reinserted declaration before child DML and performs deterministic delete/upsert
+ordering. Unchanged and removed declarations take no outgoing target lock. The
+replacement never creates a transient logical gap visible to a competing target
+delete.
 
 ### Publication, defaults and active graph
 
