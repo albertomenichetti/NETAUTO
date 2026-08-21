@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -15,9 +15,9 @@ branch      M2
 ```text
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
-current gate                AS-IS consolidation — REVIEW CHANGES REQUIRED
+current gate                AS-IS consolidation — CANDIDATE READY FOR REVIEW
 next gate                   consistency closure — BLOCKED
-blockers                    ASIS-RF-01 residual; ASIS-RF-04 residual
+blockers                    none in candidate; reviewer inspection pending
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -26,10 +26,12 @@ The M2 contract, architecture set and implementation decomposition remain
 `FINAL / FROZEN`. No architecture reopen is active. Implementation and the
 M2-S09 final-acceptance gate are complete.
 
-The corrected consolidation candidate at
-`1a4c4499bcf063b0d7fcd763401a47cde4d2f1d9` is rejected only for two bounded
-current-AS-IS documentation/harness residuals. The accepted product, schema,
-API, CLI, Health, runtime behavior and final M2-S09 evidence are not reopened.
+The reviewer rejected the corrected consolidation candidate at
+`1a4c4499bcf063b0d7fcd763401a47cde4d2f1d9` through
+`7df7030ddb83e70a0005072dc007448e0370a789` for two bounded current-AS-IS
+documentation/harness residuals. The residual candidate closes those two
+findings without reopening the accepted product, schema, API, CLI, Health,
+runtime behavior or final M2-S09 evidence.
 
 ## Design and delivery gates
 
@@ -40,7 +42,7 @@ API, CLI, Health, runtime behavior and final M2-S09 evidence are not reopened.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | REVIEW CHANGES REQUIRED |
+| AS-IS consolidation | CANDIDATE READY FOR REVIEW |
 | Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
 | Delivery | NOT DELIVERED |
 | Merge | NOT EXECUTED |
@@ -151,14 +153,22 @@ first reviewer rejection         1e3bba0e91e561945c64f13b8f640864c0f318d0
 lock-plan test commit            4d5898196cb92add9c65b04a5e9b03d09158325e
 AS-IS owner-fix commit           e2c44c38c172e912b264b0e95e304daa3fce8163
 corrected candidate evidence     1a4c4499bcf063b0d7fcd763401a47cde4d2f1d9
-current reviewer decision        REVIEW CHANGES REQUIRED
+second reviewer rejection        7df7030ddb83e70a0005072dc007448e0370a789
+residual review-fix starting HEAD 7df7030ddb83e70a0005072dc007448e0370a789
+differential-plan test commit     f929edbec2fd81415e34c171c83d5913b88e29b0
+residual AS-IS owner commit       c92d8ca6b8114d4334792dbb60cc0ad7d235f23e
+candidate evidence/status         this commit
+current implementer state         CANDIDATE READY FOR REVIEW
 ```
+
+The reviewer outcome for the residual candidate is not assigned by the
+implementer.
 
 The S08 regression transition compares current API and persistence documents
 with the exact current 63-operation and fifteen-table authorities while retaining
 historical M2 delta registries. Its pytest node identity remains unchanged.
 
-## Corrected candidate evidence retained as non-regression evidence
+## Historical corrected-candidate evidence retained as non-regression evidence
 
 Documentation and finite inventories:
 
@@ -202,76 +212,47 @@ Production, public API/CLI behavior, Health, schema, migration, dependencies,
 `uv.lock`, runtime-lock content and distributed artifact content remain
 unchanged.
 
-## Reviewer finding ledger
+## Finite reviewer finding ledger
 
-### `ASIS-RF-01` — OPEN, bounded residual
+The residual candidate has no open consolidation finding. The two reviewer
+rejections and all four finding identities remain recorded as history.
 
-The 41-entry registry, global row order, three advisory gates and lock-mode
-vocabulary are present. The remaining defect is the exact meaning of target
-acquisition for differential replacement.
+### `ASIS-RF-01` — CLOSED in candidate
 
-Required current meaning:
-
-```text
-a target whose reference is created or physically reinserted
-    -> included in the initial plan
-
-a target required by semantic admission
-    -> included in the initial plan
-
-an unchanged reference
-    -> no outgoing target lock
-```
-
-`OT.R` must distinguish explicitly:
+The 41-entry registry retains the exact global row order, three advisory gates
+and lock-mode vocabulary. The reusable target rules and the `OT.R` / `RD.R`
+plans now distinguish all finite differential cases:
 
 ```text
-unchanged parent                  no target reacquisition
-changed explicit parent           OT.H@KS + OT.V@S
-changed implicit parent           OT.H@S  + OT.V@S
-changed component target          OT.H@KS
-unchanged component target        no outgoing target lock
-unchanged property declaration    no outgoing target lock
-same-pin physical reinsertion     DT.H@KS + DT.V@KS
-explicit new/rebound property     DT.H@KS + DT.V@S
-implicit new/rebound property     DT.H@S  + DT.V@S
+created/rebound exact dependency  H@KS + V@S
+implicit created/rebound target   H@S  + V@S
+same-pin physical reinsertion     H@KS + V@KS
+unchanged reference               no outgoing target lock
+removed reference                 no outgoing target lock
 ```
 
-`RD.R` must distinguish explicitly:
+The stable S08 regression node preserves the exact 41-plan structural census and
+adds bounded sentinels for these differential clauses. It does not duplicate the
+complete lock-plan matrix in Python.
 
-```text
-unchanged property declaration    no outgoing target lock
-same-pin physical reinsertion     DT.H@KS + DT.V@KS
-explicit new/rebound property     DT.H@KS + DT.V@S
-implicit new/rebound property     DT.H@S  + DT.V@S
-```
-
-The phrase `retained/inserted targets` must not imply an outgoing target lock for
-an unchanged physical declaration. Use `replaced/new`, `physically inserted or
-reinserted`, or an equivalent exact formulation.
-
-The stable regression gate must add a bounded sentinel check for these specific
-rules without duplicating the complete 41-plan matrix in Python.
-
-### `ASIS-RF-02` — CLOSED
+### `ASIS-RF-02` — CLOSED, unchanged
 
 Relationship property cardinality, active-consumer semantics, public lexical
 contract and persistence codec are propagated through `datatype.md`, `api.md` and
 `persistence.md` by `e2c44c38c172e912b264b0e95e304daa3fce8163`.
 
-### `ASIS-RF-03` — CLOSED
+### `ASIS-RF-03` — CLOSED, unchanged
 
 `runtime-deployment.md` distinguishes packaged Settings/runtime implementation
 from external operator-supplied settings, configuration values and secrets by
 `e2c44c38c172e912b264b0e95e304daa3fce8163`.
 
-### `ASIS-RF-04` — OPEN, bounded residual
+### `ASIS-RF-04` — CLOSED in candidate
 
-The status lifecycle must contain one unambiguous active finding ledger. Historical
-rejections may remain, but they must be labelled as historical and use past-tense
-or finite CLOSED records. A future candidate must not claim all findings closed
-while retaining live sections that still say `does not yet`, `required closure`
-or `must be corrected` for already closed findings.
+This finite ledger is the only current finding ledger. Rejections are labelled as
+history, every finding has one closed record and the current operational state,
+authorized delta, evidence and immediate action agree on reviewer inspection of
+the residual candidate.
 
 ## Non-negotiable consolidation rules
 
@@ -291,9 +272,9 @@ no copy/paste of the M2 TO-BE corpus
 Cycle names remain allowed only in the concise provenance section of
 `docs/architecture/README.md` and in links to historical records.
 
-## Reviewer-authorized residual delta
+## Historical reviewer-authorized residual delta
 
-The next review-fix may modify only:
+The residual review-fix was limited to:
 
 ```text
 docs/architecture/concurrency.md
@@ -301,9 +282,8 @@ tests/test_m2_s08_regression.py
 docs/milestones/M2/status.md
 ```
 
-All other current architecture owners are frozen at the corrected-candidate
-boundary. In particular, preserve the accepted closure of `ASIS-RF-02` and
-`ASIS-RF-03`.
+All other current architecture owners remained frozen at the corrected-candidate
+boundary. The closed `ASIS-RF-02` and `ASIS-RF-03` owners were unchanged.
 
 Do not modify:
 
@@ -327,33 +307,52 @@ docs/milestones/M2/evidence/
 
 No contract, architecture-set or implementation reopen is authorized.
 
-## Required residual review-fix gate
+## Residual review-fix gate evidence
 
-Execute at least:
+Pre-push evidence on the complete candidate tree:
 
 ```text
-focused current-AS-IS regression
-complete tests/test_m2_s08_regression.py
-traceability and documentation-policy tests
-15-file/link/temporal/milestone-ID/placeholder audits
-PostgreSQL / concurrency
-non-PostgreSQL
-full repository
-quality / build / collection
-exact-remote post-push rerun
+focused current-AS-IS regression    1 passed / 0.75s
+complete S08 regression             4 passed / 4.46s
+traceability/documentation policy   117 passed / 36.80s
+target files / links                15 / 35; unresolved 0
+temporal / milestone / placeholder  0 / 0 / 0
+schema / Alembic                    33 passed / 17.97s; compare_metadata []
+API / error / CLI                   277 passed / 65.54s
+runtime / schema guard / Health     121 passed / 15.01s
+PostgreSQL / concurrency            254 passed / 185.06s
+non-PostgreSQL                      642 passed / 85.61s
+full repository                     896 passed / 277.46s
+collection                          896 / 1.74s
+uv lock / locked sync / build       PASS / PASS / PASS
+Ruff format / lint                  PASS / PASS
+Pyright                             0 errors / 0 warnings
 ```
 
-Required outcome:
+Outcome census:
 
 ```text
 skip / xfail / rerun             0 / 0 / 0
 supported-path 40P01             0
 unexpected 40001                 0
-negative-control SQLSTATE        exact expected census
+negative-control SQLSTATE        40P01 x1 / 40001 x2
 compare_metadata                 []
 new unexplained warnings         0
 artifact identity                unchanged
 open consolidation findings      0
+```
+
+Verified external database and artifact identity:
+
+```text
+PostgreSQL            16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+database identity     netautotest
+bounded SELECT 1      PASS
+wheel size            165978 byte
+wheel members         77
+wheel SHA-256         38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size     48238 byte
+runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
 ## Candidate and review boundary
@@ -381,9 +380,9 @@ whole-corpus consistency-closure gate. Only after both reviewer-owned gates are
 
 ## Immediate next action
 
-Apply the bounded residual closure of `ASIS-RF-01` and `ASIS-RF-04` from the
-current `M2` branch. Preserve all other AS-IS owners and the accepted product.
-The implementer handoff is only:
+Review the bounded residual candidate on the exact published `M2` HEAD. The
+consistency-closure gate remains blocked pending reviewer acceptance. The
+implementer handoff is only:
 
 ```text
 AS-IS consolidation    CANDIDATE READY FOR REVIEW
