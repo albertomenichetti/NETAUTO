@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE READY / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -15,22 +15,27 @@ branch      M2
 ```text
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
-current gate                AS-IS consolidation — CANDIDATE READY FOR REVIEW
-next gate                   consistency closure — BLOCKED
-blockers                    none in candidate; reviewer inspection pending
+completed gate              AS-IS consolidation — COMPLETED
+current gate                consistency closure — READY
+next gate                   delivery — BLOCKED
+blockers                    none at consistency-closure opening
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
 
 The M2 contract, architecture set and implementation decomposition remain
-`FINAL / FROZEN`. No architecture reopen is active. Implementation and the
-M2-S09 final-acceptance gate are complete.
+`FINAL / FROZEN`. No architecture reopen is active. Implementation, the M2-S09
+final-acceptance gate and the AS-IS consolidation gate are reviewer-owned
+`COMPLETED`.
 
-The residual consolidation candidate at
-`3121597e39b9a038d574b9f68f4370deffa1e50f` is rejected only for one bounded
-current-AS-IS documentation/harness inconsistency. The final residual candidate
-closes that inconsistency without reopening the accepted product, schema, API,
-CLI, Health, runtime behavior or final M2-S09 evidence.
+The accepted current architecture is the autonomous corpus under
+`docs/architecture/` at candidate
+`f8caa2d56a099561b53da0c2ad32b43a91b6dafb`. It describes the system that exists
+at the accepted M2 boundary; it is not a milestone change log.
+
+The consistency closure is a separate independent whole-corpus audit. It does not
+authorize new product semantics, implementation changes, a generalized rewrite
+of the accepted AS-IS, delivery or merge.
 
 ## Design and delivery gates
 
@@ -41,9 +46,9 @@ CLI, Health, runtime behavior or final M2-S09 evidence.
 | Implementation steps | FINAL / FROZEN |
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
-| AS-IS consolidation | CANDIDATE READY FOR REVIEW |
-| Consistency closure | BLOCKED — requires accepted AS-IS consolidation |
-| Delivery | NOT DELIVERED |
+| AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
+| Consistency closure | READY |
+| Delivery | BLOCKED — requires accepted consistency closure |
 | Merge | NOT EXECUTED |
 
 ## Slice registry
@@ -61,8 +66,9 @@ CLI, Health, runtime behavior or final M2-S09 evidence.
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
 | `M2-S09` | COMPLETED | `M2-S00 ... M2-S08 COMPLETED` |
 
-All implementation slices are reviewer-owned `COMPLETED`. Consolidation is a
-separate post-implementation gate and is not an implementation slice.
+All implementation slices are reviewer-owned `COMPLETED`. Consolidation and
+consistency closure are post-implementation gates, not additional implementation
+slices.
 
 ## Reviewer-owned final acceptance
 
@@ -111,7 +117,7 @@ runtime packages      29
 runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
-## AS-IS consolidation history
+## Reviewer-owned AS-IS consolidation acceptance
 
 ```text
 starting AS-IS HEAD               422ce3c490c82d7d2f24ac60d777d75bca40374e
@@ -128,15 +134,25 @@ differential-plan test commit     f929edbec2fd81415e34c171c83d5913b88e29b0
 residual AS-IS owner commit       c92d8ca6b8114d4334792dbb60cc0ad7d235f23e
 residual candidate                3121597e39b9a038d574b9f68f4370deffa1e50f
 third reviewer rejection          4914d885163a726c3e8f180d50a258b3e318e387
-final residual starting HEAD      4914d885163a726c3e8f180d50a258b3e318e387
 component sentinel commit         49c6f0d1bf753602b4ddee8a07c9ca0c67b411c9
 component owner commit            08076564d7393d588adce8cd1942b40b3536a926
-candidate evidence/status         this commit
-current implementer state         CANDIDATE READY FOR REVIEW
+accepted consolidation candidate   f8caa2d56a099561b53da0c2ad32b43a91b6dafb
+reviewer decision                 ACCEPTED
+consolidation acceptance          this commit
+AS-IS consolidation              COMPLETED
+consistency closure              READY
+M2                               NOT DELIVERED
 ```
 
-The exact-remote evidence reported for `3121597e...` is retained as
-non-regression evidence:
+The reviewer accepts the fifteen-owner current-state corpus as the faithful
+representation of the accepted implementation boundary. The acceptance closes
+the consolidation gate only; it does not constitute the independent consistency
+closure and does not deliver M2.
+
+## Accepted consolidation evidence
+
+Exact-remote repository evidence for
+`f8caa2d56a099561b53da0c2ad32b43a91b6dafb`:
 
 ```text
 focused current-AS-IS regression    1 passed
@@ -156,22 +172,45 @@ skip / xfail / rerun                0 / 0 / 0
 supported 40P01 / unexpected 40001  0 / 0
 negative controls                   40P01 x1 / 40001 x2
 warning census                      1 reviewed Starlette deprecation
+open consolidation findings         0
+```
+
+Accepted finite document inventories:
+
+```text
+AS-IS files / links / unresolved    15 / 35 / 0
+temporal / milestone / placeholder  0 / 0 / 0
+API / CLI remote / local / Health   63 / 63 / 8 / 1
+tables / indexes / Settings         15 / 29 / 7
+mutations / gates / row classes     41 / 3 / 5
+family blocks / cells               15 / 861
+scenarios / predicates / recipes    83 / 21 / 11
+```
+
+Verified environment and invariant artifact evidence:
+
+```text
+PostgreSQL                       16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+database identity                netautotest
+bounded SELECT 1                 PASS
+wheel size / members             165978 byte / 77
+wheel SHA-256                    38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size                48238 byte
+runtime-lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
 ```
 
 Production, public API/CLI behavior, Health, schema, migration, dependencies,
-`uv.lock`, runtime-lock content and distributed artifact content remain
-unchanged.
+`uv.lock`, runtime-lock content and distributed artifact content are unchanged by
+the consolidation and by this reviewer-owned acceptance.
 
-## Finite reviewer finding ledger
+## Closed reviewer finding ledger
 
-### `ASIS-RF-01` — CLOSED in candidate
+### `ASIS-RF-01` — CLOSED
 
-The 41-entry registry, global row order, three advisory gates and reusable exact
-binding rules remain intact. The `OT.R` plan classifies component locking by
-whether the complete physical declaration is inserted or reinserted, rather than
-only by a change of target identity.
-
-Required current meaning:
+The current concurrency owner contains the complete 41-entry lock-plan authority,
+the exact global row order, the three advisory gates and the finite differential
+target rules. `OT.R` classifies component locking by physical declaration
+insertion or reinsertion, including a position-only change with the same target.
 
 ```text
 changed or physically reinserted component declaration
@@ -184,31 +223,27 @@ removed component declaration
     -> no outgoing target lock
 ```
 
-The first case includes a changed `target_template_id`, a changed `position` with
-the same target, or any future change to a persisted component field that causes
-physical reinsertion. The permanent sentinel rejects the narrower
-`changed component target` / `unchanged component target` classification.
-
-### `ASIS-RF-02` — CLOSED, unchanged
+### `ASIS-RF-02` — CLOSED
 
 Relationship property cardinality, active-consumer semantics, public lexical
-contract and persistence codec remain propagated through the current owners.
+contract and persistence codec are propagated through all current owners.
 
-### `ASIS-RF-03` — CLOSED, unchanged
+### `ASIS-RF-03` — CLOSED
 
 The runtime/deployment owner distinguishes packaged Settings/runtime
 implementation from external operator-supplied settings, configuration values
 and secrets.
 
-### `ASIS-RF-04` — CLOSED, unchanged
+### `ASIS-RF-04` — CLOSED
 
-The status record has one finite active ledger, labels prior rejections as
-history and keeps its operational state, evidence and immediate action aligned.
+The milestone status contains one finite operational ledger, separates historical
+rejections from current state and keeps evidence, scope and immediate action
+aligned.
 
-## Non-negotiable consolidation rules
+## Current AS-IS authority boundary
 
-The consolidation is one autonomous representation of the system at the accepted
-M2 boundary:
+The accepted consolidation is one autonomous representation of the system at the
+accepted M2 boundary:
 
 ```text
 current state, not a sequence of changes
@@ -223,96 +258,42 @@ no copy/paste of the M2 TO-BE corpus
 Cycle names remain allowed only in the concise provenance section of
 `docs/architecture/README.md` and in links to historical records.
 
-## Final residual delta
-
-The bounded review-fix modified only:
+Files under:
 
 ```text
-docs/architecture/concurrency.md
-tests/test_m2_s08_regression.py
-docs/milestones/M2/status.md
-```
-
-All other current architecture owners remain frozen at the residual-candidate
-boundary. The accepted closure of `ASIS-RF-02`, `ASIS-RF-03` and `ASIS-RF-04`
-is unchanged.
-
-Do not modify:
-
-```text
-src/netauto/
-all other tests
-all other docs/architecture files
-schema or migrations
-pyproject.toml
-uv.lock
-src/netauto/release/runtime.pylock.toml
-README.md root
-AGENTS.md
-docs/general/
-docs/milestones/M2/contract.md
-docs/milestones/M2/architecture/
-docs/milestones/M2/steps.md
-docs/milestones/M2/acceptance.md
-docs/milestones/M2/evidence/
 docs/milestones/M2/wip/  (non-normative execution aids)
 ```
 
-No contract, architecture-set or implementation reopen is authorized.
+do not define implementation or current architecture authority.
 
-## Final residual candidate evidence
+## Consistency-closure gate
 
-Pre-push evidence on the complete owner/test correction tree:
+The consistency closure starts from the accepted AS-IS candidate
+`f8caa2d56a099561b53da0c2ad32b43a91b6dafb` and performs an independent audit of
+the whole current corpus. It must verify, without introducing new semantics:
 
 ```text
-focused current-AS-IS regression    1 passed / 0.77s
-complete S08 regression             4 passed / 4.59s
-traceability/documentation policy   117 passed / 38.56s
-target files / links                15 / 35; unresolved 0
-temporal / milestone / placeholder  0 / 0 / 0
-schema / Alembic                    33 passed / 18.91s; compare_metadata []
-API / error / CLI                   277 passed / 67.22s
-runtime / schema guard / Health     121 passed / 15.25s
-PostgreSQL / concurrency            254 passed / 187.49s
-non-PostgreSQL                      642 passed / 86.80s
-full repository                     896 passed / 274.00s
-collection                          896 / 1.82s
-uv lock / locked sync / build       PASS / PASS / PASS
-Ruff format / lint                  PASS / PASS
-Pyright                             0 errors / 0 warnings
+one owner for every architectural decision
+no contradiction between domain, persistence, concurrency, API, Health, CLI,
+runtime/deployment and verification owners
+no contradiction between the accepted AS-IS and accepted implementation/schema
+all current inventories finite, exact and mutually consistent
+all internal links and ownership references valid
+no temporal/change-log wording in semantic sections
+no milestone-only evidence or candidate identity leaked into current authority
+no unresolved placeholder, TODO, TBD or open architectural point
 ```
 
-Outcome census:
+The closure is not a generalized editing pass. A contradiction is corrected only
+inside its owning current document when the accepted implementation and frozen
+authorities make the current meaning unambiguous. A contradiction that would
+require new semantics, implementation changes or a frozen-authority reopen is a
+`STOP` and must use the formal reopen process.
+
+The coding agent may move the consistency closure only through:
 
 ```text
-skip / xfail / rerun             0 / 0 / 0
-supported-path 40P01             0
-unexpected 40001                 0
-negative-control SQLSTATE        exact expected census
-compare_metadata                 []
-new unexplained warnings         0
-artifact identity                unchanged
-open consolidation findings      0
-```
-
-Verified environment and immutable artifact evidence:
-
-```text
-PostgreSQL                       16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
-database identity                netautotest
-bounded SELECT 1                 PASS
-wheel size / members             165978 byte / 77
-wheel SHA-256                    38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
-runtime lock size                48238 byte
-runtime-lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
-```
-
-## Candidate and review boundary
-
-The coding agent may move the gate only through:
-
-```text
-REVIEW CHANGES REQUIRED
+READY
     -> IN PROGRESS
     -> CANDIDATE READY FOR REVIEW
 ```
@@ -320,24 +301,31 @@ REVIEW CHANGES REQUIRED
 A failed gate remains `IN PROGRESS`. The coding agent must not assign:
 
 ```text
-AS-IS consolidation    COMPLETED
-consistency closure    READY / COMPLETED
+consistency closure    COMPLETED
 M2                     DELIVERED
-merge                   EXECUTED
+merge                  EXECUTED
 ```
 
-Reviewer acceptance of the consolidation opens the separate whole-corpus
-consistency-closure gate. Only after both reviewer-owned gates are `COMPLETED`
-may M2 become `DELIVERED`.
+Reviewer acceptance of the consistency closure is required before the separate
+reviewer-owned delivery decision. The merge remains human-owned.
 
 ## Immediate next action
 
-Reviewer inspection of the final residual candidate is the only immediate next
-action. The implementer handoff is:
+Prepare and execute the independent whole-corpus consistency closure from the
+accepted AS-IS boundary. Preserve:
 
 ```text
-AS-IS consolidation    CANDIDATE READY FOR REVIEW
-consistency closure    BLOCKED
+AS-IS consolidation    COMPLETED
+consistency closure    READY -> IN PROGRESS -> CANDIDATE READY FOR REVIEW
+M2                     NOT DELIVERED
+merge                  NOT EXECUTED
+```
+
+The next implementer handoff may only be:
+
+```text
+AS-IS consolidation    COMPLETED
+consistency closure    CANDIDATE READY FOR REVIEW
 M2                     NOT DELIVERED
 ```
 
