@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE READY / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -16,9 +16,9 @@ branch      M2
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
 completed gate              AS-IS consolidation — COMPLETED
-current gate                consistency closure — READY
+current gate                consistency closure — CANDIDATE READY FOR REVIEW
 next gate                   delivery — BLOCKED
-blockers                    none at consistency-closure opening
+blockers                    reviewer acceptance of consistency closure
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -47,7 +47,7 @@ of the accepted AS-IS, delivery or merge.
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
 | AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
-| Consistency closure | READY |
+| Consistency closure | CANDIDATE READY FOR REVIEW |
 | Delivery | BLOCKED — requires accepted consistency closure |
 | Merge | NOT EXECUTED |
 
@@ -143,6 +143,10 @@ AS-IS consolidation              COMPLETED
 consistency closure              READY
 M2                               NOT DELIVERED
 ```
+
+The independent consistency closure starts at and audits the exact AS-IS tree
+`4115ec0c001dc00bb6f6014aebaa6eff7d61297e`. Its implementer state is
+`CANDIDATE READY FOR REVIEW`; reviewer acceptance remains pending.
 
 The reviewer accepts the fifteen-owner current-state corpus as the faithful
 representation of the accepted implementation boundary. The acceptance closes
@@ -309,14 +313,73 @@ merge                  EXECUTED
 Reviewer acceptance of the consistency closure is required before the separate
 reviewer-owned delivery decision. The merge remains human-owned.
 
+## Consistency-closure candidate evidence
+
+The independent audit report is
+[`consistency-closure-report.md`](consistency-closure-report.md). The publication
+model and candidate boundary are:
+
+```text
+starting HEAD          4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+AUDITED_ASIS_SHA       4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+owner/test corrections none
+publication commit     this commit
+CC-01 ... CC-15        PASS
+open findings          0
+```
+
+The complete pre-publication gate ran from a clean detached worktree at the
+exact `AUDITED_ASIS_SHA`. The exact-remote post-publication gate for this
+publication commit confirms the same results:
+
+```text
+AS-IS regression / negative surfaces       4 / 41 passed
+traceability and S09 lifecycle/evidence          72 passed
+schema / metadata / migration / guard            33 passed
+API / DTO / error / CLI                         277 passed
+Health / runtime / schema guard                 121 passed
+installed-wheel / Linux T9                       18 passed
+PostgreSQL / concurrency                        254 passed
+non-PostgreSQL                                  642 passed
+full repository                                 896 passed
+collection                                      896
+uv lock / locked sync / build            PASS / PASS / PASS
+Ruff format / lint                       PASS / PASS
+Pyright                                  0 errors / 0 warnings
+skip / xfail / rerun                     0 / 0 / 0
+supported 40P01 / unexpected 40001       0 / 0
+negative controls                        40P01 x1 / 40001 x2
+compare_metadata                         []
+warning census                           1 reviewed Starlette deprecation
+new unexplained warnings                 0
+```
+
+The audit used externally managed PostgreSQL 16.15, database identity
+`netautotest`, and a successful bounded `SELECT 1`. The exact 15-file current
+corpus has 35 local Markdown links and zero unresolved links, authority
+placeholders, milestone-evidence leakage or WIP authority dependencies.
+
+Artifact identity remains unchanged:
+
+```text
+wheel size / members   165978 byte / 77
+wheel SHA-256          38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
+runtime lock size      48238 byte
+runtime packages       29
+runtime-lock SHA-256   0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+```
+
+Production, API/CLI/Health implementation, schema, migration, dependencies,
+locks, frozen M2 authorities and current-owner content are unchanged. No PR,
+Action, tag, Release, artifact publication or merge is part of this candidate.
+
 ## Immediate next action
 
-Prepare and execute the independent whole-corpus consistency closure from the
-accepted AS-IS boundary. Preserve:
+Review the independent whole-corpus consistency-closure candidate. Preserve:
 
 ```text
 AS-IS consolidation    COMPLETED
-consistency closure    READY -> IN PROGRESS -> CANDIDATE READY FOR REVIEW
+consistency closure    CANDIDATE READY FOR REVIEW
 M2                     NOT DELIVERED
 merge                  NOT EXECUTED
 ```
