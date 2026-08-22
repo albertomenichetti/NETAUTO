@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -16,9 +16,9 @@ branch      M2
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
 completed gate              AS-IS consolidation — COMPLETED
-current gate                consistency closure — CANDIDATE READY FOR REVIEW
+current gate                consistency closure — REVIEW CHANGES REQUIRED
 next gate                   delivery — BLOCKED
-blockers                    reviewer acceptance of consistency closure
+blockers                    M2-CC-F02 exact command-ledger completeness
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -28,14 +28,15 @@ The M2 contract, architecture set and implementation decomposition remain
 final-acceptance gate and the AS-IS consolidation gate are reviewer-owned
 `COMPLETED`.
 
-The accepted current architecture is the autonomous corpus under
+The accepted current architecture is the autonomous fifteen-file corpus under
 `docs/architecture/` at candidate
 `f8caa2d56a099561b53da0c2ad32b43a91b6dafb`. It describes the system that exists
 at the accepted M2 boundary; it is not a milestone change log.
 
-The consistency closure is a separate independent whole-corpus audit. It does not
-authorize new product semantics, implementation changes, a generalized rewrite
-of the accepted AS-IS, delivery or merge.
+The consistency-closure candidate at
+`3e8f575ac66ed46be7d8c014ee82d4e71905e937` is rejected only for bounded gate
+evidence and status-ledger defects. The current architecture, accepted product,
+schema, API, CLI, Health, runtime behavior and M2-S09 evidence are not reopened.
 
 ## Design and delivery gates
 
@@ -47,7 +48,7 @@ of the accepted AS-IS, delivery or merge.
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
 | AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
-| Consistency closure | CANDIDATE READY FOR REVIEW |
+| Consistency closure | REVIEW CHANGES REQUIRED |
 | Delivery | BLOCKED — requires accepted consistency closure |
 | Merge | NOT EXECUTED |
 
@@ -84,9 +85,6 @@ M2-S09                         COMPLETED
 M2                             NOT DELIVERED
 ```
 
-The accepted replacement record is the only S09 candidate JSON in the working
-tree. The rejected candidate and its decision remain preserved in Git history.
-
 Accepted exact-candidate and exact-remote evidence remains:
 
 ```text
@@ -120,66 +118,19 @@ runtime-lock SHA-256  0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc887
 ## Reviewer-owned AS-IS consolidation acceptance
 
 ```text
-starting AS-IS HEAD               422ce3c490c82d7d2f24ac60d777d75bca40374e
-verification amendment            8e74df8fa6e3da1cf1be7c210ded57a8e2b8b178
-verification-transition commit    1abd90c474ebf0abdfc7d1415cee26b6f3cab9c9
-AS-IS corpus commit               8315b6c4a1d5f5ef8247ea02e37765ef2a1dc336
-first candidate                   b8a7d60b111288cd5b9931723d99adb477b3cc22
-first reviewer rejection          1e3bba0e91e561945c64f13b8f640864c0f318d0
-lock-plan completeness test       4d5898196cb92add9c65b04a5e9b03d09158325e
-AS-IS owner-fix commit            e2c44c38c172e912b264b0e95e304daa3fce8163
-corrected candidate               1a4c4499bcf063b0d7fcd763401a47cde4d2f1d9
-second reviewer rejection         7df7030ddb83e70a0005072dc007448e0370a789
-differential-plan test commit     f929edbec2fd81415e34c171c83d5913b88e29b0
-residual AS-IS owner commit       c92d8ca6b8114d4334792dbb60cc0ad7d235f23e
-residual candidate                3121597e39b9a038d574b9f68f4370deffa1e50f
-third reviewer rejection          4914d885163a726c3e8f180d50a258b3e318e387
-component sentinel commit         49c6f0d1bf753602b4ddee8a07c9ca0c67b411c9
-component owner commit            08076564d7393d588adce8cd1942b40b3536a926
-accepted consolidation candidate   f8caa2d56a099561b53da0c2ad32b43a91b6dafb
-reviewer decision                 ACCEPTED
-consolidation acceptance          this commit
-AS-IS consolidation              COMPLETED
-consistency closure              READY
-M2                               NOT DELIVERED
+accepted consolidation candidate  f8caa2d56a099561b53da0c2ad32b43a91b6dafb
+consolidation acceptance commit    4fd0f38fc804a494d1d0ce0fd251c49119b14127
+reviewer decision                  ACCEPTED
+AS-IS consolidation               COMPLETED
+consistency closure               REVIEW CHANGES REQUIRED
+M2                                NOT DELIVERED
 ```
 
-The independent consistency closure starts at and audits the exact AS-IS tree
-`4115ec0c001dc00bb6f6014aebaa6eff7d61297e`. Its implementer state is
-`CANDIDATE READY FOR REVIEW`; reviewer acceptance remains pending.
+The exact acceptance commit replaces the stale `this commit` projection present
+in the rejected consistency-closure candidate. The fifteen-owner current-state
+corpus remains accepted and unchanged.
 
-The reviewer accepts the fifteen-owner current-state corpus as the faithful
-representation of the accepted implementation boundary. The acceptance closes
-the consolidation gate only; it does not constitute the independent consistency
-closure and does not deliver M2.
-
-## Accepted consolidation evidence
-
-Exact-remote repository evidence for
-`f8caa2d56a099561b53da0c2ad32b43a91b6dafb`:
-
-```text
-focused current-AS-IS regression    1 passed
-complete S08 regression             4 passed
-traceability/documentation policy   117 passed
-schema / Alembic                    33 passed; compare_metadata []
-API / error / CLI                   277 passed
-runtime / schema guard / Health     121 passed
-PostgreSQL / concurrency            254 passed
-non-PostgreSQL                      642 passed
-full repository                     896 passed
-collection                          896
-uv lock / locked sync / build       PASS / PASS / PASS
-Ruff format / lint                  PASS / PASS
-Pyright                             0 errors / 0 warnings
-skip / xfail / rerun                0 / 0 / 0
-supported 40P01 / unexpected 40001  0 / 0
-negative controls                   40P01 x1 / 40001 x2
-warning census                      1 reviewed Starlette deprecation
-open consolidation findings         0
-```
-
-Accepted finite document inventories:
+Accepted consolidation evidence remains:
 
 ```text
 AS-IS files / links / unresolved    15 / 35 / 0
@@ -189,78 +140,95 @@ tables / indexes / Settings         15 / 29 / 7
 mutations / gates / row classes     41 / 3 / 5
 family blocks / cells               15 / 861
 scenarios / predicates / recipes    83 / 21 / 11
-```
-
-Verified environment and invariant artifact evidence:
-
-```text
-PostgreSQL                       16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
-database identity                netautotest
-bounded SELECT 1                 PASS
-wheel size / members             165978 byte / 77
-wheel SHA-256                    38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
-runtime lock size                48238 byte
-runtime-lock SHA-256             0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
+full repository                     896 passed
+open consolidation findings         0
 ```
 
 Production, public API/CLI behavior, Health, schema, migration, dependencies,
 `uv.lock`, runtime-lock content and distributed artifact content are unchanged by
-the consolidation and by this reviewer-owned acceptance.
+the consolidation and this reviewer decision.
 
-## Closed reviewer finding ledger
-
-### `ASIS-RF-01` — CLOSED
-
-The current concurrency owner contains the complete 41-entry lock-plan authority,
-the exact global row order, the three advisory gates and the finite differential
-target rules. `OT.R` classifies component locking by physical declaration
-insertion or reinsertion, including a position-only change with the same target.
+## Consistency-closure candidate history
 
 ```text
-changed or physically reinserted component declaration
-    -> target OT.H@KS
-
-unchanged physical component declaration
-    -> no outgoing target lock
-
-removed component declaration
-    -> no outgoing target lock
+accepted AS-IS candidate          f8caa2d56a099561b53da0c2ad32b43a91b6dafb
+AS-IS acceptance commit          4fd0f38fc804a494d1d0ce0fd251c49119b14127
+closure specification commit     4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+AUDITED_ASIS_SHA                 4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+rejected closure candidate       3e8f575ac66ed46be7d8c014ee82d4e71905e937
+reviewer decision                REVIEW CHANGES REQUIRED
+CC-01 ... CC-14                  accepted as audited
+CC-15                            review-fix required
 ```
 
-### `ASIS-RF-02` — CLOSED
+The rejected candidate report remains at
+[`consistency-closure-report.md`](consistency-closure-report.md) as implementer
+evidence. Its architectural conclusions and runtime results are retained as
+non-regression evidence; its publication shape must be corrected before a new
+candidate can be reviewed.
 
-Relationship property cardinality, active-consumer semantics, public lexical
-contract and persistence codec are propagated through all current owners.
+## Consistency-closure reviewer finding ledger
 
-### `ASIS-RF-03` — CLOSED
-
-The runtime/deployment owner distinguishes packaged Settings/runtime
-implementation from external operator-supplied settings, configuration values
-and secrets.
-
-### `ASIS-RF-04` — CLOSED
-
-The milestone status contains one finite operational ledger, separates historical
-rejections from current state and keeps evidence, scope and immediate action
-aligned.
-
-## Current AS-IS authority boundary
-
-The accepted consolidation is one autonomous representation of the system at the
-accepted M2 boundary:
+### `M2-CC-F01` — CLOSED by reviewer transition
 
 ```text
-current state, not a sequence of changes
-present tense, not milestone chronology
-one normative owner per decision
-no requirement to reconstruct M1 or M2
-no M2-OUT / M2-AC / M2-VER / slice / SHA leakage into current semantics
-no candidate counts or review evidence in docs/architecture
-no copy/paste of the M2 TO-BE corpus
+matrix key       CC-15
+classification   current-document projection defect
+owner            docs/milestones/M2/status.md
 ```
 
-Cycle names remain allowed only in the concise provenance section of
-`docs/architecture/README.md` and in links to historical records.
+The rejected candidate used `this commit` for the older AS-IS consolidation
+acceptance while also using the same phrase for the current publication commit.
+This status now records the durable acceptance identity explicitly:
+
+```text
+4fd0f38fc804a494d1d0ce0fd251c49119b14127
+```
+
+The replacement candidate must preserve that exact identity and must not
+reintroduce ambiguous self-references for historical commits.
+
+### `M2-CC-F02` — OPEN
+
+```text
+matrix key       CC-15
+classification   gate-evidence completeness defect
+owner            docs/milestones/M2/consistency-closure-report.md
+```
+
+The section titled `Commands and exact pre-publication results` records complete
+commands for lock, sync, build, Ruff, Pyright and collection, but uses logical
+labels rather than the complete executable pytest selections for several groups.
+The replacement report must record the exact argv used for every reported group,
+including at least:
+
+```text
+M1/M2 traceability and S09 lifecycle/evidence
+schema / metadata / migration / startup revision
+API / DTO / error / CLI
+Health / runtime / schema guard
+installed-wheel / Linux T9
+PostgreSQL / concurrency
+non-PostgreSQL
+full repository
+```
+
+Each command must be deterministic, complete and directly executable. The coding
+agent must rerun those exact commands and record their exact results; it may not
+invent argv from the previous aggregate labels.
+
+## Reviewer-authorized review-fix scope
+
+The bounded review-fix may modify only:
+
+```text
+docs/milestones/M2/consistency-closure-report.md
+docs/milestones/M2/status.md
+```
+
+No current owner, permanent test, production module, schema object, migration,
+dependency, lockfile, release artifact, frozen M2 authority or technology
+baseline may change.
 
 Files under:
 
@@ -268,128 +236,77 @@ Files under:
 docs/milestones/M2/wip/  (non-normative execution aids)
 ```
 
-do not define implementation or current architecture authority.
+do not define current architecture or implementation authority and are outside
+the review-fix write scope.
 
-## Consistency-closure gate
+No contract, architecture-set or implementation reopen is authorized.
 
-The consistency closure starts from the accepted AS-IS candidate
-`f8caa2d56a099561b53da0c2ad32b43a91b6dafb` and performs an independent audit of
-the whole current corpus. It must verify, without introducing new semantics:
+## Required review-fix gate
 
-```text
-one owner for every architectural decision
-no contradiction between domain, persistence, concurrency, API, Health, CLI,
-runtime/deployment and verification owners
-no contradiction between the accepted AS-IS and accepted implementation/schema
-all current inventories finite, exact and mutually consistent
-all internal links and ownership references valid
-no temporal/change-log wording in semantic sections
-no milestone-only evidence or candidate identity leaked into current authority
-no unresolved placeholder, TODO, TBD or open architectural point
-```
-
-The closure is not a generalized editing pass. A contradiction is corrected only
-inside its owning current document when the accepted implementation and frozen
-authorities make the current meaning unambiguous. A contradiction that would
-require new semantics, implementation changes or a frozen-authority reopen is a
-`STOP` and must use the formal reopen process.
-
-The coding agent may move the consistency closure only through:
+The coding agent must start from the current remote `M2` HEAD, move the
+consistency closure through:
 
 ```text
-READY
+REVIEW CHANGES REQUIRED
     -> IN PROGRESS
     -> CANDIDATE READY FOR REVIEW
 ```
 
-A failed gate remains `IN PROGRESS`. The coding agent must not assign:
+It must preserve:
 
 ```text
-consistency closure    COMPLETED
-M2                     DELIVERED
-merge                  EXECUTED
+AS-IS consolidation    COMPLETED
+M2                     NOT DELIVERED
+merge                  NOT EXECUTED
 ```
 
-Reviewer acceptance of the consistency closure is required before the separate
-reviewer-owned delivery decision. The merge remains human-owned.
-
-## Consistency-closure candidate evidence
-
-The independent audit report is
-[`consistency-closure-report.md`](consistency-closure-report.md). The publication
-model and candidate boundary are:
+The replacement report must contain:
 
 ```text
-starting HEAD          4115ec0c001dc00bb6f6014aebaa6eff7d61297e
-AUDITED_ASIS_SHA       4115ec0c001dc00bb6f6014aebaa6eff7d61297e
-owner/test corrections none
-publication commit     this commit
-CC-01 ... CC-15        PASS
-open findings          0
+Status: CANDIDATE READY FOR REVIEW
+starting reviewer-rejection HEAD
+AUDITED_ASIS_SHA = 4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+exact publication commit identity or a non-ambiguous publication boundary
+CC-01 ... CC-15 PASS
+M2-CC-F01 CLOSED
+M2-CC-F02 CLOSED
+open findings 0
+exact executable command ledger
+exact results and environment
+unchanged owner hashes
+unchanged artifact identity
+reviewer boundary
 ```
 
-The complete pre-publication gate ran from a clean detached worktree at the
-exact `AUDITED_ASIS_SHA`. The exact-remote post-publication gate for this
-publication commit confirms the same results:
+The complete repository and exact-remote gate must be rerun. Required outcome:
 
 ```text
-AS-IS regression / negative surfaces       4 / 41 passed
-traceability and S09 lifecycle/evidence          72 passed
-schema / metadata / migration / guard            33 passed
-API / DTO / error / CLI                         277 passed
-Health / runtime / schema guard                 121 passed
-installed-wheel / Linux T9                       18 passed
-PostgreSQL / concurrency                        254 passed
-non-PostgreSQL                                  642 passed
-full repository                                 896 passed
-collection                                      896
-uv lock / locked sync / build            PASS / PASS / PASS
-Ruff format / lint                       PASS / PASS
-Pyright                                  0 errors / 0 warnings
-skip / xfail / rerun                     0 / 0 / 0
-supported 40P01 / unexpected 40001       0 / 0
-negative controls                        40P01 x1 / 40001 x2
-compare_metadata                         []
-warning census                           1 reviewed Starlette deprecation
-new unexplained warnings                 0
+skip / xfail / rerun             0 / 0 / 0
+supported-path 40P01             0
+unexpected 40001                 0
+negative-control SQLSTATE        exact expected census
+compare_metadata                 []
+new unexplained warnings         0
+artifact identity                unchanged
+open consistency findings        0
 ```
 
-The audit used externally managed PostgreSQL 16.15, database identity
-`netautotest`, and a successful bounded `SELECT 1`. The exact 15-file current
-corpus has 35 local Markdown links and zero unresolved links, authority
-placeholders, milestone-evidence leakage or WIP authority dependencies.
-
-Artifact identity remains unchanged:
-
-```text
-wheel size / members   165978 byte / 77
-wheel SHA-256          38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60
-runtime lock size      48238 byte
-runtime packages       29
-runtime-lock SHA-256   0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf
-```
-
-Production, API/CLI/Health implementation, schema, migration, dependencies,
-locks, frozen M2 authorities and current-owner content are unchanged. No PR,
-Action, tag, Release, artifact publication or merge is part of this candidate.
+A failed gate remains `IN PROGRESS`; it cannot be converted into a candidate by
+a later isolated pass or an automatic retry.
 
 ## Immediate next action
 
-Review the independent whole-corpus consistency-closure candidate. Preserve:
+Apply the bounded evidence-only closure of `M2-CC-F02`, preserve the reviewer
+closure of `M2-CC-F01`, rerun every command recorded in exact executable form and
+publish a replacement consistency-closure candidate.
+
+The only implementer handoff allowed is:
 
 ```text
 AS-IS consolidation    COMPLETED
 consistency closure    CANDIDATE READY FOR REVIEW
 M2                     NOT DELIVERED
 merge                  NOT EXECUTED
-```
-
-The next implementer handoff may only be:
-
-```text
-AS-IS consolidation    COMPLETED
-consistency closure    CANDIDATE READY FOR REVIEW
-M2                     NOT DELIVERED
 ```
 
 ## Current status vocabulary
