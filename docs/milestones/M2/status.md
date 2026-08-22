@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -16,9 +16,9 @@ branch      M2
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
 completed gate              AS-IS consolidation — COMPLETED
-current gate                consistency closure — REVIEW CHANGES REQUIRED
+current gate                consistency closure — CANDIDATE READY FOR REVIEW
 next gate                   delivery — BLOCKED
-blockers                    M2-CC-F02 exact command-ledger completeness
+blockers                    reviewer inspection of replacement candidate
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -48,7 +48,7 @@ schema, API, CLI, Health, runtime behavior and M2-S09 evidence are not reopened.
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
 | AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
-| Consistency closure | REVIEW CHANGES REQUIRED |
+| Consistency closure | CANDIDATE READY FOR REVIEW |
 | Delivery | BLOCKED — requires accepted consistency closure |
 | Merge | NOT EXECUTED |
 
@@ -156,16 +156,17 @@ AS-IS acceptance commit          4fd0f38fc804a494d1d0ce0fd251c49119b14127
 closure specification commit     4115ec0c001dc00bb6f6014aebaa6eff7d61297e
 AUDITED_ASIS_SHA                 4115ec0c001dc00bb6f6014aebaa6eff7d61297e
 rejected closure candidate       3e8f575ac66ed46be7d8c014ee82d4e71905e937
-reviewer decision                REVIEW CHANGES REQUIRED
-CC-01 ... CC-14                  accepted as audited
-CC-15                            review-fix required
+reviewer rejection               5dc216f50b8fc4616c112e61ada8cfede28fc729
+review-fix base                  5dc216f50b8fc4616c112e61ada8cfede28fc729
+CC-01 ... CC-15                  PASS
+M2-CC-F01 / M2-CC-F02            CLOSED / CLOSED
+open consistency findings        0
 ```
 
-The rejected candidate report remains at
+The replacement candidate report remains at
 [`consistency-closure-report.md`](consistency-closure-report.md) as implementer
-evidence. Its architectural conclusions and runtime results are retained as
-non-regression evidence; its publication shape must be corrected before a new
-candidate can be reviewed.
+evidence. It preserves the audited architectural conclusions and records the
+complete executable review-fix command ledger and exact rerun results.
 
 ## Consistency-closure reviewer finding ledger
 
@@ -174,7 +175,11 @@ candidate can be reviewed.
 ```text
 matrix key       CC-15
 classification   current-document projection defect
-owner            docs/milestones/M2/status.md
+evidence         duplicated ambiguous historical self-reference
+resolution       exact consolidation acceptance SHA recorded by reviewer transition
+changed file     docs/milestones/M2/status.md
+closed by        5dc216f50b8fc4616c112e61ada8cfede28fc729
+status           CLOSED
 ```
 
 The rejected candidate used `this commit` for the older AS-IS consolidation
@@ -185,22 +190,22 @@ This status now records the durable acceptance identity explicitly:
 4fd0f38fc804a494d1d0ce0fd251c49119b14127
 ```
 
-The replacement candidate must preserve that exact identity and must not
+The replacement candidate preserves that exact identity and does not
 reintroduce ambiguous self-references for historical commits.
 
-### `M2-CC-F02` — OPEN
+### `M2-CC-F02` — CLOSED
 
 ```text
 matrix key       CC-15
 classification   gate-evidence completeness defect
-owner            docs/milestones/M2/consistency-closure-report.md
+evidence         aggregate labels without executable pytest argv
+resolution       exact executable command ledger plus complete rerun
+changed file     docs/milestones/M2/consistency-closure-report.md
+status           CLOSED
 ```
 
-The section titled `Commands and exact pre-publication results` records complete
-commands for lock, sync, build, Ruff, Pyright and collection, but uses logical
-labels rather than the complete executable pytest selections for several groups.
-The replacement report must record the exact argv used for every reported group,
-including at least:
+The replacement report records the complete executable argv and exact result for
+every published group, including:
 
 ```text
 M1/M2 traceability and S09 lifecycle/evidence
@@ -213,9 +218,8 @@ non-PostgreSQL
 full repository
 ```
 
-Each command must be deterministic, complete and directly executable. The coding
-agent must rerun those exact commands and record their exact results; it may not
-invent argv from the previous aggregate labels.
+Each command was printed before execution, executed directly without automatic
+retry and rerun unchanged on the exact replacement remote HEAD.
 
 ## Reviewer-authorized review-fix scope
 
@@ -243,7 +247,7 @@ No contract, architecture-set or implementation reopen is authorized.
 
 ## Required review-fix gate
 
-The coding agent must start from the current remote `M2` HEAD, move the
+The review-fix starts from the reviewer-owned remote `M2` HEAD and moves the
 consistency closure through:
 
 ```text
@@ -260,7 +264,7 @@ M2                     NOT DELIVERED
 merge                  NOT EXECUTED
 ```
 
-The replacement report must contain:
+The replacement report contains:
 
 ```text
 Status: CANDIDATE READY FOR REVIEW
@@ -291,14 +295,14 @@ artifact identity                unchanged
 open consistency findings        0
 ```
 
-A failed gate remains `IN PROGRESS`; it cannot be converted into a candidate by
-a later isolated pass or an automatic retry.
+A failed gate would remain `IN PROGRESS`; no pre-push or exact-remote gate
+failed and no automatic retry was used.
 
 ## Immediate next action
 
-Apply the bounded evidence-only closure of `M2-CC-F02`, preserve the reviewer
-closure of `M2-CC-F01`, rerun every command recorded in exact executable form and
-publish a replacement consistency-closure candidate.
+Review the evidence-complete replacement consistency-closure candidate. The
+candidate preserves the reviewer closure of `M2-CC-F01`, closes `M2-CC-F02`,
+and records every rerun command in exact executable form.
 
 The only implementer handoff allowed is:
 

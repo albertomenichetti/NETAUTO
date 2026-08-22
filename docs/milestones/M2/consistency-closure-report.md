@@ -8,9 +8,10 @@ replace the current architecture under `docs/architecture/`.
 ## Audit identity and boundary
 
 ```text
-starting reviewer-acceptance HEAD  4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+starting reviewer-rejection HEAD   5dc216f50b8fc4616c112e61ada8cfede28fc729
+rejected closure candidate         3e8f575ac66ed46be7d8c014ee82d4e71905e937
 AUDITED_ASIS_SHA                   4115ec0c001dc00bb6f6014aebaa6eff7d61297e
-publication/evidence HEAD          this publication commit
+publication/evidence boundary      this report/status publication commit
 branch                             M2
 AS-IS consolidation                COMPLETED
 consistency closure                CANDIDATE READY FOR REVIEW
@@ -18,9 +19,10 @@ M2                                 NOT DELIVERED
 merge                              NOT EXECUTED
 ```
 
-The complete gate was executed from a clean detached worktree at the exact
-`AUDITED_ASIS_SHA`. No owner or permanent-test correction was required between
-the starting boundary and the audited tree.
+The current-owner hashes were reverified against the exact
+`AUDITED_ASIS_SHA`. The complete review-fix gate was executed from branch `M2`
+at the reviewer review-fix base with only the two authorized evidence files
+modified. No owner or permanent-test correction was required.
 
 ## Exact current-owner inventory and hashes
 
@@ -71,10 +73,36 @@ open findings    0
 
 ## Finding registry
 
-No `M2-CC-Fnn` finding was opened. The exact finding registry is empty and the
-open finding count is zero. No current-document projection defect,
-current-owner incompleteness, implementation defect, architecture contradiction
-or in-scope new opportunity was found.
+### `M2-CC-F01`
+
+```text
+matrix key       CC-15
+classification   current-document projection defect
+evidence         duplicated ambiguous historical self-reference
+resolution       exact consolidation acceptance SHA recorded by reviewer transition
+changed file     docs/milestones/M2/status.md
+closed by        5dc216f50b8fc4616c112e61ada8cfede28fc729
+status           CLOSED
+```
+
+### `M2-CC-F02`
+
+```text
+matrix key       CC-15
+classification   gate-evidence completeness defect
+evidence         aggregate labels without executable pytest argv
+resolution       exact executable command ledger plus complete rerun
+changed file     docs/milestones/M2/consistency-closure-report.md
+status           CLOSED
+```
+
+```text
+finding count    2
+open findings    0
+```
+
+No current-owner incompleteness, implementation defect, architecture
+contradiction or in-scope new opportunity was found.
 
 ## Owner and dependency audit
 
@@ -153,33 +181,328 @@ The probe used the environment-provided `TEST_DATABASE_URL` with the exact
 `postgresql+psycopg` driver. No URL, userinfo or credential is recorded here.
 No PostgreSQL provisioning, Docker, Testcontainers, SQLite or fallback was used.
 
-## Commands and exact pre-publication results
+## Exact executable command ledger and pre-publication results
 
-All commands below ran in the clean detached worktree at
-`4115ec0c001dc00bb6f6014aebaa6eff7d61297e`.
+Every command in this ledger was printed before execution and then run with the
+same argv. Commands are relative to the repository root. No command or output
+contains `TEST_DATABASE_URL`, userinfo or credentials.
 
-```text
-bounded static owner/link/hygiene audits           PASS
-bounded PostgreSQL version/database/SELECT 1       PASS
-uv lock --check                                    PASS
-uv sync --locked                                   PASS
-uv build                                           PASS
-uv run ruff format --check .                       PASS (245 files)
-uv run ruff check .                                PASS
-uv run pyright                                     PASS (0 errors, 0 warnings)
-uv run pytest --collect-only -q                    PASS (896 collected; 7.86s)
+### Static document, owner-hash and evidence audit
 
-tests/test_m2_s08_regression.py                      4 passed; 4.57s
-tests/test_m2_s08_negative_surface.py               41 passed; 4.45s
-M1/M2 traceability + S09 lifecycle/evidence         72 passed; 33.52s
-schema / metadata / migration / startup revision    33 passed; 19.54s
-API / DTO / error / CLI                            277 passed; 68.71s
-Health / runtime / schema guard                    121 passed; 15.90s
-installed-wheel / Linux T9                          18 passed; 43.49s
-PostgreSQL / concurrency                           254 passed; 198.23s
-non-PostgreSQL                                     642 passed; 89.31s
-full repository                                    896 passed; 281.25s
+```bash
+uv run python - <<'PY'
+import hashlib
+import re
+from pathlib import Path
+from urllib.parse import unquote
+
+root = Path(".")
+architecture = root / "docs/architecture"
+report_path = root / "docs/milestones/M2/consistency-closure-report.md"
+status_path = root / "docs/milestones/M2/status.md"
+expected_files = {
+    "README.md": "7dd998d53e388e9fe0be2c5dd71fc4b20a88cb6de8e9ee6b9af73376ccd1a7c4",
+    "api.md": "007201f578f088c329c8e704895fb6bd819e73102970af3ed78180bb50f6758d",
+    "cli.md": "132fcdefc577053b7b5064ed8fb683e19091545ed0cb5b0011d43c8132c9c8bf",
+    "concurrency-matrix.md": "ca82af4a11254fedcb6476832b1cfa4d0ea012e3f28cd5ce14e978d7b90ec70c",
+    "concurrency.md": "177d931699ae58e6b3a7b9bd2b68782e66ada6d68900dfa7de351181b32eb25a",
+    "datatype.md": "4aac554d92ef8ec0cbbd78db851f192a8b508f3d4f691ed5ee0b316250ec0dc7",
+    "health.md": "a9a708f271934c71b29bed7c59db9f91b4c267ad1588c056e22f430a08534a5a",
+    "linux-operating-baseline.md": "119c4171005408cbd3cad7c169360e478a368daca18930dea4af8ee3d5a43756",
+    "object.md": "fe46bd7dd23df55ced205fc604cea0682da512bc82227216c9dd211e3d0fc3b4",
+    "objecttemplate.md": "9f5c1b7d62ae8088369313afbcec9013d7c081dedfce5ff33f6248a066fc6e53",
+    "persistence.md": "8040ae143c4116928c516c7c52d71aea937b501b63b90181737ed7b93754eef3",
+    "relationship.md": "ecc18f34c2b4469c9061de72e20ed04e5d502745644b70e0a0416a4ecf4462d1",
+    "runtime-deployment.md": "c36b6928739e34854bc7f72f7a20b56cc8c64fb80e4d81b608522f7241edbc8d",
+    "verification-concurrency-registry.md": "dcdaf535477112bc921cd9c2727f87b58e02aa6d2ea72cef6c34a317d2a581aa",
+    "verification.md": "2df18553b2be40080c6543d8ba057f15e1e6fcafc9f4c1b76b8356a7cd7d897a",
+}
+files = {path.name: path for path in architecture.glob("*.md")}
+assert set(files) == set(expected_files)
+for name, expected_hash in expected_files.items():
+    assert hashlib.sha256(files[name].read_bytes()).hexdigest() == expected_hash
+
+readme = files["README.md"].read_text()
+owner_map = readme.split("## Owner map\n", 1)[1].split("\n## ", 1)[0]
+owner_targets = re.findall(r"\]\(([^)#]+\.md)\)", owner_map)
+assert len(owner_targets) == 14
+assert set(owner_targets) == set(expected_files) - {"README.md"}
+
+links = []
+unresolved = []
+for source in files.values():
+    body = source.read_text()
+    for target in re.findall(r"(?<!!)\[[^]]+\]\(([^)]+)\)", body):
+        raw = target.split()[0].strip("<>")
+        if raw.startswith(("http://", "https://", "mailto:")):
+            continue
+        links.append((source, raw))
+        relative, _, fragment = raw.partition("#")
+        destination = source.parent / (unquote(relative) if relative else source.name)
+        if not destination.exists():
+            unresolved.append((source, raw, "file"))
+            continue
+        if fragment:
+            anchors = {
+                re.sub(r"[^a-z0-9 _-]", "", heading.lower())
+                .strip()
+                .replace(" ", "-")
+                for heading in re.findall(
+                    r"^#{1,6}\s+(.+?)\s*#*$", destination.read_text(), re.MULTILINE
+                )
+            }
+            if unquote(fragment).lower() not in anchors:
+                unresolved.append((source, raw, "anchor"))
+assert len(links) == 35
+assert unresolved == []
+
+temporal = re.compile(
+    r"\b(previously|newly|changed from|preserved from|before M2|after M2|"
+    r"during M2|M2 delta|to be implemented)\b",
+    re.IGNORECASE,
+)
+historical = re.compile(
+    r"\b(?:M2-S\d+|M2-CC-F\d+|M2-(?:OUT|AC|VER)-\d+|[0-9a-f]{40})\b"
+)
+placeholder = re.compile(
+    r"\b(?:TODO|TBD|FIXME|OPEN QUESTION|PARTIALLY REOPENED)\b",
+    re.IGNORECASE,
+)
+for name, source in files.items():
+    body = source.read_text()
+    assert temporal.search(body) is None
+    assert placeholder.search(body) is None
+    assert "docs/milestones/M2/wip/" not in body
+    if name != "README.md":
+        assert historical.search(body) is None
+
+report = report_path.read_text()
+status = status_path.read_text()
+assert set(re.findall(r"^\| `(CC-\d{2})` \| PASS \|", report, re.MULTILINE)) == {
+    f"CC-{number:02d}" for number in range(1, 16)
+}
+for finding in ("M2-CC-F01", "M2-CC-F02"):
+    section = report.split(f"### `{finding}`\n", 1)[1].split("\n### ", 1)[0]
+    assert re.search(r"^status\s+CLOSED$", section, re.MULTILINE)
+assert "finding count    2" in report
+assert "open findings    0" in report
+assert "consolidation acceptance commit    4fd0f38fc804a494d1d0ce0fd251c49119b14127" in status
+assert "consistency closure — CANDIDATE READY FOR REVIEW" in status
+assert "M2                          NOT DELIVERED" in status
+assert "merge                       NOT EXECUTED" in status
+print("files=15 owner_targets=14 links=35 unresolved=0")
+print("owner_hashes=15 temporal=0 leakage=0 placeholders=0 wip=0")
+print("CC=15_PASS findings=2_CLOSED open_findings=0 lifecycle=PASS")
+PY
 ```
+
+Result: exit status `0`; `15` exact owner hashes, `35` links with `0`
+unresolved, `CC-01...CC-15 PASS`, `2` findings `CLOSED`, `0` open findings.
+
+### PostgreSQL identity and bounded probe
+
+```bash
+timeout 15s uv run python - <<'PY'
+import os
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+
+raw = os.environ.get("TEST_DATABASE_URL")
+if raw is None:
+    raise SystemExit("TEST_DATABASE_URL absent")
+url = make_url(raw)
+if url.drivername != "postgresql+psycopg":
+    raise SystemExit(f"unexpected driver: {url.drivername}")
+engine = create_engine(url, connect_args={"connect_timeout": 5})
+try:
+    with engine.connect() as connection:
+        version = connection.execute(text("select version()" )).scalar_one()
+        database = connection.execute(text("select current_database()" )).scalar_one()
+        probe = connection.execute(text("select 1" )).scalar_one()
+finally:
+    engine.dispose()
+print("PostgreSQL=" + version.split(",")[0])
+print("database=" + database)
+print("SELECT 1=" + str(probe))
+PY
+```
+
+Result: exit status `0`; PostgreSQL 16.15, database `netautotest`, `SELECT 1=1`.
+
+### Locked environment, build and quality
+
+```bash
+uv lock --check
+uv sync --locked
+uv build
+uv run ruff format --check .
+uv run ruff check .
+uv run pyright
+uv run pytest --collect-only -q
+```
+
+Results, in command order: all exit status `0`; lock resolved 46 packages;
+locked sync checked 44 packages; wheel and sdist built; Ruff format checked 246
+files; Ruff lint passed; Pyright reported `0 errors, 0 warnings`; pytest
+collected `896` tests in 2.17s with the one reviewed Starlette warning.
+
+### Current architecture, negative surfaces and traceability
+
+```bash
+uv run pytest -q \
+  tests/test_m2_s08_regression.py \
+  tests/test_m2_s08_negative_surface.py \
+  tests/test_m1_traceability.py \
+  tests/test_m2_s00_traceability.py \
+  tests/test_m2_traceability.py \
+  tests/test_m2_s09_acceptance.py
+```
+
+Result: exit status `0`; `117 passed in 37.32s`.
+
+### Schema, metadata, migration and startup revision guard
+
+```bash
+uv run pytest -q \
+  tests/test_migrations.py \
+  tests/test_schema_metadata.py \
+  tests/test_persistence_constraints.py \
+  tests/test_m2_s07_alembic.py \
+  tests/test_runtime_schema_guard.py \
+  tests/test_m2_s04_installed.py \
+  tests/test_m2_s04_scope.py
+```
+
+Result: exit status `0`; `33 passed in 18.85s`; `compare_metadata == []`.
+
+### API, DTO, error, OpenAPI and CLI
+
+```bash
+uv run pytest -q \
+  tests/test_datatype_api.py \
+  tests/test_health_api.py \
+  tests/test_object_api.py \
+  tests/test_objecttemplate_api.py \
+  tests/test_relationship_api.py \
+  tests/test_relationshipdefinition_api.py \
+  tests/test_object_scope.py \
+  tests/test_relationshipdefinition_scope.py \
+  tests/test_s08_delete_diagnostics.py \
+  tests/test_s08_persistence_error_mapping.py \
+  tests/test_m2_s05_http_client.py \
+  tests/test_m2_s05_installed.py \
+  tests/test_m2_s05_model.py \
+  tests/test_m2_s05_parser.py \
+  tests/test_m2_s05_process.py \
+  tests/test_m2_s05_registry.py \
+  tests/test_m2_s05_residual_review_fixes.py \
+  tests/test_m2_s05_review_fixes.py \
+  tests/test_m2_s05_tls.py \
+  tests/test_m2_s06_connection.py \
+  tests/test_m2_s06_process.py \
+  tests/test_m2_s06_rendering.py \
+  tests/test_m2_s06_review_fixes.py \
+  tests/test_m2_s06_state.py \
+  tests/test_m2_s07_trust.py
+```
+
+Result: exit status `0`; `277 passed, 1 warning in 68.95s`.
+
+### Health, runtime and schema guard
+
+```bash
+uv run pytest -q \
+  tests/test_bootstrap_diagnostics.py \
+  tests/test_health.py \
+  tests/test_health_api.py \
+  tests/test_health_postgresql.py \
+  tests/test_health_probe.py \
+  tests/test_http_composition.py \
+  tests/test_runtime_engine.py \
+  tests/test_runtime_schema_guard.py \
+  tests/test_settings.py \
+  tests/test_m2_s04_installed.py \
+  tests/test_m2_s04_scope.py
+```
+
+Result: exit status `0`; `121 passed, 1 warning in 15.23s`.
+
+### Installed-wheel and Linux T9
+
+```bash
+uv run pytest -q \
+  tests/test_m2_s07_alembic.py \
+  tests/test_m2_s07_distribution.py \
+  tests/test_m2_s07_linux.py \
+  tests/test_m2_s07_trust.py
+```
+
+Result: exit status `0`; `18 passed in 41.32s`.
+
+### PostgreSQL and concurrency
+
+```bash
+uv run pytest -q -m 'postgresql or concurrency'
+```
+
+The selection uses the repository-registered `postgresql` and `concurrency`
+markers and the environment-provided PostgreSQL target. Result: exit status
+`0`; `254 passed, 642 deselected, 1 warning in 188.98s`.
+
+### Non-PostgreSQL partition
+
+```bash
+uv run pytest -q -m 'not postgresql and not concurrency'
+```
+
+Result: exit status `0`; `642 passed, 254 deselected, 1 warning in 88.23s`.
+
+### Full repository
+
+```bash
+uv run pytest -q
+```
+
+Result: exit status `0`; `896 passed, 1 warning in 272.99s`.
+
+### Artifact identity
+
+```bash
+uv run python - <<'PY'
+import hashlib
+import tomllib
+import zipfile
+from pathlib import Path
+
+wheel = Path("dist/netauto-0.2.0-py3-none-any.whl")
+lock = Path("src/netauto/release/runtime.pylock.toml")
+with zipfile.ZipFile(wheel) as archive:
+    members = len(archive.namelist())
+values = (
+    wheel.stat().st_size,
+    members,
+    hashlib.sha256(wheel.read_bytes()).hexdigest(),
+    lock.stat().st_size,
+    len(tomllib.loads(lock.read_text())["packages"]),
+    hashlib.sha256(lock.read_bytes()).hexdigest(),
+)
+expected = (
+    165978,
+    77,
+    "38f03612583f9b0d72f0de5a44637abf3181d3193ba445b841919753c0ad2c60",
+    48238,
+    29,
+    "0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc8873ddaaf",
+)
+assert values == expected
+print("wheel=165978 bytes/77 members/" + values[2])
+print("runtime_lock=48238 bytes/29 packages/" + values[5])
+PY
+```
+
+Result: exit status `0`; wheel and runtime-lock identity match the expected
+size, member/package census and SHA-256. Generated wheel and sdist files were
+removed after verification.
 
 The repository-wide final census was:
 
