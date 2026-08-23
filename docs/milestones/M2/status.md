@@ -1,32 +1,33 @@
 # M2 — Milestone Status
 
-**Milestone status:** DELIVERED — MERGE NOT EXECUTED
+**Milestone status:** DELIVERED / MERGED
 
 ## Cycle identity
 
 ```text
-cycle       M2
-cycle type  milestone
-branch      M2
+cycle          M2
+cycle type     milestone
+source branch  M2
+merged target  master
 ```
 
 ## Final operational state
 
 ```text
-phase                       DELIVERED
+phase                       DELIVERED / MERGED
 last implementation slice   M2-S09 — COMPLETED
 completed gates             implementation / final acceptance /
                             AS-IS consolidation / consistency closure / delivery
-current operation           merge — NOT EXECUTED
-blockers                    none; human-owned merge pending
 M2                          DELIVERED
-merge                       NOT EXECUTED
+merge                       MERGED
+active software cycle       NONE
+blockers                    none
 ```
 
 The M2 contract, architecture set and implementation decomposition remain
 `FINAL / FROZEN`. No architecture reopen is active. Implementation, final
-acceptance, AS-IS consolidation, consistency closure and delivery are complete.
-The merge remains a separate human-owned operation.
+acceptance, AS-IS consolidation, consistency closure, delivery and the
+human-owned merge are complete.
 
 The current architecture under `docs/architecture/` is the autonomous delivered
 AS-IS at the M2 boundary. It describes the system that exists now and is not a
@@ -44,7 +45,7 @@ milestone change log.
 | AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
 | Consistency closure | COMPLETED — candidate `9a5baf4164e3ba80fa9ae3b52fea86e18cc698de` accepted |
 | Delivery | DELIVERED — reviewer-owned |
-| Merge | NOT EXECUTED — human-owned |
+| Merge | MERGED into `master` — human-owned |
 
 ## Slice registry
 
@@ -61,34 +62,81 @@ milestone change log.
 | `M2-S08` | COMPLETED | `M2-S07 COMPLETED` |
 | `M2-S09` | COMPLETED | `M2-S00 ... M2-S08 COMPLETED` |
 
-All implementation slices are reviewer-owned `COMPLETED`. The final acceptance,
-consolidation, consistency and delivery gates are not additional implementation
-slices.
+All implementation slices are reviewer-owned `COMPLETED`. Final acceptance,
+consolidation, consistency closure and delivery are post-implementation gates,
+not additional implementation slices.
 
-## Reviewer-owned delivery decision
+## Reviewer-owned delivery and merge record
 
 ```text
-delivered branch                   M2
-delivered repository boundary      eb56d44568c3ecf66d5c3cb72189f31ca8bd9308
-accepted implementation candidate  87de783462b24f17b5da5aa31ce002c19734e0eb
-S09 acceptance commit              1e9c40161fb7b9d26a6491295c6e393d0eacf60d
-accepted consolidation candidate   f8caa2d56a099561b53da0c2ad32b43a91b6dafb
-consolidation acceptance commit     4fd0f38fc804a494d1d0ce0fd251c49119b14127
-accepted consistency candidate     9a5baf4164e3ba80fa9ae3b52fea86e18cc698de
-consistency acceptance commit       eb56d44568c3ecf66d5c3cb72189f31ca8bd9308
-reviewer delivery decision          DELIVERED
-M2                                  DELIVERED
-merge                               NOT EXECUTED
+accepted delivery input boundary  eb56d44568c3ecf66d5c3cb72189f31ca8bd9308
+delivery decision / source head   ef0733f7eddbbe343b3d62e5de0adcc8c1a9b71e
+master pre-merge parent           8f897a1cf731341a703fd381dd0812c5ecfbc21d
+merge commit                      748d02a2c54d432617f8f46b639379188f560bc4
+merge pull request                #2 — albertomenichetti/M2 -> master
+merged target                     master
+reviewer delivery decision        DELIVERED
+M2                                DELIVERED
+merge                             MERGED
 ```
 
-The delivered repository boundary is the exact `M2` head on which every
-implementation and post-implementation gate had already been accepted. The
-delivery projection changes only this historical status and the root operational
-README; it does not change the delivered software or current architecture.
+The merge commit has the pre-merge `master` head and the delivered `M2` source
+head as its two parents. The post-merge changes to this status and the root
+README are repository-navigation and historical-record maintenance only; they do
+not change the delivered software or current architecture.
+
+## Reviewer-owned final acceptance
+
+```text
+rejected S09 candidate          b0546b1109c66a57195c50294291cb4a32ad48f2
+review rejection               2afc3eb1d86bb829185981279d8c6fe9a1667b11
+replacement candidate          87de783462b24f17b5da5aa31ce002c19734e0eb
+evidence/status publication    e794093bd6b2dae7ffe27a028ddebead8c14941e
+S09 acceptance commit          1e9c40161fb7b9d26a6491295c6e393d0eacf60d
+reviewer decision              ACCEPTED
+evidence record                candidate-87de783462b24f17b5da5aa31ce002c19734e0eb.json
+M2-S09                         COMPLETED
+```
+
+## Reviewer-owned AS-IS consolidation acceptance
+
+```text
+accepted consolidation candidate  f8caa2d56a099561b53da0c2ad32b43a91b6dafb
+consolidation acceptance commit    4fd0f38fc804a494d1d0ce0fd251c49119b14127
+reviewer decision                  ACCEPTED
+AS-IS consolidation               COMPLETED
+```
+
+The accepted corpus contains exactly fifteen current architecture files. The
+consolidation assigns every current decision to one owner or explicit projection
+and contains no milestone-delta narration in semantic sections.
+
+## Reviewer-owned consistency-closure acceptance
+
+```text
+closure specification commit       4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+AUDITED_ASIS_SHA                   4115ec0c001dc00bb6f6014aebaa6eff7d61297e
+first closure candidate            3e8f575ac66ed46be7d8c014ee82d4e71905e937
+first closure rejection            5dc216f50b8fc4616c112e61ada8cfede28fc729
+evidence-complete candidate        8fbcfd68028d5a873074373565797618a2629152
+second closure rejection           677ae9fe54af8382985adca3b3fa638bd37d1f84
+accepted consistency candidate     9a5baf4164e3ba80fa9ae3b52fea86e18cc698de
+consistency acceptance commit      eb56d44568c3ecf66d5c3cb72189f31ca8bd9308
+reviewer decision                  ACCEPTED
+CC-01 ... CC-15                    PASS
+M2-CC-F01 / F02 / F03              CLOSED / CLOSED / CLOSED
+open consistency findings          0
+```
+
+The accepted implementer evidence remains in
+[`consistency-closure-report.md`](consistency-closure-report.md). It contains the
+exact fifteen-owner hashes, complete consistency matrix, three closed finding
+records, executable command ledger, environment, artifact identity and exact
+results. It is evidence, not semantic authority.
 
 ## Delivered capability
 
-M2 delivers the current frozen kernel boundary comprising:
+M2 delivers the frozen kernel boundary comprising:
 
 - versioned `RelationshipDefinitionVersion` property schemas and lifecycle;
 - factual `Relationship` exact-version pins, canonical properties and lifecycle;
@@ -105,8 +153,6 @@ M2 delivers the current frozen kernel boundary comprising:
 The authoritative complete description is under `docs/architecture/`.
 
 ## Accepted final verification
-
-Final accepted implementation and closure evidence includes:
 
 ```text
 M2-VER                          32 / 32 PASS
@@ -134,7 +180,7 @@ open consolidation findings      0
 open consistency findings        0
 ```
 
-The durable evidence records remain:
+The durable evidence records are:
 
 ```text
 docs/milestones/M2/acceptance.md
@@ -156,13 +202,10 @@ runtime-lock SHA-256     0114d64cb078cfe3271e974d4aad86628d633d0fbdbcbece37ff3bc
 PostgreSQL evidence     16.15 / database netautotest / bounded SELECT 1 PASS
 ```
 
-No tag, GitHub Release or artifact publication is implied by delivery. The
-verified wheel remains the accepted reproducible artifact identity.
+No tag, GitHub Release or artifact publication is implied by delivery or merge.
+The verified wheel remains the accepted reproducible artifact identity.
 
 ## Documentation and consistency closure
-
-The accepted AS-IS contains exactly fifteen current architecture files and one
-owner or explicit projection for every current decision.
 
 ```text
 AS-IS files / local links / unresolved links  15 / 35 / 0
@@ -193,36 +236,34 @@ M2-CC-F02     CLOSED
 M2-CC-F03     CLOSED
 ```
 
-There is no known architecture contradiction or blocking finding at delivery.
+There is no known architecture contradiction or blocking finding at merge.
 
-## Delivery and merge boundary
-
-Delivery means that the M2 software, verification, historical record and current
-AS-IS are mutually coherent and accepted. It does not perform the merge.
-
-Until the human merge occurs:
+## Repository state after merge
 
 ```text
-M2 branch          delivered and immutable except explicit governance maintenance
-master merge       NOT EXECUTED
-root README        M2 DELIVERED — MERGE PENDING
-new software work  requires a new milestone/fix or explicit formal reopen
+M2 source branch     delivered historical branch
+master               contains the complete delivered M2 boundary
+active cycle         NONE
+software changes     NOT AUTHORIZED without a new cycle or formal reopen
 ```
 
-No PR, GitHub Action, tag, Release or artifact publication is created by this
-delivery decision.
+The root README records `NO ACTIVE CYCLE` and lists both M1 and M2 as
+`DELIVERED / MERGED`.
+
+Files under:
+
+```text
+docs/milestones/M2/wip/  (non-normative execution aids)
+```
+
+do not define current architecture, implementation or delivery authority.
 
 ## Immediate next action
 
-The next action is human-owned:
-
-1. merge the delivered `M2` branch into `master`;
-2. update the root README to mark M2 `DELIVERED / MERGED`;
-3. record the merged branch/commit in this historical status if required by the
-   repository merge procedure;
-4. declare `NO ACTIVE CYCLE` when no later milestone or fix has been opened.
-
-No additional Codex or software change is authorized by M2 delivery.
+No action remains inside M2. A new software change must begin by formally opening
+a new milestone or fix and updating the repository operational navigator. Until
+then, only explicitly authorized governance or lossless documentation maintenance
+is permitted.
 
 ## Current status vocabulary
 
@@ -238,5 +279,6 @@ NOT STARTED
 NOT AUTHORIZED
 NOT DELIVERED
 DELIVERED
-NOT EXECUTED
+MERGED
+NO ACTIVE CYCLE
 ```
