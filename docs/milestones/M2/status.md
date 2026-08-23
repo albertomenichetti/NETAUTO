@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -16,9 +16,9 @@ branch      M2
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
 completed gate              AS-IS consolidation — COMPLETED
-current gate                consistency closure — CANDIDATE READY FOR REVIEW
+current gate                consistency closure — REVIEW CHANGES REQUIRED
 next gate                   delivery — BLOCKED
-blockers                    reviewer inspection of replacement candidate
+blockers                    M2-CC-F03 report propagation and audit completeness
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -33,10 +33,11 @@ The accepted current architecture is the autonomous fifteen-file corpus under
 `f8caa2d56a099561b53da0c2ad32b43a91b6dafb`. It describes the system that exists
 at the accepted M2 boundary; it is not a milestone change log.
 
-The consistency-closure candidate at
-`3e8f575ac66ed46be7d8c014ee82d4e71905e937` is rejected only for bounded gate
-evidence and status-ledger defects. The current architecture, accepted product,
-schema, API, CLI, Health, runtime behavior and M2-S09 evidence are not reopened.
+The evidence-complete consistency-closure candidate
+`8fbcfd68028d5a873074373565797618a2629152` is rejected only for one bounded
+CC-15 status/report projection defect. The current architecture, accepted
+product, schema, API, CLI, Health, runtime behavior and M2-S09 evidence are not
+reopened.
 
 ## Design and delivery gates
 
@@ -48,7 +49,7 @@ schema, API, CLI, Health, runtime behavior and M2-S09 evidence are not reopened.
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
 | AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
-| Consistency closure | CANDIDATE READY FOR REVIEW |
+| Consistency closure | REVIEW CHANGES REQUIRED |
 | Delivery | BLOCKED — requires accepted consistency closure |
 | Merge | NOT EXECUTED |
 
@@ -122,12 +123,10 @@ accepted consolidation candidate  f8caa2d56a099561b53da0c2ad32b43a91b6dafb
 consolidation acceptance commit    4fd0f38fc804a494d1d0ce0fd251c49119b14127
 reviewer decision                  ACCEPTED
 AS-IS consolidation               COMPLETED
-consistency closure               REVIEW CHANGES REQUIRED
-M2                                NOT DELIVERED
 ```
 
-The exact acceptance commit replaces the stale `this commit` projection present
-in the rejected consistency-closure candidate. The fifteen-owner current-state
+This record owns only the completed consolidation decision. It deliberately does
+not project a later consistency-closure state. The fifteen-owner current-state
 corpus remains accepted and unchanged.
 
 Accepted consolidation evidence remains:
@@ -145,8 +144,8 @@ open consolidation findings         0
 ```
 
 Production, public API/CLI behavior, Health, schema, migration, dependencies,
-`uv.lock`, runtime-lock content and distributed artifact content are unchanged by
-the consolidation and this reviewer decision.
+`uv.lock`, runtime-lock content and distributed artifact content remain
+unchanged.
 
 ## Consistency-closure candidate history
 
@@ -155,43 +154,42 @@ accepted AS-IS candidate          f8caa2d56a099561b53da0c2ad32b43a91b6dafb
 AS-IS acceptance commit          4fd0f38fc804a494d1d0ce0fd251c49119b14127
 closure specification commit     4115ec0c001dc00bb6f6014aebaa6eff7d61297e
 AUDITED_ASIS_SHA                 4115ec0c001dc00bb6f6014aebaa6eff7d61297e
-rejected closure candidate       3e8f575ac66ed46be7d8c014ee82d4e71905e937
-reviewer rejection               5dc216f50b8fc4616c112e61ada8cfede28fc729
-review-fix base                  5dc216f50b8fc4616c112e61ada8cfede28fc729
-CC-01 ... CC-15                  PASS
-M2-CC-F01 / M2-CC-F02            CLOSED / CLOSED
-open consistency findings        0
+first closure candidate          3e8f575ac66ed46be7d8c014ee82d4e71905e937
+first closure rejection          5dc216f50b8fc4616c112e61ada8cfede28fc729
+evidence-complete candidate      8fbcfd68028d5a873074373565797618a2629152
+current reviewer decision        REVIEW CHANGES REQUIRED
+CC-01 ... CC-14                  accepted as audited
+CC-15                            review-fix required
 ```
 
-The replacement candidate report remains at
+The rejected replacement report remains at
 [`consistency-closure-report.md`](consistency-closure-report.md) as implementer
-evidence. It preserves the audited architectural conclusions and records the
-complete executable review-fix command ledger and exact rerun results.
+evidence. Its owner hashes, architectural conclusions, executable command ledger
+and runtime results are retained as non-regression evidence. Its finding registry
+and CC-15 audit must be propagated for `M2-CC-F03` before a new candidate can be
+accepted.
 
 ## Consistency-closure reviewer finding ledger
 
-### `M2-CC-F01` — CLOSED by reviewer transition
+### `M2-CC-F01` — CLOSED
 
 ```text
 matrix key       CC-15
 classification   current-document projection defect
 evidence         duplicated ambiguous historical self-reference
-resolution       exact consolidation acceptance SHA recorded by reviewer transition
+resolution       exact consolidation acceptance SHA
 changed file     docs/milestones/M2/status.md
 closed by        5dc216f50b8fc4616c112e61ada8cfede28fc729
 status           CLOSED
 ```
 
-The rejected candidate used `this commit` for the older AS-IS consolidation
-acceptance while also using the same phrase for the current publication commit.
-This status now records the durable acceptance identity explicitly:
+The durable consolidation acceptance identity is:
 
 ```text
 4fd0f38fc804a494d1d0ce0fd251c49119b14127
 ```
 
-The replacement candidate preserves that exact identity and does not
-reintroduce ambiguous self-references for historical commits.
+No historical acceptance record uses an ambiguous local self-reference.
 
 ### `M2-CC-F02` — CLOSED
 
@@ -201,25 +199,47 @@ classification   gate-evidence completeness defect
 evidence         aggregate labels without executable pytest argv
 resolution       exact executable command ledger plus complete rerun
 changed file     docs/milestones/M2/consistency-closure-report.md
+closed by        8fbcfd68028d5a873074373565797618a2629152
 status           CLOSED
 ```
 
-The replacement report records the complete executable argv and exact result for
-every published group, including:
+The rejected evidence-complete report records the full executable argv and exact
+result for every published verification group.
+
+### `M2-CC-F03` — OPEN, bounded report propagation required
 
 ```text
-M1/M2 traceability and S09 lifecycle/evidence
-schema / metadata / migration / startup revision
-API / DTO / error / CLI
-Health / runtime / schema guard
-installed-wheel / Linux T9
-PostgreSQL / concurrency
-non-PostgreSQL
-full repository
+matrix key       CC-15
+classification   current-document projection defect
+owners           docs/milestones/M2/status.md
+                 docs/milestones/M2/consistency-closure-report.md
+evidence         one unqualified historical consistency-closure state
+                 contradicted the candidate-ready header and gate table
+status           OPEN
 ```
 
-Each command was printed before execution, executed directly without automatic
-retry and rerun unchanged on the exact replacement remote HEAD.
+The rejected candidate placed this unqualified state inside the AS-IS acceptance
+record:
+
+```text
+consistency closure    REVIEW CHANGES REQUIRED
+```
+
+while the same document declared the current gate `CANDIDATE READY FOR REVIEW`.
+This reviewer transition removes that stale projection from the current status.
+The next candidate must propagate the finding into the report, register:
+
+```text
+M2-CC-F01    CLOSED
+M2-CC-F02    CLOSED
+M2-CC-F03    CLOSED
+finding count    3
+open findings    0
+```
+
+and add a bounded audit proving that the status has one unambiguous current
+consistency-closure state and that any prior state is explicitly labelled as
+historical evidence.
 
 ## Reviewer-authorized review-fix scope
 
@@ -245,10 +265,10 @@ the review-fix write scope.
 
 No contract, architecture-set or implementation reopen is authorized.
 
-## Required review-fix gate
+## Required M2-CC-F03 gate
 
-The review-fix starts from the reviewer-owned remote `M2` HEAD and moves the
-consistency closure through:
+The coding agent must start from the exact current remote `M2` HEAD and move the
+consistency closure only through:
 
 ```text
 REVIEW CHANGES REQUIRED
@@ -264,27 +284,18 @@ M2                     NOT DELIVERED
 merge                  NOT EXECUTED
 ```
 
-The replacement report contains:
+The replacement report must preserve all fifteen current-owner hashes and the
+exact executable command ledger, add the complete three-finding registry and
+rerun every published command without changing its selection.
+
+Required outcome:
 
 ```text
-Status: CANDIDATE READY FOR REVIEW
-starting reviewer-rejection HEAD
-AUDITED_ASIS_SHA = 4115ec0c001dc00bb6f6014aebaa6eff7d61297e
-exact publication commit identity or a non-ambiguous publication boundary
-CC-01 ... CC-15 PASS
-M2-CC-F01 CLOSED
-M2-CC-F02 CLOSED
-open findings 0
-exact executable command ledger
-exact results and environment
-unchanged owner hashes
-unchanged artifact identity
-reviewer boundary
-```
-
-The complete repository and exact-remote gate must be rerun. Required outcome:
-
-```text
+CC-01 ... CC-15                 PASS
+M2-CC-F01                       CLOSED
+M2-CC-F02                       CLOSED
+M2-CC-F03                       CLOSED
+open consistency findings       0
 skip / xfail / rerun             0 / 0 / 0
 supported-path 40P01             0
 unexpected 40001                 0
@@ -292,19 +303,15 @@ negative-control SQLSTATE        exact expected census
 compare_metadata                 []
 new unexplained warnings         0
 artifact identity                unchanged
-open consistency findings        0
 ```
 
-A failed gate would remain `IN PROGRESS`; no pre-push or exact-remote gate
-failed and no automatic retry was used.
+A failed gate remains `IN PROGRESS`; no candidate may be handed off.
 
 ## Immediate next action
 
-Review the evidence-complete replacement consistency-closure candidate. The
-candidate preserves the reviewer closure of `M2-CC-F01`, closes `M2-CC-F02`,
-and records every rerun command in exact executable form.
-
-The only implementer handoff allowed is:
+Apply the evidence-only `M2-CC-F03` review-fix from the current `M2` branch,
+preserve the exact owner hashes and command ledger, rerun every published command
+and hand off only:
 
 ```text
 AS-IS consolidation    COMPLETED
