@@ -63,7 +63,7 @@ Code, tests, schema, generated OpenAPI and Git history are implementation or evi
 src/netauto/
     implementation
 
-migrations/
+src/netauto/migrations/
     explicit Alembic schema history
 
 tests/
