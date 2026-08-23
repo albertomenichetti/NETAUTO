@@ -22,6 +22,7 @@ class _Diagnostic:
 
 class _OriginalError(Exception):
     def __init__(self, constraint_name: str) -> None:
+        self.sqlstate = "23503"
         self.diag = _Diagnostic(constraint_name)
         super().__init__(constraint_name)
 
@@ -69,12 +70,26 @@ async def test_object_template_delete_maps_only_known_external_constraints(
     assert caught.value.blocker_type == blocker_type
 
 
-async def test_datatype_delete_maps_exact_property_reference_constraint() -> None:
-    store = DataTypeStore(
-        _connection("fk_object_template_properties_datatype_version", fail_on_call=2)
-    )
-    with pytest.raises(DeleteReferenceError):
+@pytest.mark.parametrize(
+    ("constraint_name", "blocker_type"),
+    [
+        (
+            "fk_object_template_properties_datatype_version",
+            "object_template_property",
+        ),
+        (
+            "fk_relationship_definition_properties_datatype_version",
+            "relationship_definition_property",
+        ),
+    ],
+)
+async def test_datatype_delete_maps_exact_property_reference_constraints(
+    constraint_name: str, blocker_type: str
+) -> None:
+    store = DataTypeStore(_connection(constraint_name, fail_on_call=2))
+    with pytest.raises(DeleteReferenceError) as caught:
         await store.delete_lineage(uuid4())
+    assert caught.value.blocker_type == blocker_type
 
 
 @pytest.mark.parametrize(
@@ -100,3 +115,7 @@ async def test_unexpected_delete_integrity_error_is_not_semantically_translated(
 ):
     with pytest.raises(IntegrityError):
         await ObjectStore(_connection("unexpected_constraint")).delete(uuid4())
+    with pytest.raises(IntegrityError):
+        await DataTypeStore(
+            _connection("unexpected_constraint", fail_on_call=2)
+        ).delete_lineage(uuid4())

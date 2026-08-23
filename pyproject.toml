@@ -4,13 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netauto"
-version = "0.1.0"
+version = "0.2.0"
 description = "REST-API-first dynamic infrastructure modeling framework"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "alembic>=1.16,<2",
     "fastapi>=0.116,<1",
+    "httpx>=0.28,<1",
+    "prompt-toolkit>=3.0,<4",
     "psycopg[binary]>=3.2,<4",
     "pydantic>=2.11,<3",
     "pydantic-settings>=2.10,<3",
@@ -18,10 +20,12 @@ dependencies = [
     "uvicorn>=0.35,<1",
 ]
 
+[project.scripts]
+netauto = "netauto.cli.main:main"
+
 [dependency-groups]
 dev = [
     "coverage>=7.10,<8",
-    "httpx>=0.28,<1",
     "hypothesis>=6.138,<7",
     "pyright[nodejs]>=1.1.403,<2",
     "pytest>=8.4,<9",

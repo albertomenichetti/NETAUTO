@@ -4,7 +4,6 @@ from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
 
 from netauto.application.cursors import Page
 from netauto.application.datatypes import DataTypeService
@@ -15,89 +14,29 @@ from netauto.domain.datatypes import (
     DataTypeVersionSummary,
     VersionStatus,
 )
-from netauto.domain.primitives import JsonValue, PrimitiveType
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
     PathPositiveInteger,
-    PositiveInteger,
     QueryPositiveInteger,
-    StrictBody,
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
+from netauto.transport.http.datatypes import (
+    CreateNextBody,
+    DataTypeCreateBody,
+    DataTypeCreateResultDto,
+    DataTypeDto,
+    DataTypePageDto,
+    DataTypeVersionDto,
+    DataTypeVersionPageDto,
+    DataTypeVersionSummaryDto,
+    ReviseBody,
+    SetDefaultBody,
+    SetDescriptionBody,
+)
 
 router = APIRouter(prefix="/api/v1/core", tags=["datatypes"])
-
-
-class DataTypeCreateBody(StrictBody):
-    namespace: str
-    name: str
-    base_type: str
-    description: str | None = None
-    constraints: dict[str, JsonValue] = Field(default_factory=dict)
-
-
-class CreateNextBody(StrictBody):
-    source_version: PositiveInteger
-
-
-class ReviseBody(StrictBody):
-    constraints: dict[str, JsonValue]
-
-
-class SetDefaultBody(StrictBody):
-    version: PositiveInteger
-
-
-class SetDescriptionBody(StrictBody):
-    description: str | None
-
-
-class DataTypeDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    namespace: str
-    name: str
-    description: str | None
-    default_version: int | None
-
-
-class DataTypeVersionDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    datatype_id: UUID
-    version: int
-    revision: int
-    status: VersionStatus
-    base_type: PrimitiveType
-    constraints: dict[str, JsonValue]
-
-
-class DataTypeVersionSummaryDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    datatype_id: UUID
-    version: int
-    revision: int
-    status: VersionStatus
-    base_type: PrimitiveType
-
-
-class DataTypeCreateResultDto(BaseModel):
-    datatype: DataTypeDto
-    version: DataTypeVersionDto
-
-
-class DataTypePageDto(BaseModel):
-    items: list[DataTypeDto]
-    next_cursor: str | None
-
-
-class DataTypeVersionPageDto(BaseModel):
-    items: list[DataTypeVersionSummaryDto]
-    next_cursor: str | None
 
 
 def _service(request: Request) -> DataTypeService:

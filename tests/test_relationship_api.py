@@ -9,7 +9,9 @@ import pytest
 from sqlalchemy import Engine, insert, select
 from sqlalchemy.exc import IntegrityError
 
+from netauto.domain.primitives import JsonValue
 from netauto.entrypoints.http import build_app
+from netauto.persistence.lifecycle import EventKind
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     objects,
@@ -71,7 +73,23 @@ async def _definition(
         },
     )
     assert created.status_code == 201, created.text
-    return cast(dict[str, object], created.json())
+    return await _publish_created_definition(client, created)
+
+
+async def _publish_created_definition(
+    client: httpx.AsyncClient, created: httpx.Response
+) -> dict[str, object]:
+    payload = cast(dict[str, object], created.json())
+    definition = cast(dict[str, object], payload["relationship_definition"])
+    definition_id = cast(str, definition["id"])
+    published = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/1/publish",
+        params={"expected_revision": 1},
+    )
+    assert published.status_code == 200, published.text
+    current = await client.get(f"/api/v1/core/relationship-definitions/{definition_id}")
+    assert current.status_code == 200, current.text
+    return cast(dict[str, object], current.json())
 
 
 def _resolution(definition: dict[str, object], from_template_id: str) -> dict[str, str]:
@@ -83,7 +101,7 @@ def _resolution(definition: dict[str, object], from_template_id: str) -> dict[st
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unblock(
+async def test_create_conflict_read_navigate_lifecycle_delete_and_definition_unblock(
     relationship_client: httpx.AsyncClient,
 ) -> None:
     client = relationship_client
@@ -108,6 +126,8 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
     relationship_id = value["id"]
     assert created.headers["location"].endswith(relationship_id)
     assert value["relationship_definition_id"] == definition["id"]
+    assert value["relationship_definition_version"] == 1
+    assert value["properties"] == {}
     assert {
         (item["object_id"], item["destination_object_id"], item["name"])
         for item in value["views"]
@@ -124,9 +144,10 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
             "to_object_id": first_object,
         },
     )
-    assert converged.status_code == 200, converged.text
+    assert converged.status_code == 409, converged.text
     assert "location" not in converged.headers
-    assert converged.json() == value
+    assert converged.json()["code"] == "relationship_fact_conflict"
+    assert converged.json()["details"] == {"relationship_id": relationship_id}
 
     exact = await client.get(f"/api/v1/core/relationships/{relationship_id}")
     assert exact.status_code == 200
@@ -145,9 +166,11 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
             {
                 "relationship_id": relationship_id,
                 "relationship_definition_id": definition["id"],
+                "relationship_definition_version": 1,
                 "object_id": first_object,
                 "destination_object_id": second_object,
                 "name": "hosts",
+                "properties": {},
             }
         ],
         "next_cursor": None,
@@ -173,7 +196,14 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
             "relationship_id",
             "relationship_definition_id",
             "relationship_name",
+            "before",
+            "after",
         }
+        for item in events
+    )
+    assert all(item["before"] is None for item in events)
+    assert all(
+        item["after"] == {"relationship_definition_version": 1, "properties": {}}
         for item in events
     )
 
@@ -295,7 +325,7 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
     deleted = await client.delete(f"/api/v1/core/relationships/{relationship_id}")
     assert deleted.status_code == 204
     repeated = await client.delete(f"/api/v1/core/relationships/{relationship_id}")
-    assert repeated.status_code == 204
+    assert repeated.status_code == 404
     missing = await client.get(f"/api/v1/core/relationships/{relationship_id}")
     assert missing.status_code == 404
 
@@ -324,6 +354,14 @@ async def test_create_converge_read_navigate_lifecycle_delete_and_definition_unb
         f"/api/v1/core/relationship-definitions/{definition['id']}"
     )
     assert unblocked.status_code == 204
+    assert (
+        await client.delete(f"/api/v1/core/objects/{second_object}")
+    ).status_code == 204
+    historical = await client.get(
+        "/api/v1/core/lifecycle-events", params={"relationship_id": relationship_id}
+    )
+    assert historical.status_code == 200
+    assert len(historical.json()["items"]) == 4
 
 
 @pytest.mark.api
@@ -345,7 +383,10 @@ async def test_strict_operands_missing_resources_incompatibility_and_self_loop(
         },
     )
     assert definition.status_code == 201
-    resolution_id = definition.json()["resolutions"][0]["resolution_id"]
+    definition_value = await _publish_created_definition(client, definition)
+    resolution_id = cast(list[dict[str, str]], definition_value["resolutions"])[0][
+        "resolution_id"
+    ]
 
     unknown = await client.post(
         "/api/v1/core/relationships",
@@ -448,7 +489,11 @@ async def test_object_relative_keyset_cursor_and_filter_identity(
             "name": "linked",
         },
     )
-    resolution_id = definition.json()["resolutions"][0]["resolution_id"]
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
+    resolution_id = cast(list[dict[str, str]], definition_value["resolutions"])[0][
+        "resolution_id"
+    ]
     for destination in (second, third):
         created = await client.post(
             "/api/v1/core/relationships",
@@ -498,7 +543,11 @@ async def test_runtime_object_foreign_keys_restrict_and_rollback(
             "name": "fk_link",
         },
     )
-    resolution_id = definition.json()["resolutions"][0]["resolution_id"]
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
+    resolution_id = cast(list[dict[str, str]], definition_value["resolutions"])[0][
+        "resolution_id"
+    ]
     created = await client.post(
         "/api/v1/core/relationships",
         json={
@@ -541,13 +590,20 @@ async def test_db_valid_incomplete_runtime_aggregate_maps_to_internal_error(
             "name": "corrupt_link",
         },
     )
-    definition_id = UUID(definition.json()["id"])
-    resolution_id = UUID(definition.json()["resolutions"][0]["resolution_id"])
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
+    definition_id = UUID(cast(str, definition_value["id"]))
+    resolution_id = UUID(
+        cast(list[dict[str, str]], definition_value["resolutions"])[0]["resolution_id"]
+    )
     relationship_id = uuid4()
     with migrated_database_engine.begin() as connection:
         connection.execute(
             insert(relationships).values(
-                id=relationship_id, relationship_definition_id=definition_id
+                id=relationship_id,
+                relationship_definition_id=definition_id,
+                relationship_definition_version=1,
+                properties={},
             )
         )
         connection.execute(
@@ -588,10 +644,14 @@ async def test_relationship_event_rows_use_database_identity_and_timestamp_defau
             "name": "event_default_link",
         },
     )
+    assert definition.status_code == 201
+    definition_value = await _publish_created_definition(client, definition)
     created = await client.post(
         "/api/v1/core/relationships",
         json={
-            "resolution_id": definition.json()["resolutions"][0]["resolution_id"],
+            "resolution_id": cast(
+                list[dict[str, str]], definition_value["resolutions"]
+            )[0]["resolution_id"],
             "from_object_id": first,
             "to_object_id": second,
         },
@@ -607,3 +667,486 @@ async def test_relationship_event_rows_use_database_identity_and_timestamp_defau
     assert len(rows) == 2
     assert all(row.id is not None and row.occurred_at is not None for row in rows)
     assert len({row.occurred_at for row in rows}) == 1
+
+
+async def _published_relationship_datatype(client: httpx.AsyncClient, name: str) -> str:
+    created = await client.post(
+        "/api/v1/core/datatypes",
+        json={
+            "namespace": "relationship_runtime",
+            "name": name,
+            "base_type": "core.integer",
+        },
+    )
+    assert created.status_code == 201, created.text
+    datatype_id = cast(str, created.json()["datatype"]["id"])
+    published = await client.post(
+        f"/api/v1/core/datatypes/{datatype_id}/versions/1/publish",
+        params={"expected_revision": 1},
+    )
+    assert published.status_code == 200, published.text
+    return datatype_id
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_m2_s02_data_schema_change_lifecycle_and_strict_contract(
+    relationship_client: httpx.AsyncClient,
+) -> None:
+    client = relationship_client
+    datatype_id = await _published_relationship_datatype(client, "s02_metric")
+    first_template = await _template(client, "s02_endpoint_a")
+    second_template = await _template(client, "s02_endpoint_b")
+    first_object = await _object(client, first_template, "s02-a")
+    second_object = await _object(client, second_template, "s02-b")
+    scalar_property = {
+        "name": "metric",
+        "position": 1,
+        "datatype_id": datatype_id,
+        "value_mode": "SCALAR",
+    }
+    created_definition = await client.post(
+        "/api/v1/core/relationship-definitions",
+        json={
+            "symmetric": False,
+            "perspectives": [
+                {"template_id": first_template, "name": "measures"},
+                {"template_id": second_template, "name": "measured_by"},
+            ],
+            "properties": [scalar_property],
+        },
+    )
+    assert created_definition.status_code == 201, created_definition.text
+    definition = created_definition.json()["relationship_definition"]
+    definition_id = cast(str, definition["id"])
+    publish_v1 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/1/publish",
+        params={"expected_revision": 1},
+    )
+    assert publish_v1.status_code == 200, publish_v1.text
+
+    create_v2 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/create-next",
+        json={"source_version": 1},
+    )
+    assert create_v2.status_code == 201, create_v2.text
+    list_property = {**scalar_property, "value_mode": "LIST"}
+    revise_v2 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/2/revise",
+        params={"expected_revision": 1},
+        json={"properties": [list_property]},
+    )
+    assert revise_v2.status_code == 200, revise_v2.text
+    publish_v2 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/2/publish",
+        params={"expected_revision": 2},
+    )
+    assert publish_v2.status_code == 200, publish_v2.text
+
+    create_v3 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/create-next",
+        json={"source_version": 2},
+    )
+    assert create_v3.status_code == 201, create_v3.text
+    publish_v3 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/3/publish",
+        params={"expected_revision": 1},
+    )
+    assert publish_v3.status_code == 200, publish_v3.text
+
+    create_datatype_v2 = await client.post(
+        f"/api/v1/core/datatypes/{datatype_id}/create-next",
+        json={"source_version": 1},
+    )
+    assert create_datatype_v2.status_code == 201, create_datatype_v2.text
+    revise_datatype_v2 = await client.post(
+        f"/api/v1/core/datatypes/{datatype_id}/versions/2/revise",
+        params={"expected_revision": 1},
+        json={"constraints": {"maximum": 10}},
+    )
+    assert revise_datatype_v2.status_code == 200, revise_datatype_v2.text
+    publish_datatype_v2 = await client.post(
+        f"/api/v1/core/datatypes/{datatype_id}/versions/2/publish",
+        params={"expected_revision": 2},
+    )
+    assert publish_datatype_v2.status_code == 200, publish_datatype_v2.text
+    create_v4 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/create-next",
+        json={"source_version": 3},
+    )
+    assert create_v4.status_code == 201, create_v4.text
+    constrained_property = {**list_property, "datatype_version": 2}
+    revise_v4 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/4/revise",
+        params={"expected_revision": 1},
+        json={"properties": [constrained_property]},
+    )
+    assert revise_v4.status_code == 200, revise_v4.text
+    publish_v4 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/versions/4/publish",
+        params={"expected_revision": 2},
+    )
+    assert publish_v4.status_code == 200, publish_v4.text
+
+    resolution = _resolution(definition, first_template)
+    created = await client.post(
+        "/api/v1/core/relationships",
+        json={
+            "resolution_id": resolution["resolution_id"],
+            "from_object_id": first_object,
+            "to_object_id": second_object,
+            "relationship_definition_version": 1,
+            "properties": {"metric": 1},
+        },
+    )
+    assert created.status_code == 201, created.text
+    relationship_id = cast(str, created.json()["id"])
+
+    changed = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/data-change",
+        json={"operations": [{"op": "SET", "property": "metric", "value": 99}]},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["properties"] == {"metric": 99}
+    no_op = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/data-change",
+        json={"operations": [{"op": "SET", "property": "metric", "value": 99}]},
+    )
+    assert no_op.status_code == 200
+    assert no_op.json() == changed.json()
+    data_events = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={
+            "relationship_id": relationship_id,
+            "kind": "RELATIONSHIP_DATA_CHANGE",
+        },
+    )
+    assert len(data_events.json()["items"]) == 2
+    assert all(
+        item["before"]
+        == {"relationship_definition_version": 1, "properties": {"metric": 1}}
+        and item["after"]
+        == {"relationship_definition_version": 1, "properties": {"metric": 99}}
+        for item in data_events.json()["items"]
+    )
+
+    schema_v2 = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change",
+        json={"target_version": 2},
+    )
+    assert schema_v2.status_code == 200, schema_v2.text
+    assert schema_v2.json()["properties"] == {"metric": [99]}
+    schema_v3 = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change",
+        json={"target_version": 3},
+    )
+    assert schema_v3.status_code == 200, schema_v3.text
+    assert schema_v3.json()["properties"] == {"metric": [99]}
+    blocked = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change",
+        json={"target_version": 4},
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["code"] == "schema_change_blocked"
+    assert blocked.json()["details"] == {
+        "relationship_id": relationship_id,
+        "target_version": 4,
+        "blocker_type": "property",
+        "member_name": "metric",
+    }
+    exact = await client.get(f"/api/v1/core/relationships/{relationship_id}")
+    assert exact.status_code == 200
+    assert exact.json()["relationship_definition_version"] == 3
+    assert exact.json()["properties"] == {"metric": [99]}
+    schema_events = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={
+            "relationship_id": relationship_id,
+            "kind": "RELATIONSHIP_SCHEMA_CHANGE",
+        },
+    )
+    assert len(schema_events.json()["items"]) == 4
+    assert {
+        (
+            item["before"]["relationship_definition_version"],
+            item["after"]["relationship_definition_version"],
+        )
+        for item in schema_events.json()["items"]
+    } == {(1, 2), (2, 3)}
+
+    removed = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/data-change",
+        json={"operations": [{"op": "REMOVE", "property": "metric"}]},
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["properties"] == {}
+    remove_noop = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/data-change",
+        json={"operations": [{"op": "REMOVE", "property": "metric"}]},
+    )
+    assert remove_noop.status_code == 200
+    assert remove_noop.json() == removed.json()
+
+    invalid_bodies: tuple[dict[str, object], ...] = (
+        {"operations": []},
+        {
+            "operations": [
+                {"op": "REMOVE", "property": "metric"},
+                {"op": "REMOVE", "property": "metric"},
+            ]
+        },
+        {"operations": [{"op": "REMOVE", "property": "metric", "value": 1}]},
+        {"operations": [{"op": "SET", "property": "metric"}]},
+        {"operations": [{"op": "UPSERT", "property": "metric", "value": 1}]},
+        {"operations": [{"op": "SET", "property": "metric", "value": 1}], "x": 1},
+    )
+    for body in invalid_bodies:
+        response = await client.post(
+            f"/api/v1/core/relationships/{relationship_id}/data-change", json=body
+        )
+        assert response.status_code == 400, response.text
+        assert response.json()["code"] == "invalid_request"
+    null_value = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/data-change",
+        json={"operations": [{"op": "SET", "property": "metric", "value": None}]},
+    )
+    assert null_value.status_code == 422
+    assert null_value.json()["code"] == "semantic_validation_failed"
+    repeated_query = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change?x=1&x=2",
+        json={"target_version": 4},
+    )
+    assert repeated_query.status_code == 400
+    nonforward = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change",
+        json={"target_version": 3},
+    )
+    assert nonforward.status_code == 422
+    missing_target = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change",
+        json={"target_version": 999},
+    )
+    assert missing_target.status_code == 422
+    assert missing_target.json()["details"] == {
+        "resource_type": "relationship_definition_version",
+        "id": definition_id,
+        "version": 999,
+    }
+    draft_v5 = await client.post(
+        f"/api/v1/core/relationship-definitions/{definition_id}/create-next",
+        json={"source_version": 3},
+    )
+    assert draft_v5.status_code == 201, draft_v5.text
+    nonpublished = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/schema-change",
+        json={"target_version": 5},
+    )
+    assert nonpublished.status_code == 409
+    assert nonpublished.json()["code"] == "dependency_not_admissible"
+    for invalid_target_body in (
+        {"target_version": True},
+        {"target_version": 0},
+        {"target_version": -1},
+        {"target_version": 4, "extra": 1},
+        {},
+    ):
+        invalid_target = await client.post(
+            f"/api/v1/core/relationships/{relationship_id}/schema-change",
+            json=invalid_target_body,
+        )
+        assert invalid_target.status_code == 400
+        assert invalid_target.json()["code"] == "invalid_request"
+    malformed_path = await client.post(
+        "/api/v1/core/relationships/not-a-uuid/schema-change",
+        json={"target_version": 4},
+    )
+    assert malformed_path.status_code == 400
+    unknown_query = await client.post(
+        f"/api/v1/core/relationships/{relationship_id}/data-change?unknown=1",
+        json={"operations": [{"op": "REMOVE", "property": "metric"}]},
+    )
+    assert unknown_query.status_code == 400
+    missing_relationship_id = str(uuid4())
+    missing_data = await client.post(
+        f"/api/v1/core/relationships/{missing_relationship_id}/data-change",
+        json={"operations": [{"op": "REMOVE", "property": "metric"}]},
+    )
+    missing_schema = await client.post(
+        f"/api/v1/core/relationships/{missing_relationship_id}/schema-change",
+        json={"target_version": 4},
+    )
+    assert missing_data.status_code == missing_schema.status_code == 404
+    assert missing_data.json()["details"] == {
+        "resource_type": "relationship",
+        "id": missing_relationship_id,
+    }
+
+    deleted_relationship = await client.delete(
+        f"/api/v1/core/relationships/{relationship_id}"
+    )
+    assert deleted_relationship.status_code == 204
+    deleted_definition = await client.delete(
+        f"/api/v1/core/relationship-definitions/{definition_id}"
+    )
+    assert deleted_definition.status_code == 204, deleted_definition.text
+    for object_id in (first_object, second_object):
+        deleted_object = await client.delete(f"/api/v1/core/objects/{object_id}")
+        assert deleted_object.status_code == 204, deleted_object.text
+    deleted_datatype = await client.delete(f"/api/v1/core/datatypes/{datatype_id}")
+    assert deleted_datatype.status_code == 204, deleted_datatype.text
+    assert (
+        await client.get(f"/api/v1/core/relationship-definitions/{definition_id}")
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/core/datatypes/{datatype_id}")
+    ).status_code == 404
+    for object_id in (first_object, second_object):
+        assert (
+            await client.get(f"/api/v1/core/objects/{object_id}")
+        ).status_code == 404
+    historical = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"relationship_id": relationship_id},
+    )
+    assert historical.status_code == 200, historical.text
+    historical_items = historical.json()["items"]
+    assert len(historical_items) == 12
+    expected_transitions: tuple[
+        tuple[str, dict[str, JsonValue] | None, dict[str, JsonValue] | None], ...
+    ] = (
+        (
+            EventKind.RELATIONSHIP_CREATED.value,
+            None,
+            {"relationship_definition_version": 1, "properties": {"metric": 1}},
+        ),
+        (
+            EventKind.RELATIONSHIP_DATA_CHANGE.value,
+            {"relationship_definition_version": 1, "properties": {"metric": 1}},
+            {"relationship_definition_version": 1, "properties": {"metric": 99}},
+        ),
+        (
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+            {"relationship_definition_version": 1, "properties": {"metric": 99}},
+            {
+                "relationship_definition_version": 2,
+                "properties": {"metric": [99]},
+            },
+        ),
+        (
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE.value,
+            {
+                "relationship_definition_version": 2,
+                "properties": {"metric": [99]},
+            },
+            {
+                "relationship_definition_version": 3,
+                "properties": {"metric": [99]},
+            },
+        ),
+        (
+            EventKind.RELATIONSHIP_DATA_CHANGE.value,
+            {
+                "relationship_definition_version": 3,
+                "properties": {"metric": [99]},
+            },
+            {"relationship_definition_version": 3, "properties": {}},
+        ),
+        (
+            EventKind.RELATIONSHIP_DELETED.value,
+            {"relationship_definition_version": 3, "properties": {}},
+            None,
+        ),
+    )
+    for kind, before, after in expected_transitions:
+        assert (
+            sum(
+                item["kind"] == kind
+                and item["before"] == before
+                and item["after"] == after
+                for item in historical_items
+            )
+            == 2
+        )
+    assert {item["relationship_id"] for item in historical_items} == {relationship_id}
+    assert {item["relationship_definition_id"] for item in historical_items} == {
+        definition_id
+    }
+    assert {item["object_id"] for item in historical_items} == {
+        first_object,
+        second_object,
+    }
+    assert {item["destination_object_id"] for item in historical_items} == {
+        first_object,
+        second_object,
+    }
+    assert {item["relationship_name"] for item in historical_items} == {
+        "measures",
+        "measured_by",
+    }
+    assert (
+        await client.get(f"/api/v1/core/objects/{first_object}/lifecycle-events")
+    ).status_code == 404
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
+async def test_m2_s02_corrupt_relationship_transition_fails_complete_page(
+    relationship_client: httpx.AsyncClient,
+    migrated_database_engine: Engine,
+) -> None:
+    client = relationship_client
+    template_id = await _template(client, "s02_corrupt_event")
+    first = await _object(client, template_id, "s02-corrupt-first")
+    second = await _object(client, template_id, "s02-corrupt-second")
+    created_definition = await client.post(
+        "/api/v1/core/relationship-definitions",
+        json={
+            "symmetric": True,
+            "endpoint_template_ids": [template_id, template_id],
+            "name": "s02_corrupt_link",
+        },
+    )
+    definition = await _publish_created_definition(client, created_definition)
+    resolution_id = cast(list[dict[str, str]], definition["resolutions"])[0][
+        "resolution_id"
+    ]
+    created = await client.post(
+        "/api/v1/core/relationships",
+        json={
+            "resolution_id": resolution_id,
+            "from_object_id": first,
+            "to_object_id": second,
+        },
+    )
+    assert created.status_code == 201, created.text
+    relationship_id = UUID(created.json()["id"])
+    invalid_state: dict[str, JsonValue] = {
+        "relationship_definition_version": 1,
+        "properties": {},
+    }
+    with migrated_database_engine.begin() as connection:
+        event_id = connection.scalar(
+            select(object_lifecycle_events.c.id)
+            .where(object_lifecycle_events.c.relationship_id == relationship_id)
+            .limit(1)
+        )
+        assert event_id is not None
+        connection.execute(
+            object_lifecycle_events.update()
+            .where(object_lifecycle_events.c.id == event_id)
+            .values(
+                kind="RELATIONSHIP_DATA_CHANGE",
+                before_state=invalid_state,
+                after_state=invalid_state,
+            )
+        )
+    response = await client.get(
+        "/api/v1/core/lifecycle-events",
+        params={"relationship_id": str(relationship_id)},
+    )
+    assert response.status_code == 500
+    assert response.json() == {
+        "code": "internal_error",
+        "message": "The persisted lifecycle event state is invalid.",
+        "details": {},
+    }

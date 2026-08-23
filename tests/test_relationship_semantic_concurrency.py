@@ -1,13 +1,16 @@
 """Deterministic real-PostgreSQL runtime Relationship scenarios."""
 
 import asyncio
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+import netauto.application.relationships as relationship_application
 from netauto.application.objects import ObjectService
 from netauto.application.objecttemplates import ObjectTemplateService, PropertyCandidate
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
@@ -27,6 +30,15 @@ from netauto.domain.relationships import (
     derive_runtime_closure,
 )
 from netauto.failures import ApplicationFailure, FailureClass
+from netauto.persistence.lifecycle import EventKind, LifecycleStore
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+)
 from netauto.persistence.metadata import (
     object_lifecycle_events,
     relationships,
@@ -46,7 +58,9 @@ from tests.support.semantic_concurrency import (
     SemanticActors,
     blocked_race,
     capture,
+    install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -72,13 +86,6 @@ class RelationshipSeed:
             for item in self.definition.resolutions
             if item.from_template_id == self.second_object.template_id
         )
-
-
-@dataclass(slots=True)
-class ExactReadCut:
-    reached: asyncio.Event = field(default_factory=asyncio.Event)
-    release: asyncio.Event = field(default_factory=asyncio.Event)
-    calls: int = 0
 
 
 def _relationship_services(
@@ -136,13 +143,17 @@ async def _seed(
     second_object = await objects.create(
         second_template.object_template.id, 1, f"{prefix}-second", {}
     )
-    definition = await RelationshipDefinitionService(factory).create_non_symmetric(
+    definitions = RelationshipDefinitionService(factory)
+    created_definition = await definitions.create_non_symmetric(
         (
             RelationshipPerspective(first_template.object_template.id, first_name),
             RelationshipPerspective(second_template.object_template.id, second_name),
         )
     )
-    return RelationshipSeed(definition, first_object, second_object)
+    await definitions.publish(created_definition.relationship_definition.id, 1, 1)
+    return RelationshipSeed(
+        created_definition.relationship_definition, first_object, second_object
+    )
 
 
 async def _symmetric_seed(
@@ -182,10 +193,14 @@ async def _symmetric_seed(
     second_object = await objects.create(
         endpoint_template_id, 1, f"{prefix}-second", {}
     )
-    definition = await RelationshipDefinitionService(factory).create_symmetric(
+    definitions = RelationshipDefinitionService(factory)
+    created_definition = await definitions.create_symmetric(
         definition_templates, f"{prefix}_link"
     )
-    return RelationshipSeed(definition, first_object, second_object)
+    await definitions.publish(created_definition.relationship_definition.id, 1, 1)
+    return RelationshipSeed(
+        created_definition.relationship_definition, first_object, second_object
+    )
 
 
 async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> RelationshipSeed:
@@ -240,7 +255,8 @@ async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> Relations
     second_object = await objects.create(
         second_template.object_template.id, 1, f"{prefix}-peer", {}
     )
-    definition = await RelationshipDefinitionService(factory).create_non_symmetric(
+    definitions = RelationshipDefinitionService(factory)
+    created_definition = await definitions.create_non_symmetric(
         (
             RelationshipPerspective(
                 first_template.object_template.id, "contains_mutable"
@@ -248,7 +264,10 @@ async def _mutable_object_seed(actors: SemanticActors, prefix: str) -> Relations
             RelationshipPerspective(second_template.object_template.id, "in_mutable"),
         )
     )
-    return RelationshipSeed(definition, first_object, second_object)
+    await definitions.publish(created_definition.relationship_definition.id, 1, 1)
+    return RelationshipSeed(
+        created_definition.relationship_definition, first_object, second_object
+    )
 
 
 def _insert_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[Relationship]]:
@@ -305,21 +324,12 @@ def _object_update_cut(
 
 
 def _delete_owner_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = RuntimeRelationshipStore.lock_update
-
-    async def intercepted(
-        store: RuntimeRelationshipStore, relationship_id: UUID
-    ) -> bool:
-        result = await original(store, relationship_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(RuntimeRelationshipStore, "lock_update", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        relationship_application,
+        RowLockClass.RELATIONSHIP,
+        RowLockMode.U,
+    )
 
 
 def _definition_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -357,10 +367,10 @@ def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 def _metadata_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[int]]:
     cut = PhaseCut()
     observations: list[int] = []
-    original = RuntimeRelationshipStore.lifecycle_views
+    original = LifecycleStore.relationship_views
 
-    async def intercepted(store: RuntimeRelationshipStore, relationship_id: UUID):
-        value = await original(store, relationship_id)
+    async def intercepted(store: LifecycleStore, relationship: Relationship):
+        value = await original(store, relationship)
         observations.append(len(value))
         task = asyncio.current_task()
         if task is not None and task.get_name() == "T1":
@@ -368,7 +378,7 @@ def _metadata_cut(monkeypatch: pytest.MonkeyPatch) -> tuple[PhaseCut, list[int]]
             await cut.release.wait()
         return value
 
-    monkeypatch.setattr(RuntimeRelationshipStore, "lifecycle_views", intercepted)
+    monkeypatch.setattr(LifecycleStore, "relationship_views", intercepted)
     return cut, observations
 
 
@@ -378,7 +388,7 @@ def _failure_code(value: object) -> str | None:
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_arb_05_reciprocal_create_uses_pk_and_converges(
+async def test_arb_05_reciprocal_create_uses_pk_and_rejects_loser(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -403,10 +413,10 @@ async def test_arb_05_reciprocal_create_uses_pk_and_converges(
             ),
         )
         assert isinstance(winner, RelationshipCreateResult)
-        assert isinstance(loser, RelationshipCreateResult)
         assert winner.created is True
-        assert loser.created is False
-        assert winner.relationship.id == loser.relationship.id
+        assert isinstance(loser, ApplicationFailure)
+        assert loser.code == "relationship_fact_conflict"
+        assert loser.details == {"relationship_id": str(winner.relationship.id)}
         assert len(candidates) == 2
         assert candidates[0].id != candidates[1].id
         async with actors.t1_engine.connect() as connection:
@@ -437,7 +447,7 @@ async def test_arb_05_reciprocal_create_uses_pk_and_converges(
 @pytest.mark.postgresql
 @pytest.mark.concurrency
 @pytest.mark.parametrize("inheritance_overlap", [False, True])
-async def test_arb_05_symmetric_inverse_and_overlap_create_converge(
+async def test_arb_05_symmetric_inverse_and_overlap_create_reject_loser(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -469,10 +479,10 @@ async def test_arb_05_symmetric_inverse_and_overlap_create_converge(
             ),
         )
         assert isinstance(winner, RelationshipCreateResult)
-        assert isinstance(loser, RelationshipCreateResult)
         assert winner.created is True
-        assert loser.created is False
-        assert winner.relationship.id == loser.relationship.id
+        assert isinstance(loser, ApplicationFailure)
+        assert loser.code == "relationship_fact_conflict"
+        assert loser.details == {"relationship_id": str(winner.relationship.id)}
         expected_runtime_rows = 4 if inheritance_overlap else 2
         async with actors.t1_engine.connect() as connection:
             assert (
@@ -518,7 +528,8 @@ async def test_arb_06_same_id_delete_locks_and_emits_one_event_set(
             lambda: first.delete(initial.relationship.id),
             lambda: second.delete(initial.relationship.id),
         )
-        assert outcomes == [None, None]
+        assert outcomes[0] is None
+        assert _failure_code(outcomes[1]) == "resource_not_found"
         async with actors.t1_engine.connect() as connection:
             assert (
                 await connection.scalar(
@@ -543,22 +554,42 @@ async def test_arb_07a_late_delete_cannot_remove_recreated_fact(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ARB-07A-REL") as actors:
         seed = await _seed(actors, "arb07a")
-        service = _reader(actors)
-        original = await service.create(
-            seed.first_resolution_id,
-            seed.first_object.id,
-            seed.second_object.id,
+        service = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
-        await service.delete(original.relationship.id)
-        recreated = await service.create(
-            seed.first_resolution_id,
-            seed.first_object.id,
-            seed.second_object.id,
+        original = await run_worker(
+            lambda: service.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+            actors.tracker,
+            "T1",
         )
+        assert isinstance(original, RelationshipCreateResult)
+        await run_worker(
+            lambda: service.delete(original.relationship.id), actors.tracker, "T1"
+        )
+        recreated = await run_worker(
+            lambda: service.create(
+                seed.first_resolution_id,
+                seed.first_object.id,
+                seed.second_object.id,
+            ),
+            actors.tracker,
+            "T1",
+        )
+        assert isinstance(recreated, RelationshipCreateResult)
         assert recreated.created is True
         assert recreated.relationship.id != original.relationship.id
 
-        await service.delete(original.relationship.id)
+        with pytest.raises(ApplicationFailure) as missing:
+            await run_worker(
+                lambda: service.delete(original.relationship.id),
+                actors.tracker,
+                "T1",
+            )
+        assert missing.value.code == "resource_not_found"
 
         assert (
             await service.get(recreated.relationship.id)
@@ -573,31 +604,36 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "ARB-07B-REL") as actors:
+    async with semantic_actors(test_database_url, "ARB-07-PLAN-05-B-REL") as actors:
         seed = await _seed(actors, "arb07b")
         first, second = _relationship_services(actors)
         insert_cut, candidates = _insert_cut(monkeypatch)
-        exact_cut = ExactReadCut()
-        original_exact = RuntimeRelationshipStore.exact_relationship_id
+        owner_observed_cut = PhaseCut()
+        original_prepare = relationship_application.prepare_lock_plan
 
-        async def intercepted_exact(
-            store: RuntimeRelationshipStore,
-            resolution_id: UUID,
-            from_object_id: UUID,
-            to_object_id: UUID,
-        ) -> UUID | None:
+        async def intercepted_prepare(
+            connection: AsyncConnection,
+            *,
+            intents: Iterable[RowLockIntent] = (),
+            gate: AdvisoryGate | None = None,
+        ) -> LockPlan:
+            requested = tuple(intents)
             task = asyncio.current_task()
-            if task is not None and task.get_name() == "T2":
-                exact_cut.calls += 1
-                if exact_cut.calls == 2:
-                    exact_cut.reached.set()
-                    await exact_cut.release.wait()
-            return await original_exact(
-                store, resolution_id, from_object_id, to_object_id
-            )
+            if (
+                task is not None
+                and task.get_name() == "T2"
+                and any(
+                    intent.key.row_class is RowLockClass.RELATIONSHIP
+                    and intent.mode is RowLockMode.KS
+                    for intent in requested
+                )
+            ):
+                owner_observed_cut.reached.set()
+                await owner_observed_cut.release.wait()
+            return await original_prepare(connection, intents=requested, gate=gate)
 
         monkeypatch.setattr(
-            RuntimeRelationshipStore, "exact_relationship_id", intercepted_exact
+            relationship_application, "prepare_lock_plan", intercepted_prepare
         )
         actors.tracker.reset()
         winner_task = asyncio.create_task(
@@ -630,9 +666,9 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
         insert_cut.release.set()
         winner = await winner_task
         assert isinstance(winner, RelationshipCreateResult)
-        await exact_cut.reached.wait()
+        await owner_observed_cut.reached.wait()
         await _reader(actors).delete(winner.relationship.id)
-        exact_cut.release.set()
+        owner_observed_cut.release.set()
         loser = await loser_task
         assert isinstance(loser, RelationshipCreateResult)
         assert loser.created is True
@@ -645,6 +681,246 @@ async def test_arb_07b_winner_disappears_before_fresh_convergence_read(
         async with actors.t1_engine.connect() as connection:
             current_ids = set(await connection.scalars(select(relationships.c.id)))
         assert current_ids == {loser.relationship.id}
+        t2_transactions = actors.tracker.transactions["T2"]
+        assert len(t2_transactions) >= 3
+        assert len({identity[1] for identity in t2_transactions}) == len(
+            t2_transactions
+        )
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_arb_07c_delete_blocks_after_collision_owner_lifetime_lock(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ARB-07-PLAN-05-C-REL") as actors:
+        seed = await _seed(actors, "arb07c")
+        first, second = _relationship_services(actors)
+        insert_cut, _ = _insert_cut(monkeypatch)
+        owner_locked_cut = PhaseCut()
+        original_acquire = relationship_application.acquire_lock_plan
+
+        async def intercepted_acquire(
+            connection: AsyncConnection, plan: LockPlan
+        ) -> tuple[RowLockKey, ...]:
+            missing = await original_acquire(connection, plan)
+            task = asyncio.current_task()
+            if (
+                task is not None
+                and task.get_name() == "T2"
+                and any(
+                    intent.key.row_class is RowLockClass.RELATIONSHIP
+                    and intent.mode is RowLockMode.KS
+                    for intent in plan.rows
+                )
+            ):
+                owner_locked_cut.reached.set()
+                await owner_locked_cut.release.wait()
+            return missing
+
+        monkeypatch.setattr(
+            relationship_application, "acquire_lock_plan", intercepted_acquire
+        )
+        actors.tracker.reset()
+        winner_task = asyncio.create_task(
+            capture(
+                lambda: first.create(
+                    seed.first_resolution_id,
+                    seed.first_object.id,
+                    seed.second_object.id,
+                )
+            ),
+            name="T1",
+        )
+        await insert_cut.reached.wait()
+        loser_task = asyncio.create_task(
+            capture(
+                lambda: second.create(
+                    seed.second_resolution_id,
+                    seed.second_object.id,
+                    seed.first_object.id,
+                )
+            ),
+            name="T2",
+        )
+        await actors.tracker.ready["T2"].wait()
+        assert actors.tracker.pids["T1"] in await wait_for_blocker(
+            actors.observer,
+            actors.tracker.pids["T2"],
+            actors.tracker.pids["T1"],
+        )
+        insert_cut.release.set()
+        winner = await winner_task
+        assert isinstance(winner, RelationshipCreateResult)
+        await owner_locked_cut.reached.wait()
+
+        deleter = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T3")
+        )
+        actors.tracker.ready["T3"] = asyncio.Event()
+        delete_task = asyncio.create_task(
+            capture(lambda: deleter.delete(winner.relationship.id)), name="T3"
+        )
+        await actors.tracker.ready["T3"].wait()
+        assert actors.tracker.pids["T2"] in await wait_for_blocker(
+            actors.observer,
+            actors.tracker.pids["T3"],
+            actors.tracker.pids["T2"],
+        )
+
+        owner_locked_cut.release.set()
+        loser, deleted = await asyncio.gather(loser_task, delete_task)
+        assert isinstance(loser, ApplicationFailure)
+        assert loser.code == "relationship_fact_conflict"
+        assert loser.details == {"relationship_id": str(winner.relationship.id)}
+        assert deleted is None
+
+
+@pytest.mark.postgresql
+@pytest.mark.concurrency
+async def test_arb_07d_expanded_collision_owner_set_restarts_complete_plan(
+    migrated_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database_engine
+    async with semantic_actors(test_database_url, "ARB-07D-REL") as actors:
+        first_seed = await _seed(actors, "arb07d_first")
+        second_seed = await _seed(actors, "arb07d_second")
+        service = _reader(actors)
+        first = await service.create(
+            first_seed.first_resolution_id,
+            first_seed.first_object.id,
+            first_seed.second_object.id,
+        )
+        parent_by_id = {
+            first_seed.first_object.template_id: None,
+            first_seed.second_object.template_id: None,
+            second_seed.first_object.template_id: None,
+            second_seed.second_object.template_id: None,
+        }
+        collision_keys = (
+            *derive_runtime_closure(
+                first_seed.definition,
+                selected_resolution_id=first_seed.first_resolution_id,
+                from_object_id=first_seed.first_object.id,
+                from_template_id=first_seed.first_object.template_id,
+                to_object_id=first_seed.second_object.id,
+                to_template_id=first_seed.second_object.template_id,
+                parent_by_id=parent_by_id,
+            ),
+            *derive_runtime_closure(
+                second_seed.definition,
+                selected_resolution_id=second_seed.first_resolution_id,
+                from_object_id=second_seed.first_object.id,
+                from_template_id=second_seed.first_object.template_id,
+                to_object_id=second_seed.second_object.id,
+                to_template_id=second_seed.second_object.template_id,
+                parent_by_id=parent_by_id,
+            ),
+        )
+        owner_observed_cut = PhaseCut()
+        original_prepare = relationship_application.prepare_lock_plan
+        original_acquire = relationship_application.acquire_lock_plan
+        cut_used = False
+        acquired_owner_sets: list[tuple[UUID, ...]] = []
+
+        async def intercepted_prepare(
+            connection: AsyncConnection,
+            *,
+            intents: Iterable[RowLockIntent] = (),
+            gate: AdvisoryGate | None = None,
+        ) -> LockPlan:
+            nonlocal cut_used
+            requested = tuple(intents)
+            task = asyncio.current_task()
+            if (
+                not cut_used
+                and task is not None
+                and task.get_name() == "T2"
+                and requested
+                and all(
+                    intent.key.row_class is RowLockClass.RELATIONSHIP
+                    for intent in requested
+                )
+            ):
+                cut_used = True
+                owner_observed_cut.reached.set()
+                await owner_observed_cut.release.wait()
+            return await original_prepare(connection, intents=requested, gate=gate)
+
+        async def intercepted_acquire(
+            connection: AsyncConnection, plan: LockPlan
+        ) -> tuple[RowLockKey, ...]:
+            owner_ids = tuple(
+                item.key.resource_id
+                for item in plan.rows
+                if item.key.row_class is RowLockClass.RELATIONSHIP
+            )
+            if owner_ids:
+                acquired_owner_sets.append(owner_ids)
+            return await original_acquire(connection, plan)
+
+        monkeypatch.setattr(
+            relationship_application, "prepare_lock_plan", intercepted_prepare
+        )
+        monkeypatch.setattr(
+            relationship_application, "acquire_lock_plan", intercepted_acquire
+        )
+        classify_collision = cast(
+            Callable[..., Awaitable[RelationshipCreateResult]],
+            RelationshipService.__dict__["_classify_exact_view_collision"],
+        )
+        restart_error = cast(
+            type[Exception],
+            relationship_application.__dict__["_RestartRelationshipCreate"],
+        )
+
+        async def classify_once() -> RelationshipCreateResult:
+            return await classify_collision(
+                service,
+                collision_keys,
+                resolution_id=first_seed.first_resolution_id,
+                from_object_id=first_seed.first_object.id,
+                to_object_id=first_seed.second_object.id,
+            )
+
+        first_classification = asyncio.create_task(
+            classify_once(),
+            name="T2",
+        )
+        await owner_observed_cut.reached.wait()
+        second = await service.create(
+            second_seed.first_resolution_id,
+            second_seed.first_object.id,
+            second_seed.second_object.id,
+        )
+        owner_observed_cut.release.set()
+        with pytest.raises(restart_error):
+            await first_classification
+
+        with pytest.raises(ApplicationFailure) as conflict:
+            await classify_collision(
+                service,
+                collision_keys,
+                resolution_id=first_seed.first_resolution_id,
+                from_object_id=first_seed.first_object.id,
+                to_object_id=first_seed.second_object.id,
+            )
+        assert conflict.value.code == "relationship_fact_conflict"
+        assert conflict.value.details == {"relationship_id": str(first.relationship.id)}
+        assert acquired_owner_sets == [
+            (first.relationship.id,),
+            tuple(
+                sorted(
+                    (first.relationship.id, second.relationship.id),
+                    key=lambda value: value.int,
+                )
+            ),
+        ]
 
 
 @pytest.mark.postgresql
@@ -715,7 +991,7 @@ async def test_ref_03_and_ref_05_relationship_object_lifetime_arbitration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "REF-03-05-REL-OBJECT") as actors:
+    async with semantic_actors(test_database_url, "REF-03-REF-05-REL-OBJECT") as actors:
         seed = await _seed(actors, "ref03_reference_first")
         relationship = RelationshipService(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
@@ -861,18 +1137,28 @@ async def test_snap_01_delete_event_keeps_one_pre_rename_name_snapshot(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
         delete_task = asyncio.create_task(
-            delete_service.delete(created.relationship.id), name="T1"
+            run_worker(
+                lambda: delete_service.delete(created.relationship.id),
+                actors.tracker,
+                "T1",
+            ),
+            name="T1",
         )
         await cut.reached.wait()
         first_resolution, second_resolution = seed.definition.resolutions
-        await RelationshipDefinitionService(
-            UnitOfWorkFactory(actors.t2_engine)
-        ).rename_non_symmetric(
-            seed.definition.id,
-            (
-                ResolutionRename(first_resolution.id, "new_a"),
-                ResolutionRename(second_resolution.id, "new_b"),
+        definitions = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        await run_worker(
+            lambda: definitions.rename_non_symmetric(
+                seed.definition.id,
+                (
+                    ResolutionRename(first_resolution.id, "new_a"),
+                    ResolutionRename(second_resolution.id, "new_b"),
+                ),
             ),
+            actors.tracker,
+            "T2",
         )
         cut.release.set()
         await delete_task
@@ -911,11 +1197,21 @@ async def test_snap_02_delete_event_keeps_one_pre_rename_object_snapshot(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
         delete_task = asyncio.create_task(
-            delete_service.delete(created.relationship.id), name="T1"
+            run_worker(
+                lambda: delete_service.delete(created.relationship.id),
+                actors.tracker,
+                "T1",
+            ),
+            name="T1",
         )
         await cut.reached.wait()
-        await ObjectService(UnitOfWorkFactory(actors.t2_engine)).rename(
-            seed.first_object.id, "snap02-renamed-first"
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        await run_worker(
+            lambda: objects.rename(seed.first_object.id, "snap02-renamed-first"),
+            actors.tracker,
+            "T2",
         )
         cut.release.set()
         await delete_task
@@ -958,19 +1254,33 @@ async def test_snap_03_create_observes_one_real_two_endpoint_name_generation(
             ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
         )
         create_task = asyncio.create_task(
-            service.create(
-                seed.first_resolution_id,
-                seed.first_object.id,
-                seed.second_object.id,
+            run_worker(
+                lambda: service.create(
+                    seed.first_resolution_id,
+                    seed.first_object.id,
+                    seed.second_object.id,
+                ),
+                actors.tracker,
+                "T1",
             ),
             name="T1",
         )
         await insert_cut.reached.wait()
-        objects = ObjectService(UnitOfWorkFactory(actors.t2_engine))
-        await objects.rename(seed.first_object.id, "snap03-renamed-first")
+        objects = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t2_engine, actors.tracker, "T2")
+        )
+        await run_worker(
+            lambda: objects.rename(seed.first_object.id, "snap03-renamed-first"),
+            actors.tracker,
+            "T2",
+        )
         insert_cut.release.set()
         await metadata_cut.reached.wait()
-        await objects.rename(seed.second_object.id, "snap03-renamed-second")
+        await run_worker(
+            lambda: objects.rename(seed.second_object.id, "snap03-renamed-second"),
+            actors.tracker,
+            "T2",
+        )
         metadata_cut.release.set()
         created = await create_task
         assert isinstance(created, RelationshipCreateResult)
@@ -1065,6 +1375,8 @@ async def test_atomic_02_later_closure_pk_collision_rolls_back_candidate(
                 relationships.insert().values(
                     id=blocker_id,
                     relationship_definition_id=seed.definition.id,
+                    relationship_definition_version=1,
+                    properties={},
                 )
             )
             await blocker.connection.execute(
@@ -1153,18 +1465,23 @@ async def test_create_event_failure_rolls_back_header_and_complete_closure(
         test_database_url, "REL-CREATE-EVENT-ROLLBACK"
     ) as actors:
         seed = await _seed(actors, "create_event_rollback")
-        service = _reader(actors)
-        original = RuntimeRelationshipStore.insert_lifecycle_events
+        service = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        original = LifecycleStore.insert_relationship_events
         candidate_ids: list[UUID] = []
 
         async def failed_creation_events(
-            store: RuntimeRelationshipStore,
+            store: LifecycleStore,
             *,
-            kind: str,
-            relationship: Relationship,
+            kind: EventKind,
+            before: Relationship | None,
+            after: Relationship | None,
             views: Sequence[RelationshipLifecycleView],
         ) -> None:
-            if kind == "RELATIONSHIP_CREATED":
+            if kind is EventKind.RELATIONSHIP_CREATED:
+                assert after is not None
+                relationship = after
                 candidate_ids.append(relationship.id)
                 assert (
                     await store.connection.scalar(
@@ -1187,11 +1504,11 @@ async def test_create_event_failure_rolls_back_header_and_complete_closure(
                     "internal_error",
                     "forced creation event failure",
                 )
-            await original(store, kind=kind, relationship=relationship, views=views)
+            await original(store, kind=kind, before=before, after=after, views=views)
 
         monkeypatch.setattr(
-            RuntimeRelationshipStore,
-            "insert_lifecycle_events",
+            LifecycleStore,
+            "insert_relationship_events",
             failed_creation_events,
         )
         with pytest.raises(ApplicationFailure) as caught:
@@ -1246,34 +1563,39 @@ async def test_atomic_03_delete_event_failure_rolls_back_complete_fact(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ATOMIC-03-REL") as actors:
         seed = await _seed(actors, "atomic03")
-        service = _reader(actors)
+        service = RelationshipService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await service.create(
             seed.first_resolution_id,
             seed.first_object.id,
             seed.second_object.id,
         )
-        original = RuntimeRelationshipStore.insert_lifecycle_events
+        original = LifecycleStore.insert_relationship_events
 
         async def failed_events(
-            store: RuntimeRelationshipStore,
+            store: LifecycleStore,
             *,
-            kind: str,
-            relationship: Relationship,
+            kind: EventKind,
+            before: Relationship | None,
+            after: Relationship | None,
             views: Sequence[RelationshipLifecycleView],
         ) -> None:
-            if kind == "RELATIONSHIP_DELETED":
+            if kind is EventKind.RELATIONSHIP_DELETED:
                 raise ApplicationFailure(
                     FailureClass.INTERNAL_FAILURE,
                     "internal_error",
                     "forced deletion event failure",
                 )
-            await original(store, kind=kind, relationship=relationship, views=views)
+            await original(store, kind=kind, before=before, after=after, views=views)
 
-        monkeypatch.setattr(
-            RuntimeRelationshipStore, "insert_lifecycle_events", failed_events
-        )
+        monkeypatch.setattr(LifecycleStore, "insert_relationship_events", failed_events)
         with pytest.raises(ApplicationFailure) as caught:
-            await service.delete(created.relationship.id)
+            await run_worker(
+                lambda: service.delete(created.relationship.id),
+                actors.tracker,
+                "T1",
+            )
         assert caught.value.code == "internal_error"
         assert (
             await service.get(created.relationship.id)
@@ -1301,7 +1623,9 @@ async def test_par_01_and_snap_02_create_progresses_during_object_rename(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "PAR-01-REL-OBJ-RENAME") as actors:
+    async with semantic_actors(
+        test_database_url, "PAR-01-SNAP-02-REL-OBJ-RENAME"
+    ) as actors:
         seed = await _seed(actors, "par01")
         cut = PhaseCut()
         original = ObjectStore.update_name
@@ -1424,7 +1748,9 @@ async def test_par_02_and_snap_01_create_progresses_during_definition_rename(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "PAR-02-REL-RD-RENAME") as actors:
+    async with semantic_actors(
+        test_database_url, "PAR-02-SNAP-01-REL-RD-RENAME"
+    ) as actors:
         seed = await _seed(actors, "par02")
         cut = PhaseCut()
         original = RelationshipDefinitionStore.update_names

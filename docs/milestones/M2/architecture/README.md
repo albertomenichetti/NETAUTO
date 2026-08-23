@@ -1,0 +1,344 @@
+# M2 Architecture
+
+**Architecture set status:** FINAL / FROZEN
+
+## Purpose and authority boundary
+
+This directory contains the normative M2 TO-BE architecture required to satisfy the frozen milestone contract in `../contract.md`.
+
+Implementation authority is composed as follows:
+
+```text
+current delivered AS-IS in docs/architecture/
++
+FINAL / FROZEN M2 contract
++
+FROZEN M2 architecture delta
+=
+implementation authority for M2
+```
+
+This README owns architecture-set composition, owner coverage, gate interpretation and set-level status. Detailed semantic and technical decisions belong only to the owning documents indexed below and must not be duplicated as competing authorities.
+
+Discovery material under `../wip/` is non-normative input. Every implemented M2 behavior must be traceable to the frozen contract and, after set freeze, to one normative owner here.
+
+## Current baseline and governance state
+
+```text
+contract.md
+    FINAL / FROZEN
+
+architecture set
+    FINAL / FROZEN
+    traceability, consistency and WIP-extraction closure PASS
+
+steps.md
+    NOT STARTED / NOT FROZEN
+
+implementation
+    NOT AUTHORIZED
+```
+
+Architecture freeze requires complete design and traceability, not executed M2 implementation evidence. Executed evidence belongs to future implementation-slice and final-delivery gates defined by `verification.md` and the future frozen `steps.md`.
+
+## Normative document map
+
+| Area | Owning document | Status |
+|---|---|---|
+| Architecture set control, coverage and freeze | `README.md` | FINAL / FROZEN |
+| WIP extraction, provenance and retirement | `provenance.md` | FINAL / FROZEN |
+| Relationship domain, version lifecycle and factual semantics | `relationship.md` | FINAL / FROZEN |
+| Public HTTP API, projections, failures and pagination | `api.md` | FINAL / FROZEN |
+| Persistence authority, relational schema, lifecycle codec, indexes and Alembic realization | `persistence.md` | FINAL / FROZEN |
+| Complete semantic mutation census and pairwise matrix | `concurrency-matrix.md` | FINAL / FROZEN |
+| PostgreSQL lock, gate, retry and deadlock realization | `concurrency.md` | FINAL / FROZEN |
+| Core Health API | `health.md` | FINAL / FROZEN |
+| Official NETAUTO CLI | `cli.md` | FINAL / FROZEN |
+| Runtime configuration, packaging, startup guard, deployment and trust/TLS boundaries | `runtime-deployment.md` | FINAL / FROZEN |
+| Verification, acceptance evidence and traceability | `verification.md` | FINAL / FROZEN |
+
+A document may own only the area assigned above. Cross-document consequences are referenced rather than redefined.
+
+## Outcome ownership map
+
+```text
+relationship.md
+    M2-OUT-01
+    M2-OUT-02
+    M2-OUT-03
+    M2-OUT-04
+    M2-OUT-05
+
+api.md
+    M2-OUT-04
+    M2-OUT-06
+    M2-OUT-07
+    M2-OUT-11
+    M2-OUT-12
+
+persistence.md
+    M2-OUT-03
+    M2-OUT-07
+    M2-OUT-09
+
+concurrency-matrix.md + concurrency.md
+    M2-OUT-02
+    M2-OUT-04
+    M2-OUT-08
+
+health.md
+    M2-OUT-11
+
+cli.md
+    M2-OUT-12
+    M2-OUT-13
+    M2-OUT-15
+
+runtime-deployment.md
+    M2-OUT-10
+    M2-OUT-13
+    M2-OUT-14
+    M2-OUT-15
+
+verification.md
+    M2-OUT-16
+    all M2-AC acceptance criteria
+    all M2-VER evidence bundles
+    deterministic concurrency and surface registries
+    architecture-set traceability and consistency closure
+```
+
+Shared outcomes require coordinated owners, but every invariant, public contract, realization rule and evidence obligation has one explicit normative home.
+
+## Completed architecture design
+
+```text
+relationship.md
+    -> stable topology and factual identity preservation
+    -> RDV lifecycle/default/property-history semantics
+    -> exact factual pin and canonical properties
+    -> CREATE / DATA_CHANGE / SCHEMA_CHANGE / DELETE
+    -> lifecycle and corruption boundaries
+
+api.md
+    -> exact 63-operation business inventory
+    -> strict request/response/failure contracts
+    -> Relationship/RDV projections and lifecycle union
+    -> /health/core wire contract
+    -> CLI coverage authority
+
+persistence.md
+    -> authoritative fifteen-table model
+    -> final keys, constraints, delete actions and indexes
+    -> JSONB current/history authority and lifecycle codec
+    -> first durable Alembic root baseline
+    -> transaction-valid and deadlock-safe persistence pipelines
+
+concurrency-matrix.md
+    -> 41 mutation primitives
+    -> 15 family blocks
+    -> all 861 unordered cells classified
+    -> delivered predicates preserved; VH and RS added
+
+concurrency.md
+    -> complete centralized lock planner
+    -> three-gate registry
+    -> canonical row order and sufficient initial lock modes
+    -> all 41 mutation lock plans
+    -> bounded whole-UoW restart and SQLSTATE policy
+    -> supported wait-for graph acyclic by construction
+
+health.md
+    -> same runtime engine/pool as business work
+    -> exact SELECT 1 active probe
+    -> fixed two-second whole-probe deadline
+    -> safe 200/503 result and startup-guard separation
+
+cli.md
+    -> interactive and non-interactive process contracts
+    -> static exact 63-operation registry
+    -> HTTP-only execution and deterministic selector resolution
+    -> verified HTTPS, no insecure bypass or credential storage
+    -> exact FORMATTED/JSON trace, help and in-memory history
+
+runtime-deployment.md
+    -> exact application/pool settings and secret-source composition
+    -> one-wheel server/CLI/Alembic distribution
+    -> embedded exact runtime dependency lock exported from uv.lock
+    -> installed package-resource Alembic graph and unique-head discovery
+    -> exact pre-serving startup revision guard
+    -> Health composition from the same worker engine
+    -> reproducible manual Linux install/start/stop/restart/readiness procedure
+    -> trusted-boundary HTTP and external TLS responsibility
+
+STACK-10
+    -> HTTPX AsyncClient as the official client transport
+    -> prompt_toolkit as the asynchronous REPL terminal foundation
+    -> stdlib process/token/JSON/file parsing
+    -> no general CLI framework or dynamic OpenAPI command generation
+
+provenance.md
+    -> complete 19-document WIP disposition map
+    -> explicit supersession register
+    -> zero implementation authority retained by WIP
+    -> technical extraction additions assigned to persistence.md
+
+verification.md
+    -> T0 ... T10 layers
+    -> M2-VER-01 ... M2-VER-32 bundles
+    -> canonical 83-scenario concurrency registry
+    -> all 21 predicates mapped to deterministic evidence
+    -> positive/negative surface, installed artifact and final acceptance contracts
+```
+
+## Cross-cutting architecture obligations
+
+The complete first durable baseline must preserve:
+
+```text
+one semantic mutation / one PostgreSQL UoW
+complete pre-DML lock plans
+advisory-gate-first acquisition
+one model-root delete gate
+no normal row-lock upgrades
+one canonical row-class/intra-class order
+existing-owner direct-FK target-before-owner ordering
+child-FK target-before-DML ordering
+differential declaration replacement
+CREATE_NEXT cloned-reference lifetime holds
+deterministic closure/event writes
+bounded whole-UoW restart only for approved causes
+no automatic retry of SQLSTATE 40P01
+stable verification/evidence identifiers
+exact positive and negative surface inventories
+same runtime engine/pool for business, startup inspection and Health
+a fixed two-second full Health database-probe deadline
+no Health/Alembic responsibility overlap
+one static exact 63-operation CLI registry
+HTTP-only CLI execution with no application/persistence path
+no mandatory Health preflight for non-interactive commands
+verified HTTPS with no insecure bypass
+no persistent endpoint, credentials or command history
+one wheel containing server, CLI, release metadata and Alembic graph
+one exact embedded runtime dependency lock derived from committed uv.lock
+unique shipped Alembic head as the sole expected-revision authority
+exact database revision equality before any HTTP serving
+```
+
+These are realization obligations and do not introduce any public behavior beyond the frozen contract.
+
+## Verification gate separation
+
+```text
+architecture freeze
+    -> complete normative design
+    -> complete M2-OUT / M2-AC / M2-VER traceability
+    -> complete deterministic concurrency and surface registries
+    -> ratified required technologies
+    -> no open architecture finding
+
+implementation-slice completion
+    -> assigned evidence targets implemented and passing
+    -> affected AS-IS regression evidence preserved
+
+final delivery
+    -> every M2-VER bundle and canonical scenario executed and PASS
+    -> no supported SQLSTATE 40P01
+    -> schema drift = []
+    -> installed wheel, startup, Health, CLI and Linux operation PASS
+```
+
+## Post-freeze handoff
+
+The complete M2 architecture set is `FINAL / FROZEN`.
+
+```text
+next gated authority
+    -> docs/milestones/M2/steps.md
+
+steps.md
+    -> NOT STARTED / NOT FROZEN
+
+implementation
+    -> NOT AUTHORIZED until steps.md is also FINAL / FROZEN
+```
+
+Implementation planning may decompose the work but may not derive a new semantic, technical or technology decision. Any such need requires formal reopening of the owning frozen authority.
+
+## WIP extraction and retirement closure
+
+The complete source-to-authority map is owned by `provenance.md`; the review record is `../wip/wip-extraction-closure.md`.
+
+```text
+WIP census                              PASS — 19 / 19
+primary discovery/decision sources       PASS — 8 / 8
+technology proposal                      PASS — 1 / 1
+review/closure evidence                  PASS — 10 / 10
+superseded positions explicitly retired  PASS
+technical extraction gaps closed         PASS
+implementation dependency on WIP         0
+open extraction finding                  0
+```
+
+No future implementation slice may cite WIP as its normative owner.
+
+## Final closure result
+
+The non-normative review record is:
+
+```text
+docs/milestones/M2/wip/architecture-consistency-closure.md
+```
+
+Result:
+
+```text
+frozen-contract coverage                 PASS
+M2-OUT owner coverage                    PASS — 16 / 16
+M2-AC evidence mapping                   PASS — 32 / 32
+M2-CQG contract quality gates            PASS — 10 / 10
+deterministic concurrency registry       PASS — 83 scenarios / 21 predicates
+API / CLI surface equality               PASS — 63 / 63 business operations
+schema / migration authority             PASS — 15 tables / one root / one head design
+AS-IS preservation and delta allowlist   PASS
+cross-document authority                 PASS — no competing owner
+required technology ratification         PASS — STACK-01 ... STACK-10
+normative placeholders                   PASS — 0
+WIP extraction / retirement              PASS — 19 / 19
+open architecture finding                0
+contract reopening                       NOT REQUIRED
+```
+
+The architecture freeze was explicitly approved after the traceability, consistency and WIP-extraction closures passed. No implementation evidence is claimed at this gate; executed evidence remains mandatory for implementation slices and final delivery.
+
+## Freeze declaration
+
+```text
+contract.md                 FINAL / FROZEN
+architecture/README.md      FINAL / FROZEN
+all architecture owners     FINAL / FROZEN
+steps.md                    NOT STARTED / NOT FROZEN
+implementation              NOT AUTHORIZED
+```
+
+Future semantic or technical changes require formal architecture reopening, impact analysis against the frozen contract and renewed consistency closure.
+
+## Freeze condition
+
+The architecture set may become `FINAL / FROZEN` only when:
+
+- `../contract.md` remains `FINAL / FROZEN`;
+- every contract area and every `M2-OUT-*` outcome has an explicit normative owner;
+- every required semantic, persistence, concurrency, API, runtime, CLI, Health, security and verification **design** decision is closed;
+- every `M2-AC-*` maps to exactly one stable `M2-VER-*` bundle and a traceable implementation path;
+- every supported multi-resource mutation has a complete deterministic lock plan;
+- every non-trivial semantic-matrix rule has a concrete PostgreSQL realization, stable scenario ID, recipe and expected assertion;
+- all positive and negative HTTP/CLI/schema/runtime inventories are complete;
+- every project-wide technology required by M2 is ratified in `docs/general/technology_baseline.md`;
+- every WIP document has one recorded normative destination, explicit supersession or review-evidence disposition;
+- cross-document consequences are propagated without duplicated authority;
+- no relevant open, contradictory or partially reopened architecture point remains;
+- the complete set passes contract, AS-IS, coverage, authority, terminology and normative-hygiene sweeps;
+- `steps.md` can decompose implementation and executed evidence without making a new semantic, technology or architecture decision.
+
+Until then, `steps.md` remains not frozen and M2 implementation remains unauthorized.

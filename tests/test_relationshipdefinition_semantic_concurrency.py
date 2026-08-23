@@ -7,16 +7,19 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-import netauto.application.relationshipdefinitions as relationship_application
+import netauto.application.relationshipdefinitions as relationshipdefinition_application
+import netauto.persistence.locking as locking_persistence
 from netauto.application.objecttemplates import ObjectTemplateService
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
 from netauto.domain.relationships import (
     RelationshipDefinition,
+    RelationshipDefinitionVersion,
     RelationshipPerspective,
     ResolutionRename,
 )
 from netauto.failures import ApplicationFailure, FailureClass
 from netauto.persistence.gates import AdvisoryGate, acquire_advisory_gate
+from netauto.persistence.locking import RowLockClass, RowLockMode
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.relationships import RelationshipDefinitionStore
 from netauto.persistence.uow import UnitOfWorkFactory
@@ -26,6 +29,8 @@ from tests.support.semantic_concurrency import (
     PhaseCut,
     SemanticActors,
     blocked_race,
+    install_lock_plan_cut,
+    run_worker,
     semantic_actors,
 )
 
@@ -65,12 +70,22 @@ async def _non_symmetric(
     first_name: str,
     second_name: str,
 ) -> RelationshipDefinition:
-    return await service.create_non_symmetric(
+    created = await service.create_non_symmetric(
         (
             RelationshipPerspective(first_template_id, first_name),
             RelationshipPerspective(second_template_id, second_name),
         )
     )
+    return created.relationship_definition
+
+
+async def _symmetric(
+    service: RelationshipDefinitionService,
+    template_ids: tuple[UUID, UUID],
+    name: str,
+) -> RelationshipDefinition:
+    created = await service.create_symmetric(template_ids, name)
+    return created.relationship_definition
 
 
 def _failure_code(value: object) -> str | None:
@@ -79,7 +94,7 @@ def _failure_code(value: object) -> str | None:
 
 def _gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     cut = PhaseCut()
-    original = relationship_application.acquire_advisory_gate
+    original = locking_persistence.acquire_advisory_gate
 
     async def intercepted(connection: AsyncConnection, gate: AdvisoryGate) -> None:
         await original(connection, gate)
@@ -88,29 +103,19 @@ def _gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
             cut.reached.set()
             await cut.release.wait()
 
-    monkeypatch.setattr(relationship_application, "acquire_advisory_gate", intercepted)
+    monkeypatch.setattr(locking_persistence, "acquire_advisory_gate", intercepted)
     return cut
 
 
 def _definition_owner_cut(
     monkeypatch: pytest.MonkeyPatch, *, delete: bool = False
 ) -> PhaseCut:
-    cut = PhaseCut()
-    method_name = "lock_update" if delete else "lock_no_key"
-    original = getattr(RelationshipDefinitionStore, method_name)
-
-    async def intercepted(
-        store: RelationshipDefinitionStore, definition_id: UUID
-    ) -> bool:
-        result = await original(store, definition_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(RelationshipDefinitionStore, method_name, intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        relationshipdefinition_application,
+        RowLockClass.RELATIONSHIP_DEFINITION_HEADER,
+        RowLockMode.U if delete else RowLockMode.KS,
+    )
 
 
 def _definition_insert_cut(
@@ -120,9 +125,11 @@ def _definition_insert_cut(
     original = RelationshipDefinitionStore.insert
 
     async def intercepted(
-        store: RelationshipDefinitionStore, value: RelationshipDefinition
+        store: RelationshipDefinitionStore,
+        value: RelationshipDefinition,
+        version: RelationshipDefinitionVersion,
     ) -> None:
-        await original(store, value)
+        await original(store, value, version)
         task = asyncio.current_task()
         if task is not None and task.get_name() == "T1":
             cut.reached.set()
@@ -171,7 +178,7 @@ async def test_gate_04a_and_gate_06a_equivalent_create_reads_fresh_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "GATE-04A-06A-RD-EQUIV") as actors:
+    async with semantic_actors(test_database_url, "GATE-04-GATE-06-RD-EQUIV") as actors:
         first_template_id = await _template(actors, "gate04a_first")
         second_template_id = await _template(actors, "gate04a_second")
         first, second = _definition_services(actors)
@@ -223,8 +230,8 @@ async def test_gate_04b_conflicting_create_commits_only_one_candidate(
                 "links",
                 "linked_by",
             ),
-            lambda: second.create_symmetric(
-                (first_template_id, second_template_id), "links"
+            lambda: _symmetric(
+                second, (first_template_id, second_template_id), "links"
             ),
         )
         assert isinstance(winner, RelationshipDefinition)
@@ -244,7 +251,9 @@ async def test_gate_05a_create_and_rename_preserve_conflict_free_set(
     async with semantic_actors(test_database_url, "GATE-05A-CREATE-RENAME") as actors:
         first_template_id = await _template(actors, "gate05a_first")
         second_template_id = await _template(actors, "gate05a_second")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         existing = await _non_symmetric(
             reader,
             first_template_id,
@@ -257,8 +266,8 @@ async def test_gate_05a_create_and_rename_preserve_conflict_free_set(
         created, renamed = await blocked_race(
             actors,
             cut,
-            lambda: first.create_symmetric(
-                (first_template_id, second_template_id), "shared_name"
+            lambda: _symmetric(
+                first, (first_template_id, second_template_id), "shared_name"
             ),
             lambda: second.rename_non_symmetric(
                 existing.id, _renames(existing, "shared_name", "other_reverse")
@@ -284,7 +293,9 @@ async def test_gate_05b_different_definition_renames_serialize_globally(
     async with semantic_actors(test_database_url, "GATE-05B-RENAME-RENAME") as actors:
         first_template_id = await _template(actors, "gate05b_first")
         second_template_id = await _template(actors, "gate05b_second")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         first_definition = await _non_symmetric(
             reader,
             first_template_id,
@@ -292,8 +303,8 @@ async def test_gate_05b_different_definition_renames_serialize_globally(
             "first_old",
             "first_reverse",
         )
-        second_definition = await reader.create_symmetric(
-            (first_template_id, second_template_id), "second_old"
+        second_definition = await _symmetric(
+            reader, (first_template_id, second_template_id), "second_old"
         )
         first, second = _definition_services(actors)
         cut = _gate_cut(monkeypatch)
@@ -314,7 +325,7 @@ async def test_gate_05b_different_definition_renames_serialize_globally(
 
 @pytest.mark.postgresql
 @pytest.mark.concurrency
-async def test_same_definition_rename_serializes_on_header_before_gate(
+async def test_same_definition_rename_serializes_on_gate_before_header(
     migrated_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -332,7 +343,7 @@ async def test_same_definition_rename_serializes_on_header_before_gate(
             "old_second",
         )
         first, second = _definition_services(actors)
-        cut = _definition_owner_cut(monkeypatch)
+        cut = _gate_cut(monkeypatch)
         outcomes = await blocked_race(
             actors,
             cut,
@@ -362,7 +373,7 @@ async def test_row_17_rename_then_delete_share_definition_lifetime_owner(
     async with semantic_actors(test_database_url, "ROW-17-RENAME-DELETE") as actors:
         template_id = await _template(actors, "row17")
         reader = _definition_reader(actors)
-        definition = await reader.create_symmetric((template_id, template_id), "old")
+        definition = await _symmetric(reader, (template_id, template_id), "old")
         first, second = _definition_services(actors)
         cut = _definition_owner_cut(monkeypatch)
         renamed, deleted = await blocked_race(
@@ -389,7 +400,7 @@ async def test_row_17_delete_then_rename_observes_absent_definition(
     async with semantic_actors(test_database_url, "ROW-17-DELETE-RENAME") as actors:
         template_id = await _template(actors, "row17_reverse")
         reader = _definition_reader(actors)
-        definition = await reader.create_symmetric((template_id, template_id), "old")
+        definition = await _symmetric(reader, (template_id, template_id), "old")
         first, second = _definition_services(actors)
         cut = _definition_owner_cut(monkeypatch, delete=True)
         deleted, renamed = await blocked_race(
@@ -420,7 +431,7 @@ async def test_ref_01_definition_create_then_lineage_delete_uses_fk_lifetime(
         created, deleted = await blocked_race(
             actors,
             cut,
-            lambda: first.create_symmetric((template_id, template_id), "reference"),
+            lambda: _symmetric(first, (template_id, template_id), "reference"),
             lambda: second_template.delete_lineage(template_id),
         )
         assert isinstance(created, RelationshipDefinition)
@@ -446,9 +457,7 @@ async def test_ref_01_lineage_delete_then_definition_create_fails_reference(
             actors,
             cut,
             lambda: first_template.delete_lineage(template_id),
-            lambda: second.create_symmetric(
-                (template_id, template_id), "lost_reference"
-            ),
+            lambda: _symmetric(second, (template_id, template_id), "lost_reference"),
         )
         assert deleted is None
         assert _failure_code(created) == "referenced_resource_not_found"
@@ -468,9 +477,11 @@ async def test_gate_06b_delete_commits_while_candidate_waits_then_unblocks_it(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "GATE-06B-DELETE-BLOCKER") as actors:
         template_id = await _template(actors, "gate06b")
-        reader = _definition_reader(actors)
-        blocker = await reader.create_symmetric(
-            (template_id, template_id), "available_after_delete"
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
+        blocker = await _symmetric(
+            reader, (template_id, template_id), "available_after_delete"
         )
         _, candidate_service = _definition_services(actors)
         actors.tracker.reset()
@@ -482,8 +493,14 @@ async def test_gate_06b_delete_commits_while_candidate_waits_then_unblocks_it(
             )
             holder_pid = int(await holder.scalar(text("SELECT pg_backend_pid()")))
             candidate_task = asyncio.create_task(
-                candidate_service.create_symmetric(
-                    (template_id, template_id), "available_after_delete"
+                run_worker(
+                    lambda: _symmetric(
+                        candidate_service,
+                        (template_id, template_id),
+                        "available_after_delete",
+                    ),
+                    actors.tracker,
+                    "T2",
                 ),
                 name="T2",
             )
@@ -494,7 +511,9 @@ async def test_gate_06b_delete_commits_while_candidate_waits_then_unblocks_it(
             )
             assert holder_pid in blockers
             async with asyncio.timeout(5):
-                await reader.delete(blocker.id)
+                await run_worker(
+                    lambda: reader.delete(blocker.id), actors.tracker, "T1"
+                )
             assert not candidate_task.done()
             await transaction.commit()
             async with asyncio.timeout(5):
@@ -521,11 +540,11 @@ async def test_unrelated_creates_still_serialize_on_global_gate(
         outcomes = await blocked_race(
             actors,
             cut,
-            lambda: first.create_symmetric(
-                (first_template_id, first_template_id), "first_name"
+            lambda: _symmetric(
+                first, (first_template_id, first_template_id), "first_name"
             ),
-            lambda: second.create_symmetric(
-                (second_template_id, second_template_id), "second_name"
+            lambda: _symmetric(
+                second, (second_template_id, second_template_id), "second_name"
             ),
         )
         assert all(isinstance(item, RelationshipDefinition) for item in outcomes)
@@ -546,10 +565,8 @@ async def test_gate_rollback_releases_waiter_and_leaves_no_partial_candidate(
         failed, winner = await blocked_race(
             actors,
             cut,
-            lambda: first.create_symmetric((template_id, template_id), "rollback_name"),
-            lambda: second.create_symmetric(
-                (template_id, template_id), "rollback_name"
-            ),
+            lambda: _symmetric(first, (template_id, template_id), "rollback_name"),
+            lambda: _symmetric(second, (template_id, template_id), "rollback_name"),
         )
         assert _failure_code(failed) == "internal_error"
         assert isinstance(winner, RelationshipDefinition)
@@ -569,14 +586,14 @@ async def test_certified_set_read_does_not_lock_unrelated_definition_rows(
         first_template_id = await _template(actors, "fanout_first")
         second_template_id = await _template(actors, "fanout_second")
         reader = _definition_reader(actors)
-        unrelated = await reader.create_symmetric(
-            (first_template_id, first_template_id), "existing_name"
+        unrelated = await _symmetric(
+            reader, (first_template_id, first_template_id), "existing_name"
         )
         first, _ = _definition_services(actors)
         cut = _definition_insert_cut(monkeypatch)
         create_task = asyncio.create_task(
-            first.create_symmetric(
-                (second_template_id, second_template_id), "candidate_name"
+            _symmetric(
+                first, (second_template_id, second_template_id), "candidate_name"
             ),
             name="T1",
         )
@@ -603,7 +620,9 @@ async def test_atomic_04c_rename_rollback_and_symmetric_two_row_update(
     async with semantic_actors(test_database_url, "ATOMIC-04C-RD-RENAME") as actors:
         first_template_id = await _template(actors, "atomic_first")
         second_template_id = await _template(actors, "atomic_second")
-        reader = _definition_reader(actors)
+        reader = RelationshipDefinitionService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         non_symmetric = await _non_symmetric(
             reader,
             first_template_id,
@@ -628,9 +647,13 @@ async def test_atomic_04c_rename_rollback_and_symmetric_two_row_update(
                 RelationshipDefinitionStore, "update_names", fail_after_update
             )
             with pytest.raises(ApplicationFailure) as caught:
-                await reader.rename_non_symmetric(
-                    non_symmetric.id,
-                    _renames(non_symmetric, "after_first", "after_second"),
+                await run_worker(
+                    lambda: reader.rename_non_symmetric(
+                        non_symmetric.id,
+                        _renames(non_symmetric, "after_first", "after_second"),
+                    ),
+                    actors.tracker,
+                    "T1",
                 )
             assert caught.value.code == "internal_error"
         unchanged = await reader.get(non_symmetric.id)
@@ -639,9 +662,14 @@ async def test_atomic_04c_rename_rollback_and_symmetric_two_row_update(
             "before_second",
         }
 
-        symmetric = await reader.create_symmetric(
-            (first_template_id, second_template_id), "symmetric_before"
+        symmetric = await _symmetric(
+            reader, (first_template_id, second_template_id), "symmetric_before"
         )
-        renamed = await reader.rename_symmetric(symmetric.id, "symmetric_after")
+        renamed = await run_worker(
+            lambda: reader.rename_symmetric(symmetric.id, "symmetric_after"),
+            actors.tracker,
+            "T1",
+        )
+        assert isinstance(renamed, RelationshipDefinition)
         assert len(renamed.resolutions) == 2
         assert {item.name for item in renamed.resolutions} == {"symmetric_after"}

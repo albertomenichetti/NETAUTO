@@ -1,18 +1,11 @@
 """Strict public HTTP adapter for intrinsic Object state and lifecycle reads."""
 
 from datetime import datetime
-from typing import Annotated, Literal, Self, cast
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
-from pydantic import (
-    BaseModel,
-    BeforeValidator,
-    ConfigDict,
-    Field,
-    field_serializer,
-    model_validator,
-)
+from pydantic import BeforeValidator
 
 from netauto.application.cursors import Page
 from netauto.application.objects import (
@@ -26,31 +19,48 @@ from netauto.domain.objects import (
     Object,
     ObjectSummary,
 )
-from netauto.domain.primitives import JsonValue, PrimitiveType, validate_value
+from netauto.domain.primitives import PrimitiveType, validate_value
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
-    PositiveInteger,
-    StrictBody,
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
-from netauto.persistence.objects import (
+from netauto.persistence.lifecycle import (
     EventKind,
     LifecycleEvent,
     OwnershipLifecycleEvent,
+    RelationshipFactualState,
     RelationshipLifecycleEvent,
+)
+from netauto.transport.http.common import PositiveInteger
+from netauto.transport.http.objects import (
+    ChangedLifecycleEventDto,
+    ComponentPageDto,
+    ComponentProjectionDto,
+    CreatedLifecycleEventDto,
+    DataChangeBody,
+    DeletedLifecycleEventDto,
+    LifecycleEventDto,
+    LifecyclePageDto,
+    ObjectCreateBody,
+    ObjectDto,
+    ObjectPageDto,
+    ObjectSummaryDto,
+    OperationBody,
+    OwnerProjectionDto,
+    OwnershipBody,
+    OwnershipLifecycleEventDto,
+    RelationshipChangedLifecycleEventDto,
+    RelationshipCreatedLifecycleEventDto,
+    RelationshipDeletedLifecycleEventDto,
+    RelationshipFactualStateDto,
+    RenameBody,
+    SchemaChangeBody,
+    SetOperationBody,
 )
 
 router = APIRouter(prefix="/api/v1/core", tags=["objects"])
-
-
-def _uuid_carrier(value: object) -> UUID:
-    if isinstance(value, UUID):
-        return value
-    if not isinstance(value, str):
-        raise ValueError("uuid_required")
-    return UUID(value)
 
 
 def _datetime_carrier(value: object) -> datetime:
@@ -58,178 +68,9 @@ def _datetime_carrier(value: object) -> datetime:
     return datetime.fromisoformat(str(canonical).replace("Z", "+00:00"))
 
 
-BodyUUID = Annotated[UUID, BeforeValidator(_uuid_carrier)]
 QueryDateTime = Annotated[datetime, BeforeValidator(_datetime_carrier), Query()]
 CanonicalNameQuery = Annotated[str, Query(min_length=1, max_length=255)]
 RelationshipNameQuery = Annotated[str, Query(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
-
-
-class ObjectCreateBody(StrictBody):
-    template_id: BodyUUID
-    template_version: PositiveInteger | None = None
-    canonical_name: str | None = Field(default=None, min_length=1, max_length=255)
-    properties: dict[str, JsonValue] | None = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def omission_is_not_null(cls, value: object) -> object:
-        result: object = value
-        if isinstance(value, dict):
-            raw = cast(dict[object, object], value)
-            for field in ("template_version", "canonical_name", "properties"):
-                if field in raw and raw[field] is None:
-                    raise ValueError(f"{field}_null_forbidden")
-        return result
-
-
-class RenameBody(StrictBody):
-    canonical_name: str = Field(min_length=1, max_length=255)
-
-
-class SetOperationBody(StrictBody):
-    op: Literal["SET"]
-    property: str
-    value: JsonValue
-
-
-class RemoveOperationBody(StrictBody):
-    op: Literal["REMOVE"]
-    property: str
-
-
-OperationBody = Annotated[
-    SetOperationBody | RemoveOperationBody, Field(discriminator="op")
-]
-
-
-class DataChangeBody(StrictBody):
-    operations: list[OperationBody] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def unique_properties(self) -> Self:
-        names = [item.property for item in self.operations]
-        if len(names) != len(set(names)):
-            raise ValueError("duplicate_property_operation")
-        return self
-
-
-class SchemaChangeBody(StrictBody):
-    target_version: PositiveInteger
-
-
-class OwnershipBody(StrictBody):
-    slot_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
-    child_object_id: BodyUUID
-
-
-class ObjectDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    canonical_name: str
-    template_id: UUID
-    template_version: int
-    properties: dict[str, JsonValue]
-
-
-class ObjectSummaryDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    canonical_name: str
-    template_id: UUID
-    template_version: int
-
-
-class ObjectPageDto(BaseModel):
-    items: list[ObjectSummaryDto]
-    next_cursor: str | None
-
-
-class ComponentProjectionDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    slot_declaring_template_id: UUID
-    slot_name: str
-    child_object_id: UUID
-
-
-class ComponentPageDto(BaseModel):
-    items: list[ComponentProjectionDto]
-    next_cursor: str | None
-
-
-class OwnerProjectionDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    parent_object_id: UUID
-    slot_declaring_template_id: UUID
-    slot_name: str
-
-
-class IntrinsicLifecycleEventBaseDto(BaseModel):
-    id: UUID
-    occurred_at: datetime
-    object_id: UUID
-    canonical_name: str
-
-    @field_serializer("occurred_at")
-    def serialize_occurred_at(self, value: datetime) -> str:
-        return str(
-            validate_value(
-                PrimitiveType.DATETIME, value.isoformat(timespec="microseconds"), {}
-            )
-        )
-
-
-class CreatedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
-    kind: Literal["CREATED"]
-    before: None
-    after: ObjectDto
-
-
-class ChangedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
-    kind: Literal["RENAME", "DATA_CHANGE", "SCHEMA_CHANGE"]
-    before: ObjectDto
-    after: ObjectDto
-
-
-class DeletedLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
-    kind: Literal["DELETED"]
-    before: ObjectDto
-    after: None
-
-
-class OwnershipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
-    kind: Literal["ATTACH_TO", "DETACH_FROM"]
-    destination_object_id: UUID
-    destination_canonical_name: str
-    slot_declaring_template_id: UUID
-    slot_name: str
-
-
-class RelationshipLifecycleEventDto(IntrinsicLifecycleEventBaseDto):
-    kind: Literal["RELATIONSHIP_CREATED", "RELATIONSHIP_DELETED"]
-    destination_object_id: UUID
-    destination_canonical_name: str
-    relationship_id: UUID
-    relationship_definition_id: UUID
-    relationship_name: str
-
-
-type LifecycleEventDto = Annotated[
-    CreatedLifecycleEventDto
-    | ChangedLifecycleEventDto
-    | DeletedLifecycleEventDto
-    | OwnershipLifecycleEventDto
-    | RelationshipLifecycleEventDto,
-    Field(discriminator="kind"),
-]
-
-
-class LifecyclePageDto(BaseModel):
-    items: list[LifecycleEventDto]
-    next_cursor: str | None
 
 
 def _service(request: Request) -> ObjectService:
@@ -245,24 +86,67 @@ def _summary(value: ObjectSummary) -> ObjectSummaryDto:
     return ObjectSummaryDto.model_validate(value)
 
 
+def _relationship_state(
+    value: RelationshipFactualState,
+) -> RelationshipFactualStateDto:
+    return RelationshipFactualStateDto.model_validate(value)
+
+
 def _event(value: LifecycleEvent) -> LifecycleEventDto:
     if isinstance(value, RelationshipLifecycleEvent):
-        relationship_kind = cast(
-            Literal["RELATIONSHIP_CREATED", "RELATIONSHIP_DELETED"],
-            value.kind.value,
-        )
-        return RelationshipLifecycleEventDto(
-            id=value.id,
-            occurred_at=value.occurred_at,
-            kind=relationship_kind,
-            object_id=value.object_id,
-            canonical_name=value.canonical_name,
-            destination_object_id=value.destination_object_id,
-            destination_canonical_name=value.destination_canonical_name,
-            relationship_id=value.relationship_id,
-            relationship_definition_id=value.relationship_definition_id,
-            relationship_name=value.relationship_name,
-        )
+        if value.kind is EventKind.RELATIONSHIP_CREATED and value.after is not None:
+            return RelationshipCreatedLifecycleEventDto(
+                id=value.id,
+                occurred_at=value.occurred_at,
+                object_id=value.object_id,
+                canonical_name=value.canonical_name,
+                destination_object_id=value.destination_object_id,
+                destination_canonical_name=value.destination_canonical_name,
+                relationship_id=value.relationship_id,
+                relationship_definition_id=value.relationship_definition_id,
+                relationship_name=value.relationship_name,
+                kind="RELATIONSHIP_CREATED",
+                before=None,
+                after=_relationship_state(value.after),
+            )
+        if value.kind in {
+            EventKind.RELATIONSHIP_DATA_CHANGE,
+            EventKind.RELATIONSHIP_SCHEMA_CHANGE,
+        } and (value.before is not None and value.after is not None):
+            relationship_kind = cast(
+                Literal["RELATIONSHIP_DATA_CHANGE", "RELATIONSHIP_SCHEMA_CHANGE"],
+                value.kind.value,
+            )
+            return RelationshipChangedLifecycleEventDto(
+                id=value.id,
+                occurred_at=value.occurred_at,
+                object_id=value.object_id,
+                canonical_name=value.canonical_name,
+                destination_object_id=value.destination_object_id,
+                destination_canonical_name=value.destination_canonical_name,
+                relationship_id=value.relationship_id,
+                relationship_definition_id=value.relationship_definition_id,
+                relationship_name=value.relationship_name,
+                kind=relationship_kind,
+                before=_relationship_state(value.before),
+                after=_relationship_state(value.after),
+            )
+        if value.kind is EventKind.RELATIONSHIP_DELETED and value.before is not None:
+            return RelationshipDeletedLifecycleEventDto(
+                id=value.id,
+                occurred_at=value.occurred_at,
+                object_id=value.object_id,
+                canonical_name=value.canonical_name,
+                destination_object_id=value.destination_object_id,
+                destination_canonical_name=value.destination_canonical_name,
+                relationship_id=value.relationship_id,
+                relationship_definition_id=value.relationship_definition_id,
+                relationship_name=value.relationship_name,
+                kind="RELATIONSHIP_DELETED",
+                before=_relationship_state(value.before),
+                after=None,
+            )
+        raise RuntimeError("unsupported Relationship lifecycle response state")
     if isinstance(value, OwnershipLifecycleEvent):
         ownership_kind = cast(Literal["ATTACH_TO", "DETACH_FROM"], value.kind.value)
         return OwnershipLifecycleEventDto(

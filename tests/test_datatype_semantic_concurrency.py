@@ -1,24 +1,44 @@
 """Kernel-level semantic outcomes for canonical S02 PostgreSQL races."""
 
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, func, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import Engine, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+import netauto.application.datatypes as datatype_application
 from netauto.application.datatypes import DataTypeService
 from netauto.application.objecttemplates import ObjectTemplateService, PropertyCandidate
 from netauto.domain.datatypes import DataTypeVersion, VersionStatus
 from netauto.domain.objecttemplates import CreateObjectTemplateResult, ValueMode
 from netauto.failures import ApplicationFailure
-from netauto.persistence.datatypes import DataTypeStore
+from netauto.persistence.datatypes import DataTypeReferenceCounts, DataTypeStore
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockMode,
+)
 from netauto.persistence.metadata import datatype_versions, datatypes
-from netauto.persistence.uow import UnitOfWork, UnitOfWorkFactory
+from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.pg_harness import PgWorker, WorkerRole, wait_for_blocker
+from tests.support.semantic_concurrency import (
+    ConnectionTracker,
+    ObservedUnitOfWorkFactory,
+    PhaseCut,
+    activate_outcome_context,
+    capture,
+    capture_worker_outcome,
+    install_lock_plan_cut,
+    reset_outcome_context,
+    service_engine,
+    unwrap_worker_outcome,
+)
 
 Operation = Callable[[], Awaitable[object]]
 
@@ -30,73 +50,18 @@ class Actors:
     t1_engine: AsyncEngine
     t2_engine: AsyncEngine
     observer: PgWorker
-    t1_name: str
-    t2_name: str
     tracker: ConnectionTracker
-
-
-@dataclass(slots=True)
-class ConnectionTracker:
-    pids: dict[str, int] = field(default_factory=lambda: {})
-    ready: dict[str, asyncio.Event] = field(
-        default_factory=lambda: {"T1": asyncio.Event(), "T2": asyncio.Event()}
-    )
-
-    def reset(self) -> None:
-        self.ready = {"T1": asyncio.Event(), "T2": asyncio.Event()}
-
-
-class ObservedUnitOfWork(UnitOfWork):
-    def __init__(
-        self, engine: AsyncEngine, tracker: ConnectionTracker, role: str
-    ) -> None:
-        super().__init__(engine)
-        self._tracker = tracker
-        self._role = role
-
-    async def __aenter__(self) -> UnitOfWork:
-        entered = await super().__aenter__()
-        pid = await self.connection.scalar(text("SELECT pg_backend_pid()"))
-        self._tracker.pids[self._role] = int(pid)
-        self._tracker.ready[self._role].set()
-        return entered
-
-
-class ObservedUnitOfWorkFactory(UnitOfWorkFactory):
-    def __init__(
-        self, engine: AsyncEngine, tracker: ConnectionTracker, role: str
-    ) -> None:
-        super().__init__(engine)
-        self._observed_engine = engine
-        self._tracker = tracker
-        self._role = role
-
-    def __call__(self) -> UnitOfWork:
-        return ObservedUnitOfWork(self._observed_engine, self._tracker, self._role)
-
-
-@dataclass(slots=True)
-class PhaseCut:
-    reached: asyncio.Event = field(default_factory=asyncio.Event)
-    release: asyncio.Event = field(default_factory=asyncio.Event)
-
-
-def _service_engine(database_url: str, application_name: str) -> AsyncEngine:
-    return create_async_engine(
-        database_url,
-        isolation_level="READ COMMITTED",
-        connect_args={"application_name": application_name},
-    )
 
 
 @asynccontextmanager
 async def _actors(database_url: str, scenario_id: str) -> AsyncGenerator[Actors]:
     t1_name = f"netauto-semantic:{scenario_id}:T1"
     t2_name = f"netauto-semantic:{scenario_id}:T2"
-    t1_engine = _service_engine(database_url, t1_name)
-    t2_engine = _service_engine(database_url, t2_name)
-    observer = await PgWorker.open(database_url, scenario_id, WorkerRole.OBS)
     tracker = ConnectionTracker()
+    t1_engine = service_engine(database_url, t1_name, tracker, "T1")
+    t2_engine = service_engine(database_url, t2_name, tracker, "T2")
+    observer = await PgWorker.open(database_url, scenario_id, WorkerRole.OBS)
+    tokens = activate_outcome_context(tracker, scenario_id)
     try:
         yield Actors(
             DataTypeService(ObservedUnitOfWorkFactory(t1_engine, tracker, "T1")),
@@ -104,21 +69,17 @@ async def _actors(database_url: str, scenario_id: str) -> AsyncGenerator[Actors]
             t1_engine,
             t2_engine,
             observer,
-            t1_name,
-            t2_name,
             tracker,
         )
     finally:
+        reset_outcome_context(tokens)
         await observer.close()
         await t1_engine.dispose()
         await t2_engine.dispose()
 
 
 async def _capture(operation: Operation) -> object:
-    try:
-        return await operation()
-    except ApplicationFailure as failure:
-        return failure
+    return await capture(operation)
 
 
 async def _blocked_race(
@@ -143,67 +104,47 @@ async def _blocked_race(
 async def _progress_race(
     cut: PhaseCut, first: Operation, second: Operation
 ) -> tuple[object, object]:
-    t1 = asyncio.create_task(_capture(first), name="T1")
+    t1 = asyncio.create_task(capture_worker_outcome(first, role="T1"), name="T1")
     await cut.reached.wait()
     async with asyncio.timeout(5):
-        second_outcome = await _capture(second)
+        second_outcome = await capture_worker_outcome(second, role="T2")
     assert not t1.done()
     cut.release.set()
     async with asyncio.timeout(5):
         first_outcome = await t1
-    return first_outcome, second_outcome
+    return (
+        unwrap_worker_outcome(first_outcome),
+        unwrap_worker_outcome(second_outcome),
+    )
 
 
 def _install_lineage_no_key_cut(
     monkeypatch: pytest.MonkeyPatch,
 ) -> PhaseCut:
-    cut = PhaseCut()
-    original = DataTypeStore.lock_lineage_no_key
-
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> bool:
-        result = await original(store, datatype_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(DataTypeStore, "lock_lineage_no_key", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        datatype_application,
+        RowLockClass.DATA_TYPE_HEADER,
+        RowLockMode.NKU,
+    )
 
 
 def _install_lineage_share_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = DataTypeStore.lock_lineage_share
-
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> bool:
-        result = await original(store, datatype_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(DataTypeStore, "lock_lineage_share", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        datatype_application,
+        RowLockClass.DATA_TYPE_HEADER,
+        RowLockMode.S,
+    )
 
 
 def _install_version_no_key_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = DataTypeStore.lock_version_no_key
-
-    async def intercepted(
-        store: DataTypeStore, datatype_id: UUID, version: int
-    ) -> bool:
-        result = await original(store, datatype_id, version)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(DataTypeStore, "lock_version_no_key", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        datatype_application,
+        RowLockClass.DATA_TYPE_VERSION,
+        RowLockMode.NKU,
+    )
 
 
 def _install_description_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -226,21 +167,43 @@ def _install_description_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 
 def _install_reference_precheck_cut(
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[PhaseCut, list[int]]:
+) -> tuple[PhaseCut, list[DataTypeReferenceCounts]]:
     cut = PhaseCut()
-    observations: list[int] = []
-    original = DataTypeStore.external_reference_count
+    observations: list[DataTypeReferenceCounts] = []
+    original_prepare = datatype_application.prepare_lock_plan
+    original_count = DataTypeStore.external_reference_counts
 
-    async def intercepted(store: DataTypeStore, datatype_id: UUID) -> int:
-        result = await original(store, datatype_id)
+    async def intercepted_prepare(
+        connection: AsyncConnection,
+        *,
+        intents: Iterable[RowLockIntent] = (),
+        gate: AdvisoryGate | None = None,
+    ) -> LockPlan:
+        requested = tuple(intents)
         task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            observations.append(result)
+        if (
+            task is not None
+            and task.get_name() == "T1"
+            and gate is AdvisoryGate.MODEL_ROOT_DELETE_GATE
+            and any(
+                item.key.row_class is RowLockClass.DATA_TYPE_HEADER
+                and item.mode is RowLockMode.U
+                for item in requested
+            )
+        ):
             cut.reached.set()
             await cut.release.wait()
+        return await original_prepare(connection, intents=requested, gate=gate)
+
+    async def intercepted(
+        store: DataTypeStore, datatype_id: UUID
+    ) -> DataTypeReferenceCounts:
+        result = await original_count(store, datatype_id)
+        observations.append(result)
         return result
 
-    monkeypatch.setattr(DataTypeStore, "external_reference_count", intercepted)
+    monkeypatch.setattr(datatype_application, "prepare_lock_plan", intercepted_prepare)
+    monkeypatch.setattr(DataTypeStore, "external_reference_counts", intercepted)
     return cut, observations
 
 
@@ -499,8 +462,10 @@ async def test_row_16_revise_then_delete_has_no_partial_aggregate(
             lambda: actors.t2.delete_lineage(datatype_id),
         )
         assert all(not isinstance(outcome, ApplicationFailure) for outcome in outcomes)
-        absent = await _capture(lambda: actors.t1.get_lineage(datatype_id))
-        assert _failure_code(absent) == "resource_not_found"
+        absent = await capture_worker_outcome(
+            lambda: actors.t1.get_lineage(datatype_id), actors.tracker, "T3"
+        )
+        assert _failure_code(absent.application_failure) == "resource_not_found"
 
 
 @pytest.mark.postgresql
@@ -688,7 +653,12 @@ async def test_ref_06a_datatype_cascade_loses_to_external_property_restrict(
                 (),
             ),
         )
-        assert precheck_counts == [0]
+        assert precheck_counts == [
+            DataTypeReferenceCounts(
+                object_template_property_count=1,
+                relationship_definition_property_count=0,
+            )
+        ]
         assert isinstance(created, CreateObjectTemplateResult)
         assert isinstance(deleted, ApplicationFailure)
         assert deleted.code == "delete_blocked"

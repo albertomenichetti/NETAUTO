@@ -1,4 +1,4 @@
-"""Static assertions for the frozen M1 SQLAlchemy metadata authority."""
+"""Static assertions for the frozen M2 SQLAlchemy metadata authority."""
 
 from sqlalchemy import UniqueConstraint
 
@@ -13,6 +13,8 @@ EXPECTED_TABLES = {
     "object_template_components",
     "relationship_definitions",
     "relationship_resolutions",
+    "relationship_definition_versions",
+    "relationship_definition_properties",
     "objects",
     "object_components",
     "relationships",
@@ -21,7 +23,7 @@ EXPECTED_TABLES = {
 }
 
 
-def test_metadata_contains_exactly_the_frozen_thirteen_tables() -> None:
+def test_metadata_contains_exactly_the_frozen_fifteen_tables() -> None:
     assert set(metadata.tables) == EXPECTED_TABLES
 
 

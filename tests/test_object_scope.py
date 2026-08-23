@@ -106,10 +106,16 @@ def test_lifecycle_response_schema_is_s07_discriminated_union() -> None:
             "ATTACH_TO": "#/components/schemas/OwnershipLifecycleEventDto",
             "DETACH_FROM": "#/components/schemas/OwnershipLifecycleEventDto",
             "RELATIONSHIP_CREATED": (
-                "#/components/schemas/RelationshipLifecycleEventDto"
+                "#/components/schemas/RelationshipCreatedLifecycleEventDto"
+            ),
+            "RELATIONSHIP_DATA_CHANGE": (
+                "#/components/schemas/RelationshipChangedLifecycleEventDto"
+            ),
+            "RELATIONSHIP_SCHEMA_CHANGE": (
+                "#/components/schemas/RelationshipChangedLifecycleEventDto"
             ),
             "RELATIONSHIP_DELETED": (
-                "#/components/schemas/RelationshipLifecycleEventDto"
+                "#/components/schemas/RelationshipDeletedLifecycleEventDto"
             ),
         },
     }
@@ -118,7 +124,9 @@ def test_lifecycle_response_schema_is_s07_discriminated_union() -> None:
         {"$ref": "#/components/schemas/ChangedLifecycleEventDto"},
         {"$ref": "#/components/schemas/DeletedLifecycleEventDto"},
         {"$ref": "#/components/schemas/OwnershipLifecycleEventDto"},
-        {"$ref": "#/components/schemas/RelationshipLifecycleEventDto"},
+        {"$ref": "#/components/schemas/RelationshipCreatedLifecycleEventDto"},
+        {"$ref": "#/components/schemas/RelationshipChangedLifecycleEventDto"},
+        {"$ref": "#/components/schemas/RelationshipDeletedLifecycleEventDto"},
     ]
 
     intrinsic_schema_text = repr(
@@ -204,10 +212,40 @@ def test_s08_public_route_and_error_catalog_closure() -> None:
             "POST",
             "/api/v1/core/relationship-definitions/{relationship_definition_id}/rename",
         ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/create-next",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/set-default",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/clear-default",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/revise",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/publish",
+        ),
+        (
+            "POST",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/deprecate",
+        ),
+        (
+            "DELETE",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}",
+        ),
         ("POST", "/api/v1/core/relationships"),
         ("DELETE", "/api/v1/core/relationships/{relationship_id}"),
+        ("POST", "/api/v1/core/relationships/{relationship_id}/data-change"),
+        ("POST", "/api/v1/core/relationships/{relationship_id}/schema-change"),
     }
-    assert len(expected_mutations) == 32
+    assert len(expected_mutations) == 41
     assert actual_mutations == expected_mutations
 
     expected_reads = {
@@ -239,12 +277,33 @@ def test_s08_public_route_and_error_catalog_closure() -> None:
             "GET",
             "/api/v1/core/relationship-definitions/{relationship_definition_id}",
         ),
+        (
+            "GET",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions",
+        ),
+        (
+            "GET",
+            "/api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}",
+        ),
         ("GET", "/api/v1/core/relationships/{relationship_id}"),
     }
     actual_reads = {
-        ("GET", path) for path, methods in paths.items() if "get" in _mapping(methods)
+        ("GET", path)
+        for path, methods in paths.items()
+        if path.startswith("/api/v1/core") and "get" in _mapping(methods)
     }
+    assert len(expected_reads) == 22
     assert actual_reads == expected_reads
+    assert len(actual_mutations | actual_reads) == 63
+    operational_operations = {
+        (method.upper(), path)
+        for path, methods in paths.items()
+        for method in _mapping(methods)
+        if not path.startswith("/api/v1/core")
+        and method in {"get", "post", "delete", "put", "patch"}
+    }
+    assert operational_operations == {("GET", "/health/core")}
+    assert len(actual_mutations | actual_reads | operational_operations) == 64
     assert all(
         method not in {"put", "patch"}
         for methods in paths.values()

@@ -1,6 +1,6 @@
 """Complete M1 DataType semantic application capability."""
 
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from netauto.application.cursors import Page, decode_cursor, encode_cursor
@@ -23,6 +23,16 @@ from netauto.persistence.datatypes import (
     DataTypeStore,
     DeleteReferenceError,
     QualifiedNameArbitrationError,
+)
+from netauto.persistence.locking import (
+    AdvisoryGate,
+    LockPlan,
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    acquire_lock_plan,
+    prepare_lock_plan,
 )
 from netauto.persistence.uow import UnitOfWorkFactory
 
@@ -74,9 +84,55 @@ def _state(
     return ApplicationFailure(FailureClass.STATE_CONFLICT, code, message, details)
 
 
+def _internal(message: str) -> ApplicationFailure:
+    return ApplicationFailure(
+        FailureClass.INTERNAL_FAILURE,
+        "internal_error",
+        message,
+    )
+
+
+def _header(datatype_id: UUID, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), mode)
+
+
+def _version(datatype_id: UUID, version: int, mode: RowLockMode) -> RowLockIntent:
+    return RowLockIntent(
+        RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version), mode
+    )
+
+
+async def _acquire(
+    connection: Any,
+    *intents: RowLockIntent,
+    gate: AdvisoryGate | None = None,
+) -> tuple[LockPlan, tuple[RowLockKey, ...]]:
+    plan = await prepare_lock_plan(connection, intents=intents, gate=gate)
+    missing = await acquire_lock_plan(connection, plan)
+    return plan, missing
+
+
 class DataTypeService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
+
+    @staticmethod
+    async def _validate_default_pointers(
+        store: DataTypeStore, lineages: tuple[DataType, ...]
+    ) -> None:
+        targets = await store.get_versions(
+            tuple(
+                (lineage.id, lineage.default_version)
+                for lineage in lineages
+                if lineage.default_version is not None
+            )
+        )
+        for lineage in lineages:
+            if lineage.default_version is None:
+                continue
+            target = targets.get((lineage.id, lineage.default_version))
+            if target is None or target.status is not VersionStatus.PUBLISHED:
+                raise _internal("A persisted DataType default pointer is invalid.")
 
     async def create(
         self,
@@ -104,6 +160,8 @@ class DataTypeService:
         )
         try:
             async with self._uow_factory() as uow:
+                plan, _ = await _acquire(uow.connection)
+                plan.begin_dml()
                 await DataTypeStore(uow.connection).create(lineage, version)
                 await uow.commit()
         except QualifiedNameArbitrationError as error:
@@ -119,7 +177,12 @@ class DataTypeService:
     ) -> DataTypeVersion:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_no_key(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.NKU),
+                _version(datatype_id, source_version, RowLockMode.KS),
+            )
+            if RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id) in missing:
                 raise _not_found(datatype_id)
             source = await store.get_version(datatype_id, source_version)
             if source is None:
@@ -138,6 +201,7 @@ class DataTypeService:
                 source.base_type,
                 source.constraints,
             )
+            plan.begin_dml()
             await store.insert_version(created)
             await uow.commit()
             return created
@@ -151,7 +215,17 @@ class DataTypeService:
     ) -> DataTypeVersion:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_version_no_key(datatype_id, version):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.KS),
+                _version(datatype_id, version, RowLockMode.NKU),
+            )
+            if RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id) in missing:
+                raise _not_found(datatype_id)
+            if (
+                RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version)
+                in missing
+            ):
                 raise _not_found(datatype_id, version)
             current = await store.get_version(datatype_id, version)
             if current is None:
@@ -161,6 +235,7 @@ class DataTypeService:
                 canonical = canonicalize_constraints(current.base_type, constraints)
             except PrimitiveValidationError as error:
                 raise _semantic(error) from error
+            plan.begin_dml()
             revised = await store.revise(datatype_id, version, canonical)
             await uow.commit()
             return revised
@@ -170,15 +245,24 @@ class DataTypeService:
     ) -> DataTypeVersion:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_no_key(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.NKU),
+                _version(datatype_id, version, RowLockMode.NKU),
+            )
+            if RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id) in missing:
                 raise _not_found(datatype_id)
-            if not await store.lock_version_no_key(datatype_id, version):
+            if (
+                RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version)
+                in missing
+            ):
                 raise _not_found(datatype_id, version)
             lineage = await store.get_lineage(datatype_id)
             current = await store.get_version(datatype_id, version)
             if lineage is None or current is None:
                 raise _not_found(datatype_id, version)
             self._require_draft(current, expected_revision)
+            plan.begin_dml()
             published = await store.set_status(
                 datatype_id, version, VersionStatus.PUBLISHED
             )
@@ -190,9 +274,14 @@ class DataTypeService:
     async def set_default(self, datatype_id: UUID, version: int) -> DataType:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_no_key(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.NKU),
+                _version(datatype_id, version, RowLockMode.S),
+            )
+            if RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id) in missing:
                 raise _not_found(datatype_id)
-            target = await store.admit_exact(datatype_id, version)
+            target = await store.get_version(datatype_id, version)
             if target is None:
                 raise _referenced_version_not_found(datatype_id, version)
             if target.status is not VersionStatus.PUBLISHED:
@@ -201,6 +290,7 @@ class DataTypeService:
                     "The selected default version is not PUBLISHED.",
                     {"id": str(datatype_id), "version": version},
                 )
+            plan.begin_dml()
             lineage = await store.set_default(datatype_id, version)
             await uow.commit()
             return lineage
@@ -208,8 +298,12 @@ class DataTypeService:
     async def clear_default(self, datatype_id: UUID) -> DataType:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_no_key(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection, _header(datatype_id, RowLockMode.NKU)
+            )
+            if missing:
                 raise _not_found(datatype_id)
+            plan.begin_dml()
             lineage = await store.set_default(datatype_id, None)
             await uow.commit()
             return lineage
@@ -217,9 +311,17 @@ class DataTypeService:
     async def deprecate(self, datatype_id: UUID, version: int) -> DataTypeVersion:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_share(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.S),
+                _version(datatype_id, version, RowLockMode.NKU),
+            )
+            if RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id) in missing:
                 raise _not_found(datatype_id)
-            if not await store.lock_version_no_key(datatype_id, version):
+            if (
+                RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version)
+                in missing
+            ):
                 raise _not_found(datatype_id, version)
             lineage = await store.get_lineage(datatype_id)
             current = await store.get_version(datatype_id, version)
@@ -243,6 +345,7 @@ class DataTypeService:
                     "A PUBLISHED model consumer depends on this version.",
                     {"id": str(datatype_id), "version": version},
                 )
+            plan.begin_dml()
             deprecated = await store.set_status(
                 datatype_id, version, VersionStatus.DEPRECATED
             )
@@ -254,35 +357,63 @@ class DataTypeService:
     ) -> None:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_no_key(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.NKU),
+                _version(datatype_id, version, RowLockMode.U),
+            )
+            if RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id) in missing:
                 raise _not_found(datatype_id)
-            if not await store.lock_version_update(datatype_id, version):
+            if (
+                RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version)
+                in missing
+            ):
                 raise _not_found(datatype_id, version)
             current = await store.get_version(datatype_id, version)
             if current is None:
                 raise _not_found(datatype_id, version)
             self._require_draft(current, expected_revision)
+            plan.begin_dml()
             await store.delete_draft(datatype_id, version)
             await uow.commit()
 
     async def delete_lineage(self, datatype_id: UUID) -> None:
         async with self._uow_factory() as uow:
             store = DataTypeStore(uow.connection)
-            if not await store.lock_lineage_update(datatype_id):
+            plan, missing = await _acquire(
+                uow.connection,
+                _header(datatype_id, RowLockMode.U),
+                gate=AdvisoryGate.MODEL_ROOT_DELETE_GATE,
+            )
+            if missing:
                 raise _not_found(datatype_id)
-            count = await store.external_reference_count(datatype_id)
-            if count:
+            counts = await store.external_reference_counts(datatype_id)
+            blockers: list[JsonValue] = []
+            if counts.object_template_property_count:
+                blockers.append(
+                    {
+                        "type": "object_template_property",
+                        "count": counts.object_template_property_count,
+                    }
+                )
+            if counts.relationship_definition_property_count:
+                blockers.append(
+                    {
+                        "type": "relationship_definition_property",
+                        "count": counts.relationship_definition_property_count,
+                    }
+                )
+            if blockers:
                 raise _state(
                     "delete_blocked",
                     "Current references prevent DataType deletion.",
                     {
                         "resource_type": "datatype",
                         "id": str(datatype_id),
-                        "blockers": [
-                            {"type": "object_template_property", "count": count}
-                        ],
+                        "blockers": blockers,
                     },
                 )
+            plan.begin_dml()
             try:
                 await store.delete_lineage(datatype_id)
             except DeleteReferenceError as error:
@@ -292,7 +423,7 @@ class DataTypeService:
                     {
                         "resource_type": "datatype",
                         "id": str(datatype_id),
-                        "blockers": [{"type": "object_template_property", "count": 1}],
+                        "blockers": [{"type": error.blocker_type, "count": 1}],
                     },
                 ) from error
             await uow.commit()
@@ -301,6 +432,12 @@ class DataTypeService:
         self, datatype_id: UUID, description: str | None
     ) -> DataType:
         async with self._uow_factory() as uow:
+            plan, missing = await _acquire(
+                uow.connection, _header(datatype_id, RowLockMode.NKU)
+            )
+            if missing:
+                raise _not_found(datatype_id)
+            plan.begin_dml()
             lineage = await DataTypeStore(uow.connection).set_description(
                 datatype_id, description
             )
@@ -310,10 +447,12 @@ class DataTypeService:
             return lineage
 
     async def get_lineage(self, datatype_id: UUID) -> DataType:
-        async with self._uow_factory() as uow:
-            lineage = await DataTypeStore(uow.connection).get_lineage(datatype_id)
+        async with self._uow_factory.coherent_read() as uow:
+            store = DataTypeStore(uow.connection)
+            lineage = await store.get_lineage(datatype_id)
             if lineage is None:
                 raise _not_found(datatype_id)
+            await self._validate_default_pointers(store, (lineage,))
             return lineage
 
     async def get_version(self, datatype_id: UUID, version: int) -> DataTypeVersion:
@@ -344,15 +483,17 @@ class DataTypeService:
                     "The cursor is malformed or incompatible with this query.",
                 )
             after = cast(tuple[str, str], (key[0], key[1]))
-        async with self._uow_factory() as uow:
+        async with self._uow_factory.coherent_read() as uow:
+            store = DataTypeStore(uow.connection)
             rows = list(
-                await DataTypeStore(uow.connection).list_lineages(
+                await store.list_lineages(
                     namespace=namespace,
                     name=name,
                     after=after,
                     limit=limit + 1,
                 )
             )
+            await self._validate_default_pointers(store, tuple(rows))
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = None

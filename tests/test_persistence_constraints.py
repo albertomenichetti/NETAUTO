@@ -18,6 +18,7 @@ from netauto.persistence.metadata import (
     object_template_versions,
     object_templates,
     objects,
+    relationship_definition_versions,
     relationship_definitions,
     relationship_resolutions,
     relationships,
@@ -291,8 +292,23 @@ def test_runtime_authorities_and_historical_lifecycle_defaults(
             ],
         )
         connection.execute(
+            relationship_definition_versions.insert(),
+            [
+                {
+                    "relationship_definition_id": definition_id,
+                    "version": 1,
+                    "revision": 1,
+                    "status": "PUBLISHED",
+                }
+                for definition_id in (definition_a, definition_b)
+            ],
+        )
+        connection.execute(
             relationships.insert().values(
-                id=relationship_id, relationship_definition_id=definition_a
+                id=relationship_id,
+                relationship_definition_id=definition_a,
+                relationship_definition_version=1,
+                properties={},
             )
         )
         _fails_integrity(

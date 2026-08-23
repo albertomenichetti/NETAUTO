@@ -1,6 +1,6 @@
-"""initial M1 schema
+"""M2 first durable kernel baseline
 
-Revision ID: 0001_m1_schema
+Revision ID: 0001_m2_kernel
 Revises:
 Create Date: 2026-08-14 23:37:37.482624
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0001_m1_schema"
+revision: str = "0001_m2_kernel"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -74,8 +74,13 @@ def upgrade() -> None:
             "before_state IS NOT NULL AND after_state IS NOT NULL) OR "
             "(kind = 'DELETED' AND before_state IS NOT NULL "
             "AND after_state IS NULL) OR "
-            "kind IN ('ATTACH_TO', 'DETACH_FROM', 'RELATIONSHIP_CREATED', "
-            "'RELATIONSHIP_DELETED')",
+            "kind IN ('ATTACH_TO', 'DETACH_FROM') OR "
+            "(kind = 'RELATIONSHIP_CREATED' AND before_state IS NULL "
+            "AND after_state IS NOT NULL) OR "
+            "(kind IN ('RELATIONSHIP_DATA_CHANGE', 'RELATIONSHIP_SCHEMA_CHANGE') "
+            "AND before_state IS NOT NULL AND after_state IS NOT NULL) OR "
+            "(kind = 'RELATIONSHIP_DELETED' AND before_state IS NOT NULL "
+            "AND after_state IS NULL)",
             name="ck_lifecycle_events_state_shape",
         ),
         sa.CheckConstraint(
@@ -91,14 +96,14 @@ def upgrade() -> None:
             "AND relationship_id IS NULL AND relationship_definition_id IS NULL "
             "AND relationship_name IS NULL AND before_state IS NULL "
             "AND after_state IS NULL) OR "
-            "(kind IN ('RELATIONSHIP_CREATED', 'RELATIONSHIP_DELETED') "
+            "(kind IN ('RELATIONSHIP_CREATED', 'RELATIONSHIP_DATA_CHANGE', "
+            "'RELATIONSHIP_SCHEMA_CHANGE', 'RELATIONSHIP_DELETED') "
             "AND destination_object_id IS NOT NULL "
             "AND destination_canonical_name IS NOT NULL "
             "AND relationship_id IS NOT NULL "
             "AND relationship_definition_id IS NOT NULL "
             "AND relationship_name IS NOT NULL "
-            "AND slot_declaring_template_id IS NULL AND slot_name IS NULL "
-            "AND before_state IS NULL AND after_state IS NULL)",
+            "AND slot_declaring_template_id IS NULL AND slot_name IS NULL)",
             name="ck_lifecycle_events_family_shape",
         ),
         sa.CheckConstraint(
@@ -112,6 +117,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "kind IN ('CREATED', 'RENAME', 'DATA_CHANGE', 'SCHEMA_CHANGE', "
             "'ATTACH_TO', 'DETACH_FROM', 'RELATIONSHIP_CREATED', "
+            "'RELATIONSHIP_DATA_CHANGE', 'RELATIONSHIP_SCHEMA_CHANGE', "
             "'RELATIONSHIP_DELETED', 'DELETED')",
             name="ck_lifecycle_events_kind",
         ),
@@ -139,12 +145,14 @@ def upgrade() -> None:
         "object_lifecycle_events",
         ["relationship_definition_id", "occurred_at", "id"],
         unique=False,
+        postgresql_where=sa.text("relationship_definition_id IS NOT NULL"),
     )
     op.create_index(
         "ix_lifecycle_events_destination",
         "object_lifecycle_events",
         ["destination_object_id", "occurred_at", "id"],
         unique=False,
+        postgresql_where=sa.text("destination_object_id IS NOT NULL"),
     )
     op.create_index(
         "ix_lifecycle_events_kind",
@@ -169,6 +177,7 @@ def upgrade() -> None:
         "object_lifecycle_events",
         ["relationship_id", "occurred_at", "id"],
         unique=False,
+        postgresql_where=sa.text("relationship_id IS NOT NULL"),
     )
     op.create_index(
         "ix_lifecycle_events_relationship_name",
@@ -219,6 +228,11 @@ def upgrade() -> None:
         "relationship_definitions",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("symmetric", sa.Boolean(), nullable=False),
+        sa.Column("default_version", sa.Integer(), nullable=True),
+        sa.CheckConstraint(
+            "default_version IS NULL OR default_version > 0",
+            name="ck_relationship_definitions_default_version_positive",
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -256,6 +270,12 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("datatype_id", "version"),
+    )
+    op.create_index(
+        "ix_datatype_versions_status_datatype_version",
+        "datatype_versions",
+        ["status", "datatype_id", "version"],
+        unique=False,
     )
     op.create_table(
         "object_template_versions",
@@ -307,6 +327,38 @@ def upgrade() -> None:
         ["parent_template_id", "parent_version"],
         unique=False,
     )
+    op.create_index(
+        "ix_object_template_versions_status_template_version",
+        "object_template_versions",
+        ["status", "template_id", "version"],
+        unique=False,
+    )
+    op.create_table(
+        "relationship_definition_versions",
+        sa.Column("relationship_definition_id", sa.UUID(), nullable=False),
+        sa.Column("version", sa.Integer(), nullable=False),
+        sa.Column("revision", sa.Integer(), nullable=False),
+        sa.Column("status", sa.Text(), nullable=False),
+        sa.CheckConstraint(
+            "version > 0",
+            name="ck_relationship_definition_versions_version_positive",
+        ),
+        sa.CheckConstraint(
+            "revision > 0",
+            name="ck_relationship_definition_versions_revision_positive",
+        ),
+        sa.CheckConstraint(
+            "status IN ('DRAFT', 'PUBLISHED', 'DEPRECATED')",
+            name="ck_relationship_definition_versions_status",
+        ),
+        sa.ForeignKeyConstraint(
+            ["relationship_definition_id"],
+            ["relationship_definitions.id"],
+            name="fk_relationship_definition_versions_definition",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("relationship_definition_id", "version"),
+    )
     # The two default-version FKs close intentional lineage/version cycles, so they
     # are created only after both sides of each composite reference exist.
     op.create_foreign_key(
@@ -323,6 +375,14 @@ def upgrade() -> None:
         "object_template_versions",
         ["id", "default_version"],
         ["template_id", "version"],
+        ondelete="RESTRICT",
+    )
+    op.create_foreign_key(
+        "fk_relationship_definitions_default_version",
+        "relationship_definitions",
+        "relationship_definition_versions",
+        ["id", "default_version"],
+        ["relationship_definition_id", "version"],
         ondelete="RESTRICT",
     )
     op.create_table(
@@ -359,13 +419,6 @@ def upgrade() -> None:
             "relationship_definition_id",
             name="uq_relationship_resolutions_id_definition",
         ),
-        sa.UniqueConstraint(
-            "relationship_definition_id",
-            "from_template_id",
-            "to_template_id",
-            "name",
-            name="uq_relationship_resolutions_semantic_child",
-        ),
     )
     op.create_index(
         "ix_relationship_resolutions_from_template",
@@ -379,14 +432,47 @@ def upgrade() -> None:
         ["to_template_id"],
         unique=False,
     )
+    op.create_index(
+        "ix_relationship_resolutions_definition_id",
+        "relationship_resolutions",
+        ["relationship_definition_id", "id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_relationship_resolutions_name_id",
+        "relationship_resolutions",
+        ["name", "id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_relationship_definition_versions_status_definition_version",
+        "relationship_definition_versions",
+        ["status", "relationship_definition_id", "version"],
+        unique=False,
+    )
     op.create_table(
         "relationships",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("relationship_definition_id", sa.UUID(), nullable=False),
+        sa.Column("relationship_definition_version", sa.Integer(), nullable=False),
+        sa.Column(
+            "properties", postgresql.JSONB(astext_type=sa.Text()), nullable=False
+        ),
+        sa.CheckConstraint(
+            "relationship_definition_version > 0",
+            name="ck_relationships_definition_version_positive",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(properties) = 'object'",
+            name="ck_relationships_properties_object",
+        ),
         sa.ForeignKeyConstraint(
-            ["relationship_definition_id"],
-            ["relationship_definitions.id"],
-            name="fk_relationships_definition",
+            ["relationship_definition_id", "relationship_definition_version"],
+            [
+                "relationship_definition_versions.relationship_definition_id",
+                "relationship_definition_versions.version",
+            ],
+            name="fk_relationships_definition_version",
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -395,9 +481,9 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_relationships_definition",
+        "ix_relationships_definition_version",
         "relationships",
-        ["relationship_definition_id"],
+        ["relationship_definition_id", "relationship_definition_version"],
         unique=False,
     )
     op.create_table(
@@ -444,6 +530,12 @@ def upgrade() -> None:
         "ix_object_template_components_target",
         "object_template_components",
         ["target_template_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_object_template_components_semantic_history",
+        "object_template_components",
+        ["template_id", "name", sa.text("template_version DESC")],
         unique=False,
     )
     op.create_table(
@@ -508,6 +600,84 @@ def upgrade() -> None:
         "ix_object_template_properties_datatype_version",
         "object_template_properties",
         ["datatype_id", "datatype_version"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_object_template_properties_semantic_history",
+        "object_template_properties",
+        ["template_id", "name", sa.text("template_version DESC")],
+        unique=False,
+    )
+    op.create_table(
+        "relationship_definition_properties",
+        sa.Column("relationship_definition_id", sa.UUID(), nullable=False),
+        sa.Column("relationship_definition_version", sa.Integer(), nullable=False),
+        sa.Column("name", sa.Text(), nullable=False),
+        sa.Column("position", sa.Integer(), nullable=False),
+        sa.Column("datatype_id", sa.UUID(), nullable=False),
+        sa.Column("datatype_version", sa.Integer(), nullable=False),
+        sa.Column("value_mode", sa.Text(), nullable=False),
+        sa.CheckConstraint(
+            "name ~ '^[a-z][a-z0-9_]{0,63}$'",
+            name="ck_relationship_definition_properties_name",
+        ),
+        sa.CheckConstraint(
+            "relationship_definition_version > 0",
+            name="ck_relationship_definition_properties_version_positive",
+        ),
+        sa.CheckConstraint(
+            "position > 0",
+            name="ck_relationship_definition_properties_position_positive",
+        ),
+        sa.CheckConstraint(
+            "datatype_version > 0",
+            name="ck_relationship_definition_properties_datatype_version_positive",
+        ),
+        sa.CheckConstraint(
+            "value_mode IN ('SCALAR', 'LIST')",
+            name="ck_relationship_definition_properties_value_mode",
+        ),
+        sa.ForeignKeyConstraint(
+            ["relationship_definition_id", "relationship_definition_version"],
+            [
+                "relationship_definition_versions.relationship_definition_id",
+                "relationship_definition_versions.version",
+            ],
+            name="fk_relationship_definition_properties_version",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["datatype_id", "datatype_version"],
+            ["datatype_versions.datatype_id", "datatype_versions.version"],
+            name="fk_relationship_definition_properties_datatype_version",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint(
+            "relationship_definition_id",
+            "relationship_definition_version",
+            "name",
+        ),
+        sa.UniqueConstraint(
+            "relationship_definition_id",
+            "relationship_definition_version",
+            "position",
+            name="uq_relationship_definition_properties_position",
+        ),
+    )
+    op.create_index(
+        "ix_relationship_definition_properties_datatype_version",
+        "relationship_definition_properties",
+        ["datatype_id", "datatype_version"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_relationship_definition_properties_semantic_history",
+        "relationship_definition_properties",
+        [
+            "relationship_definition_id",
+            "name",
+            sa.text("relationship_definition_version DESC"),
+        ],
         unique=False,
     )
     op.create_table(
@@ -621,10 +791,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("resolution_id", "from_object_id", "to_object_id"),
     )
     op.create_index(
-        "ix_runtime_resolutions_from_object",
+        "ix_runtime_resolutions_from_object_page",
         "runtime_relationship_resolutions",
-        ["from_object_id"],
+        ["from_object_id", "relationship_id", "to_object_id", "resolution_id"],
         unique=False,
+        postgresql_include=["relationship_definition_id"],
     )
     op.create_index(
         "ix_runtime_resolutions_relationship",
@@ -633,9 +804,9 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
-        "ix_runtime_resolutions_to_object",
+        "ix_runtime_resolutions_to_object_relationship",
         "runtime_relationship_resolutions",
-        ["to_object_id"],
+        ["to_object_id", "relationship_id"],
         unique=False,
     )
     # ### end Alembic commands ###
@@ -645,7 +816,7 @@ def downgrade() -> None:
     """Revert this revision."""
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_index(
-        "ix_runtime_resolutions_to_object",
+        "ix_runtime_resolutions_to_object_relationship",
         table_name="runtime_relationship_resolutions",
     )
     op.drop_index(
@@ -653,7 +824,7 @@ def downgrade() -> None:
         table_name="runtime_relationship_resolutions",
     )
     op.drop_index(
-        "ix_runtime_resolutions_from_object",
+        "ix_runtime_resolutions_from_object_page",
         table_name="runtime_relationship_resolutions",
     )
     op.drop_table("runtime_relationship_resolutions")
@@ -661,20 +832,44 @@ def downgrade() -> None:
         "ix_object_components_parent_slot_child", table_name="object_components"
     )
     op.drop_table("object_components")
+    op.drop_index("ix_relationships_definition_version", table_name="relationships")
+    op.drop_table("relationships")
     op.drop_index("ix_objects_template_version", table_name="objects")
     op.drop_index("ix_objects_canonical_name_id", table_name="objects")
     op.drop_table("objects")
+    op.drop_index(
+        "ix_relationship_definition_properties_semantic_history",
+        table_name="relationship_definition_properties",
+    )
+    op.drop_index(
+        "ix_relationship_definition_properties_datatype_version",
+        table_name="relationship_definition_properties",
+    )
+    op.drop_table("relationship_definition_properties")
+    op.drop_index(
+        "ix_object_template_properties_semantic_history",
+        table_name="object_template_properties",
+    )
     op.drop_index(
         "ix_object_template_properties_datatype_version",
         table_name="object_template_properties",
     )
     op.drop_table("object_template_properties")
     op.drop_index(
+        "ix_object_template_components_semantic_history",
+        table_name="object_template_components",
+    )
+    op.drop_index(
         "ix_object_template_components_target", table_name="object_template_components"
     )
     op.drop_table("object_template_components")
-    op.drop_index("ix_relationships_definition", table_name="relationships")
-    op.drop_table("relationships")
+    op.drop_index(
+        "ix_relationship_resolutions_name_id", table_name="relationship_resolutions"
+    )
+    op.drop_index(
+        "ix_relationship_resolutions_definition_id",
+        table_name="relationship_resolutions",
+    )
     op.drop_index(
         "ix_relationship_resolutions_to_template", table_name="relationship_resolutions"
     )
@@ -683,6 +878,11 @@ def downgrade() -> None:
         table_name="relationship_resolutions",
     )
     op.drop_table("relationship_resolutions")
+    op.drop_constraint(
+        "fk_relationship_definitions_default_version",
+        "relationship_definitions",
+        type_="foreignkey",
+    )
     op.drop_constraint(
         "fk_object_templates_default_version",
         "object_templates",
@@ -693,7 +893,20 @@ def downgrade() -> None:
         "ix_object_template_versions_parent_version",
         table_name="object_template_versions",
     )
+    op.drop_index(
+        "ix_object_template_versions_status_template_version",
+        table_name="object_template_versions",
+    )
     op.drop_table("object_template_versions")
+    op.drop_index(
+        "ix_relationship_definition_versions_status_definition_version",
+        table_name="relationship_definition_versions",
+    )
+    op.drop_table("relationship_definition_versions")
+    op.drop_index(
+        "ix_datatype_versions_status_datatype_version",
+        table_name="datatype_versions",
+    )
     op.drop_table("datatype_versions")
     op.drop_table("relationship_definitions")
     op.drop_index("ix_object_templates_parent", table_name="object_templates")

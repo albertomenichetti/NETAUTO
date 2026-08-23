@@ -1,7 +1,8 @@
 """SQLAlchemy Core persistence operations for the DataType capability."""
 
 from collections.abc import Sequence
-from typing import cast
+from dataclasses import dataclass
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, select, tuple_, update
@@ -16,11 +17,21 @@ from netauto.domain.datatypes import (
     VersionStatus,
 )
 from netauto.domain.primitives import JsonValue, PrimitiveType
+from netauto.persistence.locking import (
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    classify_postgresql_failure,
+    row_lock_statement,
+)
 from netauto.persistence.metadata import (
     datatype_versions,
     datatypes,
     object_template_properties,
     object_template_versions,
+    relationship_definition_properties,
+    relationship_definition_versions,
 )
 
 
@@ -28,8 +39,21 @@ class QualifiedNameArbitrationError(Exception):
     pass
 
 
+type DataTypeDeleteBlockerType = Literal[
+    "object_template_property", "relationship_definition_property"
+]
+
+
+@dataclass(frozen=True, slots=True)
+class DataTypeReferenceCounts:
+    object_template_property_count: int
+    relationship_definition_property_count: int
+
+
 class DeleteReferenceError(Exception):
-    pass
+    def __init__(self, blocker_type: DataTypeDeleteBlockerType) -> None:
+        self.blocker_type = blocker_type
+        super().__init__(blocker_type)
 
 
 def _lineage(mapping: RowMapping) -> DataType:
@@ -70,6 +94,11 @@ class DataTypeStore:
     def __init__(self, connection: AsyncConnection) -> None:
         self.connection = connection
 
+    async def _lock(self, key: RowLockKey, mode: RowLockMode) -> bool:
+        return (
+            await self.connection.execute(row_lock_statement(RowLockIntent(key, mode)))
+        ).first() is not None
+
     async def create(self, datatype: DataType, version: DataTypeVersion) -> None:
         try:
             await self.connection.execute(
@@ -92,10 +121,8 @@ class DataTypeStore:
                 )
             )
         except IntegrityError as error:
-            constraint = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(constraint, "constraint_name", None) == (
-                "uq_datatypes_namespace_name"
-            ):
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == "uq_datatypes_namespace_name":
                 raise QualifiedNameArbitrationError from error
             raise
 
@@ -128,74 +155,77 @@ class DataTypeStore:
         )
         return None if row is None else _version(row)
 
-    async def lock_lineage_no_key(self, datatype_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatypes.c.id)
-                .where(datatypes.c.id == datatype_id)
-                .with_for_update(key_share=True)
+    async def get_lineages(self, datatype_ids: Sequence[UUID]) -> dict[UUID, DataType]:
+        if not datatype_ids:
+            return {}
+        rows = (
+            (
+                await self.connection.execute(
+                    select(datatypes).where(
+                        datatypes.c.id.in_(tuple(sorted(set(datatype_ids))))
+                    )
+                )
             )
-        ).first()
-        return row is not None
+            .mappings()
+            .all()
+        )
+        return {value.id: value for value in map(_lineage, rows)}
+
+    async def get_versions(
+        self, keys: Sequence[tuple[UUID, int]]
+    ) -> dict[tuple[UUID, int], DataTypeVersion]:
+        if not keys:
+            return {}
+        ordered = tuple(sorted(set(keys), key=lambda item: (item[0].int, item[1])))
+        rows = (
+            (
+                await self.connection.execute(
+                    select(datatype_versions).where(
+                        tuple_(
+                            datatype_versions.c.datatype_id,
+                            datatype_versions.c.version,
+                        ).in_(ordered)
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        values = map(_version, rows)
+        return {(value.datatype_id, value.version): value for value in values}
+
+    async def lock_lineage_no_key(self, datatype_id: UUID) -> bool:
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), RowLockMode.NKU
+        )
 
     async def lock_lineage_share(self, datatype_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatypes.c.id)
-                .where(datatypes.c.id == datatype_id)
-                .with_for_update(read=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), RowLockMode.S
+        )
 
     async def lock_lineage_update(self, datatype_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatypes.c.id)
-                .where(datatypes.c.id == datatype_id)
-                .with_for_update()
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), RowLockMode.U
+        )
 
     async def lock_version_no_key(self, datatype_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatype_versions.c.datatype_id)
-                .where(
-                    datatype_versions.c.datatype_id == datatype_id,
-                    datatype_versions.c.version == version,
-                )
-                .with_for_update(key_share=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version),
+            RowLockMode.NKU,
+        )
 
     async def lock_version_update(self, datatype_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatype_versions.c.datatype_id)
-                .where(
-                    datatype_versions.c.datatype_id == datatype_id,
-                    datatype_versions.c.version == version,
-                )
-                .with_for_update()
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version),
+            RowLockMode.U,
+        )
 
     async def lock_version_share(self, datatype_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(datatype_versions.c.datatype_id)
-                .where(
-                    datatype_versions.c.datatype_id == datatype_id,
-                    datatype_versions.c.version == version,
-                )
-                .with_for_update(read=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.DATA_TYPE_VERSION, datatype_id, version),
+            RowLockMode.S,
+        )
 
     async def next_version(self, datatype_id: UUID) -> int:
         maximum = await self.connection.scalar(
@@ -293,7 +323,7 @@ class DataTypeStore:
         return None if row is None else _lineage(row)
 
     async def has_active_consumer(self, datatype_id: UUID, version: int) -> bool:
-        value = await self.connection.scalar(
+        object_value = await self.connection.scalar(
             select(func.count())
             .select_from(
                 object_template_properties.join(
@@ -312,15 +342,48 @@ class DataTypeStore:
                 object_template_versions.c.status == VersionStatus.PUBLISHED.value,
             )
         )
-        return bool(value)
+        if object_value:
+            return True
+        rd_properties = relationship_definition_properties
+        rd_versions = relationship_definition_versions
+        relationship_value = await self.connection.scalar(
+            select(func.count())
+            .select_from(
+                rd_properties.join(
+                    rd_versions,
+                    and_(
+                        rd_properties.c.relationship_definition_id
+                        == rd_versions.c.relationship_definition_id,
+                        rd_properties.c.relationship_definition_version
+                        == rd_versions.c.version,
+                    ),
+                )
+            )
+            .where(
+                rd_properties.c.datatype_id == datatype_id,
+                rd_properties.c.datatype_version == version,
+                rd_versions.c.status == VersionStatus.PUBLISHED.value,
+            )
+        )
+        return bool(relationship_value)
 
-    async def external_reference_count(self, datatype_id: UUID) -> int:
-        value = await self.connection.scalar(
+    async def external_reference_counts(
+        self, datatype_id: UUID
+    ) -> DataTypeReferenceCounts:
+        object_value = await self.connection.scalar(
             select(func.count())
             .select_from(object_template_properties)
             .where(object_template_properties.c.datatype_id == datatype_id)
         )
-        return int(value or 0)
+        relationship_value = await self.connection.scalar(
+            select(func.count())
+            .select_from(relationship_definition_properties)
+            .where(relationship_definition_properties.c.datatype_id == datatype_id)
+        )
+        return DataTypeReferenceCounts(
+            object_template_property_count=int(object_value or 0),
+            relationship_definition_property_count=int(relationship_value or 0),
+        )
 
     async def delete_draft(self, datatype_id: UUID, version: int) -> None:
         await self.connection.execute(
@@ -341,11 +404,19 @@ class DataTypeStore:
                 datatypes.delete().where(datatypes.c.id == datatype_id)
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) == (
-                "fk_object_template_properties_datatype_version"
+            classified = classify_postgresql_failure(error)
+            if (
+                classified.constraint_name
+                == "fk_object_template_properties_datatype_version"
             ):
-                raise DeleteReferenceError from error
+                raise DeleteReferenceError("object_template_property") from error
+            if (
+                classified.constraint_name
+                == "fk_relationship_definition_properties_datatype_version"
+            ):
+                raise DeleteReferenceError(
+                    "relationship_definition_property"
+                ) from error
             raise
 
     async def list_lineages(

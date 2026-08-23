@@ -1,6 +1,7 @@
 """SQLAlchemy Core persistence for the ObjectTemplate aggregate."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Literal, cast
 from uuid import UUID
 
@@ -19,6 +20,14 @@ from netauto.domain.objecttemplates import (
     ValueMode,
 )
 from netauto.domain.primitives import JsonValue
+from netauto.persistence.locking import (
+    RowLockClass,
+    RowLockIntent,
+    RowLockKey,
+    RowLockMode,
+    classify_postgresql_failure,
+    row_lock_statement,
+)
 from netauto.persistence.metadata import (
     object_template_components,
     object_template_properties,
@@ -51,6 +60,53 @@ class ObjectTemplateComponentTargetReferenceError(Exception):
     def __init__(self, target_template_id: UUID) -> None:
         self.target_template_id = target_template_id
         super().__init__("ObjectTemplate component target disappeared")
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectTemplateDeclarationDelta:
+    property_deletes: tuple[str, ...]
+    component_deletes: tuple[str, ...]
+    property_inserts: tuple[LocalProperty, ...]
+    component_inserts: tuple[LocalComponent, ...]
+
+
+def declaration_delta(
+    current_properties: Sequence[LocalProperty],
+    current_components: Sequence[LocalComponent],
+    desired_properties: Sequence[LocalProperty],
+    desired_components: Sequence[LocalComponent],
+) -> ObjectTemplateDeclarationDelta:
+    """Classify a complete semantic replacement into deterministic physical DML."""
+    current_property_by_name = {item.name: item for item in current_properties}
+    current_component_by_name = {item.name: item for item in current_components}
+    desired_property_by_name = {item.name: item for item in desired_properties}
+    desired_component_by_name = {item.name: item for item in desired_components}
+    return ObjectTemplateDeclarationDelta(
+        property_deletes=tuple(
+            sorted(
+                name
+                for name, current in current_property_by_name.items()
+                if desired_property_by_name.get(name) != current
+            )
+        ),
+        component_deletes=tuple(
+            sorted(
+                name
+                for name, current in current_component_by_name.items()
+                if desired_component_by_name.get(name) != current
+            )
+        ),
+        property_inserts=tuple(
+            desired_property_by_name[name]
+            for name in sorted(desired_property_by_name)
+            if current_property_by_name.get(name) != desired_property_by_name[name]
+        ),
+        component_inserts=tuple(
+            desired_component_by_name[name]
+            for name in sorted(desired_component_by_name)
+            if current_component_by_name.get(name) != desired_component_by_name[name]
+        ),
+    )
 
 
 def _lineage(row: RowMapping) -> ObjectTemplate:
@@ -114,6 +170,11 @@ class ObjectTemplateStore:
     def __init__(self, connection: AsyncConnection) -> None:
         self.connection = connection
 
+    async def _lock(self, key: RowLockKey, mode: RowLockMode) -> bool:
+        return (
+            await self.connection.execute(row_lock_statement(RowLockIntent(key, mode)))
+        ).first() is not None
+
     async def _insert_declarations(
         self,
         template_id: UUID,
@@ -121,7 +182,7 @@ class ObjectTemplateStore:
         properties: tuple[LocalProperty, ...],
         components: tuple[LocalComponent, ...],
     ) -> None:
-        for item in properties:
+        for item in sorted(properties, key=lambda value: value.name):
             values: dict[str, object] = {
                 "template_id": template_id,
                 "template_version": version,
@@ -138,7 +199,7 @@ class ObjectTemplateStore:
             await self.connection.execute(
                 object_template_properties.insert().values(**values)
             )
-        for item in components:
+        for item in sorted(components, key=lambda value: value.name):
             try:
                 await self.connection.execute(
                     object_template_components.insert().values(
@@ -150,8 +211,8 @@ class ObjectTemplateStore:
                     )
                 )
             except IntegrityError as error:
-                diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-                if getattr(diagnostic, "constraint_name", None) == (
+                classified = classify_postgresql_failure(error)
+                if classified.constraint_name == (
                     "fk_object_template_components_target"
                 ):
                     raise ObjectTemplateComponentTargetReferenceError(
@@ -176,10 +237,8 @@ class ObjectTemplateStore:
             )
             await self.insert_version(version)
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            if getattr(diagnostic, "constraint_name", None) == (
-                "uq_object_templates_namespace_name"
-            ):
+            classified = classify_postgresql_failure(error)
+            if classified.constraint_name == ("uq_object_templates_namespace_name"):
                 raise ObjectTemplateQualifiedNameError from error
             raise
 
@@ -213,6 +272,18 @@ class ObjectTemplateStore:
         )
         return None if row is None else _lineage(row)
 
+    async def lineage_parents(self) -> dict[UUID, UUID | None]:
+        """Return the stable inheritance graph used by canonical lock ordering."""
+        rows = (
+            await self.connection.execute(
+                select(object_templates.c.id, object_templates.c.parent_template_id)
+            )
+        ).all()
+        return {
+            cast(UUID, row.id): cast(UUID | None, row.parent_template_id)
+            for row in rows
+        }
+
     async def get_header(
         self, template_id: UUID, version: int
     ) -> ObjectTemplateVersion | None:
@@ -229,6 +300,29 @@ class ObjectTemplateStore:
             .first()
         )
         return None if row is None else _header(row)
+
+    async def get_headers(
+        self, keys: Sequence[tuple[UUID, int]]
+    ) -> dict[tuple[UUID, int], ObjectTemplateVersion]:
+        if not keys:
+            return {}
+        ordered = tuple(sorted(set(keys), key=lambda item: (item[0].int, item[1])))
+        rows = (
+            (
+                await self.connection.execute(
+                    select(object_template_versions).where(
+                        tuple_(
+                            object_template_versions.c.template_id,
+                            object_template_versions.c.version,
+                        ).in_(ordered)
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        values = map(_header, rows)
+        return {(value.template_id, value.version): value for value in values}
 
     async def get_properties(
         self, template_id: UUID, version: int
@@ -286,73 +380,38 @@ class ObjectTemplateStore:
         )
 
     async def lock_lineage_no_key(self, template_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(object_templates.c.id)
-                .where(object_templates.c.id == template_id)
-                .with_for_update(key_share=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id),
+            RowLockMode.NKU,
+        )
 
     async def lock_lineage_share(self, template_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(object_templates.c.id)
-                .where(object_templates.c.id == template_id)
-                .with_for_update(read=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id), RowLockMode.S
+        )
 
     async def lock_lineage_update(self, template_id: UUID) -> bool:
-        row = (
-            await self.connection.execute(
-                select(object_templates.c.id)
-                .where(object_templates.c.id == template_id)
-                .with_for_update()
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_HEADER, template_id), RowLockMode.U
+        )
 
     async def lock_version_no_key(self, template_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(object_template_versions.c.template_id)
-                .where(
-                    object_template_versions.c.template_id == template_id,
-                    object_template_versions.c.version == version,
-                )
-                .with_for_update(key_share=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version),
+            RowLockMode.NKU,
+        )
 
     async def lock_version_update(self, template_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(object_template_versions.c.template_id)
-                .where(
-                    object_template_versions.c.template_id == template_id,
-                    object_template_versions.c.version == version,
-                )
-                .with_for_update()
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version),
+            RowLockMode.U,
+        )
 
     async def lock_version_share(self, template_id: UUID, version: int) -> bool:
-        row = (
-            await self.connection.execute(
-                select(object_template_versions.c.template_id)
-                .where(
-                    object_template_versions.c.template_id == template_id,
-                    object_template_versions.c.version == version,
-                )
-                .with_for_update(read=True)
-            )
-        ).first()
-        return row is not None
+        return await self._lock(
+            RowLockKey(RowLockClass.OBJECT_TEMPLATE_VERSION, template_id, version),
+            RowLockMode.S,
+        )
 
     async def admit_exact(
         self, template_id: UUID, version: int
@@ -382,23 +441,33 @@ class ObjectTemplateStore:
         return 1 if maximum is None else int(maximum) + 1
 
     async def replace_candidate(self, version: ObjectTemplateVersion) -> None:
-        await self.connection.execute(
-            object_template_properties.delete().where(
-                object_template_properties.c.template_id == version.template_id,
-                object_template_properties.c.template_version == version.version,
-            )
+        delta = declaration_delta(
+            await self.get_properties(version.template_id, version.version),
+            await self.get_components(version.template_id, version.version),
+            version.properties,
+            version.components,
         )
-        await self.connection.execute(
-            object_template_components.delete().where(
-                object_template_components.c.template_id == version.template_id,
-                object_template_components.c.template_version == version.version,
+        for name in delta.property_deletes:
+            await self.connection.execute(
+                object_template_properties.delete().where(
+                    object_template_properties.c.template_id == version.template_id,
+                    object_template_properties.c.template_version == version.version,
+                    object_template_properties.c.name == name,
+                )
             )
-        )
+        for name in delta.component_deletes:
+            await self.connection.execute(
+                object_template_components.delete().where(
+                    object_template_components.c.template_id == version.template_id,
+                    object_template_components.c.template_version == version.version,
+                    object_template_components.c.name == name,
+                )
+            )
         await self._insert_declarations(
             version.template_id,
             version.version,
-            version.properties,
-            version.components,
+            delta.property_inserts,
+            delta.component_inserts,
         )
         await self.connection.execute(
             object_template_versions.update()
@@ -611,8 +680,7 @@ class ObjectTemplateStore:
                 object_templates.delete().where(object_templates.c.id == template_id)
             )
         except IntegrityError as error:
-            diagnostic = getattr(getattr(error, "orig", None), "diag", None)
-            constraint = cast(str | None, getattr(diagnostic, "constraint_name", None))
+            constraint = classify_postgresql_failure(error).constraint_name
             blocker_by_constraint: dict[str, ObjectTemplateDeleteBlockerType] = {
                 "fk_object_templates_parent": "child_object_template",
                 "fk_object_template_versions_parent_version": ("child_object_template"),

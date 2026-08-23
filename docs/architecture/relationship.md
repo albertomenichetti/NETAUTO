@@ -1,8 +1,10 @@
 # Relationship — Current AS-IS
 
-## Responsibility
+## Purpose and authority
 
-The current Relationship model separates four concepts:
+This document owns RelationshipDefinition topology, exact versioned property schemas, factual Relationship state, runtime-resolution closure, commands, reads and lifecycle meaning. Persistence, public transport and concurrency realization belong to their respective current owners.
+
+The current Relationship model separates five concepts:
 
 ```text
 RelationshipDefinition
@@ -10,6 +12,9 @@ RelationshipDefinition
 
 RelationshipResolution
     -> model-plane resolved semantic perspective
+
+RelationshipDefinitionVersion
+    -> exact lifecycle-managed property-schema snapshot
 
 Relationship
     -> factual runtime association identity
@@ -80,6 +85,12 @@ id
 symmetric
 ```
 
+and a nullable mutable selection policy:
+
+```text
+default_version
+```
+
 `id` is the authoritative relationship-type identity. `symmetric` is immutable structural contract.
 
 Definition mutation operates on the complete aggregate; Resolution child state is not an autonomous public CRUD/lifecycle resource.
@@ -106,6 +117,82 @@ The rule also applies when both endpoint lineages are the same.
 Endpoint references are stable ObjectTemplate lineages, never exact ObjectTemplateVersions.
 
 Changing symmetry, endpoint lineage, Resolution membership or cardinality defines a different relationship type and therefore requires a new Definition.
+
+## RelationshipDefinitionVersion
+
+An exact version is identified by:
+
+```text
+(relationship_definition_id, version)
+```
+
+`version` is a positive lineage-local integer. An exact version contains:
+
+```text
+revision
+status = DRAFT | PUBLISHED | DEPRECATED
+complete ordered property declaration set
+```
+
+CREATE atomically creates the stable Definition, its complete Resolution set and
+version 1 as `DRAFT`, revision 1. Omitted initial declarations mean an exactly
+empty property schema. The initial `default_version` is null.
+
+CREATE_NEXT accepts an exact PUBLISHED or DEPRECATED source, clones its complete
+declaration snapshot and allocates `max(existing version) + 1` as a DRAFT at
+revision 1. Multiple DRAFT versions may coexist.
+
+REVISE replaces the complete declaration candidate of one exact DRAFT. It
+requires the current `expected_revision` and increments the revision exactly
+once. PUBLISH and DELETE_DRAFT consume the same generation token. A stale token
+is a conflict; there is no merge of DRAFT candidates.
+
+PUBLISH makes an exact DRAFT immutable and usable by direct bindings. The first
+serial publication sets a missing default to that exact version. A later
+publication does not replace an existing default. SET_DEFAULT accepts only a
+same-Definition PUBLISHED version; CLEAR_DEFAULT stores null. The current default
+cannot be deprecated. DEPRECATED versions remain historical exact dependencies
+but admit no lifecycle-sensitive direct binding. Deprecation is irreversible.
+
+DELETE_DRAFT removes only an exact DRAFT at the expected revision. Definition
+deletion removes the whole aggregate only after current reference admission.
+
+### Property declarations
+
+Each declaration has exact semantic identity within the Definition history:
+
+```text
+(relationship_definition_id, name)
+```
+
+and exact-version physical identity:
+
+```text
+(relationship_definition_id, relationship_definition_version, name)
+```
+
+A declaration contains:
+
+```text
+name
+position
+datatype_id
+datatype_version
+value_mode = SCALAR | LIST
+```
+
+Names and positions are unique within an exact version; positions are positive
+and define projection order. Every declaration pins one exact PUBLISHED
+DataTypeVersion through publication and use. Relationship properties are always
+optional, and a present value is never null. There is no declaration default,
+migration default or required-property state.
+
+After a name first appears in a PUBLISHED version, that name and DataType lineage
+are stable across the complete published history. `SCALAR -> LIST` is the only
+normal cardinality widening; `LIST -> SCALAR` is rejected. Removing and later
+re-adding a name retains the same historical semantic identity and continuity
+rules. Publication re-certifies the complete history, including concurrent
+publication of distinct versions.
 
 ## RelationshipResolution
 
@@ -155,8 +242,12 @@ Capability applicability depends on stable lineage ancestry only. It does not de
 
 - exact ObjectTemplateVersions;
 - ObjectTemplate default state;
-- availability of a current PUBLISHED version;
 - Object exact schema version or property state.
+
+An applicable Resolution becomes an exposed capability only while its Definition
+has at least one PUBLISHED exact version. This separates topology applicability
+from factual creation eligibility. A null default does not hide the capability;
+it requires callers to select an exact PUBLISHED version explicitly.
 
 The ObjectTemplate relationship-capability projection exposes:
 
@@ -166,6 +257,7 @@ relationship_definition_id
 name
 from_template_id
 to_template_id
+default_version
 ```
 
 `from_template_id` remains explicit because the applicable capability may be declared on an ancestor space.
@@ -208,7 +300,21 @@ relationship_id
 
 and stable binding to one `relationship_definition_id`.
 
-A factual association is not publicly identified by an endpoint tuple. Successful CREATE either creates a new factual identity or converges on an already-current factual Relationship representing the same semantic fact.
+It also stores current exact factual state:
+
+```text
+relationship_definition_version
+properties
+```
+
+The version pin is a positive exact version of the same Definition. `properties`
+is the complete canonical map admitted by that exact schema. Missing optional
+properties are absent keys, LIST values are non-empty, and JSON null is invalid.
+
+A factual association is not publicly identified by an endpoint tuple. The
+factual identity remains independent of property state and exact version. CREATE
+fails with `relationship_fact_conflict` when any exact runtime view is already
+owned by a current fact; it never treats the existing fact as a successful CREATE.
 
 Public CREATE is expressed by:
 
@@ -216,6 +322,8 @@ Public CREATE is expressed by:
 resolution_id
 from_object_id
 to_object_id
+relationship_definition_version, optional
+properties, optional complete map
 ```
 
 The selected Resolution determines the requested semantic perspective.
@@ -287,7 +395,7 @@ R2 / B -> A
 
 If `A == B`, two rows remain when `R1 != R2`.
 
-No additional inverse assignments are added merely because inheritance overlap makes them type-compatible; those would represent the opposite factual relationship.
+Inheritance overlap does not imply additional inverse assignments; those would represent the opposite factual relationship.
 
 ### Symmetric closure
 
@@ -315,38 +423,56 @@ Conceptual pipeline:
 load selected Resolution
 load endpoint Objects
 validate selected perspective admission
-lookup exact current resolved view
-
-if present:
-    return current factual Relationship
-    no mutation
-    no lifecycle event set
-
-if absent:
-    load the complete certified Definition Resolution set
-    derive deterministic complete closure
-    validate complete candidate
-    ensure no exact view belongs to another factual Relationship
-    insert Relationship header
-    insert complete closure
-    insert complete required lifecycle event set
-    commit atomically
+load the complete certified Definition Resolution set
+resolve explicit version or current default
+stabilize the exact PUBLISHED version and exact DTV dependencies
+canonicalize the complete property map
+derive and validate the deterministic complete closure
+ensure no exact view belongs to another factual Relationship
+insert factual header with exact pin and properties
+insert complete closure
+insert complete CREATED event set
+commit atomically
 ```
 
-Concurrent equivalent CREATE candidates may collide on exact-view uniqueness. A colliding candidate rolls back the entire Unit of Work and restarts the semantic operation in a fresh Unit of Work.
-
-Fresh re-evaluation either:
-
-- converges on the current winner; or
-- creates a new factual identity if the previous fact has already been deleted.
+Concurrent candidates may collide on exact-view uniqueness. A colliding Unit of
+Work rolls back completely. Fresh classification returns the current owner as a
+conflict. If the observed owner disappeared, the operation may restart in a fresh
+Unit of Work within the bounded restart policy and rederive the complete fact.
 
 No row-by-row partial `ON CONFLICT DO NOTHING` creates a partial aggregate.
+
+## Factual state mutations
+
+DATA_CHANGE accepts a non-empty set of unique per-property operations:
+
+```text
+SET(property, value)
+REMOVE(property)
+```
+
+It derives a complete canonical map from fresh current state under the current
+exact version. `SET` to the current canonical value and removal of an absent key
+are semantic no-ops. A wholly no-op command performs no UPDATE and emits no
+event. A real change replaces the complete JSONB map atomically, preserves the
+version pin and runtime closure, and emits one complete DATA_CHANGE event set.
+
+SCHEMA_CHANGE accepts one explicit, same-Definition, strictly forward PUBLISHED
+target version. The source may be PUBLISHED or DEPRECATED. Migration is direct
+from source to target: compatible values are preserved and recanonicalized,
+SCALAR values widen to one-element LIST values, source-only properties are
+removed, and target-only optional properties remain absent. There are no
+defaults or caller remediation values. Any incompatible current value produces
+`schema_change_blocked` and leaves the fact unchanged. A successful command
+updates exact pin and property map in one row, keeps the closure unchanged and
+always emits a SCHEMA_CHANGE event, even when the canonical maps are equal.
 
 ## Runtime DELETE semantics
 
 Relationship DELETE targets exact `relationship_id`.
 
-Deletion is idempotent on absence for this specific operation.
+An absent exact ID returns `resource_not_found`; deletion is not idempotent on
+absence.
 
 A late `DELETE(X)` never deletes a semantically equivalent Relationship `Y` recreated after X was removed. This preserves exact-ID ABA safety.
 
@@ -357,7 +483,7 @@ Relationship header
 +
 complete runtime-resolution child closure
 +
-complete required lifecycle event set
+complete DELETED lifecycle event set
 ```
 
 ## RelationshipDefinition and Object delete safety
@@ -379,6 +505,28 @@ Relationship is not ownership:
 
 A real factual transition produces one lifecycle event for every distinct object-relative **semantic view**, not mechanically one event for each raw runtime row.
 
+The Relationship event vocabulary is exactly:
+
+```text
+RELATIONSHIP_CREATED
+RELATIONSHIP_DATA_CHANGE
+RELATIONSHIP_SCHEMA_CHANGE
+RELATIONSHIP_DELETED
+```
+
+Every event carries factual `before_state` and/or `after_state` with exact shape:
+
+```text
+{
+  "relationship_definition_version": positive integer,
+  "properties": canonical property object
+}
+```
+
+CREATED has only `after_state`; DELETED has only `before_state`; DATA_CHANGE has
+two states with the same exact version and different properties; SCHEMA_CHANGE
+has two states with a strictly increasing version.
+
 The complete event set is atomic with the factual mutation and runtime closure change.
 
 Relationship names and Object display names captured in history are historical metadata, not live referential dependencies.
@@ -389,16 +537,19 @@ When a transition races with mutable Definition/Object naming metadata, the comp
 
 ```text
 RelationshipDefinition GET
-    -> header + complete Resolution aggregate
+    -> stable header + complete Resolution aggregate + nullable default
+
+RelationshipDefinitionVersion GET/list
+    -> exact lifecycle state + declarations ordered by position
 
 Relationship GET
-    -> factual aggregate + distinct semantic views[]
+    -> factual exact pin + canonical properties + distinct semantic views[]
 
 Object relationships
     -> deduplicated ObjectRelationshipView
 
 ObjectTemplate relationship-capabilities
-    -> applicable Resolution-based semantic capabilities
+    -> applicable Resolution-based semantic capabilities with nullable default
 ```
 
 Raw RuntimeRelationshipResolution rows are persistence realization and are never the public Relationship representation.
@@ -416,18 +567,18 @@ lowest necessary
 
 Do not duplicate specialized Definitions solely to narrow a compatibility space already represented correctly by lineage polymorphism.
 
-## Current evolution boundary
+One represented corrupt aggregate fails as `internal_error`. Reads never select a
+different version, remove unknown properties, reconstruct closure or return a
+partial page. Multi-statement aggregate validation uses one coherent read
+snapshot.
 
-The current model does not include:
+## Evolution boundary
 
-```text
-RelationshipDefinitionVersion
-Relationship properties
-exact DefinitionVersion pin on factual Relationship
-parallel multi-edge factual instances distinguished by properties
-```
-
-A future typed-property evolution may introduce a versioned property schema, but it must not silently reinterpret the stable topology/navigation contract (`symmetric`, Resolution set, endpoint lineage spaces) without explicit architecture change.
+Topology and property schema are intentionally separate. Versioning a
+RelationshipDefinition changes only its property declaration snapshots; it does
+not version symmetry, Resolution membership, Resolution identity or endpoint
+lineage spaces. Parallel factual edges are not distinguished by version or
+properties, and no autonomous Resolution or property-declaration CRUD exists.
 
 ## Key invariants
 
@@ -437,16 +588,22 @@ A future typed-property evolution may introduce a versioned property schema, but
 - Resolution names follow the frozen lowercase grammar and are non-key metadata;
 - Resolution endpoints are stable ObjectTemplate lineages;
 - capability applicability is lineage-polymorphic and independent of exact OTV lifecycle/default state;
+- capability exposure requires at least one PUBLISHED RelationshipDefinitionVersion;
+- exact version declarations are complete, ordered, optional and non-null when present;
+- Definition default selection is nullable, explicit and never a latest/highest fallback;
 - symmetric/non-symmetric aggregate shape is complete and valid;
 - the committed Definition set is semantically non-duplicated and cross-definition conflict-free;
 - runtime mutation consumes certified model semantics rather than reinterpreting them;
 - factual Relationship identity and Definition binding are stable;
+- every factual Relationship pins one exact same-Definition version and one complete canonical property map;
 - every runtime row belongs to the same Definition as its Relationship header;
 - every factual Relationship has exactly its deterministic complete runtime-resolution closure;
 - exact resolved views are unique;
 - runtime endpoint admission depends on stable ObjectTemplate lineage compatibility;
 - Relationship has no ownership semantics;
-- CREATE convergence creates no duplicate fact/event set;
+- duplicate CREATE reports a factual conflict and creates no duplicate fact/event set;
+- DATA_CHANGE no-ops write no state or event; real factual changes are atomic;
+- SCHEMA_CHANGE is explicit, forward and preserve-or-fail;
 - DELETE is exact-ID based and ABA-safe;
 - current Definition/Object deletion is blocked by factual references;
 - factual transitions and required lifecycle event sets are atomic;

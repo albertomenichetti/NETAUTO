@@ -26,7 +26,7 @@ The semantic matrix must never be reconstructed from the current lock layout: th
 
 ## Canonical mutation census
 
-The current kernel has 32 semantic mutation primitives.
+The current kernel has 41 semantic mutation primitives.
 
 ### DataType — 10
 
@@ -70,22 +70,31 @@ OBJ.DET   DETACH
 OBJ.DEL   DELETE
 ```
 
-### RelationshipDefinition — 3
+### RelationshipDefinition — 10
 
 ```text
 RD.C      CREATE
 RD.RN     RENAME
-RD.DEL    DELETE
+RD.CN     CREATE_NEXT
+RD.R      REVISE
+RD.P      PUBLISH
+RD.SD     SET_DEFAULT
+RD.CD     CLEAR_DEFAULT
+RD.D      DEPRECATE
+RD.DD     DELETE_DRAFT
+RD.DL     DELETE
 ```
 
-### Relationship — 2
+### Relationship — 4
 
 ```text
 REL.C     CREATE
+REL.DC    DATA_CHANGE
+REL.SC    SCHEMA_CHANGE
 REL.DEL   DELETE
 ```
 
-Any future mutation must be added to this census and compared against **every** existing mutation before its concurrency design is complete.
+Every future mutation must appear in this census and be compared against **every** existing mutation before its concurrency design is complete.
 
 Read-only operations are not members of this mutation matrix; their snapshot/coherence contracts remain in the owning domain, API and persistence documents.
 
@@ -96,7 +105,11 @@ The authoritative matrix is sparse:
 1. every concrete cell starts as `I — INDEPENDENT`;
 2. a scoped rule below replaces or augments `I` when its concrete scope matches;
 3. multiple predicates may apply to one concrete race;
-4. a rendered 32×32 table is a derived read model, not the source of truth.
+4. the 41 mutations form 861 unordered cells including the diagonal;
+5. the exact fifteen family blocks are `DT×DT`, `OT×OT`, `OBJ×OBJ`, `RD×RD`,
+   `REL×REL`, `DT×OT`, `DT×OBJ`, `DT×RD`, `DT×REL`, `OT×OBJ`, `OT×RD`,
+   `OT×REL`, `OBJ×RD`, `OBJ×REL` and `RD×REL`;
+6. a rendered 41×41 table is a derived read model, not the source of truth.
 
 ### `I — INDEPENDENT`
 
@@ -173,6 +186,22 @@ DRAFT -> PUBLISHED -> DEPRECATED
 **Required property:** `default_version` is NULL or an exact same-lineage PUBLISHED version.
 
 **Allowed outcomes:** first serial publisher may establish a missing default; set/clear/deprecate/publish outcomes follow one coherent default-policy order.
+
+### `VH` — published version-history coherence
+
+**Scope:** concurrent publication or revision activity can make two individually
+valid exact-version candidates jointly violate historical declaration continuity.
+
+**Risk:** published property/component history contains a renamed or rebound
+semantic member, an unapproved cardinality narrowing, or incompatible histories
+that were each certified against a stale prefix.
+
+**Required property:** publication re-certifies the complete committed history of
+the lineage/member set after every wait.
+
+**Allowed outcomes:** one candidate publishes and the waiter re-certifies against
+it; the waiter publishes only if the combined history remains valid, otherwise it
+fails without partial state.
 
 ### `BA` — new binding admission
 
@@ -253,6 +282,22 @@ A delete that still observes the current blocker may fail conservatively.
 
 **Allowed outcomes:** waiter reloads/rederives from the current committed Object; complete state/event transition commits or rolls back atomically.
 
+### `RS` — complete factual Relationship state
+
+**Scope:** DATA_CHANGE, SCHEMA_CHANGE and DELETE act on the same factual
+Relationship state.
+
+**Risk:** lost property update, stale source pin, invalid forward migration,
+mutation after deletion or lifecycle snapshots that do not describe committed
+state.
+
+**Required property:** exact pin, complete property map and transition events are
+serially explainable from a fresh protected factual state.
+
+**Allowed outcomes:** DATA_CHANGE may become a no-op after waiting; schema
+migration rechecks its source and target; deletion wins or follows a complete
+mutation, and a later mutation observes absence.
+
 ### `PO` — parent schema / ownership coherence
 
 **Scope:** `ATTACH` or `DETACH` races with `SCHEMA_CHANGE` of the **parent** Object.
@@ -317,7 +362,11 @@ attached exactly to (parent, slot)
 
 **Required property:** exactly one current factual Relationship represents the semantic fact.
 
-**Allowed outcomes:** one candidate creates the fact; equivalent candidates converge after complete rollback/fresh re-evaluation. The current fact has one complete runtime closure and one creation event set.
+**Allowed outcomes:** one candidate creates the fact; every current-owner loser
+reports `relationship_fact_conflict` after complete rollback/fresh
+classification. If the owner disappeared, an approved bounded fresh-UoW restart
+may rederive the candidate. The current fact has one complete runtime closure and
+one creation event set.
 
 ### `RA` — Relationship exact-ID lifetime / ABA
 
@@ -327,7 +376,9 @@ attached exactly to (parent, slot)
 
 **Required property:** `DELETE(X)` affects only exact factual identity `X`.
 
-**Allowed outcomes:** concurrent same-ID deletes produce one real delete/event set; after X is removed and equivalent Y is created, late `DELETE(X)` is a no-op and Y remains.
+**Allowed outcomes:** concurrent same-ID deletes produce one `204`, one `404` and
+one real delete/event set; after X is removed and equivalent Y is created, late
+`DELETE(X)` returns not found and Y remains.
 
 ### `ES` — Relationship event metadata snapshot
 
@@ -533,14 +584,41 @@ RD.C × RD.RN
 RD.RN × RD.RN
     RC for same Definition candidate transition or conflicting different Definitions
 
-RD.C or RD.RN × RD.DEL(other)
+RD.C or RD.RN × RD.DL(other)
     RC when the deleted Definition is a blocker of the candidate set
 
-RD.RN × RD.DEL
+RD.RN × RD.DL
     AL when same Definition
 
-RD.DEL × RD.DEL
+RD.DL × RD.DL
     AL when same Definition
+
+RD.CN × RD.CN
+    VS when same Definition
+
+RD.CN × RD.DD or source RD.P
+    VS when version-set/source eligibility overlaps
+
+RD.R / RD.P / RD.DD on the same exact DRAFT
+    DG + LS
+
+RD.P / RD.SD / RD.CD / RD.D on one Definition
+    DV when publication/default/deprecation policy overlaps
+
+RD.P × RD.P on distinct versions with shared property history
+    VH (+ DV when first-default policy participates)
+
+RD.C / RD.R × DTV lifecycle/default mutation
+    BA when an exact property dependency is admitted
+
+RD.P × DTV.D
+    AM + VH for active dependency and history recertification
+
+RD.CN / RD.R × DataType root delete
+    RL for cloned or rebound exact property references
+
+same-Definition internal mutation × RD.DL
+    AL
 ```
 
 Definition DELETE removes a member of the certified set and cannot itself introduce a new conflict.
@@ -551,7 +629,7 @@ Definition DELETE removes a member of the certified set and cannot itself introd
 RD.C × OT.DL
     RL when the candidate introduces a Resolution endpoint reference
 
-RD.DEL × OT.DL
+RD.DL × OT.DL
     RL when deletion removes the endpoint reference
 ```
 
@@ -566,14 +644,18 @@ RD.RN × real REL.C
 RD.RN × real REL.DEL
     ES when same Definition
 
-RD.DEL × REL.C
+RD.DL × REL.C
     RL when CREATE uses the Definition being deleted
 
-RD.DEL × REL.DEL
+RD.DL × REL.DEL
     RL when Relationship deletion removes the current blocker
+
+RD.P / RD.D / RD.SD / RD.CD × REL.C or REL.SC
+    BA + DV when exact/default factual admission overlaps
 ```
 
-Idempotent `REL.C` convergence without a factual transition creates no lifecycle event set and therefore does not activate `ES`.
+A failed duplicate `REL.C` creates no lifecycle event set and therefore does not
+activate `ES`.
 
 ### Relationship runtime internal
 
@@ -584,6 +666,18 @@ REL.C × REL.C
 REL.C × REL.DEL
     RA when DELETE targets the current factual identity of the same fact
 
+REL.DC × REL.DC
+    RS when same relationship_id
+
+REL.DC × REL.SC
+    RS when same relationship_id
+
+REL.SC × REL.SC
+    RS + BA when same relationship_id and target admission overlaps
+
+REL.DC or REL.SC × REL.DEL
+    RS + RA when same relationship_id
+
 REL.DEL × REL.DEL
     RA when same relationship_id
 ```
@@ -593,7 +687,7 @@ Different factual Relationships are normally independent; the Relationship graph
 ### Object × Relationship runtime
 
 ```text
-OBJ.RN(object) × real REL.C/REL.DEL
+OBJ.RN(object) × real REL.C/REL.DC/REL.SC/REL.DEL
     ES when the Object participates in the transition
 
 OBJ.DEL(object) × REL.C
@@ -601,6 +695,9 @@ OBJ.DEL(object) × REL.C
 
 OBJ.DEL(object) × REL.DEL
     RL when Relationship removal removes the current blocker
+
+OBJ.DEL(object) × REL.DC/REL.SC
+    RL when the factual state mutation retains the endpoint reference
 ```
 
 Intentional `I`:
@@ -620,16 +717,14 @@ All concrete cells in these blocks are `I`:
 
 ```text
 DataType × Object
-DataType × RelationshipDefinition
-DataType × Relationship
-ObjectTemplate × Relationship runtime
 Object × RelationshipDefinition
 ```
 
 This independence is evaluated, not omitted. Architectural reasons include:
 
 - Object runtime consumes DataType contracts through already-certified exact ObjectTemplate model state;
-- RelationshipDefinition has no typed property schema;
+- RelationshipDefinition property schemas bind exact DataTypeVersions and are
+  classified by `BA`, `AM`, `VH` and `RL` where their predicates overlap;
 - runtime Relationship endpoint admission uses stable ObjectTemplate lineage assignment;
 - RelationshipResolution already owns endpoint-lineage references;
 - Object/ownership runtime state does not participate in RelationshipDefinition conflict certification.

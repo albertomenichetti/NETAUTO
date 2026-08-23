@@ -1,10 +1,10 @@
-"""Alembic environment for explicit PostgreSQL migration commands."""
+"""Installed Alembic environment for explicit PostgreSQL migration commands."""
 
 from alembic import context
 from sqlalchemy import Connection, engine_from_config, pool
 
 from netauto.persistence.metadata import metadata
-from netauto.settings import Settings
+from netauto.settings import load_settings
 
 config = context.config
 target_metadata = metadata
@@ -12,7 +12,7 @@ target_metadata = metadata
 
 def get_database_url() -> str:
     """Load the migration target from explicit NETAUTO process settings."""
-    return Settings().database_url
+    return load_settings().database_url
 
 
 def run_migrations_offline() -> None:

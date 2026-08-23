@@ -10,6 +10,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 import netauto.application.objects as object_application
+import netauto.persistence.locking as locking_persistence
 from netauto.application.objects import ObjectService
 from netauto.application.objecttemplates import (
     ComponentCandidate,
@@ -19,8 +20,15 @@ from netauto.application.objecttemplates import (
 from netauto.domain.objects import DataChangeKind, DataChangeOperation, Object
 from netauto.domain.objecttemplates import ValueMode
 from netauto.failures import ApplicationFailure
-from netauto.persistence.gates import AdvisoryGate
-from netauto.persistence.objects import EventKind, ObjectStore, OwnershipLifecycleEvent
+from netauto.persistence.lifecycle import (
+    EventKind,
+    IntrinsicLifecycleEvent,
+    OwnershipLifecycleEvent,
+)
+from netauto.persistence.locking import AdvisoryGate, RowLockClass, RowLockMode
+from netauto.persistence.objects import (
+    ObjectStore,
+)
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
 from tests.support.semantic_concurrency import (
@@ -28,7 +36,9 @@ from tests.support.semantic_concurrency import (
     PhaseCut,
     SemanticActors,
     blocked_race,
+    install_lock_plan_cut,
     progress_race,
+    run_worker,
     semantic_actors,
 )
 
@@ -129,19 +139,12 @@ async def _ownership_template(actors: SemanticActors, name: str) -> UUID:
 
 
 def _object_owner_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = ObjectStore.lock_no_key
-
-    async def intercepted(store: ObjectStore, object_id: UUID) -> Object | None:
-        result = await original(store, object_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(ObjectStore, "lock_no_key", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        object_application,
+        RowLockClass.OBJECT,
+        RowLockMode.NKU,
+    )
 
 
 def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -161,7 +164,7 @@ def _object_delete_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
 
 def _ownership_gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     cut = PhaseCut()
-    original = object_application.acquire_advisory_gate
+    original = locking_persistence.acquire_advisory_gate
 
     async def intercepted(connection: AsyncConnection, gate: AdvisoryGate) -> None:
         await original(connection, gate)
@@ -170,42 +173,26 @@ def _ownership_gate_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
             cut.reached.set()
             await cut.release.wait()
 
-    monkeypatch.setattr(object_application, "acquire_advisory_gate", intercepted)
+    monkeypatch.setattr(locking_persistence, "acquire_advisory_gate", intercepted)
     return cut
 
 
 def _version_share_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = ObjectTemplateStore.lock_version_share
-
-    async def intercepted(
-        store: ObjectTemplateStore, template_id: UUID, version: int
-    ) -> bool:
-        result = await original(store, template_id, version)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(ObjectTemplateStore, "lock_version_share", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        object_application,
+        RowLockClass.OBJECT_TEMPLATE_VERSION,
+        RowLockMode.S,
+    )
 
 
 def _lineage_share_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
-    cut = PhaseCut()
-    original = ObjectTemplateStore.lock_lineage_share
-
-    async def intercepted(store: ObjectTemplateStore, template_id: UUID) -> bool:
-        result = await original(store, template_id)
-        task = asyncio.current_task()
-        if task is not None and task.get_name() == "T1":
-            cut.reached.set()
-            await cut.release.wait()
-        return result
-
-    monkeypatch.setattr(ObjectTemplateStore, "lock_lineage_share", intercepted)
-    return cut
+    return install_lock_plan_cut(
+        monkeypatch,
+        object_application,
+        RowLockClass.OBJECT_TEMPLATE_HEADER,
+        RowLockMode.S,
+    )
 
 
 def _object_insert_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
@@ -269,7 +256,9 @@ async def test_row_11_data_change_serializes_and_rereads_fresh_state(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ROW-11-OBJECT") as actors:
         template_id = await _template(actors, "row11", two_properties=True)
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await reader.create(template_id, 1, "row11", {"a": 0, "b": 0})
         first, second = _object_services(actors)
         cut = _object_owner_cut(monkeypatch)
@@ -324,7 +313,9 @@ async def test_row_12_data_change_and_schema_change_share_object_owner(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "ROW-12-DATA-SCHEMA") as actors:
         template_id = await _schema_change_template(actors, "row12")
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         created = await reader.create(template_id, 1, "row12", {"a": 0})
         first, second = _object_services(actors)
         cut = _object_owner_cut(monkeypatch)
@@ -442,7 +433,7 @@ async def test_gate_01_opposite_attach_uses_fresh_protected_graph(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_database_engine
-    async with semantic_actors(test_database_url, "GATE-01-OPPOSITE") as actors:
+    async with semantic_actors(test_database_url, "GATE-01-GATE-03-OPPOSITE") as actors:
         template_id = await _ownership_template(actors, "gate01")
         reader = _object_reader(actors)
         first_node = await reader.create(template_id, 2, "first", {})
@@ -470,7 +461,9 @@ async def test_gate_02a_rejects_longer_cycle_without_mutating_graph(
     del migrated_database_engine
     async with semantic_actors(test_database_url, "GATE-02A-LONG-CYCLE") as actors:
         template_id = await _ownership_template(actors, "gate02a")
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         first_node = await reader.create(template_id, 2, "a", {})
         second_node = await reader.create(template_id, 2, "b", {})
         third_node = await reader.create(template_id, 2, "c", {})
@@ -478,7 +471,11 @@ async def test_gate_02a_rejects_longer_cycle_without_mutating_graph(
         await reader.attach(second_node.id, "children", third_node.id)
 
         with pytest.raises(ApplicationFailure) as caught:
-            await reader.attach(third_node.id, "children", first_node.id)
+            await run_worker(
+                lambda: reader.attach(third_node.id, "children", first_node.id),
+                actors.tracker,
+                "T1",
+            )
 
         assert caught.value.code == "ownership_cycle"
         assert await reader.get_owner(first_node.id) is None
@@ -874,7 +871,9 @@ async def test_idempotent_conflict_and_detach_paths_skip_ownership_gate(
             calls += 1
             raise AssertionError("ownership graph gate must not be acquired")
 
-        monkeypatch.setattr(object_application, "acquire_advisory_gate", forbidden_gate)
+        monkeypatch.setattr(
+            locking_persistence, "acquire_advisory_gate", forbidden_gate
+        )
 
         projection = await reader.attach(first_parent.id, "children", first_child.id)
         assert projection.child_object_id == first_child.id
@@ -1059,6 +1058,7 @@ async def test_rename_and_data_change_share_non_key_object_owner(
                 limit=100,
             )
         ).items
+        assert isinstance(events[0], IntrinsicLifecycleEvent)
         assert events[0].before is not None
         assert events[0].before.canonical_name == "new"
 
@@ -1353,16 +1353,22 @@ async def test_ref_05_detach_removes_final_object_delete_blocker(
         test_database_url, f"REF-05-DETACH-{deleted_role}"
     ) as actors:
         template_id = await _ownership_template(actors, f"ref05_{deleted_role}")
-        reader = _object_reader(actors)
+        reader = ObjectService(
+            ObservedUnitOfWorkFactory(actors.t1_engine, actors.tracker, "T1")
+        )
         parent = await reader.create(template_id, 2, "parent", {})
         child = await reader.create(template_id, 2, "child", {})
         await reader.attach(parent.id, "children", child.id)
         target = parent if deleted_role == "parent" else child
         with pytest.raises(ApplicationFailure) as conservative:
-            await reader.delete(target.id)
+            await run_worker(lambda: reader.delete(target.id), actors.tracker, "T1")
         assert conservative.value.code == "delete_blocked"
-        await reader.detach(parent.id, "children", child.id)
-        await reader.delete(target.id)
+        await run_worker(
+            lambda: reader.detach(parent.id, "children", child.id),
+            actors.tracker,
+            "T1",
+        )
+        await run_worker(lambda: reader.delete(target.id), actors.tracker, "T1")
         with pytest.raises(ApplicationFailure) as missing:
             await reader.get(target.id)
         assert missing.value.code == "resource_not_found"

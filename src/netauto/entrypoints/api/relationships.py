@@ -4,70 +4,35 @@ from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response, status
-from pydantic import BaseModel, BeforeValidator, ConfigDict
 
 from netauto.application.cursors import Page
 from netauto.application.relationships import (
     RelationshipProjection,
     RelationshipService,
 )
+from netauto.domain.objects import DataChangeKind, DataChangeOperation
 from netauto.domain.relationships import ObjectRelationshipView, RelationshipView
 from netauto.entrypoints.api.common import (
     NoBody,
     PageLimit,
-    StrictBody,
     validate_query,
 )
 from netauto.persistence.engine import RuntimeContext
+from netauto.transport.http.relationships import (
+    ObjectRelationshipPageDto,
+    ObjectRelationshipViewDto,
+    RelationshipCreateBody,
+    RelationshipDataChangeBody,
+    RelationshipDto,
+    RelationshipSchemaChangeBody,
+    RelationshipSetOperationBody,
+    RelationshipViewDto,
+)
 
 router = APIRouter(prefix="/api/v1/core", tags=["relationships"])
 
 
-def _uuid_carrier(value: object) -> UUID:
-    if isinstance(value, UUID):
-        return value
-    if not isinstance(value, str):
-        raise ValueError("uuid_required")
-    return UUID(value)
-
-
-BodyUUID = Annotated[UUID, BeforeValidator(_uuid_carrier)]
 RelationshipNameQuery = Annotated[str, Query(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
-
-
-class RelationshipCreateBody(StrictBody):
-    resolution_id: BodyUUID
-    from_object_id: BodyUUID
-    to_object_id: BodyUUID
-
-
-class RelationshipViewDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    object_id: UUID
-    destination_object_id: UUID
-    name: str
-
-
-class RelationshipDto(BaseModel):
-    id: UUID
-    relationship_definition_id: UUID
-    views: list[RelationshipViewDto]
-
-
-class ObjectRelationshipViewDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    relationship_id: UUID
-    relationship_definition_id: UUID
-    object_id: UUID
-    destination_object_id: UUID
-    name: str
-
-
-class ObjectRelationshipPageDto(BaseModel):
-    items: list[ObjectRelationshipViewDto]
-    next_cursor: str | None
 
 
 def _service(request: Request) -> RelationshipService:
@@ -83,6 +48,8 @@ def _relationship(value: RelationshipProjection) -> RelationshipDto:
     return RelationshipDto(
         id=value.id,
         relationship_definition_id=value.relationship_definition_id,
+        relationship_definition_version=value.relationship_definition_version,
+        properties=value.properties,
         views=[_view(item) for item in value.views],
     )
 
@@ -98,7 +65,11 @@ def _page(value: Page[ObjectRelationshipView]) -> ObjectRelationshipPageDto:
     )
 
 
-@router.post("/relationships", response_model=RelationshipDto)
+@router.post(
+    "/relationships",
+    response_model=RelationshipDto,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_relationship(
     body: RelationshipCreateBody,
     request: Request,
@@ -106,13 +77,15 @@ async def create_relationship(
 ) -> RelationshipDto:
     validate_query(request, ())
     result = await _service(request).create(
-        body.resolution_id, body.from_object_id, body.to_object_id
+        body.resolution_id,
+        body.from_object_id,
+        body.to_object_id,
+        body.relationship_definition_version,
+        body.properties,
     )
-    if result.created:
-        response.status_code = status.HTTP_201_CREATED
-        response.headers["Location"] = (
-            f"/api/v1/core/relationships/{result.relationship.id}"
-        )
+    response.headers["Location"] = (
+        f"/api/v1/core/relationships/{result.relationship.id}"
+    )
     return _relationship(result.relationship)
 
 
@@ -120,6 +93,46 @@ async def create_relationship(
 async def get_relationship(relationship_id: UUID, request: Request) -> RelationshipDto:
     validate_query(request, ())
     return _relationship(await _service(request).get(relationship_id))
+
+
+@router.post(
+    "/relationships/{relationship_id}/data-change",
+    response_model=RelationshipDto,
+)
+async def data_change_relationship(
+    relationship_id: UUID,
+    body: RelationshipDataChangeBody,
+    request: Request,
+) -> RelationshipDto:
+    validate_query(request, ())
+    operations = tuple(
+        DataChangeOperation(
+            DataChangeKind(operation.op),
+            operation.property,
+            operation.value
+            if isinstance(operation, RelationshipSetOperationBody)
+            else None,
+        )
+        for operation in body.operations
+    )
+    return _relationship(
+        await _service(request).data_change(relationship_id, operations)
+    )
+
+
+@router.post(
+    "/relationships/{relationship_id}/schema-change",
+    response_model=RelationshipDto,
+)
+async def schema_change_relationship(
+    relationship_id: UUID,
+    body: RelationshipSchemaChangeBody,
+    request: Request,
+) -> RelationshipDto:
+    validate_query(request, ())
+    return _relationship(
+        await _service(request).schema_change(relationship_id, body.target_version)
+    )
 
 
 @router.delete(

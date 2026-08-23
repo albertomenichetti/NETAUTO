@@ -5,6 +5,8 @@ from types import TracebackType
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncTransaction
 
+from netauto.persistence.locking import clear_uow_lock_phase, reset_uow_lock_phase
+
 
 class UnitOfWork:
     """Own exactly one connection and transaction for one semantic operation."""
@@ -27,6 +29,7 @@ class UnitOfWork:
         self._connection = await self._engine.connect()
         try:
             self._transaction = await self._connection.begin()
+            reset_uow_lock_phase(self._connection)
         except BaseException:
             await self._connection.close()
             self._connection = None
@@ -53,6 +56,7 @@ class UnitOfWork:
                 await transaction.rollback()
         finally:
             if connection is not None:
+                clear_uow_lock_phase(connection)
                 await connection.close()
             self._transaction = None
             self._connection = None
