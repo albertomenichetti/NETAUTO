@@ -8,8 +8,8 @@ replace the current architecture under `docs/architecture/`.
 ## Audit identity and boundary
 
 ```text
-starting reviewer-rejection HEAD   5dc216f50b8fc4616c112e61ada8cfede28fc729
-rejected closure candidate         3e8f575ac66ed46be7d8c014ee82d4e71905e937
+starting reviewer-rejection HEAD   677ae9fe54af8382985adca3b3fa638bd37d1f84
+rejected evidence-complete candidate  8fbcfd68028d5a873074373565797618a2629152
 AUDITED_ASIS_SHA                   4115ec0c001dc00bb6f6014aebaa6eff7d61297e
 publication/evidence boundary      this report/status publication commit
 branch                             M2
@@ -64,7 +64,7 @@ The inventory contains exactly 15 files.
 | `CC-12` | PASS | Seven Settings fields, 77-member wheel, 29-package runtime lock, installed migrations, trust boundary and Linux projection. |
 | `CC-13` | PASS | Exact T0–T10 layers, finite registries, real-PostgreSQL/T9/T10 requirements and release-gate censuses. |
 | `CC-14` | PASS | Exact negative-surface registry and absence of excluded product/deployment capabilities. |
-| `CC-15` | PASS | Links, owner references, placeholders, temporal wording, milestone leakage, finite inventories and historical isolation. |
+| `CC-15` | PASS | Links, owner references, placeholders, temporal wording, milestone leakage, finite inventories, historical isolation and one coherent current-state projection. |
 
 ```text
 CC-01 ... CC-15  PASS
@@ -93,11 +93,28 @@ classification   gate-evidence completeness defect
 evidence         aggregate labels without executable pytest argv
 resolution       exact executable command ledger plus complete rerun
 changed file     docs/milestones/M2/consistency-closure-report.md
+closed by        8fbcfd68028d5a873074373565797618a2629152
+status           CLOSED
+```
+
+### `M2-CC-F03`
+
+```text
+matrix key       CC-15
+classification   current-document projection defect
+evidence         unqualified historical consistency-closure state
+                 contradicted candidate-ready current state
+resolution       AS-IS acceptance record limited to its own completed gate;
+                 bounded single-current-state audit added
+changed files    docs/milestones/M2/status.md
+                 docs/milestones/M2/consistency-closure-report.md
+projection fixed by
+                 677ae9fe54af8382985adca3b3fa638bd37d1f84
 status           CLOSED
 ```
 
 ```text
-finding count    2
+finding count    3
 open findings    0
 ```
 
@@ -154,6 +171,7 @@ milestone, slice, candidate or SHA leakage             0
 TODO / TBD / FIXME / unresolved open point             0
 WIP authority references                               0
 contradictory header/body findings                      0
+contradictory current-state projections                  0
 finite inventories with different values                0
 ```
 
@@ -281,23 +299,65 @@ status = status_path.read_text()
 assert set(re.findall(r"^\| `(CC-\d{2})` \| PASS \|", report, re.MULTILINE)) == {
     f"CC-{number:02d}" for number in range(1, 16)
 }
-for finding in ("M2-CC-F01", "M2-CC-F02"):
+assert set(re.findall(r"^### `(M2-CC-F\d{2})`$", report, re.MULTILINE)) == {
+    "M2-CC-F01",
+    "M2-CC-F02",
+    "M2-CC-F03",
+}
+for finding in ("M2-CC-F01", "M2-CC-F02", "M2-CC-F03"):
     section = report.split(f"### `{finding}`\n", 1)[1].split("\n### ", 1)[0]
     assert re.search(r"^status\s+CLOSED$", section, re.MULTILINE)
-assert "finding count    2" in report
+assert "finding count    3" in report
 assert "open findings    0" in report
 assert "consolidation acceptance commit    4fd0f38fc804a494d1d0ce0fd251c49119b14127" in status
-assert "consistency closure — CANDIDATE READY FOR REVIEW" in status
+
+current_section = status.split(
+    "## Current operational state\n", 1
+)[1].split("\n## ", 1)[0]
+assert (
+    "current gate                "
+    "consistency closure — CANDIDATE READY FOR REVIEW"
+) in current_section
+
+gate_section = status.split(
+    "## Design and delivery gates\n", 1
+)[1].split("\n## ", 1)[0]
+assert (
+    "| Consistency closure | CANDIDATE READY FOR REVIEW |"
+) in gate_section
+
+asis_acceptance = status.split(
+    "## Reviewer-owned AS-IS consolidation acceptance\n", 1
+)[1].split("\n## ", 1)[0]
+assert "consistency closure" not in asis_acceptance.lower()
+
+raw_current_states = re.findall(
+    r"^consistency closure\s+"
+    r"(READY|IN PROGRESS|CANDIDATE READY FOR REVIEW|"
+    r"REVIEW CHANGES REQUIRED|COMPLETED)\s*$",
+    status,
+    re.MULTILINE,
+)
+assert raw_current_states
+assert set(raw_current_states) == {"CANDIDATE READY FOR REVIEW"}
+
+assert "second closure rejection         677ae9fe54af8382985adca3b3fa638bd37d1f84" in status
+assert "M2-CC-F01                       CLOSED" in status
+assert "M2-CC-F02                       CLOSED" in status
+assert "M2-CC-F03                       CLOSED" in status
+assert "open consistency findings       0" in status
+assert "next gate                   delivery — BLOCKED" in status
 assert "M2                          NOT DELIVERED" in status
 assert "merge                       NOT EXECUTED" in status
 print("files=15 owner_targets=14 links=35 unresolved=0")
 print("owner_hashes=15 temporal=0 leakage=0 placeholders=0 wip=0")
-print("CC=15_PASS findings=2_CLOSED open_findings=0 lifecycle=PASS")
+print("CC=15_PASS findings=3_CLOSED open_findings=0 lifecycle=PASS")
 PY
 ```
 
 Result: exit status `0`; `15` exact owner hashes, `35` links with `0`
-unresolved, `CC-01...CC-15 PASS`, `2` findings `CLOSED`, `0` open findings.
+unresolved, `CC-01...CC-15 PASS`, `3` findings `CLOSED`, `0` open findings and
+one coherent current consistency-closure projection.
 
 ### PostgreSQL identity and bounded probe
 
@@ -344,7 +404,7 @@ uv run pytest --collect-only -q
 Results, in command order: all exit status `0`; lock resolved 46 packages;
 locked sync checked 44 packages; wheel and sdist built; Ruff format checked 246
 files; Ruff lint passed; Pyright reported `0 errors, 0 warnings`; pytest
-collected `896` tests in 2.17s with the one reviewed Starlette warning.
+collected `896` tests in 2.64s with the one reviewed Starlette warning.
 
 ### Current architecture, negative surfaces and traceability
 
@@ -358,7 +418,7 @@ uv run pytest -q \
   tests/test_m2_s09_acceptance.py
 ```
 
-Result: exit status `0`; `117 passed in 37.32s`.
+Result: exit status `0`; `117 passed in 37.61s`.
 
 ### Schema, metadata, migration and startup revision guard
 
@@ -373,7 +433,7 @@ uv run pytest -q \
   tests/test_m2_s04_scope.py
 ```
 
-Result: exit status `0`; `33 passed in 18.85s`; `compare_metadata == []`.
+Result: exit status `0`; `33 passed in 19.76s`; `compare_metadata == []`.
 
 ### API, DTO, error, OpenAPI and CLI
 
@@ -406,7 +466,7 @@ uv run pytest -q \
   tests/test_m2_s07_trust.py
 ```
 
-Result: exit status `0`; `277 passed, 1 warning in 68.95s`.
+Result: exit status `0`; `277 passed, 1 warning in 68.07s`.
 
 ### Health, runtime and schema guard
 
@@ -425,7 +485,7 @@ uv run pytest -q \
   tests/test_m2_s04_scope.py
 ```
 
-Result: exit status `0`; `121 passed, 1 warning in 15.23s`.
+Result: exit status `0`; `121 passed, 1 warning in 15.41s`.
 
 ### Installed-wheel and Linux T9
 
@@ -437,7 +497,7 @@ uv run pytest -q \
   tests/test_m2_s07_trust.py
 ```
 
-Result: exit status `0`; `18 passed in 41.32s`.
+Result: exit status `0`; `18 passed in 42.14s`.
 
 ### PostgreSQL and concurrency
 
@@ -447,7 +507,7 @@ uv run pytest -q -m 'postgresql or concurrency'
 
 The selection uses the repository-registered `postgresql` and `concurrency`
 markers and the environment-provided PostgreSQL target. Result: exit status
-`0`; `254 passed, 642 deselected, 1 warning in 188.98s`.
+`0`; `254 passed, 642 deselected, 1 warning in 188.43s`.
 
 ### Non-PostgreSQL partition
 
@@ -455,7 +515,7 @@ markers and the environment-provided PostgreSQL target. Result: exit status
 uv run pytest -q -m 'not postgresql and not concurrency'
 ```
 
-Result: exit status `0`; `642 passed, 254 deselected, 1 warning in 88.23s`.
+Result: exit status `0`; `642 passed, 254 deselected, 1 warning in 87.08s`.
 
 ### Full repository
 
@@ -463,7 +523,7 @@ Result: exit status `0`; `642 passed, 254 deselected, 1 warning in 88.23s`.
 uv run pytest -q
 ```
 
-Result: exit status `0`; `896 passed, 1 warning in 272.99s`.
+Result: exit status `0`; `896 passed, 1 warning in 273.64s`.
 
 ### Artifact identity
 

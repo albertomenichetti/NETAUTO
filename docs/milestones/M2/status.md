@@ -1,6 +1,6 @@
 # M2 — Milestone Status
 
-**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE REVIEW CHANGES REQUIRED / M2 NOT DELIVERED
+**Milestone status:** POST-IMPLEMENTATION — AS-IS CONSOLIDATION COMPLETED / CONSISTENCY CLOSURE CANDIDATE READY FOR REVIEW / M2 NOT DELIVERED
 
 ## Cycle identity
 
@@ -16,9 +16,9 @@ branch      M2
 phase                       POST-IMPLEMENTATION
 last implementation slice   M2-S09 — COMPLETED
 completed gate              AS-IS consolidation — COMPLETED
-current gate                consistency closure — REVIEW CHANGES REQUIRED
+current gate                consistency closure — CANDIDATE READY FOR REVIEW
 next gate                   delivery — BLOCKED
-blockers                    M2-CC-F03 report propagation and audit completeness
+blockers                    reviewer acceptance of consistency closure
 M2                          NOT DELIVERED
 merge                       NOT EXECUTED
 ```
@@ -34,10 +34,12 @@ The accepted current architecture is the autonomous fifteen-file corpus under
 at the accepted M2 boundary; it is not a milestone change log.
 
 The evidence-complete consistency-closure candidate
-`8fbcfd68028d5a873074373565797618a2629152` is rejected only for one bounded
-CC-15 status/report projection defect. The current architecture, accepted
-product, schema, API, CLI, Health, runtime behavior and M2-S09 evidence are not
-reopened.
+`8fbcfd68028d5a873074373565797618a2629152` was rejected for the bounded CC-15
+status/report projection defect fixed by reviewer transition
+`677ae9fe54af8382985adca3b3fa638bd37d1f84`. The replacement evidence records
+that correction and awaits reviewer inspection. The current architecture,
+accepted product, schema, API, CLI, Health, runtime behavior and M2-S09 evidence
+are not reopened.
 
 ## Design and delivery gates
 
@@ -49,7 +51,7 @@ reopened.
 | Implementation | COMPLETED |
 | Final acceptance | ACCEPTED — `M2-S09 COMPLETED` |
 | AS-IS consolidation | COMPLETED — candidate `f8caa2d56a099561b53da0c2ad32b43a91b6dafb` accepted |
-| Consistency closure | REVIEW CHANGES REQUIRED |
+| Consistency closure | CANDIDATE READY FOR REVIEW |
 | Delivery | BLOCKED — requires accepted consistency closure |
 | Merge | NOT EXECUTED |
 
@@ -157,17 +159,19 @@ AUDITED_ASIS_SHA                 4115ec0c001dc00bb6f6014aebaa6eff7d61297e
 first closure candidate          3e8f575ac66ed46be7d8c014ee82d4e71905e937
 first closure rejection          5dc216f50b8fc4616c112e61ada8cfede28fc729
 evidence-complete candidate      8fbcfd68028d5a873074373565797618a2629152
-current reviewer decision        REVIEW CHANGES REQUIRED
-CC-01 ... CC-14                  accepted as audited
-CC-15                            review-fix required
+second closure rejection         677ae9fe54af8382985adca3b3fa638bd37d1f84
+replacement candidate publication  this report/status publication commit
+current candidate state          CANDIDATE READY FOR REVIEW
+CC-01 ... CC-15                  PASS
+M2-CC-F01 / F02 / F03            CLOSED / CLOSED / CLOSED
+open consistency findings        0
 ```
 
-The rejected replacement report remains at
-[`consistency-closure-report.md`](consistency-closure-report.md) as implementer
-evidence. Its owner hashes, architectural conclusions, executable command ledger
-and runtime results are retained as non-regression evidence. Its finding registry
-and CC-15 audit must be propagated for `M2-CC-F03` before a new candidate can be
-accepted.
+The replacement report at
+[`consistency-closure-report.md`](consistency-closure-report.md) preserves the
+owner hashes, architectural conclusions and exact executable command ledger. It
+adds the complete three-finding registry and the bounded single-current-state
+CC-15 audit.
 
 ## Consistency-closure reviewer finding ledger
 
@@ -206,28 +210,25 @@ status           CLOSED
 The rejected evidence-complete report records the full executable argv and exact
 result for every published verification group.
 
-### `M2-CC-F03` — OPEN, bounded report propagation required
+### `M2-CC-F03` — CLOSED
 
 ```text
 matrix key       CC-15
 classification   current-document projection defect
-owners           docs/milestones/M2/status.md
-                 docs/milestones/M2/consistency-closure-report.md
 evidence         one unqualified historical consistency-closure state
                  contradicted the candidate-ready header and gate table
-status           OPEN
+resolution       AS-IS acceptance record limited to its own completed gate;
+                 bounded single-current-state audit added
+changed files    docs/milestones/M2/status.md
+                 docs/milestones/M2/consistency-closure-report.md
+projection fixed by
+                 677ae9fe54af8382985adca3b3fa638bd37d1f84
+status           CLOSED
 ```
 
-The rejected candidate placed this unqualified state inside the AS-IS acceptance
-record:
-
-```text
-consistency closure    REVIEW CHANGES REQUIRED
-```
-
-while the same document declared the current gate `CANDIDATE READY FOR REVIEW`.
-This reviewer transition removes that stale projection from the current status.
-The next candidate must propagate the finding into the report, register:
+The reviewer transition removed the stale consistency-closure projection from
+the AS-IS acceptance record. The replacement report propagates that resolution
+and the static audit verifies one unambiguous current state:
 
 ```text
 M2-CC-F01    CLOSED
@@ -236,10 +237,6 @@ M2-CC-F03    CLOSED
 finding count    3
 open findings    0
 ```
-
-and add a bounded audit proving that the status has one unambiguous current
-consistency-closure state and that any prior state is explicitly labelled as
-historical evidence.
 
 ## Reviewer-authorized review-fix scope
 
@@ -265,30 +262,11 @@ the review-fix write scope.
 
 No contract, architecture-set or implementation reopen is authorized.
 
-## Required M2-CC-F03 gate
+## M2-CC-F03 candidate evidence
 
-The coding agent must start from the exact current remote `M2` HEAD and move the
-consistency closure only through:
-
-```text
-REVIEW CHANGES REQUIRED
-    -> IN PROGRESS
-    -> CANDIDATE READY FOR REVIEW
-```
-
-It must preserve:
-
-```text
-AS-IS consolidation    COMPLETED
-M2                     NOT DELIVERED
-merge                  NOT EXECUTED
-```
-
-The replacement report must preserve all fifteen current-owner hashes and the
-exact executable command ledger, add the complete three-finding registry and
-rerun every published command without changing its selection.
-
-Required outcome:
+The replacement candidate preserves all fifteen current-owner hashes, the exact
+executable command ledger and the reviewer correction. The complete
+pre-publication run establishes:
 
 ```text
 CC-01 ... CC-15                 PASS
@@ -305,17 +283,16 @@ new unexplained warnings         0
 artifact identity                unchanged
 ```
 
-A failed gate remains `IN PROGRESS`; no candidate may be handed off.
-
 ## Immediate next action
 
-Apply the evidence-only `M2-CC-F03` review-fix from the current `M2` branch,
-preserve the exact owner hashes and command ledger, rerun every published command
-and hand off only:
+Review the replacement consistency-closure candidate, its complete three-finding
+registry, bounded status-projection audit and exact-command rerun. The candidate
+state is:
 
 ```text
 AS-IS consolidation    COMPLETED
 consistency closure    CANDIDATE READY FOR REVIEW
+delivery               BLOCKED
 M2                     NOT DELIVERED
 merge                  NOT EXECUTED
 ```
