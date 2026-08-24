@@ -244,7 +244,7 @@ Request validation, cursor integrity, keyset pagination, exact 404 semantics and
 
 ---
 
-## 4. ObjectTemplate — 2 / 6 reviewed
+## 4. ObjectTemplate — 3 / 6 reviewed
 
 ### OT-GET-01 — List ObjectTemplate lineages
 
@@ -351,12 +351,95 @@ one object_templates lineage SELECT
 -> projection
 ```
 
+### OT-GET-03 — List exact ObjectTemplate versions
+
+```text
+GET /api/v1/core/object-templates/{template_id}/versions
+application: ObjectTemplateService.list_versions
+status: CONSOLIDATED
+```
+
+Current behavior:
+
+```text
+request/cursor validation
+-> ordinary UnitOfWork
+-> SELECT object_templates lineage only to establish URI-target existence
+-> 404 if lineage absent
+-> SELECT object_template_versions page
+-> pagination/cursor projection
+```
+
+There is no persisted-state semantic revalidation and no `coherent_read()` in the current implementation.
+
+The first lookup exists only to preserve the public distinction:
+
+```text
+path ObjectTemplate absent
+    -> 404 resource_not_found
+
+path ObjectTemplate exists but no version matches status/cursor
+    -> 200 with items = []
+```
+
+Decision:
+
+```text
+persisted-state semantic revalidation   NONE / KEEP NONE
+coherent_read()                         NONE / DO NOT INTRODUCE
+current persistence statements          2
+required persistence statements         1
+404 vs empty-collection distinction     PRESERVE
+status filter                            PRESERVE
+keyset pagination                        PRESERVE
+```
+
+The target persistence shape is one lineage-rooted SQL statement with a `LEFT JOIN` from `object_templates` to `object_template_versions`. Version-specific predicates, including `status` and the keyset `after` predicate, belong in the join condition rather than the outer `WHERE`, so an existing lineage with zero matching versions still produces a distinguishable null-version row while an absent lineage produces no row.
+
+Conceptual shape:
+
+```sql
+SELECT ...
+FROM object_templates AS ot
+LEFT JOIN object_template_versions AS v
+  ON v.template_id = ot.id
+ AND (:status IS NULL OR v.status = :status)
+ AND (:after IS NULL OR v.version > :after)
+WHERE ot.id = :template_id
+ORDER BY v.version ASC
+LIMIT :limit_plus_one
+```
+
+Persistence should absorb the artificial null-version row and expose the three application-relevant states directly:
+
+```text
+None
+    -> ObjectTemplate path target absent
+
+()
+    -> ObjectTemplate exists, zero matching versions
+
+(version1, version2, ...)
+    -> ObjectTemplate exists, matching version summaries
+```
+
+The exact Python return type is an implementation detail, but the tri-state semantic result is part of the consolidated design direction.
+
+The existing pagination logic remains valid over the real version sequence only:
+
+```text
+read at most limit + 1 version summaries
+more = len(rows) > limit
+items = rows[:limit]
+next_cursor derives from items[-1].version only when more
+```
+
 ---
 
 ## 5. Remaining census
 
 ```text
-ObjectTemplate          2 / 6 reviewed in this census
+ObjectTemplate          3 / 6 reviewed in this census
 Object                  0 / 6 reviewed
 RelationshipDefinition  0 / 4 reviewed
 Relationship            0 / 1 reviewed
