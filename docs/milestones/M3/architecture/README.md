@@ -37,7 +37,7 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 CLOSED 22/22; ADP-03 OPEN | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, lifecycle decoder boundary |
+| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
 | [`api.md`](api.md) | NOT YET WRITTEN | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
 | [`cli.md`](cli.md) | NOT YET WRITTEN | Location materialization grammar and nullable selector/query carrier |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | deterministic architecture/acceptance evidence |
@@ -75,7 +75,7 @@ Must close Location token grammar, request-vs-response JSON-path resolution, lit
 
 Primary owner: `architecture/read-projections.md`; boundary owners: `api.md`, `verification.md`.
 
-Closed by ADP-01 / ADP-02:
+Closed by ADP-01 / ADP-02 / ADP-03:
 
 ```text
 mutation certification vs read projection responsibility
@@ -85,12 +85,9 @@ no target public GET dependence on coherent_read()
 404 vs empty/null preservation
 trusted projector boundary
 complete route-specific projection-pattern matrix
-```
-
-Still open under ADP-03:
-
-```text
-historical lifecycle trusted-decoder boundary
+historical lifecycle decoding-only boundary
+no read-side lifecycle transition certification
+write-side lifecycle validation remains intact
 ```
 
 `coherent_read()` remains infrastructure and is not globally deprecated.
@@ -130,7 +127,7 @@ parent_filter_set    -> internal only
 ```text
 ADP-01  CLOSED   read projection responsibility / persistence boundary
 ADP-02  CLOSED   one-statement projection matrix — 22 / 22 routes
-ADP-03  OPEN     historical lifecycle trusted decoder
+ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  OPEN     cursor identity realization
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
 ADP-06  OPEN     CLI nullable selector/query carrier
@@ -141,10 +138,10 @@ ADP-08  OPEN     verification architecture
 Current progress:
 
 ```text
-closed design points     2 / 8
-open design points       6 / 8
+closed design points     3 / 8
+open design points       5 / 8
 ADP-02 route coverage   22 / 22 CLOSED
-next design work         ADP-03 — historical lifecycle trusted decoder
+next design work         ADP-04 — cursor identity realization
 ```
 
 ### ADP-01 — CLOSED
@@ -184,9 +181,38 @@ The frozen projection-pattern vocabulary is `RP-01 .. RP-10`: direct pages/exact
 
 All 22 target projections use one business SQL statement on an ordinary read UoW / PostgreSQL statement snapshot and require no public-GET `coherent_read()` dependency. Query/SQLAlchemy syntax that does not alter the frozen logical shape remains implementation-local.
 
-### ADP-03 .. ADP-08 — OPEN
+### ADP-03 — CLOSED
 
-ADP-03 must define decoding-only historical lifecycle projection shared by Object-scoped and global lifecycle reads. ADP-04 must define one cursor identity construction rule for all 12 routes. ADP-05/06 must freeze HTTP/CLI explicit-null carriers. ADP-07 must freeze Location value-path materialization. ADP-08 must define deterministic verification and statement-count evidence.
+Owned by [`read-projections.md`](read-projections.md).
+
+The historical read decoder is decoding-only:
+
+```text
+KEEP
+    EventKind materialization
+    required field extraction needed for DTO construction
+    UUID/int/string carrier conversion
+    recursive JsonValue decoding
+    typed lifecycle-family projection
+    internal failure for materially undecodable required state
+
+REMOVE
+    historical identifier/admission revalidation
+    runtime-property non-null/non-empty/homogeneous-list rules
+    snapshot canonical-name/version semantic bounds
+    exact internal JSON key-set certification
+    outer-row/snapshot coherence checks
+    intrinsic and Relationship transition certification
+    duplicated database family/state-shape checks
+    HTTP before/after persisted-state recertification
+    live-state lookups used only to reinterpret history
+```
+
+Semantically surprising but representationally decodable history remains readable. Mutation and lifecycle-write validation remain strong; any write invariant previously coupled to a shared decoder must remain or move to the write boundary before the read decoder is weakened.
+
+### ADP-04 .. ADP-08 — OPEN
+
+ADP-04 must define one cursor identity construction rule for all 12 routes. ADP-05/06 must freeze HTTP/CLI explicit-null carriers. ADP-07 must freeze Location value-path materialization. ADP-08 must define deterministic verification and statement-count evidence.
 
 ## Architecture design rules
 
