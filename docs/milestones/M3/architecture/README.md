@@ -8,21 +8,13 @@
 
 This directory defines the M3 TO-BE architecture required to realize the frozen milestone contract in [`../contract.md`](../contract.md).
 
-The architecture set starts from the delivered AS-IS under:
+The architecture starts from the delivered AS-IS under `docs/architecture/` and may change only the explicit M3 deltas frozen by the contract. Delivered guarantees not explicitly changed by M3 remain owned by their current AS-IS documents and must not be duplicated as competing M3 authority.
 
-```text
-docs/architecture/
-```
-
-and may change only the explicit M3 deltas frozen by the contract. Delivered guarantees not explicitly changed by M3 remain owned by their current AS-IS documents and must not be duplicated as competing M3 authority.
-
-This README controls the M3 architecture set: document ownership, design status, open design points, freeze scope and cross-document consistency. It does not itself replace the owning architecture documents listed below.
-
-Implementation remains unauthorized until this architecture set is `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes an implementation slice.
+This README controls document ownership, design-point state, coverage, freeze scope and cross-document consistency. Implementation remains unauthorized until the architecture set is `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes an implementation slice.
 
 ## Frozen contract inputs
 
-The architecture set must realize exactly the frozen M3 outcome boundary:
+The set must realize exactly:
 
 ```text
 M3-OUT-01 .. M3-OUT-08
@@ -30,7 +22,7 @@ M3-AC-01  .. M3-AC-19
 M3-CQG-01 .. M3-CQG-08
 ```
 
-Primary contract areas:
+Primary areas:
 
 ```text
 A. truthful CLI 201 / Location handling
@@ -45,64 +37,58 @@ The architecture must not broaden these outcomes into new routes, resources, sch
 
 ## Normative document map
 
-The planned owning documents are:
-
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL; ADP-03 OPEN | Public GET/read responsibility boundary; one-statement realization for the 22-route census; UoW/snapshot model; trusted read projectors; lifecycle carrier-decoding boundary; route-level projection patterns. |
-| [`api.md`](api.md) | NOT YET WRITTEN | Public HTTP query/cursor realization; complete cursor identity rule; the two path-binding corrections; ObjectTemplate `parent_template_id` tri-state and strict malformed/duplicate behavior. |
-| [`cli.md`](cli.md) | NOT YET WRITTEN | `Location` token/value-path grammar and materialization boundary; exact same-release response validation; nullable selector/query carrier semantics for `parent_template_id=null`. |
-| [`verification.md`](verification.md) | NOT YET WRITTEN | Architecture-level deterministic evidence: 22 GET projection/statement checks, 12 cursor routes, eight 201 operations, lifecycle decoding boundary, parent-filter HTTP/CLI tri-state, non-delta/schema/dependency and read-coherence evidence. |
+| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL 16/22; ADP-03 OPEN | Public GET/read responsibility boundary; one-statement projection patterns and route matrix; read UoW/snapshot model; trusted projector rules; lifecycle decoding boundary. |
+| [`api.md`](api.md) | NOT YET WRITTEN | Public HTTP cursor/query realization; complete cursor identity rule; two path-binding corrections; ObjectTemplate `parent_template_id` tri-state. |
+| [`cli.md`](cli.md) | NOT YET WRITTEN | `Location` token/value-path grammar; exact response validation; nullable selector/query carrier for `parent_template_id=null`. |
+| [`verification.md`](verification.md) | NOT YET WRITTEN | Deterministic evidence for 22 GETs, 12 cursor routes, eight 201 operations, lifecycle decoding, parent-filter tri-state, read coherence and non-delta obligations. |
 
-Additional architecture documents may be added only if an open design point cannot be owned cleanly by this map. Adding a document must not expand the frozen contract scope.
+Additional architecture documents may be added only when an open design point cannot be owned cleanly by this map. Adding a document must not expand the frozen contract scope.
 
 ## Current AS-IS dependencies
 
-The M3 TO-BE set depends materially on these delivered owners:
+Material current owners include:
 
 ```text
 docs/architecture/README.md
-    global semantic-authority and coherent-read/corruption principle being intentionally revised by M3
+    global semantic-authority and read-corruption principle intentionally revised by M3
 
 docs/architecture/api.md
-    22-route public read surface, filters, cursor/pagination contract, DTOs and failure boundary
+    public routes, DTOs, filters, pagination and failure boundary
 
 docs/architecture/cli.md
-    static operation registry, selector grammar, request construction and response validation
+    registry, selector grammar, request construction and response validation
 
 docs/architecture/datatype.md
-    DataType lineage/version state used by read projections
+    DataType lineage/version semantics
 
 docs/architecture/objecttemplate.md
-    inheritance, exact versions, effective schema, capabilities and stable parent state
+    stable/exact inheritance, effective schema, capabilities and parent state
 
 docs/architecture/object.md
-    Object state, ownership and intrinsic lifecycle projections
+    Object, ownership and lifecycle projections
 
 docs/architecture/relationship.md
-    RelationshipDefinition, factual Relationship and relationship lifecycle projections
+    RelationshipDefinition/Relationship projection semantics
 
 docs/architecture/persistence.md
     persisted representation, structural constraints and codecs
 
 docs/architecture/concurrency.md
-    UnitOfWork / PostgreSQL snapshot realization and coherent_read infrastructure
+    UnitOfWork, statement snapshot and coherent_read infrastructure
 
 docs/architecture/verification.md
-    permanent verification policy and release evidence obligations
+    permanent verification policy
 ```
 
-The architecture design must explicitly record every intentional TO-BE contradiction with these owners and every preserved dependency required by the contract.
+Every intentional TO-BE contradiction must be explicit in an M3 owner. Every preserved dependency remains traceable to its current owner.
 
-## Coverage / ownership map
+## Area ownership
 
 ### Area A — CLI post-create correctness
 
-Owner:
-
-```text
-architecture/cli.md
-```
+Owner: `architecture/cli.md`.
 
 Must close:
 
@@ -110,59 +96,40 @@ Must close:
 registered Location token grammar
 request-value versus response-JSON-path resolution
 literal materialization semantics
-unresolvable expected Location -> protocol failure, not ordinary exception
+unresolvable expected Location -> cli_protocol_error
 all 8 registered 201 operations under one common rule
 no hidden post-mutation enrichment change
 ```
 
 ### Area B — public reads
 
-Primary owner:
-
-```text
-architecture/read-projections.md
-```
-
-Boundary projections:
-
-```text
-architecture/api.md
-architecture/verification.md
-```
+Primary owner: `architecture/read-projections.md`.
+Boundary owners: `architecture/api.md`, `architecture/verification.md`.
 
 Must close:
 
 ```text
 mutation semantic certification versus read projection responsibility
-single SQL business statement target for each of the 22 canonical GET/read routes
-ordinary UoW / statement-snapshot realization where the projection is one statement
-no public-business GET dependence on coherent_read() in the target census
-single-request self-consistent committed projection guarantee
-parent-target 404 versus existing-target empty-page preservation
-trusted read projector boundary when mutation-oriented loaders are too broad
-historical lifecycle carrier decoding versus transition certification
+one business SQL statement for each of 22 canonical GET/read routes
+ordinary UoW / statement snapshot realization
+no target GET dependence on coherent_read()
+single-request self-consistent committed projection
+404 versus empty/null distinctions
+trusted read projector boundary
+historical carrier decoding versus transition certification
 ```
 
-`coherent_read()` remains infrastructure and is not globally deprecated by M3.
+`coherent_read()` remains valid infrastructure outside this M3 census.
 
 ### Cursor correctness
 
-Owner:
-
-```text
-architecture/api.md
-```
-
-Verification owner:
-
-```text
-architecture/verification.md
-```
+Owner: `architecture/api.md`.
+Verification owner: `architecture/verification.md`.
 
 Must close:
 
 ```text
-query identity = route + membership-affecting path targets + membership-affecting filters + semantic presence bits
+query identity = route + membership-affecting path target(s) + membership-affecting filters + semantic presence bits
 position = complete canonical ordering tuple
 limit excluded from semantic identity
 OBJ-GET-03 includes parent_object_id
@@ -173,38 +140,29 @@ ObjectTemplate omitted/root/exact-parent states remain cursor-distinct
 
 ### Area C — ObjectTemplate parent filter
 
-HTTP owner:
-
-```text
-architecture/api.md
-```
-
-CLI owner:
-
-```text
-architecture/cli.md
-```
+HTTP owner: `architecture/api.md`.
+CLI owner: `architecture/cli.md`.
 
 Must close:
 
 ```text
-HTTP omitted      -> no parent filter
-HTTP UUID         -> exact stable parent
-HTTP lowercase null -> roots only
+HTTP omitted         -> no parent filter
+HTTP UUID            -> exact stable parent
+HTTP lowercase null  -> roots only
 malformed/empty/repeated -> existing invalid_request boundary
 
-CLI omitted       -> no query pair
-CLI UUID/human selector -> resolved UUID query pair
-CLI explicit null -> literal lowercase null with no selector lookup
+CLI omitted          -> no query pair
+CLI UUID/human       -> resolved UUID query pair
+CLI explicit null    -> literal lowercase null, no selector lookup
 
 parent_filter_set remains internal only
 ```
 
-## Design-point status
+# Design-point status
 
 ```text
 ADP-01  CLOSED
-ADP-02  PARTIAL — 10 / 22 routes architected
+ADP-02  PARTIAL — 16 / 22 routes architecturally defined
 ADP-03  OPEN
 ADP-04  OPEN
 ADP-05  OPEN
@@ -213,44 +171,50 @@ ADP-07  OPEN
 ADP-08  OPEN
 ```
 
-Current design progress:
+Current route-family progress inside ADP-02:
 
 ```text
-ADP-01 boundary       CLOSED
-ADP-02 DataType       4 / 4 CLOSED
-ADP-02 ObjectTemplate 6 / 6 CLOSED
-ADP-02 total         10 / 22
-next                 ADP-02 — Object family (6 routes)
+DataType             4 / 4 CLOSED
+ObjectTemplate       6 / 6 CLOSED
+Object               6 / 6 CLOSED
+RelationshipDef      0 / 4 OPEN
+Relationship         0 / 1 OPEN
+Global lifecycle     0 / 1 OPEN
+------------------------------
+total               16 / 22
 ```
 
-### ADP-01 — CLOSED — Read projection responsibility and reusable persistence boundary
+## ADP-01 — CLOSED — Read projection responsibility
 
 Owned by [`read-projections.md`](read-projections.md).
 
-Frozen design boundary for downstream architecture work:
+Frozen boundary:
 
 ```text
 HTTP adapter
-    -> lexical carrier parsing / DTO serialization
+    -> lexical parsing / DTO serialization
 
 application read service
     -> request semantics
     -> cursor validation
-    -> request UoW ownership
-    -> 404 / 200 / Page classification
+    -> ordinary read UoW ownership
+    -> public outcome classification
 
 persistence read projector
     -> complete persisted projection
-    -> target-existence evidence where required
-    -> representational carrier materialization
-    -> no mutation semantic certification
+    -> target-existence evidence
+    -> required contextual completion
+    -> representational decoding
+    -> NO mutation semantic certification
 ```
 
-The application owns the read UoW and public outcome classification; projectors run on the caller-owned connection and do not open nested UoWs. Representational decoding remains required, while mutation-semantic re-certification is forbidden in public GET projectors. Mutation loaders/validators remain strong and are not globally weakened for GET reuse. `coherent_read()` remains infrastructure but is not a target dependency for the 22 canonical public GETs.
+Mutation loaders/validators remain strong. Required public fields may be completed from persisted context, but unmaterializable members must fail rather than disappear silently. `coherent_read()` remains infrastructure but is not a target dependency for the 22 canonical GETs.
 
-### ADP-02 — PARTIAL — Complete 22-route one-statement projection matrix
+## ADP-02 — PARTIAL — Complete 22-route one-statement matrix
 
-The current projection-pattern vocabulary is owned by [`read-projections.md`](read-projections.md):
+Owned by [`read-projections.md`](read-projections.md).
+
+Current named patterns:
 
 ```text
 RP-01  DIRECT PAGE
@@ -259,6 +223,8 @@ RP-03  PARENT-ROOTED PAGE
 RP-04  EXACT AGGREGATE / INDEPENDENT CHILD SETS
 RP-05  RECURSIVE EXACT-CHAIN PROJECTION
 RP-06  RECURSIVE STABLE-ANCESTRY PAGE
+RP-07  TARGET-ROOTED CONTEXT-COMPLETED PAGE
+RP-08  TARGET-ROOTED OPTIONAL PROJECTION
 ```
 
 Closed route families:
@@ -266,49 +232,66 @@ Closed route families:
 ```text
 DataType        4 / 4
 ObjectTemplate  6 / 6
-               ------
-               10 / 22
+Object          6 / 6
 ```
 
-Key recursive distinction already frozen:
+Notable frozen distinctions:
 
 ```text
-effective schema
-    -> exact ObjectTemplateVersion ancestry
+effective schema       -> exact ObjectTemplateVersion ancestry
+relationship capability -> stable ObjectTemplate lineage ancestry
 
-relationship capabilities
-    -> stable ObjectTemplate lineage ancestry
+Object components
+    -> page ownership facts first
+    -> exact-chain context completes slot_declaring_template_id
+    -> missing/ambiguous required context is internal failure, not silent omission
+
+Object owner
+    -> absent child = 404
+    -> existing detached child = 200 null
+    -> existing ownership must materialize exactly one declaring slot
+
+Object relationships
+    -> derive/deduplicate public semantic views before keyset/limit semantics
+    -> raw runtime-row limiting before public dedupe is forbidden when behavior changes
 ```
 
-The remaining twelve routes must be classified under these patterns or introduce an additional pattern only where a genuinely different correctness shape is required.
+Next dependency-ordered work:
 
-### ADP-03 — OPEN — Historical lifecycle trusted decoder
+```text
+RelationshipDefinition 4-route family
+-> factual Relationship exact GET
+-> global lifecycle page
+-> ADP-02 closure
+```
 
-Define the minimum persisted JSON/carrier decoding needed to construct typed lifecycle DTOs and the exact semantic checks that are removed from the read boundary.
+## ADP-03 — OPEN — Historical lifecycle trusted decoder
 
-### ADP-04 — OPEN — Cursor identity realization
+Define the minimum persisted JSON/carrier decoding needed to construct typed lifecycle DTOs and the exact mutation-semantic checks removed from the read boundary.
 
-Define one application cursor-identity construction rule covering all twelve routes, including the two path-target corrections and the ObjectTemplate parent-filter presence bit.
+## ADP-04 — OPEN — Cursor identity realization
 
-### ADP-05 — OPEN — ObjectTemplate nullable HTTP query carrier
+Define one application cursor-identity construction rule covering all twelve routes, including the two Object path-target corrections and ObjectTemplate parent-filter presence semantics.
 
-Define the strict HTTP lexical parser/type boundary for UUID versus exact lowercase `null` while preserving query-parameter presence as a semantic distinction.
+## ADP-05 — OPEN — ObjectTemplate nullable HTTP query carrier
 
-### ADP-06 — OPEN — CLI nullable selector/query carrier
+Define strict UUID versus exact lowercase `null` lexical parsing while preserving raw query presence.
 
-Define how nullable selector-capable query parameters treat explicit null as a terminal carrier value, skip selector resolution and serialize lowercase `null` only in an allowed query location.
+## ADP-06 — OPEN — CLI nullable selector/query carrier
 
-### ADP-07 — OPEN — CLI Location materialization grammar
+Define explicit null as terminal for nullable selector-capable query parameters and allow lowercase `null` serialization only in the permitted query location.
 
-Define the shared static token grammar, resolution precedence, materialization algorithm boundary and registry verification needed to support both top-level and dotted response JSON paths without Python format-field semantics.
+## ADP-07 — OPEN — CLI Location materialization grammar
 
-### ADP-08 — OPEN — Verification architecture
+Define token grammar, request/response path resolution precedence, materialization and registry verification without Python format-field semantics.
 
-Define deterministic permanent evidence and statement-count instrumentation for every contract criterion, including regression checks that mutation semantic validation remains intact.
+## ADP-08 — OPEN — Verification architecture
 
-## Architecture design rules
+Define deterministic permanent evidence and statement-count instrumentation for every frozen contract criterion, including regression proof that mutation semantic validation remains intact.
 
-The set must preserve these distinctions:
+# Architecture design rules
+
+The set preserves these distinctions:
 
 ```text
 public contract outcome
@@ -317,9 +300,12 @@ public contract outcome
 
 request validation
     != persisted semantic certification
-    != representational carrier decoding
+    != representational decoding
 
-cursor semantic query identity
+projection completion
+    != semantic certification
+
+cursor semantic identity
     != keyset position
     != page limit
 
@@ -327,20 +313,20 @@ current AS-IS ownership
     != M3 TO-BE delta ownership
 ```
 
-Architecture may choose SQLAlchemy/SQL composition, helper boundaries and internal DTO/projector shapes only where those choices do not change frozen public semantics or project-wide technology.
+SQLAlchemy syntax, local helper names and equivalent query decomposition remain implementation choices only where the frozen logical pattern and guarantees are preserved.
 
-## Freeze gate
+# Freeze gate
 
-This set may become `FINAL / FROZEN` only after:
+The architecture set may become `FINAL / FROZEN` only after:
 
 ```text
-all planned owning documents are written
+all planned owner documents are written
 ADP-01 .. ADP-08 are CLOSED
-all M3-OUT/AC requirements have one architecture owner or explicit preserved AS-IS owner
-all 22 GET routes have a complete read/projection disposition
-all 12 cursor-bearing routes have a complete identity/keyset disposition
+all M3-OUT/AC requirements have an M3 TO-BE owner or explicit preserved AS-IS owner
+22 / 22 GET routes have a complete projection disposition
+12 / 12 cursor-bearing routes have a complete identity/keyset disposition
 HTTP and CLI parent-filter carriers are mutually consistent
-CLI Location grammar is complete for all 8 registered 201 operations
+CLI Location grammar covers all 8 registered 201 operations
 verification obligations cover every frozen contract outcome
 cross-document consistency sweep passes
 no stale TODO / TBD / contradictory owner remains
@@ -353,6 +339,6 @@ ARCHITECTURE SET = DESIGN IN PROGRESS — NOT FROZEN
 IMPLEMENTATION   = NOT AUTHORIZED
 ```
 
-## Reopen discipline
+# Reopen discipline
 
-If architecture work discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, stop the affected design point and request formal contract reopening. Architecture must not silently reinterpret the frozen contract.
+If architecture work discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, the affected design point enters STOP and requires formal contract reopening. Architecture must not silently reinterpret the frozen contract.
