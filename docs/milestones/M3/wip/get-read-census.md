@@ -244,7 +244,7 @@ Request validation, cursor integrity, keyset pagination, exact 404 semantics and
 
 ---
 
-## 4. ObjectTemplate — 1 / 6 reviewed
+## 4. ObjectTemplate — 2 / 6 reviewed
 
 ### OT-GET-01 — List ObjectTemplate lineages
 
@@ -307,12 +307,56 @@ validate request/cursor
 -> pagination/cursor projection
 ```
 
+### OT-GET-02 — Get one ObjectTemplate lineage
+
+```text
+GET /api/v1/core/object-templates/{template_id}
+application: ObjectTemplateService.get_lineage
+status: CONSOLIDATED
+```
+
+Current behavior:
+
+```text
+coherent_read()
+-> SELECT object_template lineage
+-> 404 if absent
+-> SELECT referenced default ObjectTemplateVersion header when default_version is non-null
+-> re-check target is PUBLISHED
+-> projection
+```
+
+Decision:
+
+```text
+persisted-state semantic revalidation   REMOVE
+coherent_read()                         REMOVE
+required persistence statements         1
+single-statement projection              ALREADY AVAILABLE
+404 semantics                            PRESERVE
+parent_template_id projection            PRESERVE AS PERSISTED
+```
+
+Rationale:
+
+The stable lineage projection is already completely materialized by `ObjectTemplateStore.get_lineage()` with one `object_templates` lookup. The extra default-target read exists only to re-certify the persisted `default_version -> PUBLISHED` invariant and is outside GET ownership. Removing that validation also removes the only reason for `coherent_read()`.
+
+The read must project the persisted `parent_template_id` without validating the parent relationship or inheritance semantics. Those invariants remain owned by mutation paths and database constraints where applicable.
+
+Target read shape:
+
+```text
+one object_templates lineage SELECT
+-> 404 if absent
+-> projection
+```
+
 ---
 
 ## 5. Remaining census
 
 ```text
-ObjectTemplate          1 / 6 reviewed in this census
+ObjectTemplate          2 / 6 reviewed in this census
 Object                  0 / 6 reviewed
 RelationshipDefinition  0 / 4 reviewed
 Relationship            0 / 1 reviewed
