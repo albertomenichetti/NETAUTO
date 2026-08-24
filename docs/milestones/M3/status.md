@@ -27,7 +27,7 @@ software implementation  NOT AUTHORIZED
 blockers                 none for architecture design
 ```
 
-The project owner explicitly approved the M3 contract after final review. The contract is now frozen and architecture design is the only active semantic/technical design activity.
+The project owner explicitly approved the M3 contract after final review. The contract is frozen and architecture design is the only active semantic/technical design activity.
 
 No implementation slice or software behavior change is authorized yet.
 
@@ -49,9 +49,9 @@ human freeze approval    GRANTED
 
 Final review evidence:
 
-- [`wip/contract-final-review.md`](wip/contract-final-review.md) — `PASS — READY FOR EXPLICIT HUMAN FREEZE DECISION`; the subsequent human decision was approval.
+- [`wip/contract-final-review.md`](wip/contract-final-review.md) — final review PASS; the subsequent human decision was approval.
 
-Any semantic change to frozen contract Scope, Non-goals, explicit deltas, outcomes or acceptance criteria now requires formal contract reopening.
+Any semantic change to frozen contract Scope, Non-goals, explicit deltas, outcomes or acceptance criteria requires formal contract reopening.
 
 ## Architecture set
 
@@ -59,45 +59,62 @@ Architecture control document:
 
 - [`architecture/README.md`](architecture/README.md) — `DESIGN IN PROGRESS — NOT FROZEN`.
 
-Planned TO-BE owners:
+Current TO-BE owners:
 
 ```text
 architecture/read-projections.md
-    public read responsibility
-    22-route one-statement projection architecture
-    read UoW/snapshot realization
-    trusted lifecycle/read projectors
+    DESIGN IN PROGRESS
+    ADP-01 CLOSED
+    ADP-02 / ADP-03 OPEN
 
 architecture/api.md
-    public cursor identity/keyset realization
-    ObjectTemplate parent_template_id HTTP tri-state
+    NOT YET WRITTEN
 
 architecture/cli.md
-    Location value-path materialization
-    nullable selector/query carrier semantics
+    NOT YET WRITTEN
 
 architecture/verification.md
-    deterministic M3 architecture and acceptance evidence
+    NOT YET WRITTEN
 ```
 
-These owning documents are not yet written and therefore create no frozen design authority yet.
+The architecture set remains non-frozen and creates no software implementation authority.
 
-## Open architecture design points
-
-The architecture set currently tracks:
+## Architecture design-point status
 
 ```text
-ADP-01  read projection responsibility / persistence boundary
-ADP-02  complete 22-route one-statement projection matrix
-ADP-03  historical lifecycle trusted decoder
-ADP-04  cursor identity realization
-ADP-05  ObjectTemplate nullable HTTP query carrier
-ADP-06  CLI nullable selector/query carrier
-ADP-07  CLI Location materialization grammar
-ADP-08  verification architecture
+ADP-01  CLOSED   read projection responsibility / persistence boundary
+ADP-02  OPEN     complete 22-route one-statement projection matrix
+ADP-03  OPEN     historical lifecycle trusted decoder
+ADP-04  OPEN     cursor identity realization
+ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
+ADP-06  OPEN     CLI nullable selector/query carrier
+ADP-07  OPEN     CLI Location materialization grammar
+ADP-08  OPEN     verification architecture
 ```
 
-All are OPEN. Architecture cannot freeze until all are closed and cross-document consistency passes.
+Progress:
+
+```text
+closed  1 / 8
+open    7 / 8
+```
+
+ADP-01 is owned normatively by [`architecture/read-projections.md`](architecture/read-projections.md). It freezes the application/persistence responsibility boundary for public reads:
+
+```text
+application read service
+    -> request semantics / cursor validation
+    -> read UoW ownership
+    -> public 404 / 200 / Page classification
+
+persistence read projector
+    -> complete persisted projection on caller-owned connection
+    -> target-presence evidence where required
+    -> representational carrier decoding
+    -> no mutation semantic certification
+```
+
+Mutation validators remain intact. `coherent_read()` remains available infrastructure but is not a target dependency for the 22 canonical M3 public GETs.
 
 ## Frozen contract outcomes to realize
 
@@ -107,7 +124,7 @@ M3-AC-01  .. M3-AC-19
 M3-CQG-01 .. M3-CQG-08
 ```
 
-The architecture must remain bounded to:
+The architecture remains bounded to:
 
 1. CLI post-create correctness and `Location` response processing.
 2. Public business GET/read responsibility, projection compatibility and cursor correctness.
@@ -134,7 +151,7 @@ Primary discovery navigation/evidence:
 - [`wip/cursor-identity-audit.md`](wip/cursor-identity-audit.md)
 - [`wip/parent-template-null-carrier-closure.md`](wip/parent-template-null-carrier-closure.md)
 
-These files are non-normative inputs. The frozen contract now owns the milestone outcome boundary.
+These files are non-normative inputs. The frozen contract owns the milestone outcome boundary.
 
 ## Scope impact
 
@@ -149,7 +166,7 @@ new business resource
 new public route
 ```
 
-Any architecture proposal that requires one of these would contradict the current frozen contract and must stop for explicit contract review/reopen.
+Any architecture proposal that requires one of these contradicts the current frozen contract and must stop for explicit contract review/reopen.
 
 ## Remaining gates
 
@@ -168,6 +185,6 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Begin architecture design from [`architecture/README.md`](architecture/README.md), closing its open design points dependency-first.
+Close **ADP-02 — Complete 22-route one-statement projection matrix** under the responsibility boundary frozen by ADP-01.
 
 Software implementation remains **NOT AUTHORIZED**.
