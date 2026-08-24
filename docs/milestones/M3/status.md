@@ -57,6 +57,7 @@ Area B closure:
 
 - [`wip/get-read-census.md`](wip/get-read-census.md)
 - [`wip/get-read-review-closure.md`](wip/get-read-review-closure.md)
+- [`wip/cursor-identity-audit.md`](wip/cursor-identity-audit.md) — final 12-route cursor identity/keyset cross-check
 - route-specific `*-get-*-decision.md` files
 
 Area C closure:
@@ -86,6 +87,16 @@ genuine protocol mismatch -> cli_protocol_error
 
 The 22-route audit found that every canonical public business GET/read path can materialize its required projection in one SQL statement.
 
+A final cursor cross-check audited all 12 paginated public routes and found no additional defect beyond the two already identified during the route walkthrough:
+
+```text
+cursor-bearing public routes audited      12 / 12
+complete current identities               10 / 12
+known incomplete identities                2 / 12
+new cursor defects found                    0
+keyset-key defects                          0
+```
+
 Target direction:
 
 ```text
@@ -94,6 +105,15 @@ request/cursor validation remains strict
 path-target 404 and empty-collection distinctions remain preserved
 read-side semantic re-certification is removed
 historical lifecycle carrier decoding remains without semantic transition certification
+
+cursor query identity
+    = route
+    + every membership-affecting path target
+    + every membership-affecting query filter
+    + required semantic presence bits
+cursor position = complete canonical ordering tuple
+limit is not part of semantic query identity
+
 OBJ-GET-03 cursor identity adds parent_object_id
 OBJ-GET-06 cursor identity adds object_id
 no canonical public GET requires coherent_read() in the target census
