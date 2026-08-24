@@ -57,6 +57,7 @@ Authoritative discovery inputs:
 
 - [`get-read-census.md`](get-read-census.md)
 - [`get-read-review-closure.md`](get-read-review-closure.md)
+- [`cursor-identity-audit.md`](cursor-identity-audit.md)
 - route-specific `*-get-*-decision.md` files
 
 Closed outcome:
@@ -69,8 +70,29 @@ GET/read paths trust persisted semantic state
 request/cursor validation remains strict
 path-target 404 / empty-collection semantics remain preserved
 historical lifecycle reads retain carrier decoding but remove semantic transition re-certification
+
+12 / 12 cursor-bearing public routes cross-checked
+10 / 12 current cursor identities are complete
 OBJ-GET-03 cursor identity adds parent_object_id
 OBJ-GET-06 cursor identity adds object_id
+no third cursor identity defect found
+all current keyset position tuples are complete
+```
+
+The cursor cross-check establishes the general downstream rule:
+
+```text
+cursor query identity
+    = route
+    + every membership-affecting path target
+    + every membership-affecting query filter
+    + any semantic presence bit required to distinguish explicit null from omission
+
+cursor position
+    = complete canonical ordering tuple
+
+limit
+    = not part of semantic query identity
 ```
 
 Current AS-IS owners impacted downstream:
@@ -105,7 +127,7 @@ docs/architecture/verification.md
     -> statement-count, cursor-binding and semantic-read regression evidence
 ```
 
-The Area B contract must describe observable read guarantees without turning a specific SQL formulation into public behavior. The architecture must own the one-statement projection patterns and read-validation responsibility boundary.
+The Area B contract must describe observable read guarantees without turning a specific SQL formulation into public behavior. The architecture must own the one-statement projection patterns, read-validation responsibility boundary and complete cursor identity rule.
 
 ## 4. Area C — `parent_template_id = null`
 
@@ -163,6 +185,8 @@ B. Public GET/read behavior
     existing public DTO/filter/pagination/failure behavior is preserved except the identified cursor-binding corrections
     GETs no longer fail solely because they re-certify persisted semantic invariants
     historical lifecycle output remains typed and publicly compatible
+    a cursor is valid only for the same route, path target and membership-affecting filter identity that issued it
+    changing limit alone remains permitted between pages
 
 C. ObjectTemplate root filter
     parent_template_id omitted / UUID / null is the complete public tri-state
@@ -188,6 +212,12 @@ single-statement public read realization
     recursive exact inheritance projection
     recursive stable ancestry capability projection
     trusted read projectors where mutation aggregate loaders are too broad
+
+cursor identity
+    route + path target + membership filters + required presence bits
+    complete canonical ordering tuple as keyset position
+    limit excluded from semantic query identity
+    ordering/cursor-semantic changes require explicit cursor-version consideration
 
 lifecycle historical decoding boundary
     carrier decoding vs semantic transition certification
@@ -222,7 +252,7 @@ M3 is expected to be an application/persistence/HTTP/CLI correctness and simplif
 
 No direct conflict was found between the three areas.
 
-Area C uses the ObjectTemplate list path already reviewed in Area B and preserves its internal tri-state and target single-statement read shape.
+Area C uses the ObjectTemplate list path already reviewed in Area B and preserves its internal tri-state and target single-statement read shape. The final cursor audit confirms that `parent_filter_set` already provides the presence bit required to keep omitted and root-only query identities distinct.
 
 Area A affects CLI response validation only and does not alter API create semantics.
 
@@ -236,7 +266,10 @@ Area B preserves mutation semantic validation, so the CLI create correction does
 [x] Area A acceptance boundary
 [x] 22/22 GET/read census
 [x] one-statement target for all 22 reads
-[x] GET cursor bugs and lifecycle decoding boundary
+[x] 12/12 cursor-bearing public routes cross-checked
+[x] complete cursor identity/keyset rule recorded
+[x] only OBJ-GET-03 / OBJ-GET-06 require cursor binding correction
+[x] GET lifecycle decoding boundary
 [x] Area C actual HTTP/CLI reachability analysis
 [x] canonical root-only public carrier selected
 [x] HTTP/CLI/cursor Area C target boundary
