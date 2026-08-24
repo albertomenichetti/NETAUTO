@@ -1,8 +1,10 @@
 # M3 — Milestone Contract
 
-**Status:** DRAFT / REVIEW — NOT FROZEN
+**Status:** FINAL / FROZEN
 
-**Authority:** PROPOSED MILESTONE CONTRACT — NO IMPLEMENTATION AUTHORITY
+**Authority:** NORMATIVE MILESTONE CONTRACT
+
+**Freeze approval:** Explicitly approved by the project owner after the PASS final review recorded in [`wip/contract-final-review.md`](wip/contract-final-review.md).
 
 ## Authority and baseline
 
@@ -12,13 +14,13 @@ M3 starts from the delivered AS-IS in:
 docs/architecture/
 ```
 
-Every delivered guarantee remains authoritative unless this contract explicitly changes it. Any future M3 architecture or implementation decision must be traceable to this contract and may choose how to satisfy it, but may not alter its observable behavior, scope, boundaries, required outcomes or acceptance criteria.
+Every delivered guarantee remains authoritative unless this contract explicitly changes it. Any M3 architecture or implementation decision must be traceable to this contract and may choose how to satisfy it, but may not alter its observable behavior, scope, boundaries, required outcomes or acceptance criteria.
 
-This file owns the proposed M3 purpose, objectives, scope, non-goals, explicit AS-IS deltas, required outcomes and acceptance criteria. It does not own implementation decomposition or detailed technical realization; those belong to the future M3 architecture set and frozen `steps.md`.
+This file owns M3 purpose, objectives, scope, non-goals, explicit AS-IS deltas, required outcomes and acceptance criteria. It does not own implementation decomposition or detailed technical realization; those belong to the M3 architecture set and frozen `steps.md`.
 
-Discovery material under `docs/milestones/M3/wip/` is non-normative input. This contract is self-contained and does not require those files to determine the intended M3 obligations.
+Discovery material under `docs/milestones/M3/wip/` is non-normative input. This contract is self-contained and does not require those files to determine the M3 obligations.
 
-Until this file is explicitly reviewed and marked `FINAL / FROZEN`, it creates no implementation authority.
+This contract is `FINAL / FROZEN`. Any semantic change to it requires formal contract reopening under project governance.
 
 ## Purpose
 
@@ -293,7 +295,7 @@ Cursor identity must distinguish omission from explicit root-only filtering even
 
 Each public GET response must represent one self-consistent committed projection for that request. M3 does not promise repeatable membership across page requests and does not introduce a cross-request transaction/snapshot token.
 
-The contract does not prescribe SQL statement count, CTE layout, joins, recursive-query shape, helper names or persistence method decomposition. The future M3 architecture must choose a realization that satisfies this public projection guarantee while honoring the read-responsibility boundary above.
+The contract does not prescribe SQL statement count, CTE layout, joins, recursive-query shape, helper names or persistence method decomposition. The M3 architecture must choose a realization that satisfies this public projection guarantee while honoring the read-responsibility boundary above.
 
 ## Cross-capability dependencies
 
@@ -605,16 +607,24 @@ The exact executable verification matrix is owned by the future frozen M3 archit
 
 ## Freeze and change control
 
-This draft is not frozen.
+This contract is `FINAL / FROZEN`.
 
-Before it may become `FINAL / FROZEN`:
+Freeze basis:
 
 ```text
-human review of this proposed contract
-contract consistency sweep against delivered AS-IS and completed M3 discovery
-closure of every contract finding
-explicit freeze approval
-status.md updated to record the frozen contract gate
+human review of the proposed contract                         PASS
+contract consistency sweep against delivered AS-IS/discovery PASS
+contract findings closed                                      5 / 5
+open contract-level findings                                  0
+explicit project-owner freeze approval                        GRANTED
 ```
+
+The frozen contract candidate was reviewed at content SHA:
+
+```text
+6f1ffd5f8e85c3bb90578db3ec2067f36df53e34
+```
+
+The freeze publication changes only contract authority/status wording; it does not alter the reviewed Scope, Non-goals, explicit deltas, outcomes or acceptance criteria.
 
 After freeze, architecture may determine how to realize these obligations but may not add, remove or reinterpret their observable semantics without a formal contract reopen.
