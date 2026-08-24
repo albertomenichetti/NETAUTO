@@ -18,16 +18,16 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    DISCOVERY
+phase                    DISCOVERY — COMPLETE
 contract                 NOT YET FROZEN
 architecture set         NOT YET DEFINED / NOT FROZEN
 implementation steps     NOT YET FROZEN
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for discovery
+blockers                 none for contract preparation
 ```
 
-The current work remains limited to repository-based discovery and preparation of the M3 scope. No implementation slice is active and no software behavior change is authorized yet.
+All bounded discovery work is complete. The next permitted governance activity is M3 contract drafting and review. No implementation slice is active and no software behavior change is authorized yet.
 
 Discovery material is non-normative and lives under:
 
@@ -35,87 +35,131 @@ Discovery material is non-normative and lives under:
 docs/milestones/M3/wip/
 ```
 
-The current discovery summary is [`wip/discovery.md`](wip/discovery.md).
+Discovery closure is documented by:
+
+- [`wip/discovery.md`](wip/discovery.md) — discovery navigator;
+- [`wip/discovery-closure.md`](wip/discovery-closure.md) — final cross-workstream closure and AS-IS owner mapping.
 
 ## Discovery workstream status
 
 ```text
 Area A — CLI post-create correctness          CLOSED
 Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
-Area C — parent_template_id = null carrier    OPEN
+Area C — parent_template_id = null carrier    CLOSED
 ```
 
-Area A closure is documented by:
+Area A closure:
 
-- [`wip/cli-post-create-decision.md`](wip/cli-post-create-decision.md) — reviewed defect, census and target materializer semantics;
-- [`wip/cli-post-create-closure.md`](wip/cli-post-create-closure.md) — consolidated downstream planning input.
+- [`wip/cli-post-create-decision.md`](wip/cli-post-create-decision.md)
+- [`wip/cli-post-create-closure.md`](wip/cli-post-create-closure.md)
 
-Area B closure is documented by:
+Area B closure:
 
-- [`wip/get-read-census.md`](wip/get-read-census.md) — complete 22-route register;
-- [`wip/get-read-review-closure.md`](wip/get-read-review-closure.md) — consolidated downstream planning input;
-- route-specific `*-get-*-decision.md` files — detailed discovery evidence where applicable.
+- [`wip/get-read-census.md`](wip/get-read-census.md)
+- [`wip/get-read-review-closure.md`](wip/get-read-review-closure.md)
+- route-specific `*-get-*-decision.md` files
 
-These closures are discovery conclusions only. They do not themselves freeze public behavior, architecture or implementation steps.
+Area C closure:
 
-## Consolidated Area A discovery conclusion
+- [`wip/parent-template-null-carrier-decision.md`](wip/parent-template-null-carrier-decision.md)
+- [`wip/parent-template-null-carrier-closure.md`](wip/parent-template-null-carrier-closure.md)
 
-The CLI registry exposes eight `201 Created` operations with exact `Location` validation. Three create operations use nested response-path tokens and are deterministically affected by the current common materializer defect:
+These are discovery conclusions only. They do not themselves freeze public behavior, architecture or implementation steps.
+
+## Consolidated discovery outcomes
+
+### Area A — CLI create correctness
+
+The CLI registry has eight `201 Created` operations with exact `Location` validation. Three create operations use nested response-path tokens and are deterministically affected by the common materializer defect.
+
+Target direction:
 
 ```text
-{datatype.id}
-{object_template.id}
-{relationship_definition.id}
+Location token = exact request key or response JSON path
+no Python format grammar
+exact Location validation preserved
+valid committed 201 + correct Location -> CLI success
+genuine protocol mismatch -> cli_protocol_error
 ```
 
-The target keeps the existing registry and exact `Location` contract, defines registered tokens as request-key / response-JSON-path metadata, removes Python format grammar from the common materializer and preserves `cli_protocol_error` for genuine same-release response violations.
+### Area B — public reads
 
-A canonical committed `201` response with the correct `Location` must not become `cli_internal_error` because of local materialization behavior.
+The 22-route audit found that every canonical public business GET/read path can materialize its required projection in one SQL statement.
 
-No Area A decision requires a schema, migration, dependency or lockfile change.
-
-## Consolidated GET/read discovery conclusion
-
-The completed 22-route audit found that every canonical public business GET/read path can materialize its required public projection in one SQL statement. The target read model therefore requires no `coherent_read()` usage across this canonical GET census.
-
-The review also consolidated these cross-cutting inputs for the later M3 contract/architecture:
+Target direction:
 
 ```text
 GETs trust persisted semantic state
 request/cursor validation remains strict
 path-target 404 and empty-collection distinctions remain preserved
 read-side semantic re-certification is removed
-historical lifecycle carrier decoding is retained without semantic transition certification
-OBJ-GET-03 cursor identity must include parent_object_id
-OBJ-GET-06 cursor identity must include object_id
-mutation-oriented semantic validators are not globally weakened for GET convenience
+historical lifecycle carrier decoding remains without semantic transition certification
+OBJ-GET-03 cursor identity adds parent_object_id
+OBJ-GET-06 cursor identity adds object_id
+no canonical public GET requires coherent_read() in the target census
+mutation-oriented validators remain intact for mutation paths
 ```
 
-No consolidated GET/read decision currently requires a schema, migration, dependency or lockfile change.
+### Area C — ObjectTemplate root filter
 
-## Discovery gates
-
-Before M3 implementation may begin, the cycle must establish and freeze, in the project-governed order:
+The canonical public tri-state is:
 
 ```text
-complete remaining discovery
-    -> milestone contract
-    -> M3 architecture set
-    -> consistency review / closure as required
-    -> implementation steps
+parent_template_id omitted -> no parent filter
+parent_template_id=<UUID>  -> direct children of that parent
+parent_template_id=null    -> root ObjectTemplates only
+```
+
+`parent_filter_set` remains internal only. HTTP and CLI must support the same tri-state while preserving the existing application/persistence/cursor semantics.
+
+## Discovery scope impact
+
+No consolidated M3 discovery decision requires:
+
+```text
+database schema change
+Alembic migration
+new runtime dependency
+lockfile change
+new business resource
+new public route
+```
+
+The expected M3 change remains bounded to application/persistence/HTTP/CLI correctness and simplification over the existing durable model.
+
+## AS-IS traceability
+
+The final mapping from M3 discovery outcomes to current architecture owners is in [`wip/discovery-closure.md`](wip/discovery-closure.md).
+
+The current delivered AS-IS under `docs/architecture/` remains the only semantic authority until M3 completes its contract, architecture, implementation and acceptance gates.
+
+## Remaining gates
+
+Before M3 implementation may begin, the cycle must proceed in the project-governed order:
+
+```text
+DISCOVERY COMPLETE
+    -> milestone contract FINAL / FROZEN
+    -> M3 architecture set FINAL / FROZEN
+    -> required consistency review / closure
+    -> implementation steps FINAL / FROZEN
     -> explicit implementation authorization in this status
 ```
 
-Until those gates are satisfied, the delivered AS-IS under `docs/architecture/` remains the only semantic authority for existing behavior.
+`steps.md` remains a pre-implementation placeholder. No `M3-Snn` slice is currently defined or active.
 
-## Current discovery scope
+## Current discovery boundary
 
-The M3 discovery boundary remains three areas:
+The completed discovery boundary remains exactly:
 
-1. CLI post-create correctness and audit of local post-success processing — **CLOSED at discovery level**.
-2. Complete review of every public business GET/read path — **CLOSED at discovery level**.
-3. Exact verification and, if required, correction of the public `parent_template_id = null` filtering contract across HTTP, cursor identity and CLI — **OPEN**.
+1. CLI post-create correctness and local post-success processing.
+2. Complete review of every public business GET/read path.
+3. Public `parent_template_id = null` root-only filter carrier across HTTP, cursor identity and CLI.
 
-This list is a discovery boundary, not a frozen milestone contract. Any addition, removal or reinterpretation remains subject to contract review before implementation.
+No general lock-plan redesign, broad mutation-lock minimization, new model capability, unrelated schema redesign or unrelated CLI redesign was added.
 
-The next discovery work is Area C. `steps.md` remains a pre-implementation placeholder and no `M3-Snn` slice is authorized.
+## Immediate next action
+
+Prepare and review the **M3 milestone contract** from the consolidated discovery inputs.
+
+Software implementation remains NOT AUTHORIZED.
