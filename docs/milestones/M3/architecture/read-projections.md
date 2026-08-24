@@ -299,6 +299,84 @@ path target present + child rows
 
 `LEFT JOIN`, a target-rooted/lateral child subquery or another equivalent one-statement form is an implementation choice only when it preserves this architecture.
 
+### RP-04 — EXACT AGGREGATE / INDEPENDENT CHILD SETS
+
+Use when one exact persisted resource owns multiple independent zero-or-many child sets that must be materialized in one statement without multiplying one child set by another.
+
+Logical shape:
+
+```text
+exact target
+    -> target/header existence row
+    -> independent child-set branch A
+    -> independent child-set branch B
+    -> ...
+```
+
+Required guarantees:
+
+```text
+exact target existence is preserved even with zero child rows
+independent child sets never form a cartesian product
+ordering inside each child set remains canonical
+all rows belong to the same statement snapshot
+```
+
+A typed multi-branch `UNION ALL`, independent SQL aggregation or equivalent one-statement form is allowed only if those guarantees are preserved. The architecture does not freeze SQLAlchemy syntax or branch/alias names.
+
+### RP-05 — RECURSIVE EXACT-CHAIN PROJECTION
+
+Use when a public projection is derived from one requested exact version plus its recursively pinned exact parent-version chain.
+
+Logical shape:
+
+```text
+requested exact leaf
+    -> recursive traversal via persisted
+       (parent_template_id, parent_version)
+    -> exact ancestors
+    -> local declaration branches per exact node
+    -> trusted root-to-leaf projection
+```
+
+Required guarantees:
+
+```text
+traversal follows exact version pins, not stable-lineage parent lookup
+requested leaf existence is preserved even when the derived projection is empty
+independent property/component declarations do not cartesian-multiply
+root-to-leaf declaration ordering is deterministic
+declaring_template_id is preserved
+no inheritance/declaration semantic certification is re-run by the GET
+```
+
+A recursive CTE or equivalent one-statement recursion is required by the target architecture; exact SQLAlchemy construction remains implementation-local.
+
+### RP-06 — RECURSIVE STABLE-ANCESTRY PAGE
+
+Use when collection membership depends on the requested stable lineage and its recursively persisted stable parent lineages.
+
+Logical shape:
+
+```text
+requested stable lineage
+    -> recursive stable parent ancestry
+    -> bounded collection membership query
+       using ancestry ids
+    -> active filters/keyset/order/limit + 1
+```
+
+Required guarantees:
+
+```text
+path-target existence survives an empty member page
+stable ancestry is projected, not semantically re-certified
+membership predicates that define the public collection remain in the query
+semantic dependency certification unrelated to membership is not added
+```
+
+This pattern is distinct from `RP-05`: `RP-05` follows exact version pins; `RP-06` follows stable lineage ancestry.
+
 ## ADP-02 — DataType family CLOSED
 
 The four canonical DataType reads use only `RP-01`, `RP-02` and `RP-03`.
@@ -419,6 +497,225 @@ Representational materialization includes persisted `status`, `base_type` and `c
 
 All four DataType GETs therefore use an ordinary read UoW and one PostgreSQL statement snapshot. None requires `coherent_read()` in the M3 target.
 
+## ADP-02 — ObjectTemplate family CLOSED
+
+The six canonical ObjectTemplate reads reuse the three simple patterns above and introduce `RP-04`, `RP-05` and `RP-06` for aggregate and recursive projections.
+
+### OT-GET-01 — `GET /object-templates`
+
+Pattern:
+
+```text
+RP-01 — DIRECT PAGE
+```
+
+Projection source and rules:
+
+```text
+root relation    object_templates
+filters          namespace, name, abstract, parent filter state
+keyset           (namespace, name) > cursor
+order            (namespace, name) ASC
+page bound       limit + 1
+```
+
+The application supplies the already-resolved internal parent-filter tri-state. HTTP lexical realization of omitted / UUID / lowercase `null` remains owned by `api.md` / ADP-05.
+
+`default_version` is projected directly. The GET does not load or certify the default target as PUBLISHED.
+
+### OT-GET-02 — `GET /object-templates/{template_id}`
+
+Pattern:
+
+```text
+RP-02 — DIRECT EXACT
+```
+
+Projection source:
+
+```text
+object_templates WHERE id = :template_id
+```
+
+The persisted stable parent and nullable default are projected directly. No default-target or stable-parent semantic certification belongs to the GET.
+
+### OT-GET-03 — `GET /object-templates/{template_id}/versions`
+
+Pattern:
+
+```text
+RP-03 — PARENT-ROOTED PAGE
+```
+
+Projection source and rules:
+
+```text
+path target      object_templates.id = :template_id
+child relation   object_template_versions
+child membership object_template_versions.template_id = object_templates.id
+filter           status when supplied
+keyset           version > cursor
+order            version ASC
+page bound       limit + 1
+```
+
+The statement must preserve lineage existence across an empty child page so the application retains `404` versus `200 []` behavior.
+
+### OT-GET-04 — `GET /object-templates/{template_id}/versions/{version}`
+
+Pattern:
+
+```text
+RP-04 — EXACT AGGREGATE / INDEPENDENT CHILD SETS
+```
+
+The exact public projection is:
+
+```text
+ObjectTemplateVersion header
++ local properties[]
++ local components[]
+```
+
+Required logical shape:
+
+```text
+exact ObjectTemplateVersion target
+    -> header/existence branch
+    -> local-property branch ordered by position
+    -> local-component branch ordered by position
+```
+
+Architecture constraints:
+
+```text
+one statement
+no direct properties × components join
+exact target must survive zero local declarations
+properties and components retain independent position ordering
+no semantic declaration re-certification is added
+```
+
+A typed `UNION ALL` is the preferred realization because it naturally keeps child sets independent, but another independent one-statement aggregation is valid if it preserves all `RP-04` guarantees. SQLAlchemy construction remains implementation-local.
+
+### OT-GET-05 — `GET /object-templates/{template_id}/versions/{version}/effective-schema`
+
+Pattern:
+
+```text
+RP-05 — RECURSIVE EXACT-CHAIN PROJECTION
+```
+
+The effective schema is derived from the requested exact leaf and recursively pinned exact parent versions:
+
+```text
+(template_id, version)
+    -> (parent_template_id, parent_version)
+    -> ... exact root
+```
+
+The read must not traverse stable `object_templates.parent_template_id` to re-certify agreement with the exact pins.
+
+Target logical shape:
+
+```text
+recursive exact-version chain rooted at requested leaf
+    -> target/existence marker
+    -> property rows for each exact node
+    -> component rows for each exact node
+    -> trusted root-to-leaf assembly
+```
+
+Each declaration row carries enough information to preserve:
+
+```text
+declaring_template_id
+chain depth / deterministic ancestry order
+local position
+local declaration carrier fields
+```
+
+A leaf-first depth may be used internally provided final projection order is root-to-leaf and deterministic.
+
+The target projector constructs the effective-schema typed projection directly from persisted declaration rows. It must not invoke validation-aware effective-schema resolution that re-certifies cycles, stable/exact parent agreement, member collisions or declaration admissibility.
+
+Required outcomes:
+
+```text
+leaf absent                  -> 404
+leaf present + no members    -> successful empty effective schema
+leaf present + members       -> normal effective schema
+```
+
+Independent property/component branches must not cartesian-multiply.
+
+### OT-GET-06 — `GET /object-templates/{template_id}/relationship-capabilities`
+
+Pattern:
+
+```text
+RP-06 — RECURSIVE STABLE-ANCESTRY PAGE
+```
+
+Capability membership depends on the requested stable lineage and its stable ancestors, not on exact ObjectTemplateVersion pins.
+
+Target logical shape:
+
+```text
+requested object_templates lineage
+    -> recursive stable ancestry
+    -> relationship_resolution capability candidates
+       from_template_id IN ancestry
+       optional name filter
+       resolution_id keyset
+       canonical resolution_id order
+       LIMIT limit + 1
+       EXISTS at least one PUBLISHED RelationshipDefinitionVersion
+```
+
+The PUBLISHED-version `EXISTS` predicate remains because it defines public capability membership. It is not semantic re-certification.
+
+The RelationshipDefinition `default_version` is projected directly. The GET must not load that exact default target merely to certify that it is PUBLISHED.
+
+The statement carries explicit requested-template presence evidence so outcomes remain:
+
+```text
+template absent                     -> 404
+template present + zero capability  -> 200 empty page
+template present + capability       -> normal page
+```
+
+Persistence absorbs any internal existence marker before application `limit + 1` / `more` / next-cursor computation so pagination operates only on real capability items.
+
+### Exact-chain versus stable-ancestry rule
+
+These recursive patterns are intentionally distinct:
+
+```text
+RP-05 effective schema
+    -> exact ObjectTemplateVersion ancestry
+    -> follow persisted (parent_template_id, parent_version)
+
+RP-06 relationship capabilities
+    -> stable ObjectTemplate lineage ancestry
+    -> follow object_templates.parent_template_id
+```
+
+Neither traversal may be substituted for the other merely to maximize implementation reuse.
+
+### ObjectTemplate family matrix
+
+| ID | Pattern | One statement | Target-presence requirement | Semantic certification removed/preserved |
+|---|---|---:|---|---|
+| `OT-GET-01` | `RP-01 DIRECT PAGE` | yes | n/a | remove default-target publication certification |
+| `OT-GET-02` | `RP-02 DIRECT EXACT` | yes | exact lineage row | remove default-target certification |
+| `OT-GET-03` | `RP-03 PARENT-ROOTED PAGE` | yes | lineage retained across empty page | no added certification |
+| `OT-GET-04` | `RP-04 EXACT AGGREGATE / INDEPENDENT CHILD SETS` | yes | exact header/existence branch | keep no read-side declaration certification |
+| `OT-GET-05` | `RP-05 RECURSIVE EXACT-CHAIN PROJECTION` | yes | exact leaf marker/evidence | remove inheritance/declaration semantic certification |
+| `OT-GET-06` | `RP-06 RECURSIVE STABLE-ANCESTRY PAGE` | yes | requested lineage marker/evidence | remove ancestry/default-target certification; preserve PUBLISHED-membership EXISTS |
+
+All six ObjectTemplate GETs use an ordinary read UoW and one PostgreSQL statement snapshot in the M3 target. None requires `coherent_read()`.
+
 ## Preserved AS-IS responsibilities
 
 ADP-01 and the closed ADP-02 route families do not change:
@@ -491,11 +788,13 @@ mutation semantic validation remains intact
 ADP-01  CLOSED
 ADP-02  PARTIAL
     DataType            4 / 4 CLOSED
-    ObjectTemplate      0 / 6 OPEN
+    ObjectTemplate      6 / 6 CLOSED
     Object              0 / 6 OPEN
     RelationshipDef     0 / 4 OPEN
     Relationship        0 / 1 OPEN
     Global lifecycle    0 / 1 OPEN
+    -----------------------------
+    total              10 / 22
 ADP-03  OPEN
 ```
 
