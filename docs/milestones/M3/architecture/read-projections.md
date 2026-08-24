@@ -1,6 +1,6 @@
 # M3 — Public Read Projection Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL (16 / 22); ADP-03 OPEN
+**Status:** DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL (20 / 22); ADP-03 OPEN
 
 **Authority:** M3 TO-BE ARCHITECTURE — PUBLIC READ PROJECTION OWNER
 
@@ -10,11 +10,11 @@ This document owns the M3 TO-BE architecture for the twenty-two canonical public
 
 It derives from the frozen M3 contract and changes only the explicit M3 read-boundary delta. Delivered domain identities, mutation semantics, persistence schema, public DTOs, routing and failure behavior remain owned by the current AS-IS except where the frozen M3 contract explicitly changes them.
 
-This document currently owns:
+Current design ownership:
 
 ```text
 ADP-01 — Read projection responsibility and reusable persistence boundary    CLOSED
-ADP-02 — Complete 22-route one-statement projection matrix                  PARTIAL 16 / 22
+ADP-02 — Complete 22-route one-statement projection matrix                  PARTIAL 20 / 22
 ADP-03 — Historical lifecycle trusted decoder                              OPEN
 ```
 
@@ -69,17 +69,17 @@ persistence read projector
 typed application/public projection
 ```
 
-M3 does not require a new package, class hierarchy or framework abstraction. `read projector` is an architectural role that may be realized by appropriately scoped persistence functions or methods.
+`read projector` is an architectural role, not a required package/class hierarchy. Existing persistence modules may realize the role through appropriately scoped functions or methods.
 
 ## Application responsibility
 
-The application read service owns semantics arising from the request rather than from persisted-state certification, including:
+The application read service owns request semantics rather than persisted-state certification:
 
 ```text
 request dependency rules
 cursor route/filter/key compatibility
-opening and closing the ordinary read UoW
-404 versus successful-empty classification
+opening/closing the ordinary read UoW
+404 versus successful-empty/null classification
 Page/items/next-cursor composition
 bounded application failure classification
 ```
@@ -88,13 +88,13 @@ Persistence may return explicit target-presence evidence. Persistence supplies t
 
 ## Persistence projector responsibility
 
-A read projector owns only the persisted facts required by the public projection:
+A read projector owns only persisted facts needed by the public projection:
 
 ```text
 relational selection
 joins / recursion / aggregation required by the projection
 path-target existence evidence where required
-member completion needed for required public fields
+member completion needed for mandatory public fields
 canonical route ordering / keyset predicates
 row-to-carrier materialization
 JSON/scalar decoding needed to construct typed output
@@ -110,7 +110,7 @@ A public GET must not answer:
 "Would this persisted state pass current mutation admission or transition validation?"
 ```
 
-Therefore public reads must not re-run mutation-owned semantic certification such as:
+Public reads therefore must not re-run mutation-owned certification such as:
 
 ```text
 default-version publication admissibility
@@ -124,7 +124,7 @@ historical lifecycle transition validation
 
 Mutation paths retain all admission and transition validation. M3 does not weaken mutation validators merely to enable GET reuse.
 
-Representational decoding remains required. A GET may and must perform the material checks needed to construct its typed result, for example:
+Representational decoding remains required, including as needed:
 
 ```text
 row/column extraction
@@ -135,32 +135,29 @@ JSON object/array shape required by the response
 historical snapshot materialization
 ```
 
-A required field that cannot be materialized must not be silently dropped or repaired. The complete projection may fail through the existing bounded internal-failure boundary.
+A required field that cannot be materialized must not be silently dropped or repaired. The complete projection may fail through the bounded internal-failure boundary.
 
 ## Projection completion is not semantic certification
 
-A projector may join persisted context solely to produce a required public field. That is projection, not semantic admission.
-
-If one persisted public item requires exactly one contextual value, the projector must preserve the following representational rule:
+A projector may join persisted context solely to produce mandatory public fields. If one persisted public item requires exactly one contextual value:
 
 ```text
-exactly one materializable contextual value
+exactly one value
     -> project the item
 
-zero materializable values
-    -> required projection state cannot be constructed
-    -> internal failure boundary
+zero values
+    -> internal projection failure
 
-more than one materializable value where the DTO requires one
-    -> ambiguous projection state
-    -> internal failure boundary
+more than one value where the DTO requires one
+    -> ambiguous projection
+    -> internal failure
 ```
 
-The projector must never turn an unmaterializable persisted member into an apparently valid omission from the public collection.
+The projector must never turn an unmaterializable persisted member into an apparently valid omission.
 
 ## Reuse rule
 
-Shared helpers are allowed when semantically neutral, such as:
+Semantically neutral helpers may be shared, for example:
 
 ```text
 row -> typed carrier mapping
@@ -172,7 +169,7 @@ pure response-shape assembly
 
 Reuse is forbidden when it causes a GET to invoke mutation admission/transition validation, load dependencies solely to certify state, or add statements only because a mutation-oriented loader is broader than the public projection.
 
-When a mutation loader is too broad, the GET uses a dedicated trusted read projector; the mutation loader remains strong.
+Where a mutation loader is too broad, the GET uses a trusted read projector; the mutation loader remains strong.
 
 ## Unit of Work and snapshot rule
 
@@ -186,11 +183,11 @@ one complete public projection
     -> no coherent_read() dependency
 ```
 
-The preserved public guarantee is one self-consistent committed projection per request. Cross-request repeatable membership remains unpromised.
+The preserved guarantee is one self-consistent committed projection per request. Cross-request repeatable membership remains unpromised.
 
 `coherent_read()` remains valid infrastructure outside this M3 census and is not globally deprecated.
 
-## Path-target and empty collection rule
+## Path-target rule
 
 For path-scoped collections:
 
@@ -202,11 +199,11 @@ target present + zero matching members
     -> successful empty page
 ```
 
-The one-statement projector must carry enough target-presence evidence to preserve that distinction.
+The one-statement projector carries enough target-presence evidence to preserve this distinction.
 
 # ADP-02 — Projection-pattern vocabulary
 
-ADP-02 uses named logical patterns to constrain correctness-critical query shape while leaving SQLAlchemy syntax, alias names and purely local decomposition to implementation.
+ADP-02 freezes correctness-critical logical shapes while leaving SQLAlchemy syntax, aliases and purely local helper decomposition to implementation.
 
 ## RP-01 — DIRECT PAGE
 
@@ -220,7 +217,7 @@ collection relation
     -> LIMIT limit + 1
 ```
 
-No extra dependency read is added merely to certify persisted members.
+No dependency read is added merely to certify persisted members.
 
 ## RP-02 — DIRECT EXACT
 
@@ -248,25 +245,24 @@ path target
        LIMIT limit + 1
 ```
 
-Required result semantics:
-
 ```text
 target absent             -> 404
 target present, no child  -> 200 []
 target present + child    -> normal page
 ```
 
-A `LEFT JOIN`, lateral/target-rooted child subquery or equivalent form is valid only if child filters/keyset cannot erase the parent-only result.
+Child filters/keyset must not erase the parent-only result.
 
 ## RP-04 — EXACT AGGREGATE / INDEPENDENT CHILD SETS
 
-Use when an exact resource owns multiple independent zero-or-many child sets.
+Use when one exact resource owns one or more child sets that must be materialized completely without truncation or cross-multiplication.
 
 ```text
 exact target
     -> target/header existence branch
-    -> independent child-set branch A
-    -> independent child-set branch B
+    -> child-set branch A
+    -> optional independent child-set branch B
+    -> ...
 ```
 
 Required guarantees:
@@ -278,7 +274,7 @@ ordering inside each child set remains canonical
 all rows share one statement snapshot
 ```
 
-Typed `UNION ALL`, independent SQL aggregation or another equivalent one-statement form is allowed only if those guarantees remain true.
+Typed `UNION ALL`, independent SQL aggregation or another equivalent one-statement form is valid when these guarantees hold.
 
 ## RP-05 — RECURSIVE EXACT-CHAIN PROJECTION
 
@@ -323,21 +319,18 @@ membership predicates remain in the query
 unrelated dependency certification is not added
 ```
 
-`RP-05` and `RP-06` are intentionally different: exact-version ancestry must not be substituted for stable-lineage ancestry or vice versa.
+`RP-05` and `RP-06` are intentionally distinct: exact-version ancestry must not be substituted for stable-lineage ancestry or vice versa.
 
 ## RP-07 — TARGET-ROOTED CONTEXT-COMPLETED PAGE
 
-Use when the path target and the bounded primary member page are not alone sufficient to construct each public item; additional persisted context is required to complete mandatory public fields.
+Use when the path target and primary member rows are insufficient to construct each public item and persisted context is required for mandatory fields.
 
 ```text
 path target
     -> target-presence evidence
 
 bounded primary public-member candidate set
-    -> filters
-    -> keyset
-    -> canonical ordering
-    -> limit + 1
+    -> filters / keyset / canonical order / limit + 1
 
 projection context
     -> joins / recursion required only to complete public fields
@@ -348,32 +341,87 @@ completed public page
 Required guarantees:
 
 ```text
-target absent                    -> 404
-target present + no candidates   -> 200 []
-completed candidates             -> normal page
-required contextual field absent -> internal failure, never silent filtering
-ambiguous required context        -> internal failure, never arbitrary choice
+target absent                     -> 404
+target present + no candidates    -> 200 []
+completed candidates              -> normal page
+required contextual field absent  -> internal failure, never silent filtering
+ambiguous required context         -> internal failure, never arbitrary choice
 ```
 
-When raw persisted rows can duplicate one public semantic item, deduplication belongs to public-item derivation and therefore occurs **before** public keyset/limit semantics. A raw-row `LIMIT` followed by public deduplication is forbidden when it can change visible membership or cursor correctness.
+When raw rows can duplicate one public semantic item, public-item derivation/deduplication occurs before public keyset/limit semantics.
 
 ## RP-08 — TARGET-ROOTED OPTIONAL PROJECTION
 
-Use when the path target is required but the related public projection has cardinality `0..1` and absence of that relation has a public nullable meaning.
+Use when the path target is required but the related public projection has cardinality `0..1`.
 
 ```text
-required path target
-    -> target absent: 404
+required target absent
+    -> 404
 
-optional related fact absent
-    -> target exists: successful null projection
+target present + optional relation absent
+    -> successful null
 
-optional related fact present
-    -> complete required contextual fields
-    -> successful related projection
+target present + relation present
+    -> complete related projection
 ```
 
-A related fact that exists but cannot be materialized must not be converted to public `null`; `null` means the optional relation is absent.
+A relation that exists but cannot be materialized must not be converted to `null`.
+
+## RP-09 — ROOT-PAGED AGGREGATE
+
+Use when the public collection is a page of aggregate roots and each selected root owns child rows required by the item projection.
+
+```text
+root relation
+    -> root-level keyset / filters / canonical root order
+    -> LIMIT limit + 1 ROOT IDENTITIES
+
+selected root identities
+    -> expand required child rows
+    -> reconstruct each complete aggregate item
+```
+
+Required guarantees:
+
+```text
+public page cardinality is defined by root identities
+LIMIT/keyset apply before child expansion
+one selected root is never truncated by SQL row pagination
+all required child rows for each selected root are projected
+child expansion does not alter root ordering or cursor identity
+```
+
+Applying `LIMIT` to root×child joined rows is forbidden when it can truncate an aggregate or change public page cardinality.
+
+## RP-10 — PARENT-ROOTED EXACT AGGREGATE
+
+Use for a nested exact resource when the public contract distinguishes stable-parent absence from exact-child absence and the exact child owns zero-or-many child rows.
+
+```text
+required stable parent
+    -> parent presence evidence
+    -> optional exact child by exact identity
+       -> exact-child presence evidence
+       -> child-owned rows
+```
+
+Required public states:
+
+```text
+parent absent
+    -> parent resource 404
+
+parent present + exact child absent
+    -> exact child resource 404
+
+exact child present + zero child-owned rows
+    -> successful exact aggregate with empty child set
+
+exact child present + child-owned rows
+    -> complete exact aggregate
+```
+
+Filters or joins for child-owned rows must not erase parent/exact-child presence evidence.
 
 # ADP-02 — DataType family CLOSED
 
@@ -384,48 +432,11 @@ A related fact that exists but cannot be materialized must not be converted to p
 | `DT-GET-03` | `GET /datatypes/{id}/versions` | `RP-03` | lineage-rooted version page preserving `404` vs `200 []` |
 | `DT-GET-04` | `GET /datatypes/{id}/versions/{version}` | `RP-02` | exact composite version row; no separate lineage read |
 
-## DT-GET-01 — lineage list
+### DataType notes
 
-```text
-source     datatypes
-filters    namespace, name
-keyset     (namespace, name)
-order      (namespace, name) ASC
-page       limit + 1
-```
+`DT-GET-01` filters `namespace,name`, orders/keysets by `(namespace,name)` and applies `limit+1`. `DT-GET-02` directly projects `datatypes.id`. `DT-GET-03` roots the bounded status-filtered version page at the lineage so an empty page remains distinct from a missing lineage. `DT-GET-04` directly projects the exact `(datatype_id,version)` row and performs only representational decoding of persisted status/base_type/constraints.
 
-`default_version` is trusted persisted projection state; no publication lookup is part of the GET.
-
-## DT-GET-02 — lineage exact
-
-```text
-datatypes WHERE id = :datatype_id
-```
-
-Zero rows -> lineage 404; one row -> direct projection. No default-target certification.
-
-## DT-GET-03 — version page
-
-```text
-root       datatypes.id = :datatype_id
-children   datatype_versions for that lineage
-filter     status
-keyset     version
-order      version ASC
-page       limit + 1
-```
-
-Child filters/keyset live inside the bounded child side so they cannot erase target-presence evidence.
-
-## DT-GET-04 — exact version
-
-```text
-datatype_versions
-WHERE datatype_id = :datatype_id
-  AND version = :version
-```
-
-Persisted `status`, `base_type` and `constraints` are decoded representationally. The GET does not re-run constraint canonicalization/admission.
+No DataType GET re-runs constraint/default publication certification.
 
 # ADP-02 — ObjectTemplate family CLOSED
 
@@ -438,27 +449,11 @@ Persisted `status`, `base_type` and `constraints` are decoded representationally
 | `OT-GET-05` | `GET /object-templates/{id}/versions/{version}/effective-schema` | `RP-05` | recursive exact-version chain |
 | `OT-GET-06` | `GET /object-templates/{id}/relationship-capabilities` | `RP-06` | recursive stable-lineage ancestry page |
 
-## OT-GET-01 — lineage list
+### OT-GET-01..03
 
-```text
-source     object_templates
-filters    namespace, name, abstract, internal parent-filter state
-keyset     (namespace, name)
-order      (namespace, name) ASC
-page       limit + 1
-```
+`OT-GET-01` uses `namespace,name,abstract,parent-filter-state`, keyset/order `(namespace,name)` and `limit+1`; `default_version` is projected without target certification. HTTP lexical omitted/UUID/lowercase-null handling remains ADP-05. `OT-GET-02` directly projects the lineage. `OT-GET-03` is a status-filtered lineage-rooted version page.
 
-HTTP lexical realization of omitted / UUID / lowercase `null` is owned by `api.md` / ADP-05. `default_version` is projected without target certification.
-
-## OT-GET-02 — lineage exact
-
-Direct exact `object_templates.id` projection. Stable parent and nullable default are facts to project, not dependencies to certify.
-
-## OT-GET-03 — version page
-
-`RP-03` over `object_templates` + bounded `object_template_versions`; status/keyset predicates must preserve lineage existence across an empty child page.
-
-## OT-GET-04 — exact version aggregate
+### OT-GET-04 — exact version aggregate
 
 Public projection:
 
@@ -468,11 +463,11 @@ ObjectTemplateVersion header
 + local components[]
 ```
 
-Properties and components are independent child sets and must never be joined into a `properties × components` product. A typed multi-branch projection is preferred; an equivalent independent aggregation is allowed.
+Properties/components remain independent child sets. A direct properties×components join is forbidden. A typed multi-branch projection is preferred; equivalent independent aggregation is allowed.
 
-## OT-GET-05 — effective schema
+### OT-GET-05 — effective schema
 
-The exact inheritance chain is:
+The projector follows persisted exact parent pins only:
 
 ```text
 (template_id, version)
@@ -480,25 +475,11 @@ The exact inheritance chain is:
     -> ... exact root
 ```
 
-The GET follows only persisted exact pins. It does not read stable lineage merely to re-certify agreement with the exact chain.
+It emits declaration/context rows sufficient for trusted root-to-leaf effective-schema assembly with `declaring_template_id`, without mutation-oriented cycle/agreement/member-collision certification.
 
-The projector emits enough exact-chain/declaration data to construct the trusted effective schema with deterministic root-to-leaf ordering and `declaring_template_id`, without calling mutation-oriented effective-schema validators.
+### OT-GET-06 — relationship capabilities
 
-## OT-GET-06 — relationship capabilities
-
-Capability membership uses stable ancestry:
-
-```text
-requested stable ObjectTemplate
-    -> stable ancestors
-    -> RelationshipResolution where from_template_id is in ancestry
-    -> optional name filter
-    -> resolution_id keyset/order
-    -> LIMIT limit + 1
-    -> EXISTS at least one PUBLISHED RelationshipDefinitionVersion
-```
-
-The `EXISTS(PUBLISHED ...)` predicate remains because it defines public collection membership. `RelationshipDefinition.default_version` is projected without loading/certifying its target.
+Capability membership follows stable ancestry, then `RelationshipResolution.from_template_id IN ancestry`, optional name filter, `resolution_id` keyset/order, `limit+1`, and the existing `EXISTS` predicate requiring at least one PUBLISHED RelationshipDefinitionVersion. That `EXISTS` is public membership logic, not certification. `default_version` is projected without target lookup.
 
 # ADP-02 — Object family CLOSED
 
@@ -506,203 +487,164 @@ The `EXISTS(PUBLISHED ...)` predicate remains because it defines public collecti
 |---|---|---|---|
 | `OBJ-GET-01` | `GET /objects` | `RP-01` | direct minimal ObjectSummary page |
 | `OBJ-GET-02` | `GET /objects/{id}` | `RP-02` | direct intrinsic Object read; remove transitive schema/DataType certification |
-| `OBJ-GET-03` | `GET /objects/{parent}/components` | `RP-07` + exact-chain context | page ownership facts, complete `slot_declaring_template_id` from exact chain |
+| `OBJ-GET-03` | `GET /objects/{parent}/components` | `RP-07` + exact-chain context | complete `slot_declaring_template_id` from exact chain |
 | `OBJ-GET-04` | `GET /objects/{child}/owner` | `RP-08` + exact-chain context | distinguish absent child / detached child / materialized owner |
-| `OBJ-GET-05` | `GET /objects/{id}/lifecycle-events` | `RP-03` + ADP-03 decoder | target-rooted event page; decoder details deferred to ADP-03 |
+| `OBJ-GET-05` | `GET /objects/{id}/lifecycle-events` | `RP-03` + ADP-03 decoder | target-rooted event page; decoder details deferred |
 | `OBJ-GET-06` | `GET /objects/{id}/relationships` | `RP-07` | target-rooted deduplicated semantic Relationship-view page |
 
-## OBJ-GET-01 — Object list
+### OBJ-GET-01 — Object page
 
-The existing one-statement summary projection remains the architecture target:
+One statement over Object summary columns, filters `template_id`, dependent `template_version`, `canonical_name`, keyset/order `id`, `limit+1`. `template_version requires template_id` remains application request validation. Unknown filter targets yield an empty collection rather than a target lookup.
 
-```text
-source     objects summary columns
-filters    template_id, dependent template_version, canonical_name
-keyset     id
-order      id ASC
-page       limit + 1
-```
+### OBJ-GET-02 — intrinsic Object exact
 
-`template_version requires template_id` remains request validation in application. An unknown filter value naturally yields an empty collection; it is not a path target and does not require an existence lookup.
+Direct `objects.id` projection. Persisted `properties` must be representationally decodable as the required object carrier with string keys. Runtime-schema/DataType loading and property re-canonicalization are removed from GET.
 
-## OBJ-GET-02 — intrinsic Object exact read
+### OBJ-GET-03 — component page
 
-Direct exact `objects.id` projection.
-
-Representational decoding of the persisted `properties` carrier remains required, including top-level object shape and string keys needed to build `dict[str, JsonValue]`.
-
-The GET must remove transitive runtime-schema/DataType loading and persisted-property semantic re-canonicalization. Those are mutation-owned invariants and are not needed to construct the public Object DTO.
-
-## OBJ-GET-03 — component page
-
-Pattern:
+Inputs:
 
 ```text
-RP-07 — TARGET-ROOTED CONTEXT-COMPLETED PAGE
-```
-
-Required persisted inputs:
-
-```text
-parent Object exact (template_id, template_version)
-recursive exact ObjectTemplateVersion parent chain
+parent Object exact template pin
+recursive exact ObjectTemplateVersion chain
 bounded object_components page
-component declarations on that exact chain matching persisted slot_name
+component declaration matching persisted slot_name on exact chain
 ```
 
-Public item fields are:
+The declaration lookup exists only to project mandatory `slot_declaring_template_id`. Zero or ambiguous contextual matches are internal projection failures, never silent member filtering. Primary page key/order remains `child_object_id`; optional `slot_name` remains a filter. Cursor identity adds `parent_object_id` under ADP-04.
+
+### OBJ-GET-04 — owner
+
+Required child Object is left-associated with the optional ownership fact. If ownership exists, the parent Object exact template pin and recursive exact chain provide the unique declaration needed for `slot_declaring_template_id`.
 
 ```text
-slot_declaring_template_id
-slot_name
-child_object_id
+child absent                  -> 404
+child present, no ownership   -> 200 null
+ownership materializable      -> OwnerProjection
+ownership not materializable  -> internal failure, never null
 ```
 
-`slot_declaring_template_id` is projection context. Looking it up does **not** authorize effective-schema or slot-admissibility certification.
+### OBJ-GET-05 — lifecycle page
 
-The primary page is ownership facts ordered/keyed by `child_object_id`. `slot_name` remains an optional filter. The path target must survive an empty page.
+One target-rooted lifecycle page, ordered/keyed `(occurred_at,id) DESC`, preserving Object 404 versus empty event page. Historical decoding is ADP-03 work.
 
-For each paged ownership fact:
+### OBJ-GET-06 — Object-relative Relationship page
 
-```text
-exactly one matching declaration on the exact chain
-    -> materialize ComponentProjection
+The projector combines target Object, runtime resolution rows, factual Relationship state and Resolution names into complete public semantic views. It does not reload/validate Relationship, RelationshipDefinition, ObjectTemplate or DataType aggregates.
 
-zero matching declarations
-    -> required public field cannot be materialized
-    -> internal failure
-
-more than one matching declaration
-    -> ambiguous required public field
-    -> internal failure
-```
-
-The query must not use an inner-join shape that silently removes an ownership fact when declaration context is missing.
-
-Cursor query identity includes `parent_object_id`; the cursor owner and exact format are frozen in `api.md` / ADP-04.
-
-## OBJ-GET-04 — owner projection
-
-Pattern:
+The public set is deduplicated before keyset/order/limit:
 
 ```text
-RP-08 — TARGET-ROOTED OPTIONAL PROJECTION
-```
-
-Logical source:
-
-```text
-required child Object
-    LEFT JOIN optional object_components ownership fact
-
-if ownership exists
-    -> parent Object exact (template_id, template_version)
-    -> recursive exact ObjectTemplateVersion chain
-    -> matching component declaration
-    -> slot_declaring_template_id
-```
-
-Public outcomes are fixed:
-
-```text
-child absent
-    -> 404
-
-child present + no ownership fact
-    -> 200 null
-
-child present + one materializable ownership fact
-    -> 200 OwnerProjection
-```
-
-A persisted ownership fact that cannot produce exactly one `slot_declaring_template_id` is an internal projection failure and must not be converted into `200 null`.
-
-The GET does not re-check parent existence semantically, rebuild the full effective schema, or re-certify slot compatibility.
-
-## OBJ-GET-05 — Object lifecycle page
-
-Pattern:
-
-```text
-RP-03 — PARENT-ROOTED PAGE
-```
-
-The one statement combines:
-
-```text
-required path Object existence
-filtered lifecycle event page
-(occurred_at, id) DESC keyset/order
-limit + 1
-```
-
-It must preserve:
-
-```text
-Object absent                -> 404
-Object present + zero events -> 200 []
-Object present + events      -> normal page
-```
-
-Historical row decoding is representational work but its exact boundary remains ADP-03. Once the projection is one statement, this GET uses an ordinary UoW and no `coherent_read()`.
-
-## OBJ-GET-06 — Object-relative Relationship page
-
-Pattern:
-
-```text
-RP-07 — TARGET-ROOTED CONTEXT-COMPLETED PAGE
-```
-
-The one statement combines:
-
-```text
-required Object target
-runtime_relationship_resolutions
-relationships
-relationship_resolutions names
-```
-
-and materializes complete public `ObjectRelationshipView` rows:
-
-```text
-relationship_id
-relationship_definition_id
-relationship_definition_version
-properties
-object_id
-destination_object_id
-name
-```
-
-No `_validated_many()`-style reload of Relationship, RelationshipDefinition, ObjectTemplate or DataType aggregates belongs to the read path.
-
-The public collection is a **deduplicated semantic-view set**, not raw runtime rows. Therefore the architecture order is:
-
-```text
-derive complete public semantic rows
+derive complete semantic rows
     -> DISTINCT / equivalent semantic deduplication
-    -> apply public keyset
-       (relationship_id, destination_object_id, name)
+    -> keyset (relationship_id, destination_object_id, name)
     -> ORDER BY same tuple ASC
     -> LIMIT limit + 1
 ```
 
-Applying the page limit to raw runtime rows and deduplicating afterward is forbidden when it can shorten pages, omit semantic views or corrupt cursor continuation.
+Cursor identity adds `object_id` under ADP-04.
 
-Path-target framing must preserve:
+# ADP-02 — RelationshipDefinition family CLOSED
+
+| ID | Route | Pattern | Key architecture consequence |
+|---|---|---|---|
+| `RD-GET-01` | `GET /relationship-definitions` | `RP-09` | page Definition root ids before expanding complete Resolution sets |
+| `RD-GET-02` | `GET /relationship-definitions/{id}` | `RP-04` | exact aggregate header + complete Resolution set |
+| `RD-GET-03` | `GET /relationship-definitions/{id}/versions` | `RP-03` | parent-rooted version page preserving parent 404 vs empty page |
+| `RD-GET-04` | `GET /relationship-definitions/{id}/versions/{version}` | `RP-10` | distinguish parent absence, exact-version absence and empty property set |
+
+## RD-GET-01 — root-paged Definition aggregates
+
+Public page membership is defined by RelationshipDefinition roots, not joined Resolution rows.
+
+Logical shape:
 
 ```text
-Object absent                  -> 404
-Object present + zero views    -> 200 []
-Object present + public views  -> normal page
+relationship_definitions roots
+    -> id keyset/order ASC
+    -> LIMIT limit + 1 root ids
+
+selected root ids
+    -> join/expand relationship_resolutions
+    -> reconstruct complete RelationshipDefinition aggregates
 ```
 
-Cursor query identity includes `object_id`; its exact construction is owned by `api.md` / ADP-04.
+The aggregate expansion must never truncate one selected Definition because it owns multiple Resolution rows. The current page-root-first persistence architecture is retained. Read-side `validate_definition()`, default-target publication certification and `coherent_read()` are removed.
+
+## RD-GET-02 — exact Definition aggregate
+
+One exact RelationshipDefinition header plus its complete Resolution set is materialized in one statement under `RP-04`.
+
+```text
+Definition absent     -> 404
+Definition present    -> complete aggregate projection
+```
+
+A persisted Resolution-set cardinality that mutation validation would reject is not re-certified by GET. Required fields must still be representationally materializable. `default_version` is projected without loading/certifying its target.
+
+## RD-GET-03 — version page
+
+One `RP-03` statement rooted at `relationship_definitions.id` with a bounded `relationship_definition_versions` child page:
+
+```text
+filter     status when supplied
+keyset     version
+order      version ASC
+page       limit + 1
+```
+
+The status/keyset predicates remain on the child-page side so they cannot erase the parent-only result.
+
+```text
+parent absent                   -> RelationshipDefinition 404
+parent present + zero versions  -> 200 []
+parent present + versions       -> normal page
+```
+
+No default-pointer recertification is part of the GET.
+
+## RD-GET-04 — nested exact version aggregate
+
+One `RP-10` statement preserves three levels of public interpretation:
+
+```text
+RelationshipDefinition parent
+    -> optional exact RelationshipDefinitionVersion(version)
+       -> ordered property declarations
+```
+
+Result semantics:
+
+```text
+parent absent
+    -> RelationshipDefinition 404
+
+parent present + exact version absent
+    -> RelationshipDefinitionVersion 404
+
+exact version present + zero properties
+    -> successful RDV with properties=[]
+
+exact version present + properties
+    -> successful complete RDV
+```
+
+Property ordering remains `position ASC`. The projector performs typed carrier decoding only and does not call persisted RDV semantic validators. Separate parent/header/property reads and `coherent_read()` are removed.
+
+# ADP-02 — Remaining routes
+
+The only uncovered canonical GET/read routes are:
+
+```text
+REL-GET-01  GET /relationships/{id}
+LC-GET-01   GET /lifecycle-events
+```
+
+They must be closed before ADP-02 can become CLOSED.
 
 # Cross-family ADP-02 invariants currently frozen
 
-For all sixteen covered routes:
+For all twenty covered routes:
 
 ```text
 one complete business SQL statement
@@ -713,6 +655,8 @@ no mutation semantic validator as a read prerequisite
 no hidden remediation or silent filtering of required state
 canonical public ordering and keyset semantics preserved
 path-target absence versus empty-page/null semantics preserved
+aggregate pages limit root/public items rather than arbitrary joined rows
+nested exact resources preserve parent absence separately from exact-child absence
 ```
 
 # Preserved AS-IS responsibilities
@@ -757,15 +701,15 @@ This contract-authorized contradiction must be propagated to the delivered AS-IS
 
 # Downstream architecture constraints
 
-Remaining ADP-02 work must ensure every uncovered route:
+The final two ADP-02 routes must:
 
 ```text
-has one complete persistence projection boundary
-uses no mutation semantic validator as a read prerequisite
-preserves target-absence versus empty-collection behavior where applicable
-preserves canonical ordering/filtering/keyset semantics
-observes one committed statement snapshot
-requires no public-GET coherent_read() dependency
+have one complete persistence projection boundary
+use no mutation semantic validator as a read prerequisite
+preserve public target/failure semantics
+preserve canonical ordering/filtering/keyset semantics where applicable
+observe one committed statement snapshot
+require no public-GET coherent_read() dependency
 ```
 
 ADP-03 must define lifecycle decoding exclusively as representational materialization, not transition certification.
@@ -787,11 +731,11 @@ ADP-02  PARTIAL
     DataType             4 / 4 CLOSED
     ObjectTemplate       6 / 6 CLOSED
     Object               6 / 6 CLOSED
-    RelationshipDef      0 / 4 OPEN
+    RelationshipDef      4 / 4 CLOSED
     Relationship         0 / 1 OPEN
     Global lifecycle     0 / 1 OPEN
     ------------------------------
-    total               16 / 22
+    total               20 / 22
 ADP-03  OPEN
 ```
 
