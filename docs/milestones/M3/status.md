@@ -55,7 +55,7 @@ Current TO-BE owners:
 architecture/read-projections.md
     DESIGN IN PROGRESS
     ADP-01 CLOSED
-    ADP-02 PARTIAL — 20 / 22 routes defined
+    ADP-02 CLOSED — 22 / 22 routes defined
     ADP-03 OPEN
 
 architecture/api.md
@@ -72,7 +72,7 @@ architecture/verification.md
 
 ```text
 ADP-01  CLOSED   read projection responsibility / persistence boundary
-ADP-02  PARTIAL  complete 22-route one-statement projection matrix — 20 / 22
+ADP-02  CLOSED   complete 22-route one-statement projection matrix — 22 / 22
 ADP-03  OPEN     historical lifecycle trusted decoder
 ADP-04  OPEN     cursor identity realization
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
@@ -81,20 +81,27 @@ ADP-07  OPEN     CLI Location materialization grammar
 ADP-08  OPEN     verification architecture
 ```
 
-ADP-02 route-family progress:
+Progress:
+
+```text
+closed design points  2 / 8
+open design points    6 / 8
+```
+
+ADP-02 route-family closure:
 
 ```text
 DataType             4 / 4 CLOSED
 ObjectTemplate       6 / 6 CLOSED
 Object               6 / 6 CLOSED
 RelationshipDef      4 / 4 CLOSED
-Relationship         0 / 1 OPEN
-Global lifecycle     0 / 1 OPEN
+Relationship         1 / 1 CLOSED
+Global lifecycle     1 / 1 CLOSED
 ------------------------------
-total               20 / 22
+total               22 / 22 CLOSED
 ```
 
-Current projection-pattern vocabulary is `RP-01 .. RP-10`. The RelationshipDefinition family adds root-paged aggregate semantics and nested parent/exact-child failure preservation.
+The frozen projection-pattern vocabulary is `RP-01 .. RP-10`. Every canonical public business GET/read target is now assigned one complete one-statement logical projection, ordinary read UoW / PostgreSQL statement snapshot, and no target dependence on `coherent_read()`.
 
 ## Frozen contract outcomes to realize
 
@@ -154,13 +161,11 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Complete the final ADP-02 routes:
+Close **ADP-03 — Historical lifecycle trusted decoder** in [`architecture/read-projections.md`](architecture/read-projections.md), defining the exact boundary between representational historical carrier decoding and forbidden mutation-transition semantic re-certification for both:
 
 ```text
-REL-GET-01  GET /relationships/{id}
+OBJ-GET-05  GET /objects/{id}/lifecycle-events
 LC-GET-01   GET /lifecycle-events
 ```
-
-Then close ADP-02 only if the complete 22/22 matrix remains consistent with ADP-01 and the frozen contract.
 
 Software implementation remains **NOT AUTHORIZED**.
