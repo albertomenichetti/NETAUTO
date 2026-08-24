@@ -105,9 +105,9 @@ relationship create
 
 A valid server response consisting of the registered `201` status, canonical response body and exactly matching `Location` is a CLI success in both interactive and non-interactive execution.
 
-The CLI must support registered `Location` identities that are obtained either from already-resolved request values or from fields nested in the canonical response body. In particular, the existing create response shapes for DataType, ObjectTemplate and RelationshipDefinition remain valid and require no public response flattening.
+The CLI must support registered `Location` identities obtained either from already-resolved request values or from JSON paths in the canonical response body, including both top-level and nested response fields. The existing create response shapes for DataType, ObjectTemplate and RelationshipDefinition remain valid and require no public response flattening.
 
-A server response with missing, repeated, non-materializable or mismatching `Location` remains a same-release protocol violation and is reported as `cli_protocol_error`.
+A missing, repeated or mismatching actual `Location`, or an expected registered `Location` that cannot be materialized from the canonical request/response carriers, remains a same-release protocol violation and is reported as `cli_protocol_error`.
 
 A valid canonical successful response must not become `cli_internal_error` solely because of local post-success `Location` processing.
 
@@ -398,6 +398,7 @@ bounded error details and no internal leakage
 opaque keyset pagination
 limit omitted -> 100 and existing accepted range
 current public DTO shapes and ordering
+single-request self-consistent committed public read projection
 exact version identities and persisted exact bindings
 mutation semantic validation and atomicity
 PostgreSQL schema and Alembic baseline
@@ -424,6 +425,8 @@ The Object-relative Relationship cursor becomes bound to `object_id` in addition
 
 The existing `parent_template_id` filter gains one canonical lexical state: exact lowercase `null`, meaning stable root ObjectTemplates only. Omission continues to mean no parent filter.
 
+The official CLI gains the corresponding explicit-null query carrier for this selector-capable parameter: `parent_template_id=null` performs no ObjectTemplate selector lookup and sends the canonical lowercase `null` query value. `parent_filter_set` remains internal only.
+
 ### Official CLI create outcome correction
 
 The official CLI must correctly materialize and validate existing registered nested `Location` identities so a valid canonical `201 Created` response is reported as success. This is a correction of delivered implementation behavior while preserving the existing same-release API/CLI response contract.
@@ -438,15 +441,15 @@ Every registered canonical `201 Created` response with the expected body and exa
 
 ## M3-OUT-02 — Exact CLI protocol failure preservation
 
-Missing, repeated, non-materializable or mismatching `Location` remains `cli_protocol_error`; M3 does not weaken same-release response validation to obtain create success.
+A missing, repeated or mismatching actual `Location`, or inability to materialize the expected registered `Location` from canonical request/response carriers, remains `cli_protocol_error`; M3 does not weaken same-release response validation to obtain create success.
 
 ## M3-OUT-03 — Read semantic-authority correction
 
-All twenty-two canonical public business GET/read routes stop re-certifying mutation-owned persisted semantic invariants while preserving strict request validation, target lookup and typed projection behavior.
+All twenty-two canonical public business GET/read routes project structurally and representationally materializable persisted state without failing solely because GET re-runs mutation-owned semantic certification, while preserving strict request validation, target lookup and typed projection behavior.
 
 ## M3-OUT-04 — Public read compatibility
 
-Public GET success DTOs, filters, ordering, pagination and failure semantics remain compatible except for the explicitly authorized cursor-binding corrections and ObjectTemplate root-only carrier.
+Public GET success DTOs, filters, ordering and pagination remain compatible. Request-validation and path-target failure semantics remain compatible. Other read failure behavior changes only where explicitly authorized by the read semantic-authority delta or the cursor/root-filter deltas in this contract.
 
 ## M3-OUT-05 — Complete cursor query identity
 
@@ -462,7 +465,7 @@ The HTTP API exposes `parent_template_id` as omitted / exact UUID / exact lowerc
 
 ## M3-OUT-08 — Regression and traceability closure
 
-Every explicit M3 delta and every preserved affected AS-IS guarantee has deterministic verification and normative architecture ownership before delivery.
+Every explicit M3 delta has frozen M3 architecture ownership and deterministic verification. Every preserved affected AS-IS guarantee remains traceable to its current authoritative owner and has deterministic regression evidence before delivery.
 
 ## Acceptance criteria
 
@@ -500,7 +503,7 @@ Global and Object-scoped lifecycle reads retain their current public discriminat
 
 ## M3-AC-09 — Complete twelve-route cursor binding
 
-Every one of the twelve cursor-bearing routes rejects a cursor when any semantic membership filter or required path target differs from the issuing query. A cursor with unchanged semantic identity continues successfully even when `limit` changes.
+Every one of the twelve cursor-bearing routes rejects a cursor when the route identity, any semantic membership filter or any required path target differs from the issuing query. A cursor with unchanged semantic identity continues successfully even when `limit` changes.
 
 ## M3-AC-10 — Object components cross-parent cursor rejection
 
@@ -538,7 +541,11 @@ M3 requires no database schema or Alembic revision change, no new runtime depend
 
 ## M3-AC-18 — Complete outcome traceability
 
-Every `M3-OUT-*` outcome is owned by at least one frozen M3 architecture document and linked to deterministic acceptance/verification evidence. No acceptance criterion, architecture requirement or explicit AS-IS delta is orphaned.
+Every `M3-OUT-*` outcome is traceable through the frozen M3 architecture set to its explicit M3 TO-BE owner and/or the preserved current AS-IS owner, and is linked to deterministic acceptance/verification evidence. No acceptance criterion, architecture requirement or explicit AS-IS delta is orphaned.
+
+## M3-AC-19 — Single-request committed read coherence
+
+Every canonical public GET/page observes one self-consistent committed projection for that request. A concurrent mutation may be observed entirely before or entirely after according to the database snapshot, but one response must not mix incompatible generations of the state it projects. Cross-request repeatable membership remains explicitly unpromised.
 
 ## Contract quality gates
 
