@@ -8,9 +8,17 @@ If this README, the checked-out branch or a cycle's authoritative documents disa
 
 ## Current development cycle
 
-**NO ACTIVE CYCLE**
+**M3 — ACTIVE MILESTONE**
 
-M2 is delivered and merged into `master`. No milestone or fix is currently open. Software changes are therefore not permitted until a new milestone or fix is formally initialized, or an existing delivered cycle is explicitly reopened through the project governance process.
+The active software cycle is milestone `M3`.
+
+```text
+cycle type          milestone
+documentation root  docs/milestones/M3/
+cycle branch        M3
+```
+
+Detailed phase, gates, blockers and implementation decomposition belong to the M3 cycle documents on branch `M3`. The root README intentionally records only the active-cycle identity, documentation root and branch.
 
 When a software cycle is active:
 
@@ -18,8 +26,6 @@ When a software cycle is active:
 - `Fx-y` points to `docs/fixes/Fx-y/`.
 
 A cycle's `status.md` owns its detailed phase, gates and blockers. Its `steps.md` owns the implementation decomposition. This README intentionally does not duplicate those details.
-
-With no active software cycle, explicitly authorized repository-governance or documentation maintenance follows the limited rules in [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md).
 
 ## Delivered cycles
 
