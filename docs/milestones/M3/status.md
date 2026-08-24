@@ -56,7 +56,7 @@ architecture/read-projections.md
     DESIGN IN PROGRESS
     ADP-01 CLOSED
     ADP-02 CLOSED — 22 / 22 routes defined
-    ADP-03 OPEN
+    ADP-03 CLOSED
 
 architecture/api.md
     NOT YET WRITTEN
@@ -73,7 +73,7 @@ architecture/verification.md
 ```text
 ADP-01  CLOSED   read projection responsibility / persistence boundary
 ADP-02  CLOSED   complete 22-route one-statement projection matrix — 22 / 22
-ADP-03  OPEN     historical lifecycle trusted decoder
+ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  OPEN     cursor identity realization
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
 ADP-06  OPEN     CLI nullable selector/query carrier
@@ -84,24 +84,21 @@ ADP-08  OPEN     verification architecture
 Progress:
 
 ```text
-closed design points  2 / 8
-open design points    6 / 8
+closed design points  3 / 8
+open design points    5 / 8
 ```
 
-ADP-02 route-family closure:
+Read architecture closure:
 
 ```text
-DataType             4 / 4 CLOSED
-ObjectTemplate       6 / 6 CLOSED
-Object               6 / 6 CLOSED
-RelationshipDef      4 / 4 CLOSED
-Relationship         1 / 1 CLOSED
-Global lifecycle     1 / 1 CLOSED
-------------------------------
-total               22 / 22 CLOSED
+ADP-01 responsibility boundary                  CLOSED
+ADP-02 route projection matrix                  CLOSED — 22 / 22
+ADP-03 historical trusted decoder               CLOSED
 ```
 
-The frozen projection-pattern vocabulary is `RP-01 .. RP-10`. Every canonical public business GET/read target is now assigned one complete one-statement logical projection, ordinary read UoW / PostgreSQL statement snapshot, and no target dependence on `coherent_read()`.
+The frozen projection-pattern vocabulary is `RP-01 .. RP-10`. Every canonical public business GET/read target has one complete one-statement logical projection, an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
+
+Historical lifecycle reads now have a frozen decoding-only boundary: typed carrier materialization remains; mutation-transition semantic recertification, duplicated database family/state-shape checks and live-state reinterpretation are removed from the read target. Materially undecodable required carriers continue to fail safely, while mutation/lifecycle-write validation remains strong.
 
 ## Frozen contract outcomes to realize
 
@@ -161,11 +158,24 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Close **ADP-03 — Historical lifecycle trusted decoder** in [`architecture/read-projections.md`](architecture/read-projections.md), defining the exact boundary between representational historical carrier decoding and forbidden mutation-transition semantic re-certification for both:
+Close **ADP-04 — Cursor identity realization** in `architecture/api.md`.
+
+The design must freeze one application cursor construction rule for all twelve cursor-bearing routes:
 
 ```text
-OBJ-GET-05  GET /objects/{id}/lifecycle-events
-LC-GET-01   GET /lifecycle-events
+query identity
+    = route identity
+    + every path target that changes collection membership
+    + every query filter that changes collection membership
+    + explicit semantic presence bits where omitted/null/value are distinct
+
+position
+    = complete canonical keyset ordering tuple
+
+limit
+    = excluded from semantic query identity
 ```
+
+It must explicitly realize the two path-target corrections (`parent_object_id`, `object_id`) and preserve ObjectTemplate omitted/root/exact-parent distinction plus global/object-scoped lifecycle cursor separation.
 
 Software implementation remains **NOT AUTHORIZED**.
