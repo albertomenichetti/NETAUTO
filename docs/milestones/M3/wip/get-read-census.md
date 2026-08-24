@@ -244,14 +244,79 @@ Request validation, cursor integrity, keyset pagination, exact 404 semantics and
 
 ---
 
-## 4. Remaining census
+## 4. ObjectTemplate — 1 / 6 reviewed
+
+### OT-GET-01 — List ObjectTemplate lineages
 
 ```text
-ObjectTemplate          0 / 6 reviewed in this census
+GET /api/v1/core/object-templates
+application: ObjectTemplateService.list_lineages
+status: CONSOLIDATED
+```
+
+Current behavior:
+
+```text
+request/cursor validation
+-> coherent_read()
+-> SELECT object_templates page
+-> SELECT referenced default ObjectTemplateVersion headers
+-> re-check every non-null default target is PUBLISHED
+-> page/cursor projection
+```
+
+The application and persistence layers already represent the parent filter as a valid tri-state:
+
+```text
+parent_filter_set = false
+    -> no parent predicate
+
+parent_filter_set = true + parent_template_id = UUID
+    -> parent_template_id = UUID
+
+parent_filter_set = true + parent_template_id = null
+    -> parent_template_id IS NULL
+```
+
+The cursor query identity also preserves the distinction between no parent filter and an explicit root-only filter through `parent_filter_set`.
+
+Decision:
+
+```text
+persisted-state semantic revalidation   REMOVE
+coherent_read()                         REMOVE
+required persistence statements         1
+single-statement projection              ALREADY AVAILABLE
+request/cursor validation                PRESERVE
+pagination/filter semantics              PRESERVE
+application parent tri-state             PRESERVE
+persistence parent tri-state             PRESERVE
+```
+
+Rationale:
+
+As for the DataType lineage reads, `default_version -> PUBLISHED` is a persisted semantic invariant owned by mutation paths and must not be re-certified by this GET. Once `_validate_default_pointers()` is removed, `ObjectTemplateStore.list_lineages()` already materializes the complete requested lineage page with one statement, so no coherent multi-statement snapshot remains to justify `coherent_read()`.
+
+The separate M3 `parent_template_id = null` investigation is now narrowed further: the tri-state is already coherent in the application query and persistence statement. Remaining discovery must verify whether the public HTTP and CLI carriers can express the explicit root-only state canonically.
+
+Target read shape:
+
+```text
+validate request/cursor
+-> one object_templates lineage-page SELECT
+-> pagination/cursor projection
+```
+
+---
+
+## 5. Remaining census
+
+```text
+ObjectTemplate          1 / 6 reviewed in this census
 Object                  0 / 6 reviewed
 RelationshipDefinition  0 / 4 reviewed
 Relationship            0 / 1 reviewed
 Global lifecycle        0 / 1 reviewed
 ```
 
-Prior walkthrough findings for ObjectTemplate remain in `discovery.md` until each route is reviewed and promoted into this census.
+Prior walkthrough findings for the remaining ObjectTemplate reads remain in `discovery.md` until each route is reviewed and promoted into this census.
