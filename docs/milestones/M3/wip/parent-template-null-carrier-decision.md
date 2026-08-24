@@ -2,7 +2,7 @@
 
 **Status:** CONSOLIDATED DISCOVERY INPUT / NON-NORMATIVE
 
-**Role:** Area C discovery decision. This file records the reviewed public carrier semantics for ObjectTemplate root-only filtering. It does not authorize implementation and does not replace the future M3 contract, architecture set or implementation steps.
+**Role:** Area C discovery decision. This file records the reviewed public carrier semantics and boundary realization for ObjectTemplate root-only filtering. It does not authorize implementation and does not replace the future M3 contract, architecture set or implementation steps.
 
 ## 1. Problem statement
 
@@ -45,57 +45,119 @@ parent_template_id=null
     -> only root ObjectTemplates
 ```
 
-No second `root=true` style query parameter, empty-string sentinel, uppercase magic value or other alternate encoding is introduced.
+`parent_filter_set` remains an internal application/cursor representation detail and is **not** exposed as a second public query parameter.
 
-## 3. HTTP semantics
+No `root=true`, `has_parent=false`, empty-string sentinel, uppercase magic value or other alternate encoding is introduced.
+
+## 3. HTTP boundary
+
+The HTTP adapter must continue to distinguish omission from explicit presence through the raw query-parameter set:
+
+```text
+"parent_template_id" not present
+    -> parent_filter_set = false
+
+"parent_template_id" present
+    -> parent_filter_set = true
+```
+
+The typed query carrier must accept exactly:
+
+```text
+literal "null"
+    -> Python None
+
+canonical valid UUID lexical value
+    -> UUID
+```
+
+Malformed values other than the exact lowercase `null` sentinel remain invalid request carriers and map through the existing request-validation boundary to `invalid_request / 400`.
 
 Target HTTP behavior:
 
 ```text
 GET /api/v1/core/object-templates
-    -> parent_filter_set = false
     -> parent_template_id = None
+    -> parent_filter_set = false
     -> no parent predicate
 
 GET /api/v1/core/object-templates?parent_template_id=<valid UUID>
-    -> parent_filter_set = true
     -> parent_template_id = UUID
+    -> parent_filter_set = true
     -> exact parent predicate
 
 GET /api/v1/core/object-templates?parent_template_id=null
-    -> parent_filter_set = true
     -> parent_template_id = None
+    -> parent_filter_set = true
     -> IS NULL parent predicate
+
+parent_template_id=
+parent_template_id=NULL
+parent_template_id=root
+parent_template_id=<malformed UUID>
+    -> invalid_request / 400
 ```
 
-Malformed values other than the exact accepted `null` sentinel remain invalid request carriers and map to the existing canonical `invalid_request / 400` response.
+A dedicated strict query carrier / `BeforeValidator`-style adapter is the expected realization pattern. The exact helper name remains an implementation detail.
 
-The HTTP adapter must preserve the distinction between omission and explicit `null` using query-parameter presence, because both materialize as `None` at the typed Python value level.
-
-## 4. CLI semantics
+## 4. CLI boundary
 
 The CLI canonical grammar already defines `parameter=null` as explicit null for nullable registry parameters. Area C reuses that grammar rather than adding a special command syntax.
+
+The ObjectTemplate list registry parameter remains selector-capable for non-null values and becomes nullable:
+
+```text
+parent_template_id
+    location = query
+    selector = ObjectTemplate
+    nullable = true
+```
 
 Target CLI behavior:
 
 ```text
 object-template list
     -> omit parent_template_id
-    -> no parent filter
+    -> no parent query pair
 
 object-template list parent_template_id=<UUID|namespace.name>
     -> normal ObjectTemplate selector resolution
-    -> exact UUID query carrier
+    -> emit exact UUID query pair
 
 object-template list parent_template_id=null
-    -> explicit None
-    -> do not invoke ObjectTemplate selector resolution for this value
-    -> emit the HTTP query pair parent_template_id=null
+    -> parser materializes explicit None
+    -> no ObjectTemplate selector lookup
+    -> emit query pair parent_template_id=null
 ```
 
-The registry parameter therefore becomes nullable while remaining selector-capable for non-null values.
+Two common CLI boundaries must therefore understand nullable selector query carriers:
 
-A nullable selector parameter with an explicit `None` value must be treated as a terminal carrier value rather than as a selector target. This should be expressed by common selector-resolution semantics, not by a one-off branch specific to `parent_template_id`.
+### Selector resolution
+
+A selector-capable parameter with a non-null value retains existing selector resolution.
+
+A selector-capable parameter whose value is explicit `None` is valid only when that parameter is nullable; it is a terminal carrier value and must not be sent through selector lookup.
+
+This must be common metadata-driven behavior, not a branch hard-coded to `parent_template_id`.
+
+### Request planning
+
+Explicit `None` must not become a globally accepted path/query scalar.
+
+The location-aware rule is:
+
+```text
+nullable QUERY parameter + explicit None
+    -> lexical query value "null"
+
+nullable BODY parameter + explicit None
+    -> JSON null under existing body DTO rules
+
+PATH parameter + None
+    -> invalid / impossible registry-plan state
+```
+
+The existing scalar wire helper must therefore not simply be broadened globally to `_wire_string(None) -> "null"`.
 
 ## 5. Cursor identity
 
@@ -115,7 +177,7 @@ exact parent filter
     parent_filter_set = true
 ```
 
-This means no new cursor format or version is required for the semantic distinction itself. A cursor issued for one state must remain incompatible with the other states under the existing route/filter equality check.
+No new cursor format or version is required for this semantic distinction. The existing route/filter equality check already makes cursors from the three states mutually incompatible where their query identity differs.
 
 ## 6. Application and persistence boundary
 
@@ -137,35 +199,38 @@ if parent_filter_set:
     parent_template_id == supplied value
 ```
 
-already maps `None` to SQL `IS NULL` and therefore correctly implements root-only filtering.
+already maps `None` to SQL `IS NULL` and correctly implements root-only filtering.
 
-Area C must preserve that existing internal model.
+Area C therefore requires no domain-model, persistence-query or cursor-codec redesign.
 
 ## 7. Public-contract delta
 
-Current authoritative AS-IS documentation lists `parent_template_id` as an ObjectTemplate lineage filter but does not define a lexical root-only representation.
+The authoritative AS-IS API documentation lists `parent_template_id` as an ObjectTemplate lineage filter but does not define a lexical root-only representation.
 
-M3 must make the new wire meaning explicit:
+M3 must freeze this wire meaning explicitly:
 
 ```text
 parent_template_id query carrier
-    UUID  -> direct children of that parent
-    null  -> root ObjectTemplates only
     omitted -> no parent filter
+    UUID    -> direct children of that parent
+    null    -> root ObjectTemplates only
 ```
 
-This is a public carrier-contract clarification/correction, not a database or domain-model change.
+The official CLI must expose the same tri-state through its existing `parameter=value` grammar.
+
+This is a public carrier-contract correction, not a persistence or domain-semantics change.
 
 ## 8. Candidate acceptance evidence
 
-Later contract/steps should include evidence for at least:
+Later contract/steps should include at least:
 
 ```text
 HTTP omission -> unfiltered parent dimension
 HTTP valid UUID -> direct children only
 HTTP literal null -> roots only
 HTTP empty string -> invalid_request / 400
-HTTP other non-UUID non-null sentinel -> invalid_request / 400
+HTTP uppercase NULL -> invalid_request / 400
+HTTP other non-UUID sentinel -> invalid_request / 400
 HTTP duplicate parent_template_id -> invalid_request / 400
 
 CLI omission -> no parent query pair
@@ -180,10 +245,13 @@ cursor from exact-parent A rejected under exact-parent B
 root-only cursor continues root-only pagination successfully
 ```
 
+Regression evidence should also prove that no selector-discovery GET is performed for CLI `parent_template_id=null`.
+
 ## 9. Consolidated Area C direction
 
 ```text
 KEEP
+    one public filter name: parent_template_id
     existing application tri-state
     existing persistence tri-state
     existing cursor filter identity and parent_filter_set distinction
@@ -192,17 +260,20 @@ KEEP
 
 ADD / CHANGE
     canonical public root-only carrier: parent_template_id=null
-    HTTP nullable UUID query parsing with exact null sentinel
-    CLI nullable selector-carrier support
-    common selector resolver skips explicit null values for nullable selector parameters
+    HTTP nullable UUID query parsing with exact lowercase null sentinel
+    CLI registry marks the selector-capable query parameter nullable
+    common selector resolver skips explicit null for nullable selector parameters
+    request planner emits lexical null only for nullable query parameters
     public API/CLI documentation and regression evidence
 
 DO NOT
+    expose parent_filter_set publicly
     use empty string as root sentinel
-    add a second root=true filter
+    add a second root=true / has_parent=false filter
     add magic non-UUID strings such as ROOT
     collapse explicit null into omission
+    globally allow None as an arbitrary path/query scalar
     alter persistence/domain semantics to solve a carrier problem
 ```
 
-This decision closes the public lexical representation question for Area C. The remaining Area C discovery work is to consolidate the exact HTTP and CLI boundary realization and acceptance implications before marking the workstream closed.
+This decision closes both the public lexical representation and the HTTP/CLI boundary realization questions for Area C.
