@@ -49,7 +49,7 @@ The planned owning documents are:
 
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 / ADP-03 OPEN | Public GET/read responsibility boundary; one-statement realization for the 22-route census; UoW/snapshot model; trusted read projectors; lifecycle carrier-decoding boundary; route-level projection patterns. |
+| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL; ADP-03 OPEN | Public GET/read responsibility boundary; one-statement realization for the 22-route census; UoW/snapshot model; trusted read projectors; lifecycle carrier-decoding boundary; route-level projection patterns. |
 | [`api.md`](api.md) | NOT YET WRITTEN | Public HTTP query/cursor realization; complete cursor identity rule; the two path-binding corrections; ObjectTemplate `parent_template_id` tri-state and strict malformed/duplicate behavior. |
 | [`cli.md`](cli.md) | NOT YET WRITTEN | `Location` token/value-path grammar and materialization boundary; exact same-release response validation; nullable selector/query carrier semantics for `parent_template_id=null`. |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | Architecture-level deterministic evidence: 22 GET projection/statement checks, 12 cursor routes, eight 201 operations, lifecycle decoding boundary, parent-filter HTTP/CLI tri-state, non-delta/schema/dependency and read-coherence evidence. |
@@ -204,7 +204,7 @@ parent_filter_set remains internal only
 
 ```text
 ADP-01  CLOSED
-ADP-02  OPEN
+ADP-02  PARTIAL — 10 / 22 routes architected
 ADP-03  OPEN
 ADP-04  OPEN
 ADP-05  OPEN
@@ -216,9 +216,11 @@ ADP-08  OPEN
 Current design progress:
 
 ```text
-closed  1 / 8
-open    7 / 8
-next    ADP-02 — Complete 22-route one-statement projection matrix
+ADP-01 boundary       CLOSED
+ADP-02 DataType       4 / 4 CLOSED
+ADP-02 ObjectTemplate 6 / 6 CLOSED
+ADP-02 total         10 / 22
+next                 ADP-02 — Object family (6 routes)
 ```
 
 ### ADP-01 — CLOSED — Read projection responsibility and reusable persistence boundary
@@ -246,19 +248,39 @@ persistence read projector
 
 The application owns the read UoW and public outcome classification; projectors run on the caller-owned connection and do not open nested UoWs. Representational decoding remains required, while mutation-semantic re-certification is forbidden in public GET projectors. Mutation loaders/validators remain strong and are not globally weakened for GET reuse. `coherent_read()` remains infrastructure but is not a target dependency for the 22 canonical public GETs.
 
-### ADP-02 — OPEN — Complete 22-route one-statement projection matrix
+### ADP-02 — PARTIAL — Complete 22-route one-statement projection matrix
 
-For every canonical GET/read route, freeze the one-statement shape or equivalent architecture pattern sufficient to prove:
+The current projection-pattern vocabulary is owned by [`read-projections.md`](read-projections.md):
 
 ```text
-complete public projection
-correct 404 / empty semantics
-canonical ordering/filtering
-single-request committed coherence
-no semantic re-certification
+RP-01  DIRECT PAGE
+RP-02  DIRECT EXACT
+RP-03  PARENT-ROOTED PAGE
+RP-04  EXACT AGGREGATE / INDEPENDENT CHILD SETS
+RP-05  RECURSIVE EXACT-CHAIN PROJECTION
+RP-06  RECURSIVE STABLE-ANCESTRY PAGE
 ```
 
-The design should promote shared projection patterns without forcing unrelated routes into one abstraction.
+Closed route families:
+
+```text
+DataType        4 / 4
+ObjectTemplate  6 / 6
+               ------
+               10 / 22
+```
+
+Key recursive distinction already frozen:
+
+```text
+effective schema
+    -> exact ObjectTemplateVersion ancestry
+
+relationship capabilities
+    -> stable ObjectTemplate lineage ancestry
+```
+
+The remaining twelve routes must be classified under these patterns or introduce an additional pattern only where a genuinely different correctness shape is required.
 
 ### ADP-03 — OPEN — Historical lifecycle trusted decoder
 
