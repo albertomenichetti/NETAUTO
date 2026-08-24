@@ -2,9 +2,9 @@
 
 **Status:** WIP / NON-NORMATIVE
 
-**Role:** discovery aid only. This file records current findings, hypotheses and candidate principles. It does not define the M3 contract, architecture or implementation authority.
+**Role:** discovery aid only. This file records current findings and consolidated discovery inputs. It does not define the M3 contract, architecture or implementation authority.
 
-## 1. Purpose of the discovery
+## 1. Purpose and current workstream state
 
 M3 is being explored as a focused kernel-simplification milestone with three bounded problem areas:
 
@@ -12,11 +12,19 @@ M3 is being explored as a focused kernel-simplification milestone with three bou
 2. Complete audit of all public business GET/read paths.
 3. Verification and possible correction of the `parent_template_id = null` filter contract.
 
-The milestone contract must not be frozen until these three areas have been closed enough that scope, observable deltas and acceptance criteria are unambiguous.
+Current discovery state:
+
+```text
+Area A — CLI post-create correctness          OPEN
+Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
+Area C — parent_template_id = null carrier    OPEN
+```
+
+The milestone contract must not be frozen until Areas A and C are also closed enough that scope, observable deltas and acceptance criteria are unambiguous.
 
 ---
 
-## 2. Area A — CLI post-create correctness
+## 2. Area A — CLI post-create correctness — OPEN
 
 ### Observed defect
 
@@ -42,29 +50,30 @@ The exact CLI behavior for an unexpected local post-success failure still needs 
 
 ---
 
-## 3. Area B — Complete GET/read-path audit
+## 3. Area B — Complete GET/read-path audit — CLOSED
 
-### Scope
+### Closure
 
-The current public business API exposes 22 canonical GET/read routes. Discovery must review them one by one rather than extrapolating from the first findings.
-
-For every GET, record at minimum:
+The repository walkthrough has reviewed all 22 canonical public business GET/read routes:
 
 ```text
-route / public projection
-application query method
-persistence calls and statement count
-semantic checks performed on persisted state
-use of coherent_read()
-reason, if any, that multiple statements require one snapshot
-whether one SQL statement can materialize the required projection cleanly
-failure semantics
-cursor/filter semantics where applicable
+DataType                  4 / 4
+ObjectTemplate            6 / 6
+Object                    6 / 6
+RelationshipDefinition    4 / 4
+Relationship              1 / 1
+Global lifecycle          1 / 1
+                         ------
+                         22 / 22
 ```
 
-### Candidate architectural principle
+The compact route register is [`get-read-census.md`](get-read-census.md).
 
-The working principle to validate across the full census is:
+The consolidated downstream planning input is [`get-read-review-closure.md`](get-read-review-closure.md).
+
+### Consolidated architectural input
+
+The completed review confirms the following discovery rule:
 
 ```text
 mutation
@@ -74,87 +83,151 @@ database
     -> preserves structural invariants expressible as constraints / FK
 
 GET / read
-    -> trusts persisted state
-    -> locates, composes and projects it
+    -> validates request/cursor carriers
+    -> trusts persisted semantic state
+    -> locates, composes and projects persisted facts
+    -> performs only carrier decoding required for typed output
     -> does not re-certify semantic invariants already owned by mutation paths
 ```
 
-The criterion for read-side validation is semantic ownership, not cost. A cheap validation is still a validation and should not remain in a GET merely because it is inexpensive.
+The criterion is semantic ownership, not cost. A cheap validation is still outside GET ownership when it merely re-proves persisted state.
 
-Operational protections such as generic timeouts are distinct from semantic integrity checks and must not be used to blur that ownership boundary.
+### Consolidated statement/snapshot conclusion
 
-### `coherent_read()` working rule
+The route-by-route review found that every canonical public business GET can be materialized cleanly in one SQL statement.
 
-`coherent_read()` is not a target for blanket removal.
-
-Its use must be explicitly justified by a real multi-statement projection that would otherwise be capable of assembling state from different committed snapshots.
-
-Working rule:
+Therefore the target conclusion is:
 
 ```text
-single statement sufficient
-    -> ordinary statement snapshot should be sufficient
-
-multiple statements semantically required to describe one projection
-    -> coherent snapshot may be justified
-
-multiple statements exist only because persistence is fragmented
-    -> evaluate a single-statement materialization before retaining stronger read UoW semantics
+22 / 22 public business GET/read routes
+    -> one business SQL statement
+    -> ordinary statement snapshot / ordinary UnitOfWork
+    -> no coherent_read() required
 ```
 
-### Known findings from the walkthrough
+This does not deprecate `coherent_read()` as infrastructure and does not apply to non-census workflows that genuinely require a multi-statement coherent snapshot.
 
-These are discovery findings, not frozen decisions.
+### Projection patterns established by the review
 
-#### DataType lineage list/get
-
-Current reads re-check that a persisted `default_version` resolves to a PUBLISHED exact version. This appears to duplicate a semantic invariant already enforced by mutation workflows; the extra read is also the reason a coherent read snapshot is useful there.
-
-Candidate simplification: trust the persisted default pointer semantics in normal reads and remove the second semantic certification query if the complete mutation audit confirms the invariant is fully owned on write.
-
-#### ObjectTemplate lineage list/get
-
-The same pattern exists: lineage reads re-check `default_version -> PUBLISHED` even though the database already guarantees exact-target existence through FK and mutation paths own lifecycle admissibility.
-
-Candidate simplification is analogous to DataType, subject to full write-path verification.
-
-#### ObjectTemplate exact version GET
-
-The current store materializes one `ObjectTemplateVersion` through separate reads for:
+Later architecture work should promote and formalize these patterns:
 
 ```text
-version header
-local properties
-local components
+path parent + filtered collection
+    -> parent-rooted outer-join/page projection
+    -> preserve 404 vs 200 []
+
+exact aggregate + zero-or-many local declarations
+    -> one statement without cartesian multiplication
+
+exact inheritance-dependent projection
+    -> recursive exact-chain SQL
+
+stable ancestry-dependent capability projection
+    -> recursive stable-ancestry SQL
+
+mutation-oriented aggregate validator too broad for GET
+    -> dedicated trusted read projector
 ```
 
-Here `coherent_read()` has a concrete justification with the current persistence shape: without one snapshot, a concurrent DRAFT revision/delete could produce a mixed projection that never existed as one committed state.
+### Persisted-state semantic checks to remove from GET paths
 
-Candidate improvement: evaluate a single SQL statement that materializes header + properties + components without cartesian multiplication, for example through independent aggregation/subquery strategies. If achieved cleanly, the stronger multi-statement read transaction may become unnecessary for this GET.
-
-#### ObjectTemplate effective schema
-
-The effective-schema read legitimately composes an exact inheritance chain, but the current traversal also performs semantic re-validation of persisted declarations and inheritance consistency.
-
-Working direction: separate projection/composition from semantic certification. Persisted state should be considered already certified by mutation paths. Discovery must identify which checks are truly required to compute the projection and which merely re-prove invariants such as:
+The review identified recurring revalidation patterns that belong to mutation/persistence ownership instead:
 
 ```text
-local declaration validity
-parent pair validity
-acyclic inheritance
-stable-lineage / exact-parent agreement
-exact parent existence / admissibility
+default_version -> PUBLISHED certification
+persisted aggregate domain validation
+inheritance cycle/agreement/admissibility re-certification
+runtime schema/DataType re-resolution used only to prove persisted values
+ownership slot semantic revalidation
+factual Relationship closure/Definition/schema certification
+lifecycle before/after transition certification
 ```
 
-Existence required to load a referenced row is a lookup concern; semantic re-certification of invariants is not automatically a read concern.
+Lookups or joins required to construct response fields remain legitimate projection work.
 
-### Important non-conclusion
+### Cursor findings
 
-M3 discovery has **not** concluded that every `coherent_read()` should disappear or that every multi-query read must become one SQL statement. Each of the 22 GETs must be classified explicitly.
+Request and cursor validation remain strict. Two concrete path-binding bugs were discovered:
+
+```text
+OBJ-GET-03
+    GET /objects/{parent_object_id}/components
+    cursor identity must include parent_object_id
+
+OBJ-GET-06
+    GET /objects/{object_id}/relationships
+    cursor identity must include object_id
+```
+
+The lifecycle cursor is already correctly bound to all shared query filters, including `involving_object_id`, so global and object-scoped lifecycle cursors remain distinct.
+
+### Lifecycle decoding conclusion
+
+Lifecycle history requires a distinction between carrier decoding and semantic certification.
+
+Keep only what is materially required to construct typed output from persisted JSONB:
+
+```text
+JSON object materialization
+field extraction
+UUID/string/integer conversion
+EventKind materialization
+before/after snapshot materialization
+```
+
+Remove from GET decoding/projection:
+
+```text
+transition correctness checks
+before/after mutation-kind semantics
+version-increase/change rules
+snapshot-vs-outer-row semantic agreement checks
+duplicated family/state certification
+historical value-admissibility rules not needed merely to decode the carrier
+```
+
+A runtime error barrier may remain for a genuinely undecodable carrier, but must not represent semantic re-certification.
+
+### Parent filter finding contributed by the GET review
+
+`OT-GET-01` confirmed that the ObjectTemplate application/persistence layers already support the intended parent tri-state:
+
+```text
+filter omitted               -> no parent predicate
+filter set + UUID            -> parent_template_id = UUID
+filter set + None            -> parent_template_id IS NULL
+```
+
+Cursor identity already distinguishes omission from an explicit root-only filter through `parent_filter_set`.
+
+This closes only the internal GET/read portion. The public HTTP/CLI carrier question remains Area C.
+
+### Expected implementation boundary from the GET review
+
+No consolidated GET decision currently requires a database schema, migration, dependency or lockfile change.
+
+Expected later implementation work is confined to read application/persistence/adapter code and regression/statement evidence, subject to frozen architecture and steps.
+
+### Candidate acceptance evidence
+
+The later contract/steps should include evidence that:
+
+```text
+all 22 canonical public GET/read routes preserve public success/failure/filter/pagination semantics
+OBJ-GET-03 and OBJ-GET-06 cursors are path-bound
+parent-scoped collections preserve missing-parent 404 vs existing-parent 200 []
+recursive projections preserve expected effective/capability outputs
+historical lifecycle output is decoded without semantic re-certification
+no public business GET invokes coherent_read() in the target implementation
+one business SQL statement materializes each canonical GET/read request
+mutation-path semantic validation remains intact
+```
+
+Area B requires no further route-by-route discovery unless Areas A or C uncover a direct conflict with these consolidated decisions.
 
 ---
 
-## 4. Area C — `parent_template_id = null`
+## 4. Area C — `parent_template_id = null` — OPEN
 
 ### Current intended shape visible in the implementation
 
@@ -179,7 +252,7 @@ parent filter present with None
     -> root ObjectTemplates only
 ```
 
-Cursor identity also records `parent_filter_set`, which shows that omission and an explicit root filter are intended to be distinct query states.
+Cursor identity also records `parent_filter_set`, so omission and an explicit root-only filter are intended to be distinct query identities.
 
 ### Suspected public-contract gap
 
@@ -218,9 +291,9 @@ API/CLI regression evidence
 
 ## 5. Preliminary scope boundary
 
-At this stage M3 discovery includes only the three areas above.
+M3 discovery remains bounded to the three areas above.
 
-Explicitly not yet included:
+Explicitly not included:
 
 ```text
 general lock-plan redesign
@@ -231,7 +304,7 @@ schema redesign unrelated to the three discovery areas
 unrelated CLI redesign
 ```
 
-Additional findings discovered while auditing the 22 GETs may be proposed, but they must be reviewed before being added to the M3 contract.
+Area B findings are now closed discovery input; they do not expand the milestone beyond read simplification, cursor correctness and the shared lifecycle decoder boundary discovered during that audit.
 
 ---
 
@@ -239,10 +312,14 @@ Additional findings discovered while auditing the 22 GETs may be proposed, but t
 
 Before drafting/finalizing the M3 contract:
 
-- reproduce and bound the CLI post-create defect across all relevant create actions;
-- complete the 22-GET census with statement counts, semantic read checks and coherent-read rationale;
-- identify every concrete single-statement projection candidate and every GET where coherent snapshot semantics remain justified;
-- verify the actual HTTP behavior of `parent_template_id` omission / UUID / null-like inputs;
-- determine whether root-only filtering already has normative wire semantics or requires an explicit M3 decision;
-- map every proposed delta to the current authoritative AS-IS documents under `docs/architecture/`;
-- convert only closed discovery conclusions into contract outcomes and acceptance criteria.
+- [ ] reproduce and bound the CLI post-create defect across all relevant create actions;
+- [x] complete the 22-GET census with read ownership, projection and coherent-read conclusions;
+- [x] identify the concrete single-statement target for every canonical public business GET/read route;
+- [x] record GET cursor/filter defects discovered by the audit;
+- [x] record the lifecycle carrier-decoding vs semantic-certification boundary;
+- [ ] verify actual HTTP behavior of `parent_template_id` omission / UUID / null-like inputs;
+- [ ] determine whether root-only filtering already has normative wire semantics or requires an explicit M3 decision;
+- [ ] map all final proposed deltas from Areas A/B/C to the authoritative AS-IS documents under `docs/architecture/`;
+- [ ] convert only closed discovery conclusions into contract outcomes and acceptance criteria.
+
+The next discovery work should address Areas A and C. Software implementation remains unauthorized.
