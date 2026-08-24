@@ -37,7 +37,7 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL 20/22; ADP-03 OPEN | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, lifecycle decoder boundary |
+| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 CLOSED 22/22; ADP-03 OPEN | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, lifecycle decoder boundary |
 | [`api.md`](api.md) | NOT YET WRITTEN | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
 | [`cli.md`](cli.md) | NOT YET WRITTEN | Location materialization grammar and nullable selector/query carrier |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | deterministic architecture/acceptance evidence |
@@ -75,7 +75,7 @@ Must close Location token grammar, request-vs-response JSON-path resolution, lit
 
 Primary owner: `architecture/read-projections.md`; boundary owners: `api.md`, `verification.md`.
 
-Must close:
+Closed by ADP-01 / ADP-02:
 
 ```text
 mutation certification vs read projection responsibility
@@ -84,7 +84,13 @@ ordinary read UoW / statement snapshot
 no target public GET dependence on coherent_read()
 404 vs empty/null preservation
 trusted projector boundary
-historical lifecycle decoder boundary
+complete route-specific projection-pattern matrix
+```
+
+Still open under ADP-03:
+
+```text
+historical lifecycle trusted-decoder boundary
 ```
 
 `coherent_read()` remains infrastructure and is not globally deprecated.
@@ -123,7 +129,7 @@ parent_filter_set    -> internal only
 
 ```text
 ADP-01  CLOSED   read projection responsibility / persistence boundary
-ADP-02  PARTIAL  one-statement projection matrix — 20 / 22 routes
+ADP-02  CLOSED   one-statement projection matrix — 22 / 22 routes
 ADP-03  OPEN     historical lifecycle trusted decoder
 ADP-04  OPEN     cursor identity realization
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
@@ -135,9 +141,10 @@ ADP-08  OPEN     verification architecture
 Current progress:
 
 ```text
-closed design points     1 / 8
-ADP-02 route coverage   20 / 22
-next design work         REL-GET-01 + LC-GET-01
+closed design points     2 / 8
+open design points       6 / 8
+ADP-02 route coverage   22 / 22 CLOSED
+next design work         ADP-03 — historical lifecycle trusted decoder
 ```
 
 ### ADP-01 — CLOSED
@@ -156,29 +163,30 @@ persistence read projector
 
 Mutation validators remain intact. `coherent_read()` remains available infrastructure but is not a target dependency for the 22 canonical public GETs.
 
-### ADP-02 — PARTIAL 20/22
+### ADP-02 — CLOSED — 22/22
 
-Closed route families:
+Owned by [`read-projections.md`](read-projections.md).
 
-```text
-DataType             4 / 4
-ObjectTemplate       6 / 6
-Object               6 / 6
-RelationshipDef      4 / 4
-```
-
-Remaining:
+Route-family closure:
 
 ```text
-REL-GET-01  GET /relationships/{id}
-LC-GET-01   GET /lifecycle-events
+DataType             4 / 4 CLOSED
+ObjectTemplate       6 / 6 CLOSED
+Object               6 / 6 CLOSED
+RelationshipDef      4 / 4 CLOSED
+Relationship         1 / 1 CLOSED
+Global lifecycle     1 / 1 CLOSED
+------------------------------
+total               22 / 22 CLOSED
 ```
 
-The frozen pattern vocabulary currently spans `RP-01 .. RP-10` and includes direct pages/exacts, parent-rooted pages, independent exact aggregates, recursive exact/stable traversal, context-completed pages, optional projections, root-paged aggregates and parent-rooted exact aggregates.
+The frozen projection-pattern vocabulary is `RP-01 .. RP-10`: direct pages/exacts, parent-rooted pages, exact aggregates with independent child sets, recursive exact/stable traversal, context-completed pages, optional projections, root-paged aggregates and parent-rooted exact aggregates.
+
+All 22 target projections use one business SQL statement on an ordinary read UoW / PostgreSQL statement snapshot and require no public-GET `coherent_read()` dependency. Query/SQLAlchemy syntax that does not alter the frozen logical shape remains implementation-local.
 
 ### ADP-03 .. ADP-08 — OPEN
 
-ADP-03 must define decoding-only historical lifecycle projection. ADP-04 must define one cursor identity construction rule for all 12 routes. ADP-05/06 must freeze HTTP/CLI explicit-null carriers. ADP-07 must freeze Location value-path materialization. ADP-08 must define deterministic verification and statement-count evidence.
+ADP-03 must define decoding-only historical lifecycle projection shared by Object-scoped and global lifecycle reads. ADP-04 must define one cursor identity construction rule for all 12 routes. ADP-05/06 must freeze HTTP/CLI explicit-null carriers. ADP-07 must freeze Location value-path materialization. ADP-08 must define deterministic verification and statement-count evidence.
 
 ## Architecture design rules
 
