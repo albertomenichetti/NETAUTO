@@ -1,12 +1,12 @@
 # M3 — Public Read Projection Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 CLOSED (22 / 22); ADP-03 OPEN
+**Status:** DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED
 
 **Authority:** M3 TO-BE ARCHITECTURE — PUBLIC READ PROJECTION OWNER
 
 ## Purpose and authority boundary
 
-This document owns the M3 TO-BE architecture for the twenty-two canonical public business GET/read projections.
+This document owns the M3 TO-BE architecture for the twenty-two canonical public business GET/read projections and the trusted historical lifecycle decoding boundary used by the lifecycle read surfaces.
 
 It derives from the frozen M3 contract and changes only the explicit M3 read-boundary delta. Delivered domain identities, mutation semantics, persistence schema, public DTOs, routing and failure behavior remain owned by the current AS-IS except where the frozen M3 contract explicitly changes them.
 
@@ -15,7 +15,7 @@ Current design ownership:
 ```text
 ADP-01 — Read projection responsibility and reusable persistence boundary    CLOSED
 ADP-02 — Complete 22-route one-statement projection matrix                  CLOSED 22 / 22
-ADP-03 — Historical lifecycle trusted decoder                              OPEN
+ADP-03 — Historical lifecycle trusted decoder                              CLOSED
 ```
 
 Implementation remains unauthorized while the M3 architecture set is not frozen.
@@ -441,14 +441,14 @@ Filters or joins for child-owned rows must not erase parent/exact-child presence
 | `OBJ-GET-02` | `GET /objects/{id}` | `RP-02` | direct intrinsic Object read; remove transitive schema/DataType certification |
 | `OBJ-GET-03` | `GET /objects/{parent}/components` | `RP-07` + exact-chain context | complete `slot_declaring_template_id` from exact chain |
 | `OBJ-GET-04` | `GET /objects/{child}/owner` | `RP-08` + exact-chain context | distinguish absent child / detached child / materialized owner |
-| `OBJ-GET-05` | `GET /objects/{id}/lifecycle-events` | `RP-03` + ADP-03 decoder | target-rooted event page; decoder details deferred |
+| `OBJ-GET-05` | `GET /objects/{id}/lifecycle-events` | `RP-03` + ADP-03 decoder | target-rooted event page + trusted historical decoding |
 | `OBJ-GET-06` | `GET /objects/{id}/relationships` | `RP-07` | target-rooted deduplicated semantic Relationship-view page |
 | `RD-GET-01` | `GET /relationship-definitions` | `RP-09` | page Definition root ids before expanding complete Resolution sets |
 | `RD-GET-02` | `GET /relationship-definitions/{id}` | `RP-04` | exact aggregate header + complete Resolution set |
 | `RD-GET-03` | `GET /relationship-definitions/{id}/versions` | `RP-03` | parent-rooted version page preserving parent 404 vs empty page |
 | `RD-GET-04` | `GET /relationship-definitions/{id}/versions/{version}` | `RP-10` | distinguish parent absence, exact-version absence and empty property set |
 | `REL-GET-01` | `GET /relationships/{id}` | `RP-04` | exact factual aggregate + deduplicated public `views[]` |
-| `LC-GET-01` | `GET /lifecycle-events` | `RP-01` + ADP-03 decoder | existing direct event page retained; decoder cleanup deferred |
+| `LC-GET-01` | `GET /lifecycle-events` | `RP-01` + ADP-03 decoder | direct event page + trusted historical decoding |
 
 ## DataType family
 
@@ -483,7 +483,7 @@ ownership materializable      -> OwnerProjection
 ownership not materializable  -> internal failure, never null
 ```
 
-`OBJ-GET-05` is a target-rooted lifecycle page ordered/keyed `(occurred_at,id) DESC`; decoder semantics remain ADP-03.
+`OBJ-GET-05` is a target-rooted lifecycle page ordered/keyed `(occurred_at,id) DESC` and uses the ADP-03 trusted historical decoder.
 
 `OBJ-GET-06` materializes complete public semantic Relationship views directly from persisted runtime/factual/Resolution state. Public semantic deduplication happens before keyset/order/limit:
 
@@ -525,12 +525,6 @@ Properties retain `position ASC`; persisted RDV semantic validators are not call
 
 ## REL-GET-01 — factual Relationship exact aggregate
 
-Pattern:
-
-```text
-RP-04 — EXACT AGGREGATE / INDEPENDENT CHILD SETS
-```
-
 The one statement is rooted at the factual `relationships` row and materializes:
 
 ```text
@@ -565,13 +559,6 @@ The GET does not reconstruct or validate RelationshipDefinition, ObjectTemplate 
 
 ## LC-GET-01 — global lifecycle page
 
-Pattern:
-
-```text
-RP-01 — DIRECT PAGE
-+ ADP-03 trusted historical decoder
-```
-
 The existing single event-page query remains the target:
 
 ```text
@@ -582,13 +569,11 @@ object_lifecycle_events
     -> LIMIT limit + 1
 ```
 
-All current public filters remain collection-membership inputs. There is no URI/path target and therefore no parent/existence marker requirement.
+All current public filters remain collection-membership inputs. There is no URI/path target and therefore no parent/existence marker requirement. Historical carrier materialization is defined by ADP-03 below.
 
-The query itself requires no recomposition in M3. Historical carrier decoding required to materialize typed lifecycle DTOs remains, but transition/state semantic certification is owned by ADP-03 and is not part of ADP-02.
+## ADP-02 closure invariants
 
-# ADP-02 closure invariants
-
-All twenty-two canonical public business GET/read routes now satisfy:
+All twenty-two canonical public business GET/read routes satisfy:
 
 ```text
 one complete business SQL statement
@@ -617,11 +602,321 @@ Global lifecycle     1 / 1 CLOSED
 total               22 / 22 CLOSED
 ```
 
-ADP-02 is therefore **CLOSED**. No further route-shape decision is required unless a later architecture point discovers a contradiction with the frozen contract; such a contradiction must trigger governance reopening rather than silent reinterpretation.
+ADP-02 is **CLOSED**. No further route-shape decision is required unless a later architecture point discovers a contradiction with the frozen contract; such a contradiction must trigger governance reopening rather than silent reinterpretation.
+
+# ADP-03 — CLOSED — Historical lifecycle trusted decoder
+
+## Scope
+
+ADP-03 owns the historical carrier decoder shared by:
+
+```text
+OBJ-GET-05  GET /objects/{id}/lifecycle-events
+LC-GET-01   GET /lifecycle-events
+```
+
+It does not change lifecycle write semantics, event kinds, DTO fields, database schema, event persistence format, ordering/filtering or cursor behavior.
+
+The decoder boundary is deliberately narrow:
+
+```text
+historical read decoder
+    asks: "can these persisted carriers be materialized into the required typed historical response?"
+
+historical read decoder
+    does NOT ask: "would this historical state/transition pass current mutation validation?"
+```
+
+## Database structural authority
+
+The delivered lifecycle table already owns structural constraints for:
+
+```text
+allowed EventKind values
+family-specific nullable/non-null columns
+before_state / after_state presence shape per EventKind
+before_state / after_state top-level JSON object shape when present
+outer canonical-name length
+outer slot_name / relationship_name identifier carrier shape
+```
+
+Public reads do not duplicate those database constraints as a second semantic certification layer.
+
+If a required carrier nevertheless cannot be materialized at runtime, the read fails through the bounded internal-failure boundary. This is representational failure, not mutation-semantic recertification.
+
+## Event-kind materialization
+
+The persisted `kind` carrier is converted to `EventKind` because the typed discriminant is required to select the historical event family.
+
+```text
+persisted kind string
+    -> EventKind
+    -> typed intrinsic / ownership / Relationship historical projection
+```
+
+A value that cannot be converted to the closed `EventKind` type is materially undecodable and fails internally. The decoder does not separately re-prove the database CHECK constraint.
+
+## Historical JsonValue decoder
+
+Historical JSON values are decoded according to the public `JsonValue` carrier type, not current runtime Object/Relationship property admission rules.
+
+Accepted recursive carrier grammar:
+
+```text
+None
+str
+bool
+int, excluding bool
+list[JsonValue]          including []
+dict[str, JsonValue]     including {}
+```
+
+Therefore historical decoding must not impose runtime-property restrictions such as:
+
+```text
+property-name identifier grammar
+non-null runtime property values
+non-empty list requirement
+homogeneous list primitive types
+current DataType/schema canonicalization
+```
+
+A historical property map is representationally valid when it can be decoded as:
+
+```text
+dict[str, JsonValue]
+```
+
+Nested lists/objects and JSON null are accepted when they are valid `JsonValue` carriers, even if the current mutation model would reject the same value as current runtime Object/Relationship state.
+
+Non-`JsonValue` Python carriers, non-string JSON object keys or otherwise unmaterializable required JSON fail internally.
+
+## Historical Object snapshot decoding
+
+An intrinsic historical Object snapshot requires these fields to construct the public `ObjectDto` carrier:
+
+```text
+id
+canonical_name
+template_id
+template_version
+properties
+```
+
+Required decoding:
+
+```text
+snapshot carrier       -> object/dict
+id                     -> string parseable as UUID
+template_id            -> string parseable as UUID
+canonical_name         -> str
+template_version       -> int, excluding bool
+properties             -> dict[str, JsonValue]
+```
+
+The read decoder does **not** re-certify:
+
+```text
+canonical_name length 1..255
+template_version > 0
+property-name identifier grammar
+runtime property admissibility/canonicality
+current ObjectTemplate/DataType closure
+```
+
+Missing required fields make the snapshot materially undecodable and fail internally.
+
+Extra historical JSON fields that are not required by the public snapshot are ignored. Exact internal JSON key-set equality is not a public read invariant and must not be used as certification.
+
+The current plain `Object` value carrier may be reused because it is a data container; no current-state Object semantic validator is invoked by historical decoding.
+
+## Historical Relationship factual-state decoding
+
+A historical Relationship factual state requires:
+
+```text
+relationship_definition_version
+properties
+```
+
+Required decoding:
+
+```text
+state carrier                     -> object/dict
+relationship_definition_version   -> int, excluding bool
+properties                        -> dict[str, JsonValue]
+```
+
+The decoder does **not** require `relationship_definition_version > 0` as a read-side semantic certification rule and does not load the current RelationshipDefinitionVersion or DataType dependencies.
+
+Missing required fields fail internally. Extra historical JSON fields not required by the public factual-state DTO are ignored.
+
+## Outer event-field decoding
+
+Database-native typed columns needed by a selected event family are projected mechanically:
+
+```text
+UUID columns       -> UUID carrier
+datetime column    -> datetime carrier
+text columns       -> str carrier
+nullable family columns -> consumed according to the selected EventKind family
+```
+
+The decoder may fail if a field required to construct the selected typed projection is materially absent or of an unusable runtime carrier type. It does not maintain a duplicate whole-row family-shape certification matrix merely to re-prove database constraints.
+
+In particular, the read path removes duplicated checks whose only purpose is to prove that ownership rows have no before/after state or that Relationship rows have no slot columns. The database remains structural authority for those shapes.
+
+## Intrinsic transition certification removed
+
+After mechanical snapshot decoding, the historical GET must not compare outer event fields and snapshots to prove mutation semantics.
+
+Remove read-side checks such as:
+
+```text
+before.id == outer object_id
+after.id == outer object_id
+after.canonical_name == outer canonical_name
+```
+
+and event-specific transition certification:
+
+```text
+RENAME
+    template_id unchanged
+    template_version unchanged
+    properties unchanged
+
+DATA_CHANGE
+    canonical_name unchanged
+    template_id unchanged
+    template_version unchanged
+    properties changed
+
+SCHEMA_CHANGE
+    canonical_name unchanged
+    template_id unchanged
+    template_version increased
+
+DELETED
+    before.canonical_name == outer canonical_name
+```
+
+These are mutation/write-owned transition invariants, not historical response-decoding requirements.
+
+## Relationship transition certification removed
+
+After factual-state decoding, the historical GET must not re-prove Relationship mutation semantics.
+
+Remove read-side checks such as:
+
+```text
+RELATIONSHIP_DATA_CHANGE
+    before.relationship_definition_version == after.relationship_definition_version
+    before.properties != after.properties
+
+RELATIONSHIP_SCHEMA_CHANGE
+    after.relationship_definition_version > before.relationship_definition_version
+```
+
+No current Relationship, RelationshipDefinition, exact RelationshipDefinitionVersion, ObjectTemplate lineage or DataType lookup is performed merely to reinterpret historical event state.
+
+## Before/after state-shape ownership
+
+The database already owns the `before_state` / `after_state` presence matrix for all event kinds.
+
+The trusted read pipeline therefore uses the already-decoded `EventKind` to materialize the corresponding typed historical variant without duplicating a second semantic rule such as:
+
+```text
+CREATED must be before=None, after=present
+DELETED must be before=present, after=None
+changed event must have before+after
+Relationship-created/deleted/changed equivalents
+```
+
+If implementation retains coarse internal dataclasses with optional `before`/`after`, kind-directed typing casts or equivalent programmer-facing narrowing may be used. A dedicated more-precise internal discriminated variant is also allowed. The architecture freezes the responsibility boundary, not a class hierarchy.
+
+## HTTP DTO adapter
+
+The HTTP adapter selects the public discriminated DTO mechanically from the already-decoded historical event family/kind.
+
+It must not repeat persisted-state certification through branches of the form:
+
+```text
+kind == X AND before/after is not None
+```
+
+for the purpose of proving database event shape again.
+
+Typing narrowing, casts or equivalent exhaustive mapping are allowed when needed by the type checker. The adapter remains responsible for DTO construction and serialization only.
+
+## Write-path separation
+
+Lifecycle mutation/write validation remains strong.
+
+The current implementation may share decoder functions between persisted reads and rows returned immediately after writes. M3 does not allow a mutation invariant to become weaker merely because the public historical read decoder is decoding-only.
+
+Therefore:
+
+```text
+mechanical carrier decoding
+    -> may be shared
+
+mutation transition / event-set correctness
+    -> remains on mutation/write boundary
+    -> must not depend on public GET semantic recertification
+```
+
+If an existing mutation path currently relies on semantic checks embedded in the shared read decoder, those checks must remain or be relocated to the mutation/write path before the read decoder is simplified.
+
+This separation applies to intrinsic, ownership and Relationship lifecycle writes. It does not authorize weakening write-side validation or event atomicity.
+
+## ADP-03 KEEP / REMOVE matrix
+
+```text
+KEEP — representational decoding
+    EventKind materialization
+    required historical field presence needed for DTO construction
+    UUID parsing for UUIDs serialized inside JSON snapshots
+    exact primitive carrier typing needed by DTO fields
+    recursive JsonValue decoding
+    dict[str, JsonValue] materialization
+    typed historical event-family projection
+    bounded internal failure for materially undecodable required state
+
+REMOVE — read-side semantic certification
+    historical property-name identifier grammar
+    runtime-property non-null / non-empty-list / homogeneous-list rules
+    canonical-name bounds inside JSON snapshots
+    positive-version checks inside JSON snapshots/factual states
+    exact internal JSON key-set equality
+    outer-row vs snapshot identity/name agreement
+    intrinsic RENAME/DATA_CHANGE/SCHEMA_CHANGE transition semantics
+    Relationship DATA_CHANGE/SCHEMA_CHANGE transition semantics
+    duplicated database family/state-shape certification
+    HTTP before/after presence recertification
+    live/current-state lookups used only to reinterpret history
+```
+
+## ADP-03 failure boundary
+
+The distinction frozen by ADP-03 is:
+
+```text
+persisted state semantically surprising under current mutation rules
+    + still materially decodable as the frozen public historical carrier
+    -> RETURN the historical representation
+
+persisted state missing/malformed such that a required public carrier cannot be built
+    -> bounded internal failure
+```
+
+The read never fabricates missing required fields, silently drops an event, repairs historical state or substitutes current live state.
+
+ADP-03 is **CLOSED**.
 
 # Preserved AS-IS responsibilities
 
-ADP-01 and ADP-02 do not change:
+ADP-01, ADP-02 and ADP-03 do not change:
 
 ```text
 PostgreSQL as the only persistence backend
@@ -633,6 +928,7 @@ public bounded failure envelope
 opaque keyset pagination contract
 exact persisted identities and bindings
 schema / migration / dependency baseline
+lifecycle mutation/event atomicity
 ```
 
 # Intentional AS-IS contradiction
@@ -655,13 +951,11 @@ public GET/read
     -> no mutation-semantic re-certification
 ```
 
-Representationally undecodable required state still fails safely. M3 introduces neither read-time repair nor silent corruption tolerance.
+For lifecycle history this means semantically surprising but representationally decodable historical carriers remain readable. Representationally undecodable required state still fails safely. M3 introduces neither read-time repair nor silent corruption tolerance.
 
 This contract-authorized contradiction must be propagated to the delivered AS-IS during final consolidation after implementation/acceptance.
 
 # Downstream architecture constraints
-
-ADP-03 must define lifecycle decoding exclusively as representational materialization, not transition certification, for both `OBJ-GET-05` and `LC-GET-01`.
 
 `api.md` must preserve request/cursor/failure classification ownership without moving persistence semantic validation into the HTTP adapter. ADP-04 must realize the complete 12-route cursor identity rules, including `parent_object_id`, `object_id` and ObjectTemplate parent-filter presence semantics.
 
@@ -670,7 +964,10 @@ ADP-03 must define lifecycle decoding exclusively as representational materializ
 ```text
 all 22 canonical GETs execute one business projection statement
 public GETs do not re-certify mutation semantics
-mutation semantic validation remains intact
+historical lifecycle GETs retain representational decoding but no transition certification
+materially undecodable historical carriers fail through the bounded internal boundary
+semantically surprising but decodable historical carriers remain readable
+mutation semantic and lifecycle-write validation remains intact
 single-request committed coherence is preserved
 route-specific 404 / empty / null distinctions remain exact
 ```
@@ -679,16 +976,8 @@ route-specific 404 / empty / null distinctions remain exact
 
 ```text
 ADP-01  CLOSED
-ADP-02  CLOSED
-    DataType             4 / 4 CLOSED
-    ObjectTemplate       6 / 6 CLOSED
-    Object               6 / 6 CLOSED
-    RelationshipDef      4 / 4 CLOSED
-    Relationship         1 / 1 CLOSED
-    Global lifecycle     1 / 1 CLOSED
-    ------------------------------
-    total               22 / 22 CLOSED
-ADP-03  OPEN
+ADP-02  CLOSED — 22 / 22
+ADP-03  CLOSED
 ```
 
 No implementation authority is created by these closures. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN`.
