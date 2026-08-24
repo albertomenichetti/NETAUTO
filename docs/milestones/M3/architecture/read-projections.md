@@ -1,6 +1,6 @@
 # M3 — Public Read Projection Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 / ADP-03 OPEN
+**Status:** DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 PARTIAL; ADP-03 OPEN
 
 **Authority:** M3 TO-BE ARCHITECTURE — PUBLIC READ PROJECTION OWNER
 
@@ -10,13 +10,19 @@ This document owns the M3 TO-BE architecture for public business GET/read projec
 
 It derives from the frozen M3 contract and changes only the explicit read-boundary delta. Delivered domain identities, mutation semantics, persistence schema, public DTOs, routing and failure behavior remain owned by the current AS-IS except where the frozen M3 contract explicitly changes them.
 
-This document currently closes only:
+This document closes:
 
 ```text
 ADP-01 — Read projection responsibility and reusable persistence boundary
 ```
 
-The complete route-by-route one-statement matrix (`ADP-02`) and the historical lifecycle trusted decoder details (`ADP-03`) remain open and will extend this owner without changing the responsibility boundary frozen below.
+and incrementally records the route-family decisions for:
+
+```text
+ADP-02 — Complete 22-route one-statement projection matrix
+```
+
+ADP-02 is not closed until all twenty-two canonical routes are covered. The historical lifecycle trusted decoder details (`ADP-03`) remain open.
 
 Implementation remains unauthorized while the M3 architecture set is not frozen.
 
@@ -230,9 +236,192 @@ target present + zero matching rows
 
 ADP-02 will choose the one-statement relational pattern for each affected route. An outer-join, target-rooted subquery or equivalent pattern is valid only if it preserves this distinction and the canonical keyset behavior.
 
+## ADP-02 — Projection-pattern vocabulary
+
+ADP-02 uses named logical patterns to constrain the required query shape without freezing local SQLAlchemy syntax, alias names or helper decomposition.
+
+### RP-01 — DIRECT PAGE
+
+Use when one persisted relation directly represents the public collection.
+
+```text
+collection relation
+    -> active filters
+    -> keyset predicate
+    -> canonical ORDER BY
+    -> LIMIT limit + 1
+```
+
+The same statement returns the complete page projection. No semantic dependency read is added merely to certify persisted members.
+
+### RP-02 — DIRECT EXACT
+
+Use when one exact persisted identity directly represents the public resource.
+
+```text
+exact persisted identity
+    -> 0 rows: application classifies not found
+    -> 1 row: typed projection
+```
+
+The statement may perform representational scalar/enum/JSON decoding but no mutation-owned semantic admission check.
+
+### RP-03 — PARENT-ROOTED PAGE
+
+Use for a path-scoped zero-or-many collection that must distinguish an absent path target from an existing target with no matching members.
+
+Logical shape:
+
+```text
+path target relation
+    -> preserve target-presence evidence
+    -> outer-join / target-root a bounded child-page projection
+         child filters
+         child keyset predicate
+         canonical child ordering
+         LIMIT limit + 1
+```
+
+Required outcome:
+
+```text
+path target absent
+    -> no target evidence
+    -> application returns 404
+
+path target present + zero child rows
+    -> target evidence retained
+    -> application returns 200 with empty page
+
+path target present + child rows
+    -> normal bounded page
+```
+
+`LEFT JOIN`, a target-rooted/lateral child subquery or another equivalent one-statement form is an implementation choice only when it preserves this architecture.
+
+## ADP-02 — DataType family CLOSED
+
+The four canonical DataType reads use only `RP-01`, `RP-02` and `RP-03`.
+
+### DT-GET-01 — `GET /datatypes`
+
+Pattern:
+
+```text
+RP-01 — DIRECT PAGE
+```
+
+Projection source and rules:
+
+```text
+root relation    datatypes
+filters          namespace, name
+keyset           (namespace, name) > cursor
+order            (namespace, name) ASC
+page bound       limit + 1
+```
+
+`default_version` is projected directly as persisted lineage state. The read does not load or certify the default target as PUBLISHED.
+
+Target realization:
+
+```text
+one business SQL statement
+ordinary read UoW
+statement snapshot
+no coherent_read()
+no default-target semantic re-certification
+```
+
+### DT-GET-02 — `GET /datatypes/{datatype_id}`
+
+Pattern:
+
+```text
+RP-02 — DIRECT EXACT
+```
+
+Projection source:
+
+```text
+datatypes WHERE id = :datatype_id
+```
+
+Outcome:
+
+```text
+0 rows -> application 404 resource_not_found
+1 row  -> DataType projection
+```
+
+`default_version` remains a persisted projection field; no default target lookup or publication certification belongs to the GET.
+
+### DT-GET-03 — `GET /datatypes/{datatype_id}/versions`
+
+Pattern:
+
+```text
+RP-03 — PARENT-ROOTED PAGE
+```
+
+Projection source and rules:
+
+```text
+path target      datatypes.id = :datatype_id
+child relation   datatype_versions
+child membership datatype_versions.datatype_id = datatypes.id
+filter           status when supplied
+keyset           version > cursor
+order            version ASC
+page bound       limit + 1
+```
+
+The one statement must retain parent-presence evidence when zero versions match the status/keyset filters.
+
+Outcome:
+
+```text
+parent absent                    -> 404 resource_not_found
+parent present + zero versions   -> 200 empty page
+parent present + versions        -> normal version-summary page
+```
+
+Child filters and keyset predicates must be applied inside the bounded child-page side of the projection, or equivalently, so they cannot erase the parent-only result.
+
+### DT-GET-04 — `GET /datatypes/{datatype_id}/versions/{version}`
+
+Pattern:
+
+```text
+RP-02 — DIRECT EXACT
+```
+
+Projection source:
+
+```text
+datatype_versions
+WHERE datatype_id = :datatype_id
+  AND version = :version
+```
+
+No separate lineage read is required. Persisted FK structure owns the exact version's lineage membership. The public absent outcome remains the exact DataTypeVersion not-found classification.
+
+Representational materialization includes persisted `status`, `base_type` and `constraints` carrier conversion needed to construct the typed response. The GET does not re-run DataType constraint canonicalization or semantic validation merely to re-certify the persisted version.
+
+### DataType family matrix
+
+| ID | Pattern | One statement | Target-presence requirement | Semantic certification removed |
+|---|---|---:|---|---|
+| `DT-GET-01` | `RP-01 DIRECT PAGE` | yes | n/a | default-target publication check |
+| `DT-GET-02` | `RP-02 DIRECT EXACT` | yes | exact row itself | default-target publication check |
+| `DT-GET-03` | `RP-03 PARENT-ROOTED PAGE` | yes | lineage parent retained across empty page | none beyond ADP-01 boundary |
+| `DT-GET-04` | `RP-02 DIRECT EXACT` | yes | exact row itself | none beyond ADP-01 boundary |
+
+All four DataType GETs therefore use an ordinary read UoW and one PostgreSQL statement snapshot. None requires `coherent_read()` in the M3 target.
+
 ## Preserved AS-IS responsibilities
 
-ADP-01 does not change:
+ADP-01 and the closed ADP-02 route families do not change:
 
 ```text
 PostgreSQL as the only persistence backend
@@ -274,7 +463,7 @@ This contradiction is authorized by the frozen M3 contract and must be propagate
 
 ## Downstream architecture constraints
 
-ADP-02 must comply with ADP-01 by ensuring every one of the 22 canonical GET/read routes:
+Remaining ADP-02 work must comply with ADP-01 and the projection-pattern vocabulary by ensuring every canonical GET/read route:
 
 ```text
 has one complete persistence projection boundary
@@ -300,8 +489,14 @@ mutation semantic validation remains intact
 
 ```text
 ADP-01  CLOSED
-ADP-02  OPEN
+ADP-02  PARTIAL
+    DataType            4 / 4 CLOSED
+    ObjectTemplate      0 / 6 OPEN
+    Object              0 / 6 OPEN
+    RelationshipDef     0 / 4 OPEN
+    Relationship        0 / 1 OPEN
+    Global lifecycle    0 / 1 OPEN
 ADP-03  OPEN
 ```
 
-No implementation authority is created by this closure. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN`.
+No implementation authority is created by these closures. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN`.
