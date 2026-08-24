@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — CONTRACT REVIEW
+**Milestone status:** ACTIVE — ARCHITECTURE DESIGN
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,47 +18,106 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    CONTRACT — FINAL HUMAN FREEZE DECISION
-contract                 DRAFT / REVIEW — NOT FROZEN
-architecture set         NOT YET DEFINED / NOT FROZEN
+phase                    ARCHITECTURE DESIGN
+contract                 FINAL / FROZEN
+architecture set         DESIGN IN PROGRESS — NOT FROZEN
 implementation steps     NOT YET FROZEN
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 explicit human contract freeze decision
+blockers                 none for architecture design
 ```
 
-All bounded discovery work is complete. The M3 contract candidate has completed the final contract review with zero open contract-level findings. The next permitted governance action is the explicit human freeze decision or a request for further contract changes.
+The project owner explicitly approved the M3 contract after final review. The contract is now frozen and architecture design is the only active semantic/technical design activity.
 
-No architecture set, implementation slice or software behavior change is authorized yet.
+No implementation slice or software behavior change is authorized yet.
 
-## Contract review state
+## Frozen contract gate
 
-Proposed normative contract:
+Normative contract:
 
-- [`contract.md`](contract.md) — `DRAFT / REVIEW — NOT FROZEN`;
-- reviewed contract candidate commit `28c291b16378cd3849eba2d1d9828867b3941e92`;
-- reviewed contract content SHA `6f1ffd5f8e85c3bb90578db3ec2067f36df53e34`.
+- [`contract.md`](contract.md) — `FINAL / FROZEN`.
+
+Freeze publication:
+
+```text
+contract freeze commit   e48a81a2a7436a01644509579a02546fa777cc4a
+reviewed content SHA     6f1ffd5f8e85c3bb90578db3ec2067f36df53e34
+final review findings    5 / 5 CLOSED
+open contract findings   0
+human freeze approval    GRANTED
+```
 
 Final review evidence:
 
-- [`wip/contract-final-review.md`](wip/contract-final-review.md) — `PASS — READY FOR EXPLICIT HUMAN FREEZE DECISION`, zero open contract-level findings.
+- [`wip/contract-final-review.md`](wip/contract-final-review.md) — `PASS — READY FOR EXPLICIT HUMAN FREEZE DECISION`; the subsequent human decision was approval.
 
-The review report does not freeze the contract. Human approval is required before the contract may become `FINAL / FROZEN` and architecture design may begin.
+Any semantic change to frozen contract Scope, Non-goals, explicit deltas, outcomes or acceptance criteria now requires formal contract reopening.
+
+## Architecture set
+
+Architecture control document:
+
+- [`architecture/README.md`](architecture/README.md) — `DESIGN IN PROGRESS — NOT FROZEN`.
+
+Planned TO-BE owners:
+
+```text
+architecture/read-projections.md
+    public read responsibility
+    22-route one-statement projection architecture
+    read UoW/snapshot realization
+    trusted lifecycle/read projectors
+
+architecture/api.md
+    public cursor identity/keyset realization
+    ObjectTemplate parent_template_id HTTP tri-state
+
+architecture/cli.md
+    Location value-path materialization
+    nullable selector/query carrier semantics
+
+architecture/verification.md
+    deterministic M3 architecture and acceptance evidence
+```
+
+These owning documents are not yet written and therefore create no frozen design authority yet.
+
+## Open architecture design points
+
+The architecture set currently tracks:
+
+```text
+ADP-01  read projection responsibility / persistence boundary
+ADP-02  complete 22-route one-statement projection matrix
+ADP-03  historical lifecycle trusted decoder
+ADP-04  cursor identity realization
+ADP-05  ObjectTemplate nullable HTTP query carrier
+ADP-06  CLI nullable selector/query carrier
+ADP-07  CLI Location materialization grammar
+ADP-08  verification architecture
+```
+
+All are OPEN. Architecture cannot freeze until all are closed and cross-document consistency passes.
+
+## Frozen contract outcomes to realize
+
+```text
+M3-OUT-01 .. M3-OUT-08
+M3-AC-01  .. M3-AC-19
+M3-CQG-01 .. M3-CQG-08
+```
+
+The architecture must remain bounded to:
+
+1. CLI post-create correctness and `Location` response processing.
+2. Public business GET/read responsibility, projection compatibility and cursor correctness.
+3. Public `parent_template_id = null` root-only filter carrier across HTTP and official CLI.
+
+The one-business-statement target for all 22 canonical GET/read routes is an architecture/verification obligation, not an additional public-contract delta.
 
 ## Discovery closure
 
-Discovery material is non-normative and lives under:
-
-```text
-docs/milestones/M3/wip/
-```
-
-Discovery closure is documented by:
-
-- [`wip/discovery.md`](wip/discovery.md) — discovery navigator;
-- [`wip/discovery-closure.md`](wip/discovery-closure.md) — final cross-workstream closure and AS-IS owner mapping.
-
-## Discovery workstream status
+All bounded discovery workstreams remain closed:
 
 ```text
 Area A — CLI post-create correctness          CLOSED
@@ -66,148 +125,49 @@ Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
 Area C — parent_template_id = null carrier    CLOSED
 ```
 
-Area A closure:
+Primary discovery navigation/evidence:
 
-- [`wip/cli-post-create-decision.md`](wip/cli-post-create-decision.md)
+- [`wip/discovery.md`](wip/discovery.md)
+- [`wip/discovery-closure.md`](wip/discovery-closure.md)
 - [`wip/cli-post-create-closure.md`](wip/cli-post-create-closure.md)
-
-Area B closure:
-
-- [`wip/get-read-census.md`](wip/get-read-census.md)
 - [`wip/get-read-review-closure.md`](wip/get-read-review-closure.md)
-- [`wip/cursor-identity-audit.md`](wip/cursor-identity-audit.md) — final 12-route cursor identity/keyset cross-check
-- route-specific `*-get-*-decision.md` files
-
-Area C closure:
-
-- [`wip/parent-template-null-carrier-decision.md`](wip/parent-template-null-carrier-decision.md)
+- [`wip/cursor-identity-audit.md`](wip/cursor-identity-audit.md)
 - [`wip/parent-template-null-carrier-closure.md`](wip/parent-template-null-carrier-closure.md)
 
-These discovery records remain evidence/input only. The proposed `contract.md` is self-contained and is the artifact under freeze decision.
-
-## Proposed contract outcomes
-
-The draft freezes, if approved, the following bounded outcome set.
-
-### Area A — CLI create correctness
-
-```text
-all 8 registered 201 Created operations retain exact Location validation
-valid canonical 201 + correct Location -> CLI success
-response JSON-path identities support both top-level and nested fields
-genuine Location protocol mismatch -> cli_protocol_error
-valid success must not become cli_internal_error due to Location processing
-```
-
-### Area B — public reads and cursors
-
-```text
-22 / 22 canonical public business GET/read routes remain the public read surface
-GETs stop re-certifying mutation-owned persisted semantic invariants
-strict request/cursor validation and typed carrier decoding remain
-path-target 404 vs existing-target empty collection distinctions remain
-single-request self-consistent committed projection remains guaranteed
-historical lifecycle decoding retains representation checks without transition re-certification
-
-cursor-bearing public routes audited      12 / 12
-complete current identities               10 / 12
-known incomplete identities                2 / 12
-new cursor defects found                    0
-keyset-key defects                          0
-
-cursor query identity
-    = route
-    + every membership-affecting path target
-    + every membership-affecting query filter
-    + required semantic presence bits
-cursor position = complete canonical ordering tuple
-limit is not part of semantic query identity
-
-OBJ-GET-03 cursor identity adds parent_object_id
-OBJ-GET-06 cursor identity adds object_id
-```
-
-The discovery one-statement target for all 22 GETs remains a mandatory architecture/verification handoff and is intentionally not frozen as public contract behavior.
-
-### Area C — ObjectTemplate root filter
-
-```text
-HTTP parent_template_id omitted -> no parent filter
-HTTP parent_template_id=<UUID>  -> direct children of that parent
-HTTP parent_template_id=null    -> root ObjectTemplates only
-
-CLI omission                    -> no parent query pair
-CLI UUID / human selector       -> exact UUID query pair
-CLI explicit null               -> parent_template_id=null without selector lookup
-
-parent_filter_set remains internal only
-```
+These files are non-normative inputs. The frozen contract now owns the milestone outcome boundary.
 
 ## Scope impact
 
-The proposed M3 contract requires no:
+The frozen M3 contract requires no:
 
 ```text
 database schema change
 Alembic migration
 new runtime dependency
-lockfile change
+runtime lockfile change
 new business resource
 new public route
 ```
 
-M3 remains bounded to application/persistence/HTTP/CLI correctness and simplification over the delivered durable model.
-
-## AS-IS traceability
-
-The final discovery mapping from M3 outcomes to current architecture owners is in [`wip/discovery-closure.md`](wip/discovery-closure.md).
-
-The proposed contract explicitly registers the delivered read-corruption/semantic-certification boundary as an intentional M3 delta rather than treating implementation behavior as authority.
-
-Preserved affected AS-IS guarantees continue to derive from their current authoritative owners; the future M3 architecture set must own only the explicit TO-BE deltas and required cross-owner propagation.
-
-The current delivered AS-IS under `docs/architecture/` remains authoritative until the M3 contract is frozen and subsequent architecture/implementation gates are completed.
+Any architecture proposal that requires one of these would contradict the current frozen contract and must stop for explicit contract review/reopen.
 
 ## Remaining gates
 
-Before M3 implementation may begin, the cycle must proceed in the project-governed order:
+Before implementation may begin:
 
 ```text
-contract FINAL HUMAN FREEZE DECISION
-    -> contract FINAL / FROZEN
-    -> M3 architecture set DESIGN / consistency closure / FINAL / FROZEN
-    -> implementation steps FINAL / FROZEN
-    -> explicit implementation authorization in this status
+contract FINAL / FROZEN                       DONE
+    -> architecture design                    ACTIVE
+    -> architecture consistency closure       PENDING
+    -> architecture set FINAL / FROZEN        PENDING
+    -> implementation steps FINAL / FROZEN    PENDING
+    -> explicit implementation authorization  PENDING
 ```
 
-`steps.md` remains a pre-implementation placeholder. No `M3-Snn` slice is currently defined or active.
-
-## Current bounded scope
-
-M3 remains exactly:
-
-1. CLI post-create correctness and local `Location` response processing.
-2. Public business GET/read responsibility, projection compatibility and cursor correctness.
-3. Public `parent_template_id = null` root-only filter carrier across HTTP and official CLI.
-
-No general lock-plan redesign, broad mutation-lock minimization, new model capability, unrelated schema redesign or unrelated CLI redesign is included.
+`steps.md` remains a pre-implementation placeholder. No `M3-Snn` slice is defined or active.
 
 ## Immediate next action
 
-Explicit human decision on [`contract.md`](contract.md).
+Begin architecture design from [`architecture/README.md`](architecture/README.md), closing its open design points dependency-first.
 
-Permitted outcomes:
-
-```text
-approve freeze
-    -> contract.md FINAL / FROZEN
-    -> status.md advances to architecture design
-    -> architecture set may be created as DESIGN IN PROGRESS / NOT FROZEN
-
-request changes
-    -> keep contract DRAFT / REVIEW
-    -> record and close the requested findings
-    -> repeat final review as required
-```
-
-Software implementation remains NOT AUTHORIZED.
+Software implementation remains **NOT AUTHORIZED**.
