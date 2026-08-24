@@ -458,7 +458,7 @@ Lifecycle GETs materialize the existing typed historical DTOs through representa
 
 ## M3-OUT-07 — ObjectTemplate root-only public filter
 
-HTTP and official CLI expose the complete `parent_template_id` tri-state: omitted, exact parent UUID/human selector and explicit `null` root-only filtering, with cursor identity preserving the distinction.
+The HTTP API exposes `parent_template_id` as omitted / exact UUID / exact lowercase `null`; the official CLI exposes the same three semantics through omission / UUID-or-human-selector / explicit `null`. Root-only filtering is represented only by `parent_template_id=null`, and cursor identity preserves the distinction from omission.
 
 ## M3-OUT-08 — Regression and traceability closure
 
