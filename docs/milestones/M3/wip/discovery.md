@@ -15,38 +15,102 @@ M3 is being explored as a focused kernel-simplification milestone with three bou
 Current discovery state:
 
 ```text
-Area A — CLI post-create correctness          OPEN
+Area A — CLI post-create correctness          CLOSED
 Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
 Area C — parent_template_id = null carrier    OPEN
 ```
 
-The milestone contract must not be frozen until Areas A and C are also closed enough that scope, observable deltas and acceptance criteria are unambiguous.
+The milestone contract must not be frozen until Area C is also closed enough that scope, observable deltas and acceptance criteria are unambiguous.
 
 ---
 
-## 2. Area A — CLI post-create correctness — OPEN
+## 2. Area A — CLI post-create correctness — CLOSED
 
-### Observed defect
+Area A is closed at discovery level.
 
-A DataType `create` operation was observed to complete successfully on the remote HTTP API (`201 Created`, persisted resource, valid `Location`) while the CLI subsequently returned a local `cli_internal_error`.
+Detailed decision record:
 
-The current evidence indicates the failure occurs after remote success while processing the command registry `Location` template. The DataType create spec uses a dotted placeholder form such as:
+[`cli-post-create-decision.md`](cli-post-create-decision.md)
+
+Consolidated downstream planning input:
+
+[`cli-post-create-closure.md`](cli-post-create-closure.md)
+
+### Complete finding
+
+The CLI registry contains eight operations with `201 Created` and an exact `Location` contract. Three use nested response-path tokens and are deterministically affected by the current materializer defect:
 
 ```text
-/api/v1/core/datatypes/{datatype.id}
+datatype create                 {datatype.id}
+object-template create          {object_template.id}
+relationship-definition create  {relationship_definition.id}
 ```
 
-while the local lookup/materialization path does not resolve that template consistently.
+Five use flat tokens and are not affected by this specific defect:
 
-### Discovery objective
+```text
+datatype create-next
+object-template create-next
+object create
+relationship-definition create-next
+relationship create
+```
 
-Do not treat this only as a one-line DataType fix. Audit every command that performs local processing after a successful remote create response, especially every registry `location` template and the common code that resolves it.
+The defect is common infrastructure behavior, not a DataType-only defect.
 
-### Candidate requirement to validate for the contract
+### Root cause and consolidated grammar
 
-A remotely successful and committed mutation must not be reported as a semantic failure solely because local CLI response decoration, rendering or `Location` materialization fails afterward.
+The current helper correctly traverses a dotted response path but then passes a mapping keyed by the literal dotted token to `str.format_map()`. Python formatting reinterprets the dot as attribute access and may raise `KeyError` after the valid remote `201` response has already been observed.
 
-The exact CLI behavior for an unexpected local post-success failure still needs to be designed and frozen; discovery must first identify the complete affected command set and common mechanism.
+The consolidated `Location` token grammar is:
+
+```text
+{token}
+    -> first resolve token as one exact request-value key
+    -> otherwise resolve token as a dot-separated JSON-object path in the canonical response
+```
+
+Dots mean JSON-object traversal only. Registered `Location` metadata is not Python format syntax.
+
+The target materializer must perform literal token replacement after resolution and must not use `str.format()` / `str.format_map()` or an equivalent formatter that gives dots another meaning.
+
+### Public behavior to preserve
+
+```text
+canonical 201 body + matching Location
+    -> CLI success
+
+missing / duplicate / malformed / mismatching / non-materializable Location
+    -> cli_protocol_error
+
+canonical 201 body + correct Location
+    -> never cli_internal_error because of local Location materialization
+```
+
+Exact `Location` validation remains part of the same-release CLI protocol contract and must not be weakened.
+
+### Post-success boundary conclusion
+
+The broader mutation post-success path was audited. Presentation-target construction occurs before the primary request, mutation commands are not subject to FORMATTED enrichment, and no current data-driven mutation-rendering defect was found. Area A therefore remains bounded to the shared `Location` materializer plus static/dynamic registry evidence for all eight `201` operations.
+
+No general renderer redesign is included in M3.
+
+### Candidate acceptance evidence
+
+Later contract/steps should require:
+
+```text
+all 8 registered 201 operations covered
+all 3 nested response-path templates exercised explicitly
+all 5 flat templates retained
+correct Location -> success
+missing / duplicate / mismatching / unresolvable Location -> cli_protocol_error
+valid nested-token success never raises / never yields cli_internal_error
+interactive and non-interactive structured outcomes preserved
+static registry evidence rejects unsupported Location token syntax
+```
+
+No Area A finding requires a schema, migration, dependency or lockfile change.
 
 ---
 
@@ -223,7 +287,7 @@ one business SQL statement materializes each canonical GET/read request
 mutation-path semantic validation remains intact
 ```
 
-Area B requires no further route-by-route discovery unless Areas A or C uncover a direct conflict with these consolidated decisions.
+Area B requires no further route-by-route discovery unless Area C uncovers a direct conflict with these consolidated decisions.
 
 ---
 
@@ -304,7 +368,7 @@ schema redesign unrelated to the three discovery areas
 unrelated CLI redesign
 ```
 
-Area B findings are now closed discovery input; they do not expand the milestone beyond read simplification, cursor correctness and the shared lifecycle decoder boundary discovered during that audit.
+Areas A and B are now closed discovery inputs. They do not expand the milestone beyond their consolidated boundaries.
 
 ---
 
@@ -312,7 +376,9 @@ Area B findings are now closed discovery input; they do not expand the milestone
 
 Before drafting/finalizing the M3 contract:
 
-- [ ] reproduce and bound the CLI post-create defect across all relevant create actions;
+- [x] reproduce and bound the CLI post-create defect across all relevant create actions;
+- [x] define the shared `Location` token grammar and public post-create outcome semantics;
+- [x] identify Area A downstream acceptance evidence and scope boundary;
 - [x] complete the 22-GET census with read ownership, projection and coherent-read conclusions;
 - [x] identify the concrete single-statement target for every canonical public business GET/read route;
 - [x] record GET cursor/filter defects discovered by the audit;
@@ -322,4 +388,4 @@ Before drafting/finalizing the M3 contract:
 - [ ] map all final proposed deltas from Areas A/B/C to the authoritative AS-IS documents under `docs/architecture/`;
 - [ ] convert only closed discovery conclusions into contract outcomes and acceptance criteria.
 
-The next discovery work should address Areas A and C. Software implementation remains unauthorized.
+The next discovery work is Area C. Software implementation remains unauthorized.
