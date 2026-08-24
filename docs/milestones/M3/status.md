@@ -27,9 +27,7 @@ software implementation  NOT AUTHORIZED
 blockers                 none for architecture design
 ```
 
-The project owner explicitly approved the M3 contract after final review. The contract is frozen and architecture design is the only active semantic/technical design activity.
-
-No implementation slice or software behavior change is authorized yet.
+The project owner explicitly approved the M3 contract after final review. Architecture design is the only active semantic/technical design activity. No implementation slice or software behavior change is authorized.
 
 ## Frozen contract gate
 
@@ -37,7 +35,7 @@ Normative contract:
 
 - [`contract.md`](contract.md) — `FINAL / FROZEN`.
 
-Freeze publication:
+Freeze evidence:
 
 ```text
 contract freeze commit   e48a81a2a7436a01644509579a02546fa777cc4a
@@ -47,15 +45,11 @@ open contract findings   0
 human freeze approval    GRANTED
 ```
 
-Final review evidence:
-
-- [`wip/contract-final-review.md`](wip/contract-final-review.md) — final review PASS; the subsequent human decision was approval.
-
-Any semantic change to frozen contract Scope, Non-goals, explicit deltas, outcomes or acceptance criteria requires formal contract reopening.
+Any semantic change to frozen Scope, Non-goals, explicit deltas, outcomes or acceptance criteria requires formal contract reopening.
 
 ## Architecture set
 
-Architecture control document:
+Controller:
 
 - [`architecture/README.md`](architecture/README.md) — `DESIGN IN PROGRESS — NOT FROZEN`.
 
@@ -65,7 +59,8 @@ Current TO-BE owners:
 architecture/read-projections.md
     DESIGN IN PROGRESS
     ADP-01 CLOSED
-    ADP-02 / ADP-03 OPEN
+    ADP-02 PARTIAL — 16 / 22 routes defined
+    ADP-03 OPEN
 
 architecture/api.md
     NOT YET WRITTEN
@@ -77,13 +72,11 @@ architecture/verification.md
     NOT YET WRITTEN
 ```
 
-The architecture set remains non-frozen and creates no software implementation authority.
-
 ## Architecture design-point status
 
 ```text
 ADP-01  CLOSED   read projection responsibility / persistence boundary
-ADP-02  OPEN     complete 22-route one-statement projection matrix
+ADP-02  PARTIAL  complete 22-route one-statement projection matrix — 16 / 22
 ADP-03  OPEN     historical lifecycle trusted decoder
 ADP-04  OPEN     cursor identity realization
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
@@ -92,29 +85,49 @@ ADP-07  OPEN     CLI Location materialization grammar
 ADP-08  OPEN     verification architecture
 ```
 
-Progress:
+ADP-02 route-family progress:
 
 ```text
-closed  1 / 8
-open    7 / 8
+DataType             4 / 4 CLOSED
+ObjectTemplate       6 / 6 CLOSED
+Object               6 / 6 CLOSED
+RelationshipDef      0 / 4 OPEN
+Relationship         0 / 1 OPEN
+Global lifecycle     0 / 1 OPEN
+------------------------------
+total               16 / 22
 ```
 
-ADP-01 is owned normatively by [`architecture/read-projections.md`](architecture/read-projections.md). It freezes the application/persistence responsibility boundary for public reads:
+Current projection vocabulary in [`architecture/read-projections.md`](architecture/read-projections.md):
 
 ```text
-application read service
-    -> request semantics / cursor validation
-    -> read UoW ownership
-    -> public 404 / 200 / Page classification
-
-persistence read projector
-    -> complete persisted projection on caller-owned connection
-    -> target-presence evidence where required
-    -> representational carrier decoding
-    -> no mutation semantic certification
+RP-01  DIRECT PAGE
+RP-02  DIRECT EXACT
+RP-03  PARENT-ROOTED PAGE
+RP-04  EXACT AGGREGATE / INDEPENDENT CHILD SETS
+RP-05  RECURSIVE EXACT-CHAIN PROJECTION
+RP-06  RECURSIVE STABLE-ANCESTRY PAGE
+RP-07  TARGET-ROOTED CONTEXT-COMPLETED PAGE
+RP-08  TARGET-ROOTED OPTIONAL PROJECTION
 ```
 
-Mutation validators remain intact. `coherent_read()` remains available infrastructure but is not a target dependency for the 22 canonical M3 public GETs.
+Key closed Object-family rules include:
+
+```text
+components
+    -> exact-chain context completes slot_declaring_template_id
+    -> unmaterializable required context fails; it is not silently omitted
+
+owner
+    -> absent child = 404
+    -> detached existing child = 200 null
+    -> an existing ownership fact must materialize its declaring slot
+
+relationships
+    -> public semantic-view deduplication precedes public keyset/limit semantics
+```
+
+Mutation validators remain intact. `coherent_read()` remains infrastructure but is not a target dependency for the canonical M3 public GET census.
 
 ## Frozen contract outcomes to realize
 
@@ -124,7 +137,7 @@ M3-AC-01  .. M3-AC-19
 M3-CQG-01 .. M3-CQG-08
 ```
 
-The architecture remains bounded to:
+M3 remains bounded to:
 
 1. CLI post-create correctness and `Location` response processing.
 2. Public business GET/read responsibility, projection compatibility and cursor correctness.
@@ -138,20 +151,11 @@ All bounded discovery workstreams remain closed:
 
 ```text
 Area A — CLI post-create correctness          CLOSED
-Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
+Area B — public GET/read audit                CLOSED / 22 of 22
 Area C — parent_template_id = null carrier    CLOSED
 ```
 
-Primary discovery navigation/evidence:
-
-- [`wip/discovery.md`](wip/discovery.md)
-- [`wip/discovery-closure.md`](wip/discovery-closure.md)
-- [`wip/cli-post-create-closure.md`](wip/cli-post-create-closure.md)
-- [`wip/get-read-review-closure.md`](wip/get-read-review-closure.md)
-- [`wip/cursor-identity-audit.md`](wip/cursor-identity-audit.md)
-- [`wip/parent-template-null-carrier-closure.md`](wip/parent-template-null-carrier-closure.md)
-
-These files are non-normative inputs. The frozen contract owns the milestone outcome boundary.
+Discovery files under `wip/` remain non-normative evidence. The frozen contract owns the milestone outcome boundary.
 
 ## Scope impact
 
@@ -166,7 +170,7 @@ new business resource
 new public route
 ```
 
-Any architecture proposal that requires one of these contradicts the current frozen contract and must stop for explicit contract review/reopen.
+Any architecture proposal requiring one of these enters STOP for contract review/reopen.
 
 ## Remaining gates
 
@@ -185,6 +189,6 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Close **ADP-02 — Complete 22-route one-statement projection matrix** under the responsibility boundary frozen by ADP-01.
+Continue **ADP-02** with the four RelationshipDefinition GET/read routes, then factual Relationship exact GET and global lifecycle page.
 
 Software implementation remains **NOT AUTHORIZED**.
