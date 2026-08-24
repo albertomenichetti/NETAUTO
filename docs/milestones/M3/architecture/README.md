@@ -49,7 +49,7 @@ The planned owning documents are:
 
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | NOT YET WRITTEN | Public GET/read responsibility boundary; one-statement realization for the 22-route census; UoW/snapshot model; trusted read projectors; lifecycle carrier-decoding boundary; route-level projection patterns. |
+| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 CLOSED; ADP-02 / ADP-03 OPEN | Public GET/read responsibility boundary; one-statement realization for the 22-route census; UoW/snapshot model; trusted read projectors; lifecycle carrier-decoding boundary; route-level projection patterns. |
 | [`api.md`](api.md) | NOT YET WRITTEN | Public HTTP query/cursor realization; complete cursor identity rule; the two path-binding corrections; ObjectTemplate `parent_template_id` tri-state and strict malformed/duplicate behavior. |
 | [`cli.md`](cli.md) | NOT YET WRITTEN | `Location` token/value-path grammar and materialization boundary; exact same-release response validation; nullable selector/query carrier semantics for `parent_template_id=null`. |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | Architecture-level deterministic evidence: 22 GET projection/statement checks, 12 cursor routes, eight 201 operations, lifecycle decoding boundary, parent-filter HTTP/CLI tri-state, non-delta/schema/dependency and read-coherence evidence. |
@@ -200,15 +200,53 @@ CLI explicit null -> literal lowercase null with no selector lookup
 parent_filter_set remains internal only
 ```
 
-## Open design points
+## Design-point status
 
-All points below are open architecture work. None authorizes implementation.
+```text
+ADP-01  CLOSED
+ADP-02  OPEN
+ADP-03  OPEN
+ADP-04  OPEN
+ADP-05  OPEN
+ADP-06  OPEN
+ADP-07  OPEN
+ADP-08  OPEN
+```
 
-### ADP-01 — Read projection responsibility and reusable persistence boundary
+Current design progress:
 
-Define the exact application/persistence ownership rule that prevents GETs from reusing mutation-oriented semantic certification while preserving representational decoding and path-target classification.
+```text
+closed  1 / 8
+open    7 / 8
+next    ADP-02 — Complete 22-route one-statement projection matrix
+```
 
-### ADP-02 — Complete 22-route one-statement projection matrix
+### ADP-01 — CLOSED — Read projection responsibility and reusable persistence boundary
+
+Owned by [`read-projections.md`](read-projections.md).
+
+Frozen design boundary for downstream architecture work:
+
+```text
+HTTP adapter
+    -> lexical carrier parsing / DTO serialization
+
+application read service
+    -> request semantics
+    -> cursor validation
+    -> request UoW ownership
+    -> 404 / 200 / Page classification
+
+persistence read projector
+    -> complete persisted projection
+    -> target-existence evidence where required
+    -> representational carrier materialization
+    -> no mutation semantic certification
+```
+
+The application owns the read UoW and public outcome classification; projectors run on the caller-owned connection and do not open nested UoWs. Representational decoding remains required, while mutation-semantic re-certification is forbidden in public GET projectors. Mutation loaders/validators remain strong and are not globally weakened for GET reuse. `coherent_read()` remains infrastructure but is not a target dependency for the 22 canonical public GETs.
+
+### ADP-02 — OPEN — Complete 22-route one-statement projection matrix
 
 For every canonical GET/read route, freeze the one-statement shape or equivalent architecture pattern sufficient to prove:
 
@@ -222,27 +260,27 @@ no semantic re-certification
 
 The design should promote shared projection patterns without forcing unrelated routes into one abstraction.
 
-### ADP-03 — Historical lifecycle trusted decoder
+### ADP-03 — OPEN — Historical lifecycle trusted decoder
 
 Define the minimum persisted JSON/carrier decoding needed to construct typed lifecycle DTOs and the exact semantic checks that are removed from the read boundary.
 
-### ADP-04 — Cursor identity realization
+### ADP-04 — OPEN — Cursor identity realization
 
 Define one application cursor-identity construction rule covering all twelve routes, including the two path-target corrections and the ObjectTemplate parent-filter presence bit.
 
-### ADP-05 — ObjectTemplate nullable HTTP query carrier
+### ADP-05 — OPEN — ObjectTemplate nullable HTTP query carrier
 
 Define the strict HTTP lexical parser/type boundary for UUID versus exact lowercase `null` while preserving query-parameter presence as a semantic distinction.
 
-### ADP-06 — CLI nullable selector/query carrier
+### ADP-06 — OPEN — CLI nullable selector/query carrier
 
 Define how nullable selector-capable query parameters treat explicit null as a terminal carrier value, skip selector resolution and serialize lowercase `null` only in an allowed query location.
 
-### ADP-07 — CLI Location materialization grammar
+### ADP-07 — OPEN — CLI Location materialization grammar
 
 Define the shared static token grammar, resolution precedence, materialization algorithm boundary and registry verification needed to support both top-level and dotted response JSON paths without Python format-field semantics.
 
-### ADP-08 — Verification architecture
+### ADP-08 — OPEN — Verification architecture
 
 Define deterministic permanent evidence and statement-count instrumentation for every contract criterion, including regression checks that mutation semantic validation remains intact.
 
