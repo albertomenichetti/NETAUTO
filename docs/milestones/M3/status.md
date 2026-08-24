@@ -40,10 +40,15 @@ The current discovery summary is [`wip/discovery.md`](wip/discovery.md).
 ## Discovery workstream status
 
 ```text
-Area A — CLI post-create correctness          OPEN
+Area A — CLI post-create correctness          CLOSED
 Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
 Area C — parent_template_id = null carrier    OPEN
 ```
+
+Area A closure is documented by:
+
+- [`wip/cli-post-create-decision.md`](wip/cli-post-create-decision.md) — reviewed defect, census and target materializer semantics;
+- [`wip/cli-post-create-closure.md`](wip/cli-post-create-closure.md) — consolidated downstream planning input.
 
 Area B closure is documented by:
 
@@ -51,7 +56,23 @@ Area B closure is documented by:
 - [`wip/get-read-review-closure.md`](wip/get-read-review-closure.md) — consolidated downstream planning input;
 - route-specific `*-get-*-decision.md` files — detailed discovery evidence where applicable.
 
-The Area B closure is a discovery conclusion only. It does not itself freeze public behavior, architecture or implementation steps.
+These closures are discovery conclusions only. They do not themselves freeze public behavior, architecture or implementation steps.
+
+## Consolidated Area A discovery conclusion
+
+The CLI registry exposes eight `201 Created` operations with exact `Location` validation. Three create operations use nested response-path tokens and are deterministically affected by the current common materializer defect:
+
+```text
+{datatype.id}
+{object_template.id}
+{relationship_definition.id}
+```
+
+The target keeps the existing registry and exact `Location` contract, defines registered tokens as request-key / response-JSON-path metadata, removes Python format grammar from the common materializer and preserves `cli_protocol_error` for genuine same-release response violations.
+
+A canonical committed `201` response with the correct `Location` must not become `cli_internal_error` because of local materialization behavior.
+
+No Area A decision requires a schema, migration, dependency or lockfile change.
 
 ## Consolidated GET/read discovery conclusion
 
@@ -91,10 +112,10 @@ Until those gates are satisfied, the delivered AS-IS under `docs/architecture/` 
 
 The M3 discovery boundary remains three areas:
 
-1. CLI post-create correctness and audit of local post-success processing — **OPEN**.
+1. CLI post-create correctness and audit of local post-success processing — **CLOSED at discovery level**.
 2. Complete review of every public business GET/read path — **CLOSED at discovery level**.
 3. Exact verification and, if required, correction of the public `parent_template_id = null` filtering contract across HTTP, cursor identity and CLI — **OPEN**.
 
 This list is a discovery boundary, not a frozen milestone contract. Any addition, removal or reinterpretation remains subject to contract review before implementation.
 
-The next discovery work should address the two remaining open areas. `steps.md` remains a pre-implementation placeholder and no `M3-Snn` slice is authorized.
+The next discovery work is Area C. `steps.md` remains a pre-implementation placeholder and no `M3-Snn` slice is authorized.
