@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    CONTRACT — HUMAN FREEZE REVIEW
+phase                    CONTRACT — FINAL HUMAN FREEZE DECISION
 contract                 DRAFT / REVIEW — NOT FROZEN
 architecture set         NOT YET DEFINED / NOT FROZEN
 implementation steps     NOT YET FROZEN
@@ -27,7 +27,7 @@ software implementation  NOT AUTHORIZED
 blockers                 explicit human contract freeze decision
 ```
 
-All bounded discovery work is complete. A self-contained M3 milestone contract has been drafted and has passed the non-normative pre-freeze consistency review. The next permitted governance action is explicit human contract review/freeze or review changes.
+All bounded discovery work is complete. The M3 contract candidate has completed the final contract review with zero open contract-level findings. The next permitted governance action is the explicit human freeze decision or a request for further contract changes.
 
 No architecture set, implementation slice or software behavior change is authorized yet.
 
@@ -35,11 +35,13 @@ No architecture set, implementation slice or software behavior change is authori
 
 Proposed normative contract:
 
-- [`contract.md`](contract.md) — `DRAFT / REVIEW — NOT FROZEN`.
+- [`contract.md`](contract.md) — `DRAFT / REVIEW — NOT FROZEN`;
+- reviewed contract candidate commit `28c291b16378cd3849eba2d1d9828867b3941e92`;
+- reviewed contract content SHA `6f1ffd5f8e85c3bb90578db3ec2067f36df53e34`.
 
-Pre-freeze review evidence:
+Final review evidence:
 
-- [`wip/contract-consistency-review.md`](wip/contract-consistency-review.md) — `PASS — READY FOR HUMAN FREEZE REVIEW`, zero open contract-level findings.
+- [`wip/contract-final-review.md`](wip/contract-final-review.md) — `PASS — READY FOR EXPLICIT HUMAN FREEZE DECISION`, zero open contract-level findings.
 
 The review report does not freeze the contract. Human approval is required before the contract may become `FINAL / FROZEN` and architecture design may begin.
 
@@ -81,7 +83,7 @@ Area C closure:
 - [`wip/parent-template-null-carrier-decision.md`](wip/parent-template-null-carrier-decision.md)
 - [`wip/parent-template-null-carrier-closure.md`](wip/parent-template-null-carrier-closure.md)
 
-These discovery records remain evidence/input only. The proposed `contract.md` is self-contained and is the artifact under freeze review.
+These discovery records remain evidence/input only. The proposed `contract.md` is self-contained and is the artifact under freeze decision.
 
 ## Proposed contract outcomes
 
@@ -92,8 +94,8 @@ The draft freezes, if approved, the following bounded outcome set.
 ```text
 all 8 registered 201 Created operations retain exact Location validation
 valid canonical 201 + correct Location -> CLI success
-nested response identities are supported without response flattening
-genuine Location mismatch -> cli_protocol_error
+response JSON-path identities support both top-level and nested fields
+genuine Location protocol mismatch -> cli_protocol_error
 valid success must not become cli_internal_error due to Location processing
 ```
 
@@ -104,6 +106,7 @@ valid success must not become cli_internal_error due to Location processing
 GETs stop re-certifying mutation-owned persisted semantic invariants
 strict request/cursor validation and typed carrier decoding remain
 path-target 404 vs existing-target empty collection distinctions remain
+single-request self-consistent committed projection remains guaranteed
 historical lifecycle decoding retains representation checks without transition re-certification
 
 cursor-bearing public routes audited      12 / 12
@@ -161,6 +164,8 @@ The final discovery mapping from M3 outcomes to current architecture owners is i
 
 The proposed contract explicitly registers the delivered read-corruption/semantic-certification boundary as an intentional M3 delta rather than treating implementation behavior as authority.
 
+Preserved affected AS-IS guarantees continue to derive from their current authoritative owners; the future M3 architecture set must own only the explicit TO-BE deltas and required cross-owner propagation.
+
 The current delivered AS-IS under `docs/architecture/` remains authoritative until the M3 contract is frozen and subsequent architecture/implementation gates are completed.
 
 ## Remaining gates
@@ -168,7 +173,7 @@ The current delivered AS-IS under `docs/architecture/` remains authoritative unt
 Before M3 implementation may begin, the cycle must proceed in the project-governed order:
 
 ```text
-contract HUMAN REVIEW
+contract FINAL HUMAN FREEZE DECISION
     -> contract FINAL / FROZEN
     -> M3 architecture set DESIGN / consistency closure / FINAL / FROZEN
     -> implementation steps FINAL / FROZEN
@@ -189,19 +194,20 @@ No general lock-plan redesign, broad mutation-lock minimization, new model capab
 
 ## Immediate next action
 
-Human review of [`contract.md`](contract.md).
+Explicit human decision on [`contract.md`](contract.md).
 
 Permitted outcomes:
 
 ```text
 approve freeze
     -> contract.md FINAL / FROZEN
-    -> begin M3 architecture design
+    -> status.md advances to architecture design
+    -> architecture set may be created as DESIGN IN PROGRESS / NOT FROZEN
 
 request changes
     -> keep contract DRAFT / REVIEW
-    -> apply/close contract findings
-    -> repeat consistency review as required
+    -> record and close the requested findings
+    -> repeat final review as required
 ```
 
 Software implementation remains NOT AUTHORIZED.
