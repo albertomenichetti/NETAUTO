@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — DISCOVERY
+**Milestone status:** ACTIVE — CONTRACT REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,16 +18,32 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    DISCOVERY — COMPLETE
-contract                 NOT YET FROZEN
+phase                    CONTRACT — HUMAN FREEZE REVIEW
+contract                 DRAFT / REVIEW — NOT FROZEN
 architecture set         NOT YET DEFINED / NOT FROZEN
 implementation steps     NOT YET FROZEN
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for contract preparation
+blockers                 explicit human contract freeze decision
 ```
 
-All bounded discovery work is complete. The next permitted governance activity is M3 contract drafting and review. No implementation slice is active and no software behavior change is authorized yet.
+All bounded discovery work is complete. A self-contained M3 milestone contract has been drafted and has passed the non-normative pre-freeze consistency review. The next permitted governance action is explicit human contract review/freeze or review changes.
+
+No architecture set, implementation slice or software behavior change is authorized yet.
+
+## Contract review state
+
+Proposed normative contract:
+
+- [`contract.md`](contract.md) — `DRAFT / REVIEW — NOT FROZEN`.
+
+Pre-freeze review evidence:
+
+- [`wip/contract-consistency-review.md`](wip/contract-consistency-review.md) — `PASS — READY FOR HUMAN FREEZE REVIEW`, zero open contract-level findings.
+
+The review report does not freeze the contract. Human approval is required before the contract may become `FINAL / FROZEN` and architecture design may begin.
+
+## Discovery closure
 
 Discovery material is non-normative and lives under:
 
@@ -65,46 +81,36 @@ Area C closure:
 - [`wip/parent-template-null-carrier-decision.md`](wip/parent-template-null-carrier-decision.md)
 - [`wip/parent-template-null-carrier-closure.md`](wip/parent-template-null-carrier-closure.md)
 
-These are discovery conclusions only. They do not themselves freeze public behavior, architecture or implementation steps.
+These discovery records remain evidence/input only. The proposed `contract.md` is self-contained and is the artifact under freeze review.
 
-## Consolidated discovery outcomes
+## Proposed contract outcomes
+
+The draft freezes, if approved, the following bounded outcome set.
 
 ### Area A — CLI create correctness
 
-The CLI registry has eight `201 Created` operations with exact `Location` validation. Three create operations use nested response-path tokens and are deterministically affected by the common materializer defect.
-
-Target direction:
-
 ```text
-Location token = exact request key or response JSON path
-no Python format grammar
-exact Location validation preserved
-valid committed 201 + correct Location -> CLI success
-genuine protocol mismatch -> cli_protocol_error
+all 8 registered 201 Created operations retain exact Location validation
+valid canonical 201 + correct Location -> CLI success
+nested response identities are supported without response flattening
+genuine Location mismatch -> cli_protocol_error
+valid success must not become cli_internal_error due to Location processing
 ```
 
-### Area B — public reads
-
-The 22-route audit found that every canonical public business GET/read path can materialize its required projection in one SQL statement.
-
-A final cursor cross-check audited all 12 paginated public routes and found no additional defect beyond the two already identified during the route walkthrough:
+### Area B — public reads and cursors
 
 ```text
+22 / 22 canonical public business GET/read routes remain the public read surface
+GETs stop re-certifying mutation-owned persisted semantic invariants
+strict request/cursor validation and typed carrier decoding remain
+path-target 404 vs existing-target empty collection distinctions remain
+historical lifecycle decoding retains representation checks without transition re-certification
+
 cursor-bearing public routes audited      12 / 12
 complete current identities               10 / 12
 known incomplete identities                2 / 12
 new cursor defects found                    0
 keyset-key defects                          0
-```
-
-Target direction:
-
-```text
-GETs trust persisted semantic state
-request/cursor validation remains strict
-path-target 404 and empty-collection distinctions remain preserved
-read-side semantic re-certification is removed
-historical lifecycle carrier decoding remains without semantic transition certification
 
 cursor query identity
     = route
@@ -116,25 +122,27 @@ limit is not part of semantic query identity
 
 OBJ-GET-03 cursor identity adds parent_object_id
 OBJ-GET-06 cursor identity adds object_id
-no canonical public GET requires coherent_read() in the target census
-mutation-oriented validators remain intact for mutation paths
 ```
+
+The discovery one-statement target for all 22 GETs remains a mandatory architecture/verification handoff and is intentionally not frozen as public contract behavior.
 
 ### Area C — ObjectTemplate root filter
 
-The canonical public tri-state is:
-
 ```text
-parent_template_id omitted -> no parent filter
-parent_template_id=<UUID>  -> direct children of that parent
-parent_template_id=null    -> root ObjectTemplates only
+HTTP parent_template_id omitted -> no parent filter
+HTTP parent_template_id=<UUID>  -> direct children of that parent
+HTTP parent_template_id=null    -> root ObjectTemplates only
+
+CLI omission                    -> no parent query pair
+CLI UUID / human selector       -> exact UUID query pair
+CLI explicit null               -> parent_template_id=null without selector lookup
+
+parent_filter_set remains internal only
 ```
 
-`parent_filter_set` remains internal only. HTTP and CLI must support the same tri-state while preserving the existing application/persistence/cursor semantics.
+## Scope impact
 
-## Discovery scope impact
-
-No consolidated M3 discovery decision requires:
+The proposed M3 contract requires no:
 
 ```text
 database schema change
@@ -145,41 +153,55 @@ new business resource
 new public route
 ```
 
-The expected M3 change remains bounded to application/persistence/HTTP/CLI correctness and simplification over the existing durable model.
+M3 remains bounded to application/persistence/HTTP/CLI correctness and simplification over the delivered durable model.
 
 ## AS-IS traceability
 
-The final mapping from M3 discovery outcomes to current architecture owners is in [`wip/discovery-closure.md`](wip/discovery-closure.md).
+The final discovery mapping from M3 outcomes to current architecture owners is in [`wip/discovery-closure.md`](wip/discovery-closure.md).
 
-The current delivered AS-IS under `docs/architecture/` remains the only semantic authority until M3 completes its contract, architecture, implementation and acceptance gates.
+The proposed contract explicitly registers the delivered read-corruption/semantic-certification boundary as an intentional M3 delta rather than treating implementation behavior as authority.
+
+The current delivered AS-IS under `docs/architecture/` remains authoritative until the M3 contract is frozen and subsequent architecture/implementation gates are completed.
 
 ## Remaining gates
 
 Before M3 implementation may begin, the cycle must proceed in the project-governed order:
 
 ```text
-DISCOVERY COMPLETE
-    -> milestone contract FINAL / FROZEN
-    -> M3 architecture set FINAL / FROZEN
-    -> required consistency review / closure
+contract HUMAN REVIEW
+    -> contract FINAL / FROZEN
+    -> M3 architecture set DESIGN / consistency closure / FINAL / FROZEN
     -> implementation steps FINAL / FROZEN
     -> explicit implementation authorization in this status
 ```
 
 `steps.md` remains a pre-implementation placeholder. No `M3-Snn` slice is currently defined or active.
 
-## Current discovery boundary
+## Current bounded scope
 
-The completed discovery boundary remains exactly:
+M3 remains exactly:
 
-1. CLI post-create correctness and local post-success processing.
-2. Complete review of every public business GET/read path.
-3. Public `parent_template_id = null` root-only filter carrier across HTTP, cursor identity and CLI.
+1. CLI post-create correctness and local `Location` response processing.
+2. Public business GET/read responsibility, projection compatibility and cursor correctness.
+3. Public `parent_template_id = null` root-only filter carrier across HTTP and official CLI.
 
-No general lock-plan redesign, broad mutation-lock minimization, new model capability, unrelated schema redesign or unrelated CLI redesign was added.
+No general lock-plan redesign, broad mutation-lock minimization, new model capability, unrelated schema redesign or unrelated CLI redesign is included.
 
 ## Immediate next action
 
-Prepare and review the **M3 milestone contract** from the consolidated discovery inputs.
+Human review of [`contract.md`](contract.md).
+
+Permitted outcomes:
+
+```text
+approve freeze
+    -> contract.md FINAL / FROZEN
+    -> begin M3 architecture design
+
+request changes
+    -> keep contract DRAFT / REVIEW
+    -> apply/close contract findings
+    -> repeat consistency review as required
+```
 
 Software implementation remains NOT AUTHORIZED.
