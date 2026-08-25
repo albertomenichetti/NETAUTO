@@ -1,6 +1,6 @@
 # M3 — Architecture Set
 
-**Architecture set status:** DESIGN COMPLETE — CONSISTENCY REVIEW PENDING — NOT FROZEN
+**Architecture set status:** DESIGN COMPLETE — CONSISTENCY REVIEW PASSED — FREEZE APPROVAL PENDING — NOT FROZEN
 
 **Authority:** M3 TO-BE ARCHITECTURE SET CONTROL
 
@@ -10,7 +10,16 @@ This directory defines the M3 TO-BE architecture required to realize the frozen 
 
 The set starts from delivered AS-IS under `docs/architecture/` and changes only explicit M3 deltas. Preserved guarantees remain owned by their current AS-IS documents and must not be duplicated as competing M3 authority.
 
-All planned M3 architecture design points are now closed. Implementation remains unauthorized until this architecture set passes a separate consistency/freeze review, becomes `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes a slice.
+All planned M3 architecture design points are closed and the dedicated consistency review has passed. Implementation remains unauthorized until the project owner explicitly approves architecture freeze, this set becomes `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes a slice.
+
+Consistency review evidence:
+
+```text
+docs/milestones/M3/wip/architecture-consistency-closure.md
+status  PASS — READY FOR EXPLICIT HUMAN FREEZE DECISION
+open findings  0
+contract reopening  NOT REQUIRED
+```
 
 ## Frozen contract inputs
 
@@ -42,7 +51,7 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 | [`cli.md`](cli.md) | ADP-06 / ADP-07 CLOSED | nullable selector/query carrier and Location materialization grammar |
 | [`verification.md`](verification.md) | ADP-08 CLOSED | deterministic architecture/acceptance evidence, stable M3-VER bundles and final evidence gates |
 
-The four documents above are the complete planned M3 architecture owner set. Additional architecture documents may be added only through explicit consistency-review finding resolution and may not expand the frozen contract.
+The four documents above are the complete planned M3 architecture owner set. Additional architecture documents may be added only through an explicitly reopened architecture design point and may not expand the frozen contract.
 
 ## Current AS-IS dependencies
 
@@ -192,7 +201,9 @@ HTTP parent tri-state     CLOSED
 CLI parent tri-state      CLOSED
 CLI create Location        8 / 8 CLOSED
 verification bundles      19 / 19 DESIGNED
-next governance work       ARCHITECTURE CONSISTENCY / FREEZE REVIEW
+consistency review         PASS
+open architecture findings 0
+next governance work       EXPLICIT ARCHITECTURE FREEZE DECISION
 ```
 
 ## Closed architecture summary
@@ -208,7 +219,7 @@ ADP-07  CLI Location materialization DSL
 ADP-08  deterministic verification architecture
 ```
 
-No implementation authority is created by complete design-point closure.
+No implementation authority is created by design-point closure or consistency PASS.
 
 ## Architecture design rules
 
@@ -244,48 +255,53 @@ current AS-IS ownership
 
 ## Consistency / freeze gate
 
-The set may become `FINAL / FROZEN` only after a separate review proves:
+Consistency review result:
 
 ```text
-all planned owner documents present
-ADP-01 .. ADP-08 all CLOSED
-all M3 outcomes/ACs/CQGs have architecture or preserved AS-IS ownership
-22 / 22 GET routes have mutually consistent projection disposition
-12 / 12 cursor routes have mutually consistent identity/keyset disposition
-HTTP and CLI parent-filter carriers are mutually consistent
-CLI Location grammar covers all 8 registered 201 operations
-19 / 19 ACs map to stable verification bundles
-cross-document terminology and responsibility boundaries are consistent
-no stale TODO/TBD/open semantic statement remains
-no contract contradiction or required formal reopen remains
+all planned owner documents present                         PASS
+ADP-01 .. ADP-08 all CLOSED                                PASS
+all M3 outcomes/ACs/CQGs have architecture/AS-IS paths     PASS
+22 / 22 GET projection dispositions consistent             PASS
+12 / 12 cursor identity/keyset dispositions consistent     PASS
+HTTP and CLI parent-filter carriers consistent              PASS
+CLI Location grammar covers all 8 registered 201 ops       PASS
+19 / 19 ACs map to stable verification bundles             PASS
+cross-document responsibility boundaries consistent        PASS
+normative TODO/TBD/open semantic statement                  0
+open architecture finding                                   0
+contract contradiction                                      0
+required formal reopen                                      0
 ```
 
-Architecture freeze additionally requires explicit project-owner approval after the review PASS.
+Architecture freeze still requires explicit project-owner approval.
 
-Until then:
+Until that approval and publication transition:
 
 ```text
-ARCHITECTURE SET = DESIGN COMPLETE — NOT FROZEN
+ARCHITECTURE SET = DESIGN COMPLETE — CONSISTENCY REVIEW PASSED — NOT FROZEN
 IMPLEMENTATION   = NOT AUTHORIZED
 ```
 
 ## Immediate next action
 
-Perform a dedicated architecture consistency/freeze review across:
+Request the explicit project-owner architecture freeze decision.
+
+If approved, the dedicated freeze publication transition must:
 
 ```text
-contract.md
-architecture/read-projections.md
-architecture/api.md
-architecture/cli.md
-architecture/verification.md
-architecture/README.md
-status.md
-steps.md gate state
+mark read-projections.md FINAL / FROZEN
+mark api.md FINAL / FROZEN
+mark cli.md FINAL / FROZEN
+mark verification.md FINAL / FROZEN
+mark architecture/README.md ARCHITECTURE SET = FINAL / FROZEN
+update status.md to implementation planning
+update steps.md prerequisite state to architecture FINAL / FROZEN
+leave steps.md NOT YET FROZEN
+leave software implementation NOT AUTHORIZED
 ```
 
-The review must record findings and resolve them before any freeze proposal. It must not silently reinterpret the frozen contract.
+If architecture changes are requested instead, the affected ADP(s) must be explicitly reopened; the frozen contract must not be silently reinterpreted.
 
 ## Reopen discipline
 
-If consistency review discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, stop the affected freeze path and request formal contract reopening. Architecture must not repair a contract-level gap by silently changing semantics.
+If a requested architecture change discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, stop the affected freeze path and request formal contract reopening. Architecture must not repair a contract-level gap by silently changing semantics.
