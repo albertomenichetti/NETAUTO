@@ -33,9 +33,7 @@ Target cursor filters must include:
 filters = {
     "object_id": str(object_id),
     "relationship_definition_id": (
-        None
-        if relationship_definition_id is None
-        else str(relationship_definition_id)
+        None if relationship_definition_id is None else str(relationship_definition_id)
     ),
     "name": name,
 }

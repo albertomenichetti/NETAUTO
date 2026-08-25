@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S00 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S00 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S00 — READY
+active implementation    M3-S00 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S00 ONLY
 blockers                 none
 ```
@@ -143,9 +143,11 @@ open decomposition finding  0
 
 ```text
 authorized slice          M3-S00 — Official CLI Location protocol correctness
-slice state               READY
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 primary evidence          M3-VER-01 .. M3-VER-03
+candidate evidence        PASS — M3-VER-01 .. M3-VER-03
+candidate gates           PASS
 later slices              NOT AUTHORIZED
 ```
 
@@ -204,13 +206,13 @@ implementation steps design                   DONE — M3-S00..S07
 implementation steps consistency review       DONE — PASS
 implementation steps FINAL / FROZEN           DONE
 explicit M3-S00 implementation authorization  DONE — M3-S00 ONLY
-M3-S00 execution/review                        READY
+M3-S00 execution/review                        CANDIDATE READY FOR REVIEW
 M3-S01 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S00 pre-flight from repository authorities, then implement and verify `M3-S00 — Official CLI Location protocol correctness` within the frozen slice scope.
+Review the `M3-S00 — Official CLI Location protocol correctness` candidate and its `M3-VER-01 .. M3-VER-03` evidence.
 
-The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S00` `COMPLETED` and authorize the transition to `M3-S01`.
+The reviewer alone may mark `M3-S00` `COMPLETED` and authorize the transition to `M3-S01`. `M3-S01` remains not authorized until that reviewer-owned transition is recorded explicitly.
