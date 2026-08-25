@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S00 READY
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION AUTHORIZATION
+phase                    IMPLEMENTATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-blockers                 none for implementation authorization decision
+active implementation    M3-S00 — READY
+software implementation  AUTHORIZED — M3-S00 ONLY
+blockers                 none
 ```
 
-Contract, architecture and implementation decomposition are now frozen. Freeze does not itself authorize software changes: `status.md` must separately authorize one exact `M3-Snn` slice before implementation begins.
+Contract, architecture and implementation decomposition remain frozen. Software implementation is authorized only for `M3-S00 — Official CLI Location protocol correctness`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
 
 ## Frozen contract gate
 
@@ -139,7 +139,17 @@ M3-VER primary ownership   19 / 19 exact
 open decomposition finding  0
 ```
 
-No implementation slice is active. The frozen decomposition is normative implementation-planning authority, but activation still requires an explicit operational authorization of the exact slice.
+## Implementation authorization
+
+```text
+authorized slice          M3-S00 — Official CLI Location protocol correctness
+slice state               READY
+human authorization       GRANTED
+primary evidence          M3-VER-01 .. M3-VER-03
+later slices              NOT AUTHORIZED
+```
+
+`READY` authorizes the implementer to perform the mandatory repository pre-flight and then begin work inside the exact frozen `M3-S00` scope. The implementer may transition the slice to `IN PROGRESS` when implementation work actually begins, but reviewer-owned completion remains separate.
 
 ## Frozen architecture closure
 
@@ -193,13 +203,14 @@ architecture set FINAL / FROZEN               DONE
 implementation steps design                   DONE — M3-S00..S07
 implementation steps consistency review       DONE — PASS
 implementation steps FINAL / FROZEN           DONE
-explicit M3-S00 implementation authorization  PENDING
-M3-S00 .. M3-S07 execution/review              PENDING
+explicit M3-S00 implementation authorization  DONE — M3-S00 ONLY
+M3-S00 execution/review                        READY
+M3-S01 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Make a separate explicit operational decision on whether to authorize `M3-S00 — Official CLI Location protocol correctness` as the first implementation slice.
+Perform the mandatory M3-S00 pre-flight from repository authorities, then implement and verify `M3-S00 — Official CLI Location protocol correctness` within the frozen slice scope.
 
-Software implementation remains **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
+The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S00` `COMPLETED` and authorize the transition to `M3-S01`.
