@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION STEPS FREEZE APPROVAL PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,20 +18,20 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION STEPS FREEZE APPROVAL
+phase                    IMPLEMENTATION AUTHORIZATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
 architecture approval    GRANTED
-implementation steps     DESIGN COMPLETE — REVIEW PASS — NOT YET FROZEN
+implementation steps     FINAL / FROZEN
 steps review             PASS
-steps approval           PENDING
+steps approval           GRANTED
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for steps freeze decision
+blockers                 none for implementation authorization decision
 ```
 
-Architecture freeze does not authorize software changes. The proposed `M3-S00 .. M3-S07` decomposition has passed its separate consistency review, but `steps.md` remains non-frozen until explicit project-owner approval.
+Contract, architecture and implementation decomposition are now frozen. Freeze does not itself authorize software changes: `status.md` must separately authorize one exact `M3-Snn` slice before implementation begins.
 
 ## Frozen contract gate
 
@@ -78,13 +78,13 @@ architecture controller   dd5593045c9a6bee5ebbf52931879bdb09441a9f
 freeze approval record    8996fa1875152996dddab4d0609ed978cf50561b
 ```
 
-## Steps design and review gate
+## Frozen implementation steps gate
 
-Proposed decomposition owner:
+Decomposition owner:
 
 ```text
 document                  docs/milestones/M3/steps.md
-status                    DESIGN COMPLETE — REVIEW PASS — NOT YET FROZEN
+status                    FINAL / FROZEN
 slice registry            M3-S00 .. M3-S07
 slice count               8
 ```
@@ -100,7 +100,17 @@ contract reopening        NOT REQUIRED
 architecture reopening    NOT REQUIRED
 ```
 
-Proposed linear registry:
+Freeze approval:
+
+```text
+record                    docs/milestones/M3/wip/steps-freeze.md
+human freeze approval     GRANTED
+reviewed content SHA      cd8e1b904c57487f18a82cfe262135bd2b90664c
+steps publication commit  dc5e5166be100e4072417b2fd516851ec0994af1
+freeze approval record    45de5e4cac5be3c2e74e47cbe986b1991f9c3a9d
+```
+
+Frozen linear registry:
 
 ```text
 M3-S00  Official CLI Location protocol correctness
@@ -129,7 +139,7 @@ M3-VER primary ownership   19 / 19 exact
 open decomposition finding  0
 ```
 
-No implementation slice is active and the reviewed decomposition is still not implementation authority.
+No implementation slice is active. The frozen decomposition is normative implementation-planning authority, but activation still requires an explicit operational authorization of the exact slice.
 
 ## Frozen architecture closure
 
@@ -171,7 +181,7 @@ new business resource
 new public route
 ```
 
-Any implementation proposal that contradicts frozen contract, architecture or—after freeze—steps must stop for the applicable reopen process rather than silently altering semantics.
+Any implementation proposal that contradicts frozen contract, architecture or steps must stop for the applicable reopen process rather than silently altering semantics.
 
 ## Remaining gates
 
@@ -182,13 +192,14 @@ architecture consistency review               DONE — PASS
 architecture set FINAL / FROZEN               DONE
 implementation steps design                   DONE — M3-S00..S07
 implementation steps consistency review       DONE — PASS
-implementation steps FINAL / FROZEN            PENDING HUMAN APPROVAL
-explicit implementation authorization          PENDING
+implementation steps FINAL / FROZEN           DONE
+explicit M3-S00 implementation authorization  PENDING
+M3-S00 .. M3-S07 execution/review              PENDING
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Obtain explicit project-owner approval to freeze the reviewed `M3-S00 .. M3-S07` implementation decomposition. A freeze publication transition may then mark `steps.md` `FINAL / FROZEN` and separately advance governance to authorization of the first implementation slice.
+Make a separate explicit operational decision on whether to authorize `M3-S00 — Official CLI Location protocol correctness` as the first implementation slice.
 
-Implementation remains **NOT AUTHORIZED** until `steps.md` is explicitly frozen and this status file authorizes `M3-S00`.
+Software implementation remains **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
