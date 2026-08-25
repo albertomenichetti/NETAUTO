@@ -1,6 +1,6 @@
 # M3 — Official CLI Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-06 / ADP-07 CLOSED
+**Status:** DESIGN COMPLETE — ADP-06 / ADP-07 CLOSED — NOT FROZEN
 
 **Authority:** M3 TO-BE ARCHITECTURE — OFFICIAL CLI OWNER
 
@@ -30,8 +30,7 @@ M3-OUT-08 — Regression and traceability closure
 M3-AC-01 — Eight-operation create success coverage
 M3-AC-02 — Exact Location protocol failures
 M3-AC-03 — Interactive/non-interactive create truthfulness
-M3-AC-16 — CLI ObjectTemplate parent-filter tri-state
-M3-AC-17 — CLI explicit-null no-selector-lookup behavior
+M3-AC-15 — ObjectTemplate parent-filter CLI tri-state
 M3-AC-18 — Complete outcome traceability
 ```
 
@@ -508,7 +507,7 @@ The registry templates themselves remain unchanged unless a separate governance 
 
 # Downstream verification constraints
 
-`verification.md` / ADP-08 must prove both ADP-06 and ADP-07.
+`verification.md` / ADP-08 owns deterministic evidence for both ADP-06 and ADP-07.
 
 For the ObjectTemplate CLI parent tri-state:
 
@@ -571,4 +570,4 @@ ADP-06  CLOSED
 ADP-07  CLOSED
 ```
 
-No implementation authority is created by these closures. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN` until ADP-08 and the architecture consistency/freeze gates are complete.
+No implementation authority is created by these closures. The architecture set remains `NOT FROZEN` pending consistency closure and explicit freeze approval.
