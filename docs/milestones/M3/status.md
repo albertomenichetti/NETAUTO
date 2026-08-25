@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION PLANNING
+**Milestone status:** ACTIVE — IMPLEMENTATION STEPS CONSISTENCY REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,18 +18,19 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION PLANNING
+phase                    IMPLEMENTATION STEPS CONSISTENCY REVIEW
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
 architecture approval    GRANTED
-implementation steps     NOT YET FROZEN
+implementation steps     DESIGN COMPLETE — NOT YET FROZEN
+steps review             PENDING
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for implementation planning
+blockers                 none for steps consistency review
 ```
 
-Architecture freeze does not authorize software changes. `steps.md` is now the only active planning authority and must be designed, reviewed and explicitly frozen before any implementation slice can be authorized.
+Architecture freeze does not authorize software changes. `steps.md` now contains a complete proposed decomposition and must pass a separate consistency review and explicit project-owner freeze approval before any implementation slice can be authorized.
 
 ## Frozen contract gate
 
@@ -101,6 +102,33 @@ architecture/verification.md
     M3-VER-01 .. M3-VER-19 DESIGNED
 ```
 
+## Proposed implementation decomposition
+
+`docs/milestones/M3/steps.md` is now `DESIGN COMPLETE — REVIEW PENDING — NOT YET FROZEN`.
+
+Proposed linear registry:
+
+```text
+M3-S00  Official CLI Location protocol correctness
+M3-S01  ObjectTemplate parent tri-state across HTTP, CLI and cursor identity
+M3-S02  DataType trusted one-statement read projections
+M3-S03  ObjectTemplate trusted recursive and aggregate read projections
+M3-S04  Object trusted projections and path-target cursor repairs
+M3-S05  RelationshipDefinition, Relationship and lifecycle trusted reads
+M3-S06  Integrated read/cursor/coherence/non-drift/traceability closure
+M3-S07  Full M3 acceptance and delivery-candidate gate
+```
+
+Dependency graph:
+
+```text
+M3-S00 -> M3-S01 -> M3-S02 -> M3-S03 -> M3-S04 -> M3-S05 -> M3-S06 -> M3-S07
+```
+
+Primary evidence ownership covers `M3-VER-01 .. M3-VER-19` exactly once; `M3-S07` re-executes all nineteen on one final candidate.
+
+This decomposition is still reviewable planning material, not implementation authority.
+
 ## Frozen architecture closure
 
 ```text
@@ -111,7 +139,7 @@ HTTP parent tri-state     CLOSED
 CLI parent tri-state      CLOSED
 CLI create Location       CLOSED — 8 / 8
 verification bundles      DESIGNED — 19 / 19
-consistency review        PASS
+architecture review       PASS
 open architecture finding 0
 ```
 
@@ -141,7 +169,7 @@ new business resource
 new public route
 ```
 
-Any implementation-planning proposal that contradicts the frozen contract or architecture must stop for the applicable reopen process rather than silently altering semantics.
+Any steps-review or implementation proposal that contradicts the frozen contract or architecture must stop for the applicable reopen process rather than silently altering semantics.
 
 ## Remaining gates
 
@@ -150,17 +178,17 @@ contract FINAL / FROZEN                       DONE
 architecture design                           DONE — 8 / 8
 architecture consistency review               DONE — PASS
 architecture set FINAL / FROZEN               DONE
-implementation steps design                   ACTIVE
-implementation steps consistency review       PENDING
+implementation steps design                   DONE — PROPOSED M3-S00..S07
+implementation steps consistency review       ACTIVE
 implementation steps FINAL / FROZEN            PENDING
 explicit implementation authorization          PENDING
 final M3 acceptance                            PENDING
 ```
 
-`steps.md` still contains no frozen `M3-Snn` implementation registry. No implementation slice is active.
+No implementation slice is active.
 
 ## Immediate next action
 
-Design the M3 implementation decomposition in [`steps.md`](steps.md), assigning each slice bounded code/doc scope, required `M3-VER-*` evidence, regression gates, ordering/dependencies and completion conditions.
+Run the separate M3 steps consistency review against the complete proposed decomposition in [`steps.md`](steps.md). Correct every finding before requesting explicit project-owner approval to freeze the steps.
 
 Implementation remains **NOT AUTHORIZED** until `steps.md` is separately reviewed, explicitly frozen and this status file authorizes the first slice.
