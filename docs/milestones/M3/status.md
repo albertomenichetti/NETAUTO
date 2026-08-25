@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S02 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S02 COMPLETED / M3-S03 PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION
+phase                    IMPLEMENTATION AUTHORIZATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S02 — CANDIDATE READY FOR REVIEW
-software implementation  AUTHORIZED — M3-S02 ONLY
-blockers                 none
+active implementation    NONE
+software implementation  NOT AUTHORIZED
+blockers                 none for M3-S03 authorization decision
 ```
 
-Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness` and `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S02 — DataType trusted one-statement read projections`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
+Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness`, `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`, and `M3-S02 — DataType trusted one-statement read projections` are reviewer-owned `COMPLETED`. No later slice is authorized: software implementation may resume only after `status.md` explicitly authorizes the next exact slice.
 
 ## Frozen contract gate
 
@@ -176,7 +176,7 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S02                    READY / AUTHORIZED
+M3-S02                    COMPLETED
 ```
 
 The reviewed implementation realizes the frozen ADP-04 / ADP-05 / ADP-06 parent-filter tri-state without changing the existing application/persistence semantic owner or opaque cursor codec. Review confirmed the exact lowercase HTTP `null` carrier, preserved request-parameter presence bit, generic metadata-driven nullable direct-selector terminal rule, location-aware CLI QUERY `null` emission, unchanged BODY JSON-null behavior, PATH-None rejection, bounded human-selector discovery, and interactive/non-interactive carrier equivalence.
@@ -185,23 +185,34 @@ Permanent evidence covers HTTP omission / UUID / lowercase-null semantics and in
 
 The completed M3-S01 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
 
-## M3-S02 implementation authorization
+## M3-S02 reviewer completion
+
+Reviewer result:
 
 ```text
-authorized slice          M3-S02 — DataType trusted one-statement read projections
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S01 — COMPLETED
-assigned evidence         DataType targets for M3-VER-04/05/06/07/09/12/19
-exclusive primary bundle  NONE — by frozen decomposition
-candidate evidence        DataType targets for M3-VER-04/05/06/09/12/19 — PASS
-M3-VER-07 target          NOT APPLICABLE — delivered DataType schema closes mandatory carriers
+slice                     M3-S02 — DataType trusted one-statement read projections
+review outcome            COMPLETED
+candidate commit          dbd5f7aa5c8c1bfaffca892182e0cf47338f6936
+assigned evidence         DataType targets for M3-VER-04/05/06/09/12/19 — PASS
+M3-VER-07 DataType target NOT APPLICABLE — delivered schema closes mandatory carriers
+exclusive primary bundle NONE — by frozen decomposition
 global M3-VER bundles     NOT YET CLOSED
+business SQL statements   DT-GET-01..04 = 1 / 1 / 1 / 1 on PostgreSQL 16.15
 candidate gates           PASS
-later slices              NOT AUTHORIZED
+review findings           0
+contract reopen           NOT REQUIRED
+architecture reopen       NOT REQUIRED
+steps reopen              NOT REQUIRED
+M3-S03                    NOT AUTHORIZED
 ```
 
-The mandatory repository pre-flight, assigned DataType evidence and complete candidate gate passed inside the exact frozen `M3-S02` scope. All four canonical DataType GETs were measured at exactly one business SQL statement on real PostgreSQL, no DataType GET depends on `coherent_read()` or read-side mutation certification, and the paired mutation boundary remains active. The candidate is ready for reviewer inspection; reviewer-owned completion and global M3-VER bundle closure remain separate.
+The reviewed implementation realizes the frozen DataType `RP-01`, `RP-02` and `RP-03` trusted-read patterns while preserving public routes, DTOs, filters, ordering, cursor identities and mutation semantic authority. Review confirmed that all four canonical DataType GETs use ordinary read UoWs, perform no `coherent_read()` dependency or default-target publication recertification, and issue exactly one authoritative business SQL statement per request on real PostgreSQL.
+
+The parent-rooted version page carries parent-presence evidence through one LEFT JOIN whose membership filters and keyset predicate remain in the join condition, preserving missing-parent `404` separately from an existing parent with an empty filtered page. DataType lineage/exact reads now expose representable persisted facts even when those facts would fail mutation-time certification; paired mutation evidence confirms `set-default` and constraint revision validation remain active.
+
+The legacy cross-family default-pointer corruption regression was narrowed only for the completed DataType read boundary: DataType reads now remain readable as required by M3-S02, while ObjectTemplate and RelationshipDefinition retain their pre-S03/pre-S05 internal-failure expectations. No later-family read behavior was silently migrated.
+
+The completed M3-S02 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
 
 ## Frozen architecture closure
 
@@ -257,14 +268,14 @@ implementation steps consistency review       DONE — PASS
 implementation steps FINAL / FROZEN           DONE
 M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
-explicit M3-S02 implementation authorization  DONE — M3-S02 ONLY
-M3-S02 execution/review                        CANDIDATE READY FOR REVIEW
+M3-S02 execution/review                        DONE — COMPLETED
+explicit M3-S03 implementation authorization  PENDING
 M3-S03 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Review the `M3-S02 — DataType trusted one-statement read projections` candidate and its concrete DataType evidence targets.
+Make a separate explicit operational decision on whether to authorize `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections` as the next implementation slice.
 
-The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S02` `COMPLETED` and authorize the transition to `M3-S03`.
+Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
