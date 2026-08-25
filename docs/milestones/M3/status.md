@@ -64,7 +64,9 @@ architecture/api.md
     ADP-05 CLOSED
 
 architecture/cli.md
-    NOT YET WRITTEN
+    DESIGN IN PROGRESS
+    ADP-06 CLOSED
+    ADP-07 OPEN
 
 architecture/verification.md
     NOT YET WRITTEN
@@ -78,7 +80,7 @@ ADP-02  CLOSED   complete 22-route one-statement projection matrix — 22 / 22
 ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  CLOSED   cursor identity realization — 12 / 12
 ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
-ADP-06  OPEN     CLI nullable selector/query carrier
+ADP-06  CLOSED   CLI nullable selector/query carrier
 ADP-07  OPEN     CLI Location materialization grammar
 ADP-08  OPEN     verification architecture
 ```
@@ -86,8 +88,8 @@ ADP-08  OPEN     verification architecture
 Progress:
 
 ```text
-closed design points  5 / 8
-open design points    3 / 8
+closed design points  6 / 8
+open design points    2 / 8
 ```
 
 ## Architecture closure to date
@@ -97,6 +99,7 @@ GET projection matrix                     CLOSED — 22 / 22
 historical lifecycle decoder              CLOSED
 cursor identity matrix                    CLOSED — 12 / 12
 ObjectTemplate HTTP parent tri-state      CLOSED
+ObjectTemplate CLI parent tri-state       CLOSED
 ```
 
 All 22 canonical public business GET/read targets have one complete one-statement logical projection under an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
@@ -122,6 +125,26 @@ exact lowercase null
 ```
 
 Only exact lowercase `null` receives M3 sentinel treatment; all other non-UUID values remain request-validation failures. Repeated query parameters remain `400 invalid_request`. `parent_filter_set` is not public.
+
+ADP-06 freezes the official CLI equivalent:
+
+```text
+omitted
+    -> no selector target
+    -> no query pair
+
+UUID or accepted ObjectTemplate human selector
+    -> normal selector resolution
+    -> exact UUID query pair
+
+explicit null
+    -> parsed None
+    -> terminal nullable selector value
+    -> zero selector-discovery GETs
+    -> parent_template_id=null query pair
+```
+
+Only the ObjectTemplate list `parent_template_id` registry parameter becomes nullable. The request planner treats None by location: nullable QUERY -> lexical `null`; nullable BODY -> JSON null; PATH -> invalid. The generic scalar wire helper is not broadened to accept None.
 
 ## Frozen contract outcomes to realize
 
@@ -181,24 +204,25 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Close **ADP-06 — CLI nullable selector/query carrier** in a new [`architecture/cli.md`](architecture/cli.md).
+Close **ADP-07 — CLI Location materialization grammar** in [`architecture/cli.md`](architecture/cli.md).
 
-The design must freeze metadata-driven handling for the ObjectTemplate list parameter so that:
+The design must freeze the tiny registry-template grammar used to materialize expected `Location` after a registered successful `201 Created` response:
 
 ```text
-parameter omitted
-    -> no parent_template_id query pair
+token lookup precedence
+    1. exact request_values[token]
+    2. dot-separated JSON path in the validated response body
 
-UUID or accepted ObjectTemplate human selector
-    -> normal selector resolution
-    -> exact UUID query pair
+materializable token
+    -> scalar required for literal insertion
 
-explicit null
-    -> nullable terminal carrier
-    -> no selector lookup
-    -> lexical query value "null"
+unresolvable / non-materializable token
+    -> cli_protocol_error
+
+materialization
+    -> literal replacement of the exact {token}
 ```
 
-It must not globally redefine arbitrary `None` as a valid query/path scalar: nullable QUERY None serializes `null`, nullable BODY None retains JSON null semantics, and PATH None remains invalid/impossible.
+It must preserve exact actual Location validation, cover all eight registered 201 operations, support top-level and nested response fields, and add no hidden post-mutation GET.
 
 Software implementation remains **NOT AUTHORIZED**.
