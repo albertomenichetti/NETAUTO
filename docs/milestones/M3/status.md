@@ -59,7 +59,9 @@ architecture/read-projections.md
     ADP-03 CLOSED
 
 architecture/api.md
-    NOT YET WRITTEN
+    DESIGN IN PROGRESS
+    ADP-04 CLOSED — 12 / 12 cursor routes
+    ADP-05 OPEN
 
 architecture/cli.md
     NOT YET WRITTEN
@@ -74,7 +76,7 @@ architecture/verification.md
 ADP-01  CLOSED   read projection responsibility / persistence boundary
 ADP-02  CLOSED   complete 22-route one-statement projection matrix — 22 / 22
 ADP-03  CLOSED   historical lifecycle trusted decoder
-ADP-04  OPEN     cursor identity realization
+ADP-04  CLOSED   cursor identity realization — 12 / 12
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
 ADP-06  OPEN     CLI nullable selector/query carrier
 ADP-07  OPEN     CLI Location materialization grammar
@@ -84,21 +86,34 @@ ADP-08  OPEN     verification architecture
 Progress:
 
 ```text
-closed design points  3 / 8
-open design points    5 / 8
+closed design points  4 / 8
+open design points    4 / 8
 ```
 
-Read architecture closure:
+Read / cursor architecture closure:
 
 ```text
 ADP-01 responsibility boundary                  CLOSED
 ADP-02 route projection matrix                  CLOSED — 22 / 22
 ADP-03 historical trusted decoder               CLOSED
+ADP-04 cursor identity realization              CLOSED — 12 / 12
 ```
 
 The frozen projection-pattern vocabulary is `RP-01 .. RP-10`. Every canonical public business GET/read target has one complete one-statement logical projection, an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
 
-Historical lifecycle reads now have a frozen decoding-only boundary: typed carrier materialization remains; mutation-transition semantic recertification, duplicated database family/state-shape checks and live-state reinterpretation are removed from the read target. Materially undecodable required carriers continue to fail safely, while mutation/lifecycle-write validation remains strong.
+Historical lifecycle reads have a frozen decoding-only boundary: typed carrier materialization remains; mutation-transition semantic recertification, duplicated database family/state-shape checks and live-state reinterpretation are removed from the read target. Materially undecodable required carriers continue to fail safely, while mutation/lifecycle-write validation remains strong.
+
+Cursor architecture preserves the delivered opaque codec v1 and freezes one canonical semantic identity construction across all twelve paginated routes. The only M3 cursor identity corrections are:
+
+```text
+GET /objects/{parent_object_id}/components
+    -> include parent_object_id
+
+GET /objects/{object_id}/relationships
+    -> include object_id
+```
+
+All canonical keyset tuples remain unchanged. `limit` remains excluded from semantic cursor identity. ObjectTemplate omitted/root-only/exact-parent states remain cursor-distinct through internal `parent_filter_set`; global/Object-scoped lifecycle remain distinct through `involving_object_id`.
 
 ## Frozen contract outcomes to realize
 
@@ -158,24 +173,21 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Close **ADP-04 — Cursor identity realization** in `architecture/api.md`.
+Close **ADP-05 — ObjectTemplate nullable HTTP query carrier** in [`architecture/api.md`](architecture/api.md).
 
-The design must freeze one application cursor construction rule for all twelve cursor-bearing routes:
+The design must freeze the exact HTTP lexical parsing boundary for:
 
 ```text
-query identity
-    = route identity
-    + every path target that changes collection membership
-    + every query filter that changes collection membership
-    + explicit semantic presence bits where omitted/null/value are distinct
+parent_template_id omitted
+    -> no parent filter
 
-position
-    = complete canonical keyset ordering tuple
+parent_template_id=<UUID>
+    -> exact stable parent filter
 
-limit
-    = excluded from semantic query identity
+parent_template_id=null
+    -> explicit root-only filter
 ```
 
-It must explicitly realize the two path-target corrections (`parent_object_id`, `object_id`) and preserve ObjectTemplate omitted/root/exact-parent distinction plus global/object-scoped lifecycle cursor separation.
+It must preserve strict malformed/repeated query rejection, accept only exact lowercase `null` as the root sentinel, and map the three public states into the internal `parent_template_id + parent_filter_set` representation already frozen by ADP-04.
 
 Software implementation remains **NOT AUTHORIZED**.
