@@ -1,6 +1,6 @@
 # M3 — Architecture Set
 
-**Architecture set status:** DESIGN IN PROGRESS — NOT FROZEN
+**Architecture set status:** DESIGN COMPLETE — CONSISTENCY REVIEW PENDING — NOT FROZEN
 
 **Authority:** M3 TO-BE ARCHITECTURE SET CONTROL
 
@@ -8,9 +8,9 @@
 
 This directory defines the M3 TO-BE architecture required to realize the frozen milestone contract in [`../contract.md`](../contract.md).
 
-The set starts from delivered AS-IS under `docs/architecture/` and may change only explicit M3 deltas. Preserved guarantees remain owned by their current AS-IS documents and must not be duplicated as competing M3 authority.
+The set starts from delivered AS-IS under `docs/architecture/` and changes only explicit M3 deltas. Preserved guarantees remain owned by their current AS-IS documents and must not be duplicated as competing M3 authority.
 
-Implementation remains unauthorized until this architecture set is `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes a slice.
+All planned M3 architecture design points are now closed. Implementation remains unauthorized until this architecture set passes a separate consistency/freeze review, becomes `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes a slice.
 
 ## Frozen contract inputs
 
@@ -37,12 +37,12 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
-| [`api.md`](api.md) | DESIGN IN PROGRESS — ADP-04 / ADP-05 CLOSED | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
-| [`cli.md`](cli.md) | DESIGN IN PROGRESS — ADP-06 / ADP-07 CLOSED | nullable selector/query carrier and Location materialization grammar |
-| [`verification.md`](verification.md) | NOT YET WRITTEN | deterministic architecture/acceptance evidence |
+| [`read-projections.md`](read-projections.md) | ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
+| [`api.md`](api.md) | ADP-04 / ADP-05 CLOSED | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
+| [`cli.md`](cli.md) | ADP-06 / ADP-07 CLOSED | nullable selector/query carrier and Location materialization grammar |
+| [`verification.md`](verification.md) | ADP-08 CLOSED | deterministic architecture/acceptance evidence, stable M3-VER bundles and final evidence gates |
 
-Additional architecture documents may be added only when an open design point cannot be owned cleanly here and may not expand the frozen contract.
+The four documents above are the complete planned M3 architecture owner set. Additional architecture documents may be added only through explicit consistency-review finding resolution and may not expand the frozen contract.
 
 ## Current AS-IS dependencies
 
@@ -61,9 +61,9 @@ docs/architecture/concurrency.md
 docs/architecture/verification.md
 ```
 
-The M3 set must record every intentional TO-BE contradiction and every preserved dependency.
+Every intentional M3 contradiction is a bounded TO-BE delta; every unaffected guarantee remains owned by delivered AS-IS.
 
-## Area ownership
+## Area ownership and closure
 
 ### Public reads
 
@@ -74,7 +74,7 @@ Closed by ADP-01 / ADP-02 / ADP-03:
 ```text
 mutation certification vs read projection responsibility
 one SQL business statement for all 22 canonical GET/read routes
-ordinary read UoW / statement snapshot
+ordinary read UoW / PostgreSQL statement snapshot
 no target public GET dependence on coherent_read()
 404 vs empty/null preservation
 trusted projector boundary
@@ -84,7 +84,7 @@ no read-side lifecycle transition certification
 write-side lifecycle validation remains intact
 ```
 
-`coherent_read()` remains infrastructure and is not globally deprecated.
+`coherent_read()` remains valid infrastructure outside the M3 canonical GET census and is not globally deprecated.
 
 ### Cursor correctness
 
@@ -125,18 +125,18 @@ CLI UUID/human       -> normal selector resolution -> UUID query pair
 CLI explicit null    -> parsed None -> zero selector lookup -> lowercase null query pair
 ```
 
-The nullable-selector rule is metadata-driven for direct selector parameters. Nullable QUERY None emits lexical `null`; nullable BODY None remains JSON null; PATH None remains invalid. The generic scalar serializer is not broadened to accept None.
+Nullable direct-selector handling is metadata-driven. Nullable QUERY None emits lexical `null`; nullable BODY None remains JSON null; PATH None remains invalid. The generic scalar serializer is not broadened to accept None.
 
 ### CLI post-create
 
-Owner: `architecture/cli.md`.
+Owner: `architecture/cli.md`; verification owner: `architecture/verification.md`.
 
 Closed by ADP-07:
 
 ```text
 Location template = tiny NETAUTO registry DSL, not Python format syntax
-request-value exact-key presence has precedence
-response fallback is dot-separated JSON-object traversal
+request exact-key presence has precedence over response fallback
+response fallback = dot-separated JSON-object traversal
 materializable token = str or int excluding bool
 literal {token} replacement only
 unresolvable/non-scalar expected token -> cli_protocol_error
@@ -144,6 +144,29 @@ actual Location count must equal one and match exactly
 all eight registered 201 operations covered
 no hidden post-mutation GET
 ```
+
+### Verification
+
+Owner: `architecture/verification.md`.
+
+Closed by ADP-08:
+
+```text
+three gates: architecture design / implementation slice / final acceptance
+19 stable bundles M3-VER-01 .. M3-VER-19
+one bundle per M3-AC-01 .. M3-AC-19
+machine-checkable OUT / AC / VER / owner / target traceability
+22 / 22 real-PostgreSQL one-business-statement disposition
+paired read-simplification + mutation-validation preservation evidence
+trusted lifecycle positive/negative decoding evidence
+12 / 12 cursor matrix plus explicit M3 regressions
+HTTP + CLI ObjectTemplate parent tri-state evidence
+8 / 8 CLI 201 Location matrix
+schema/migration/dependency/lockfile non-delta evidence
+single-request committed snapshot evidence
+```
+
+A missing required PostgreSQL environment yields `BLOCKED`, never `PASS`.
 
 ## Design-point status
 
@@ -155,73 +178,37 @@ ADP-04  CLOSED   cursor identity realization — 12 / 12 routes
 ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
 ADP-06  CLOSED   CLI nullable selector/query carrier
 ADP-07  CLOSED   CLI Location materialization grammar — 8 / 8 creates
-ADP-08  OPEN     verification architecture
+ADP-08  CLOSED   verification architecture — 19 / 19 AC bundles
 ```
 
 Current progress:
 
 ```text
-closed design points     7 / 8
-open design points       1 / 8
-GET route coverage      22 / 22 CLOSED
-cursor route coverage   12 / 12 CLOSED
-HTTP parent tri-state   CLOSED
-CLI parent tri-state    CLOSED
-CLI create Location      8 / 8 CLOSED
-next design work         ADP-08 — verification architecture
+closed design points       8 / 8
+open design points         0 / 8
+GET route coverage        22 / 22 CLOSED
+cursor route coverage     12 / 12 CLOSED
+HTTP parent tri-state     CLOSED
+CLI parent tri-state      CLOSED
+CLI create Location        8 / 8 CLOSED
+verification bundles      19 / 19 DESIGNED
+next governance work       ARCHITECTURE CONSISTENCY / FREEZE REVIEW
 ```
 
-## Closed architecture summaries
-
-### ADP-01 — Read responsibility
-
-Application owns request semantics, cursor validation, read UoW and public outcome classification. Persistence projectors own complete persisted fact projection and representational decoding on the caller-owned connection. Public GETs do not run mutation-semantic certification.
-
-### ADP-02 — Projection matrix
-
-All 22 canonical GET/read routes have one complete business SQL statement target under an ordinary read UoW / PostgreSQL statement snapshot. The frozen projection vocabulary is `RP-01 .. RP-10`; no target public GET requires `coherent_read()`.
-
-### ADP-03 — Historical decoder
-
-Historical reads keep typed carrier materialization and materially-undecodable failure, while removing mutation-transition recertification, duplicated database family/state-shape checks and live-state reinterpretation. Mutation/lifecycle-write validation remains strong.
-
-### ADP-04 — Cursor identity
-
-The delivered opaque cursor v1 payload is preserved. Application constructs one canonical `route + filters` identity after request parsing and reuses it for decode/encode. The complete twelve-route matrix is frozen; only components and Object-relative Relationships add their missing path targets. No canonical keyset tuple changes.
-
-### ADP-05 — HTTP parent tri-state
-
-`GET /object-templates` accepts exactly omitted, a valid delivered UUID carrier or exact lowercase `null`. A local nullable-UUID adapter intercepts only `null`; raw query presence remains the internal `parent_filter_set` source. Empty, uppercase/special sentinels, malformed UUIDs and repeats remain `400 invalid_request`.
-
-### ADP-06 — CLI parent tri-state
-
-The ObjectTemplate list registry marks only `parent_template_id` as nullable while retaining ObjectTemplate selector capability. Explicit null is a terminal nullable selector value, performs zero selector discovery and emits `parent_template_id=null`. Nullable QUERY/BODY/PATH behavior is location-aware and `_wire_string(None)` is not introduced globally.
-
-### ADP-07 — CLI Location materialization
-
-The eight existing Location templates remain authoritative. Tokens follow a closed `{segment(.segment)*}` grammar. Exact request-key presence wins over response lookup; response fallback traverses JSON objects only. Only `str` and `int` excluding bool are materializable. Replacement is literal and no Python formatter may reinterpret dotted tokens. Missing/repeated/mismatching actual Location or non-materializable expected Location remains `cli_protocol_error`; a canonical matching 201 cannot fail as `cli_internal_error` because of materializer behavior.
-
-## Open architecture work
-
-### ADP-08 — Verification architecture
-
-Must define deterministic permanent evidence for all frozen contract outcomes, including:
+## Closed architecture summary
 
 ```text
-22 / 22 GET projection and one-business-statement evidence
-read semantic-certification removal and mutation-validation preservation
-historical lifecycle decoding boundary
-12 / 12 cursor identity/keyset evidence
-HTTP ObjectTemplate omitted / UUID / lowercase-null carrier
-CLI ObjectTemplate omitted / UUID-or-human / explicit-null carrier
-zero selector lookup for CLI explicit null
-8 / 8 CLI create/Location success matrix
-Location missing/repeated/mismatch/unresolvable failures
-interactive/non-interactive create truthfulness
-single-request committed projection coherence
-no schema/migration/dependency/lockfile delta
-complete outcome / acceptance-criterion traceability
+ADP-01  responsibility boundary
+ADP-02  22-route one-statement projection matrix
+ADP-03  trusted historical lifecycle decoder
+ADP-04  12-route cursor identity realization
+ADP-05  HTTP parent_template_id omitted/UUID/null carrier
+ADP-06  CLI nullable selector/query carrier
+ADP-07  CLI Location materialization DSL
+ADP-08  deterministic verification architecture
 ```
+
+No implementation authority is created by complete design-point closure.
 
 ## Architecture design rules
 
@@ -248,36 +235,57 @@ CLI parsed explicit null
 Location registry token
     != Python formatting expression
 
+verification design DESIGNED
+    != implementation evidence PASS
+
 current AS-IS ownership
     != M3 TO-BE delta ownership
 ```
 
-Architecture may choose SQLAlchemy/SQL composition, helper boundaries and internal carrier shapes only where those choices preserve the frozen contract and this architecture.
+## Consistency / freeze gate
 
-## Freeze gate
-
-The set may become `FINAL / FROZEN` only after:
+The set may become `FINAL / FROZEN` only after a separate review proves:
 
 ```text
-all planned owner documents are written
-ADP-01 .. ADP-08 are CLOSED
-all M3 outcomes/ACs have architecture or preserved AS-IS ownership
-22 / 22 GET routes have complete projection disposition
-12 / 12 cursor routes have complete identity/keyset disposition
+all planned owner documents present
+ADP-01 .. ADP-08 all CLOSED
+all M3 outcomes/ACs/CQGs have architecture or preserved AS-IS ownership
+22 / 22 GET routes have mutually consistent projection disposition
+12 / 12 cursor routes have mutually consistent identity/keyset disposition
 HTTP and CLI parent-filter carriers are mutually consistent
 CLI Location grammar covers all 8 registered 201 operations
-verification covers every frozen outcome
-cross-document consistency passes
-no stale TODO/TBD/contradictory owner remains
+19 / 19 ACs map to stable verification bundles
+cross-document terminology and responsibility boundaries are consistent
+no stale TODO/TBD/open semantic statement remains
+no contract contradiction or required formal reopen remains
 ```
+
+Architecture freeze additionally requires explicit project-owner approval after the review PASS.
 
 Until then:
 
 ```text
-ARCHITECTURE SET = DESIGN IN PROGRESS — NOT FROZEN
+ARCHITECTURE SET = DESIGN COMPLETE — NOT FROZEN
 IMPLEMENTATION   = NOT AUTHORIZED
 ```
 
+## Immediate next action
+
+Perform a dedicated architecture consistency/freeze review across:
+
+```text
+contract.md
+architecture/read-projections.md
+architecture/api.md
+architecture/cli.md
+architecture/verification.md
+architecture/README.md
+status.md
+steps.md gate state
+```
+
+The review must record findings and resolve them before any freeze proposal. It must not silently reinterpret the frozen contract.
+
 ## Reopen discipline
 
-If architecture discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, stop the affected design point and request formal contract reopening. Architecture must not silently reinterpret the contract.
+If consistency review discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, stop the affected freeze path and request formal contract reopening. Architecture must not repair a contract-level gap by silently changing semantics.
