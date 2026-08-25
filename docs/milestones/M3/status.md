@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — ARCHITECTURE DESIGN
+**Milestone status:** ACTIVE — ARCHITECTURE CONSISTENCY REVIEW PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,16 +18,17 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    ARCHITECTURE DESIGN
+phase                    ARCHITECTURE DESIGN COMPLETE
+next gate                ARCHITECTURE CONSISTENCY / FREEZE REVIEW
 contract                 FINAL / FROZEN
-architecture set         DESIGN IN PROGRESS — NOT FROZEN
+architecture set         DESIGN COMPLETE — NOT FROZEN
 implementation steps     NOT YET FROZEN
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for architecture design
+blockers                 none known before consistency review
 ```
 
-The frozen contract is authoritative. Architecture design is the only active semantic/technical design activity; no implementation slice or software behavior change is authorized.
+All eight planned architecture design points are closed. This does not create implementation authority. The architecture set must pass a separate consistency/freeze review and receive explicit project-owner freeze approval before `steps.md` may be finalized.
 
 ## Frozen contract gate
 
@@ -47,29 +48,27 @@ Any semantic change to frozen Scope, Non-goals, explicit deltas, outcomes or acc
 
 Controller:
 
-- [`architecture/README.md`](architecture/README.md) — `DESIGN IN PROGRESS — NOT FROZEN`.
+- [`architecture/README.md`](architecture/README.md) — `DESIGN COMPLETE — CONSISTENCY REVIEW PENDING — NOT FROZEN`.
 
 Current TO-BE owners:
 
 ```text
 architecture/read-projections.md
-    DESIGN IN PROGRESS
     ADP-01 CLOSED
     ADP-02 CLOSED — 22 / 22 routes
     ADP-03 CLOSED
 
 architecture/api.md
-    DESIGN IN PROGRESS
     ADP-04 CLOSED — 12 / 12 cursor routes
     ADP-05 CLOSED
 
 architecture/cli.md
-    DESIGN IN PROGRESS
     ADP-06 CLOSED
     ADP-07 CLOSED — 8 / 8 create Location templates
 
 architecture/verification.md
-    NOT YET WRITTEN
+    ADP-08 CLOSED
+    M3-VER-01 .. M3-VER-19 DESIGNED
 ```
 
 ## Architecture design-point status
@@ -82,34 +81,47 @@ ADP-04  CLOSED   cursor identity realization — 12 / 12
 ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
 ADP-06  CLOSED   CLI nullable selector/query carrier
 ADP-07  CLOSED   CLI Location materialization grammar — 8 / 8 creates
-ADP-08  OPEN     verification architecture
+ADP-08  CLOSED   verification architecture — 19 / 19 AC bundles designed
 ```
 
 Progress:
 
 ```text
-closed design points  7 / 8
-open design points    1 / 8
+closed design points       8 / 8
+open design points         0 / 8
+GET route coverage        22 / 22 CLOSED
+cursor route coverage     12 / 12 CLOSED
+HTTP parent tri-state     CLOSED
+CLI parent tri-state      CLOSED
+CLI create Location        8 / 8 CLOSED
+verification bundles      19 / 19 DESIGNED
 ```
 
 ## Architecture closure to date
 
-```text
-GET projection matrix                     CLOSED — 22 / 22
-historical lifecycle decoder              CLOSED
-cursor identity matrix                    CLOSED — 12 / 12
-ObjectTemplate HTTP parent tri-state      CLOSED
-ObjectTemplate CLI parent tri-state       CLOSED
-CLI create Location grammar               CLOSED — 8 / 8
-```
+### Public read boundary
 
 All 22 canonical public business GET/read targets have one complete one-statement logical projection under an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
 
 Historical lifecycle reads have a decoding-only boundary: typed historical carrier materialization remains; mutation-transition semantic recertification and live-state reinterpretation are removed from the read target while write validation remains strong.
 
-Cursor architecture preserves the delivered opaque codec v1 and complete canonical keyset tuples. The only cursor identity corrections are `parent_object_id` for Object components and `object_id` for Object-relative Relationships. ObjectTemplate omitted/root-only/exact-parent states remain distinct through internal `parent_filter_set`.
+### Cursor boundary
 
-ADP-05 freezes the HTTP ObjectTemplate parent filter as:
+Cursor architecture preserves the delivered opaque codec v1 and complete canonical keyset tuples. The only M3 cursor identity corrections are:
+
+```text
+GET /objects/{parent_object_id}/components
+    -> include parent_object_id
+
+GET /objects/{object_id}/relationships
+    -> include object_id
+```
+
+ObjectTemplate omitted/root-only/exact-parent states remain distinct through internal `parent_filter_set`. Global/Object-scoped lifecycle remain distinct through `involving_object_id`. `limit` remains excluded from semantic cursor identity.
+
+### ObjectTemplate parent-filter carrier
+
+HTTP:
 
 ```text
 omitted
@@ -125,9 +137,9 @@ exact lowercase null
     -> parent_filter_set=True
 ```
 
-Only exact lowercase `null` receives M3 sentinel treatment; all other non-UUID values remain request-validation failures. Repeated query parameters remain `400 invalid_request`. `parent_filter_set` is not public.
+Malformed/unsupported/repeated query carriers remain `400 invalid_request`; `parent_filter_set` is not public.
 
-ADP-06 freezes the official CLI equivalent:
+CLI:
 
 ```text
 omitted
@@ -145,9 +157,11 @@ explicit null
     -> parent_template_id=null query pair
 ```
 
-Only the ObjectTemplate list `parent_template_id` registry parameter becomes nullable. The request planner treats None by location: nullable QUERY -> lexical `null`; nullable BODY -> JSON null; PATH -> invalid. The generic scalar wire helper is not broadened to accept None.
+Only the ObjectTemplate list `parent_template_id` registry parameter becomes nullable. Nullable QUERY None emits lexical `null`; nullable BODY None remains JSON null; PATH None remains invalid. `_wire_string(None)` is not introduced globally.
 
-ADP-07 freezes the CLI Location registry DSL and post-success protocol boundary:
+### CLI Location grammar
+
+The eight existing `201 Created` Location templates remain unchanged.
 
 ```text
 token grammar
@@ -171,7 +185,33 @@ failure
         -> cli_protocol_error
 ```
 
-The eight existing `201 Created` Location templates remain unchanged. The three nested response identities and five flat-token cases share one common materializer. No hidden post-mutation GET is introduced, and a canonical matching 201 cannot become `cli_internal_error` because of local Location formatting.
+The three nested response identities and five flat-token cases share one common materializer. No hidden post-mutation GET is introduced, and a canonical matching 201 cannot become `cli_internal_error` because of local Location formatting.
+
+### Verification architecture
+
+ADP-08 freezes three distinct verification gates and 19 stable evidence bundles:
+
+```text
+M3-AC-01 -> M3-VER-01
+...
+M3-AC-19 -> M3-VER-19
+```
+
+Permanent evidence design includes:
+
+```text
+22 / 22 GET compatibility + real-PG one-business-statement measurement
+paired read non-recertification + write-validator preservation evidence
+historical lifecycle trusted-decoder positive/negative evidence
+12 / 12 cursor identity/keyset matrix
+HTTP/CLI parent tri-state evidence
+8 / 8 CLI Location success/failure matrix
+single-request committed snapshot evidence
+schema/migration/dependency/lockfile non-delta evidence
+machine-checkable OUT/AC/VER/owner/target traceability
+```
+
+PostgreSQL-required bundles are `BLOCKED`, not `PASS`, when the required environment is unavailable.
 
 ## Frozen contract outcomes to realize
 
@@ -199,7 +239,7 @@ Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
 Area C — parent_template_id = null carrier    CLOSED
 ```
 
-Discovery material under `wip/` remains non-normative input; the frozen contract and current M3 architecture documents own the TO-BE boundary.
+Discovery material under `wip/` remains non-normative input; the frozen contract and M3 architecture documents own the TO-BE boundary.
 
 ## Scope impact
 
@@ -214,41 +254,38 @@ new business resource
 new public route
 ```
 
-Any architecture proposal requiring one of these contradicts the frozen contract and must stop for contract review/reopen.
+Any consistency finding that would require one of these or another observable contract change must stop for contract review/reopen rather than being absorbed silently.
 
 ## Remaining gates
 
 ```text
 contract FINAL / FROZEN                       DONE
-    -> architecture design                    ACTIVE — ADP-08 ONLY
-    -> architecture consistency closure       PENDING
-    -> architecture set FINAL / FROZEN        PENDING
-    -> implementation steps FINAL / FROZEN    PENDING
-    -> explicit implementation authorization  PENDING
+architecture design                           DONE — 8 / 8 ADPs CLOSED
+architecture consistency / freeze review      NEXT
+architecture set FINAL / FROZEN               PENDING
+implementation steps FINAL / FROZEN            PENDING
+explicit implementation authorization          PENDING
 ```
 
 `steps.md` remains a pre-implementation placeholder. No `M3-Snn` slice is defined or active.
 
 ## Immediate next action
 
-Close **ADP-08 — Verification architecture** in a new [`architecture/verification.md`](architecture/verification.md).
-
-The verification design must provide deterministic, permanent evidence for the complete frozen M3 architecture and contract, including:
+Perform a dedicated architecture consistency/freeze review across:
 
 ```text
-22 / 22 GET route compatibility and one-business-statement target
-no read-side mutation semantic re-certification
-mutation/write semantic validation preserved
-historical lifecycle trusted decoding
-12 / 12 cursor identity and keyset behavior
-ObjectTemplate HTTP parent tri-state and malformed/repeated rejection
-ObjectTemplate CLI parent tri-state and zero selector lookup for explicit null
-8 / 8 CLI create Location success coverage
-Location missing/repeated/mismatch/unresolvable -> cli_protocol_error
-interactive/non-interactive create truthfulness
-single-request self-consistent committed read projection
-no schema/migration/dependency/lockfile delta
-complete M3 outcome / AC / CQG traceability
+docs/milestones/M3/contract.md
+docs/milestones/M3/architecture/read-projections.md
+docs/milestones/M3/architecture/api.md
+docs/milestones/M3/architecture/cli.md
+docs/milestones/M3/architecture/verification.md
+docs/milestones/M3/architecture/README.md
+docs/milestones/M3/status.md
+docs/milestones/M3/steps.md
 ```
+
+The review must verify cross-document ownership, terminology, all 8 OUT / 19 AC / 8 CQG obligations, 22/22 GETs, 12/12 cursors, HTTP/CLI parent-carrier consistency, 8/8 Location coverage, 19/19 evidence bundles and absence of stale TODO/TBD/open semantic statements.
+
+Only a review PASS followed by explicit project-owner approval may freeze the architecture set.
 
 Software implementation remains **NOT AUTHORIZED**.
