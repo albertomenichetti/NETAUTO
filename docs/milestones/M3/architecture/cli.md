@@ -1,6 +1,6 @@
 # M3 — Official CLI Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-06 CLOSED; ADP-07 OPEN
+**Status:** DESIGN IN PROGRESS — ADP-06 / ADP-07 CLOSED
 
 **Authority:** M3 TO-BE ARCHITECTURE — OFFICIAL CLI OWNER
 
@@ -35,11 +35,11 @@ M3-AC-17 — CLI explicit-null no-selector-lookup behavior
 M3-AC-18 — Complete outcome traceability
 ```
 
-The HTTP lexical carrier for `parent_template_id=null` is already frozen by `api.md` / ADP-05. This document must produce exactly that public carrier from the official CLI.
+The HTTP lexical carrier for `parent_template_id=null` is frozen by `api.md` / ADP-05. This document produces exactly that public carrier from the official CLI and freezes the common expected-Location materializer used by registered `201 Created` operations.
 
 # ADP-06 — CLOSED — CLI nullable selector/query carrier
 
-## 1. Preserve the delivered CLI grammar
+## Preserve the delivered CLI grammar
 
 The canonical remote grammar remains:
 
@@ -47,9 +47,9 @@ The canonical remote grammar remains:
 <resource> <operation> [selector] [parameter=value ...]
 ```
 
-M3 does not introduce a new flag, root-filter command, alternate sentinel or command-specific syntax.
+M3 introduces no new flag, root-filter command, alternate sentinel or command-specific syntax.
 
-The delivered parser already owns the generic rule:
+The delivered parser retains the generic rule:
 
 ```text
 raw parameter value == "null"
@@ -61,9 +61,7 @@ raw parameter value == "null"
         -> cli_invalid_parameter
 ```
 
-ADP-06 reuses this grammar unchanged.
-
-## 2. Registry delta
+## Registry delta
 
 Only the ObjectTemplate list parent-filter parameter changes registry nullability:
 
@@ -76,20 +74,9 @@ selector     OBJECT_TEMPLATE
 nullable     true
 ```
 
-The `STRING` kind is preserved because non-null values continue to accept both:
+`STRING` is preserved because non-null values continue to accept both a UUID and the delivered ObjectTemplate human selector `<namespace>.<name>`. No unrelated selector-capable registry parameter becomes nullable merely because ADP-06 adds common nullable-selector handling.
 
-```text
-UUID
-accepted ObjectTemplate human selector <namespace>.<name>
-```
-
-The parameter must not be changed to UUID-only and no second public root-filter parameter is introduced.
-
-No unrelated selector-capable registry parameter becomes nullable merely because ADP-06 adds common nullable-selector handling.
-
-## 3. Parsed intent states
-
-For the affected parameter, parser output is exactly:
+## Parsed intent states
 
 ```text
 parameter omitted
@@ -104,13 +91,11 @@ parent_template_id=<non-null text>
     -> value str
 ```
 
-Omission and explicit null must never collapse into one parsed command state.
+Omission and explicit null never collapse into one parsed-command state.
 
-## 4. Direct selector-target construction
+## Direct selector-target construction
 
-Selector discovery is metadata-driven.
-
-For a direct selector-capable ParameterSpec:
+Selector discovery is metadata-driven. For a direct selector-capable `ParameterSpec`:
 
 ```text
 parameter absent
@@ -131,21 +116,13 @@ parameter present with value None
         -> invalid parsed/registry state
 ```
 
-Therefore `None` is not sent to `_lookup()` merely because `selector_kind` is set.
+`None` is therefore never sent to selector lookup merely because `selector_kind` is set. This rule is generic for direct selector-capable parameters and must not special-case the name `parent_template_id`.
 
-This rule is generic for direct selector-capable parameters and is driven by `ParameterSpec.nullable`; implementation must not special-case the name `parent_template_id`.
+ADP-06 does not create a nullable grammar for arbitrary nested selector locations inside JSON objects/arrays. Nested selector metadata has no independent nullable bit; future nullable nested-selector semantics require explicit design rather than inference.
 
-## 5. Nested selector scope
+## Non-null selector behavior is unchanged
 
-ADP-06 does not create a nullable grammar for arbitrary nested selector locations inside JSON objects/arrays.
-
-Nested selector metadata currently identifies traversal path and selector kind, but does not define independent nullability for one nested target. M3 must not infer or broaden such semantics.
-
-If future work needs nullable nested selectors, that requires an explicit registry/contract design rather than silent reuse of the direct-parameter rule.
-
-## 6. Non-null selector behavior is unchanged
-
-When `parent_template_id` has a non-null string value, delivered selector semantics remain authoritative:
+For a non-null `parent_template_id`:
 
 ```text
 syntactically valid UUID
@@ -163,9 +140,7 @@ syntactically valid UUID
     -> zero/multiple => existing structured selector error
 ```
 
-M3 does not change selector precedence, ambiguity handling, selector memoization or error codes.
-
-## 7. Explicit null performs zero selector lookup
+M3 does not change selector precedence, ambiguity handling, memoization or error codes.
 
 For:
 
@@ -173,21 +148,11 @@ For:
 object-template list parent_template_id=null
 ```
 
-the selector phase must perform:
+the selector phase performs zero ObjectTemplate selector-discovery GETs. Explicit null is terminal metadata-driven intent, not a human selector string.
 
-```text
-0 ObjectTemplate selector-discovery GETs
-```
+## Location-aware request planning
 
-The explicit-null value is terminal metadata-driven intent, not a human selector string.
-
-No fallback UUID parse, namespace/name discovery, enrichment lookup or hidden GET is permitted merely to interpret this null carrier.
-
-## 8. Location-aware request planning
-
-`None` is not a globally valid path/query scalar. Request planning interprets explicit `None` using both registry nullability and parameter location.
-
-Frozen rule:
+`None` is not a globally valid path/query scalar. Request planning interprets explicit `None` using registry nullability and parameter location:
 
 ```text
 parameter omitted
@@ -209,266 +174,378 @@ BODY + value None + nullable=false
 
 PATH + value None
     -> invalid / impossible valid registry plan
-    -> cli_invalid_parameter if reached as caller-controlled state
+    -> cli_invalid_parameter if caller-reachable
 ```
 
-The exact helper/function decomposition remains implementation-local.
+M3 explicitly does not broaden the delivered scalar serializer into `_wire_string(None) -> "null"`. Lexical `"null"` is emitted only by location-aware planning for nullable QUERY parameters.
 
-## 9. Scalar wire helper remains non-null
-
-M3 explicitly does **not** broaden the delivered scalar serializer into:
-
-```text
-_wire_string(None) -> "null"
-```
-
-The generic non-null scalar helper continues handling ordinary string/numeric/boolean query/path values only.
-
-The lexical `"null"` query value is emitted by location-aware planning only when:
-
-```text
-parameter.location == QUERY
-AND parameter.nullable == true
-AND parsed/resolved value is None
-```
-
-This prevents accidental acceptance of `None` in PATH parameters or non-nullable query parameters.
-
-## 10. BODY nullable behavior is preserved
-
-Existing nullable BODY parameters retain their delivered semantics:
-
-```text
-parameter=null
-    -> parser None
-    -> body candidate contains field: None
-    -> request annotation validates it when field is nullable
-    -> JSON body contains null
-```
-
-ADP-06 introduces no second BODY-null encoding and does not transform JSON null into the lexical string `"null"`.
-
-## 11. Complete ObjectTemplate CLI parent tri-state
-
-The official CLI now realizes exactly the HTTP tri-state frozen by ADP-05.
-
-### Omitted
+## Complete ObjectTemplate CLI parent tri-state
 
 ```text
 object-template list
-```
+    -> no parent selector lookup
+    -> no parent query pair
 
-produces:
-
-```text
-no parent_template_id selector lookup
-no parent_template_id query pair
-```
-
-Server semantics:
-
-```text
-parent_template_id=None
-parent_filter_set=False
-no parent predicate
-```
-
-### Exact UUID
-
-```text
 object-template list parent_template_id=<UUID>
-```
+    -> exact selector resolution
+    -> canonical UUID query pair
 
-produces:
-
-```text
-normal exact selector resolution
-parent_template_id=<canonical UUID> query pair
-```
-
-Server semantics:
-
-```text
-parent_template_id=UUID
-parent_filter_set=True
-exact direct-parent predicate
-```
-
-### Human ObjectTemplate selector
-
-```text
 object-template list parent_template_id=<namespace>.<name>
-```
+    -> normal ObjectTemplate discovery
+    -> resolved UUID query pair
 
-produces:
-
-```text
-normal ObjectTemplate discovery GET
-resolved UUID
-parent_template_id=<resolved UUID> query pair
-```
-
-Server semantics are the same exact-parent state as the UUID form.
-
-### Explicit root-only null
-
-```text
 object-template list parent_template_id=null
+    -> parsed None
+    -> zero selector-discovery GETs
+    -> query pair parent_template_id=null
 ```
 
-produces:
+The server then realizes the ADP-05 / ADP-04 states:
 
 ```text
-parsed value None
-zero selector-discovery GETs
-query pair parent_template_id=null
+omitted       -> parent_template_id=None, parent_filter_set=False
+exact parent  -> parent_template_id=UUID, parent_filter_set=True
+root-only     -> parent_template_id=None, parent_filter_set=True
 ```
 
-Server semantics:
+## Failure and trace preservation
 
-```text
-parent_template_id=None
-parent_filter_set=True
-root-only IS NULL predicate
-```
-
-## 12. Failure preservation
-
-ADP-06 introduces no new public CLI error code.
-
-Existing failures remain:
-
-```text
-non-null malformed selector
-    -> cli_selector_invalid / existing selector failure
-
-unknown parameter
-    -> cli_unexpected_parameter
-
-duplicate parameter
-    -> cli_duplicate_parameter
-
-explicit null on non-nullable parameter
-    -> cli_invalid_parameter
-
-invalid planner state
-    -> bounded local cli_invalid_parameter where caller-reachable
-```
-
-Transport/remote/protocol failures remain unchanged.
-
-## 13. Request and trace truthfulness
-
-The command's primary HTTP request trace must record the actual query pair emitted.
-
-For explicit null:
+ADP-06 adds no CLI error code. Existing local/selector failures remain authoritative. The primary HTTP request trace records the actual query pair; for explicit null:
 
 ```text
 query.parent_template_id == ["null"]
 ```
 
-Selector exchanges must contain no ObjectTemplate lookup attributable to that parameter.
+Interactive and non-interactive modes use the same parser/resolver/planner pipeline and therefore observe the same carrier semantics.
 
-Interactive and non-interactive modes use the same parser/resolver/planner pipeline and therefore must observe identical carrier semantics.
+ADP-06 changes no HTTP route, application signature, cursor codec/identity, persistence filter, domain model, selector API route, transport policy or command grammar.
 
-## 14. No lower-layer redesign
+# ADP-07 — CLOSED — CLI Location materialization grammar
 
-ADP-06 changes only official CLI registry/resolution/planning behavior.
+## 1. Preserve the registered Location contract
 
-It does not change:
+M3 keeps the delivered eight `201 Created` operations and their existing `location_template` metadata. It does not flatten response DTOs, change public `Location` values or weaken exact same-release response validation.
 
-```text
-HTTP API route or query parameter names
-application ObjectTemplate list signature
-parent_filter_set visibility
-cursor codec or cursor identity model
-persistence filtering
-ObjectTemplate domain model
-selector API routes
-CLI transport policy
-CLI command grammar
-```
+A registered `location_template` is declarative NETAUTO CLI metadata. It is **not** Python `str.format()` syntax.
 
-The final chain is:
+The common protocol path remains:
 
 ```text
-CLI omitted / UUID-or-human / explicit null
-    -> metadata-driven parser + selector resolution + request planner
-    -> HTTP omitted / UUID / lowercase null
-    -> ADP-05 HTTP adapter
-    -> UUID|None + parent_filter_set
-    -> ADP-04 cursor identity + existing application/persistence tri-state
+primary HTTP response observed
+    -> exact status validation
+    -> canonical response DTO validation
+    -> expected Location materialization
+    -> exact actual Location validation
+    -> success / cli_protocol_error
 ```
 
-## 15. Implementation-local choices
+No post-mutation GET is added to discover or repair a Location identity.
 
-Architecture does not require specific helper names or one exact patch shape.
+## 2. Tiny Location-template grammar
 
-Equivalent implementation is valid only if it preserves:
+A template is literal path text plus zero or more token occurrences.
+
+Token grammar:
 
 ```text
-registry-driven nullability
-no name-based special case
-zero selector lookup for nullable direct None
-QUERY-only lexical null handling
-BODY JSON null handling
-PATH None rejection
-unchanged non-null selector behavior
+{segment}
+{segment.segment...}
+
+segment = [a-z][a-z0-9_]*
 ```
 
-# ADP-07 — OPEN — CLI Location materialization grammar
-
-ADP-07 must freeze the expected-Location materialization algorithm used after successful registered `201 Created` responses.
-
-It must define:
+Valid examples include:
 
 ```text
-location_template token grammar
-request-value precedence
-response JSON-path lookup
-scalar/materializable carrier rule
-literal token replacement
-missing/unresolvable token behavior
-exact actual Location validation
-all eight registered 201 operations
-no hidden post-mutation GET
+{id}
+{version}
+{datatype_id}
+{datatype.id}
+{object_template.id}
+{relationship_definition.id}
 ```
 
-A valid canonical same-release 201 response must not become `cli_internal_error` because of local expected-Location formatting.
+A dot has one meaning only: traversal through nested JSON objects in the validated response fallback path.
+
+Unsupported syntax includes, among other malformed forms:
+
+```text
+{}
+{a..b}
+{a[0]}
+{a!r}
+{a:b}
+{{a}}
+{a.}
+{.a}
+```
+
+M3 does not support array indexing, wildcards, attribute access, conversion flags, format specifications or any other Python formatting feature.
+
+## 3. Static registry validity
+
+Registry verification must treat `location_template` syntax as closed metadata.
+
+For every registered Location template, static evidence must reject:
+
+```text
+unbalanced braces
+empty tokens
+unsupported token characters
+empty path segments
+Python-format conversion/spec syntax
+any token form outside the grammar above
+```
+
+Every `201 Created` operation must have exactly one non-null registered Location template; non-201 operations retain their delivered metadata rules.
+
+Static validation proves syntax only. Runtime materializability against canonical request/response examples is separate ADP-08 evidence.
+
+## 4. Token lookup precedence
+
+For every token `T`, resolution is deterministic:
+
+```text
+1. if request_values contains exact key T
+       select that exact request value
+       do NOT inspect the response for T
+
+2. otherwise
+       resolve T as a dot-separated JSON-object path
+       in the already validated canonical response body
+```
+
+Request precedence is based on exact key presence, not on whether the selected request value is convenient to serialize.
+
+Therefore:
+
+```text
+request_values contains T but value is non-materializable
+    -> token is non-materializable
+    -> no fallback to response path T
+```
+
+This preserves the delivered request-before-response precedence without opportunistic ambiguity.
+
+Examples:
+
+```text
+{datatype_id}
+    -> request_values["datatype_id"] when present
+
+{version}
+    -> request_values["version"] when present
+       otherwise response["version"]
+
+{id}
+    -> response["id"] when no exact request key exists
+
+{datatype.id}
+    -> response["datatype"]["id"]
+
+{object_template.id}
+    -> response["object_template"]["id"]
+
+{relationship_definition.id}
+    -> response["relationship_definition"]["id"]
+```
+
+## 5. Response JSON-path traversal
+
+Response fallback traverses only JSON objects:
+
+```text
+a.b.c
+    -> response["a"]["b"]["c"]
+```
+
+Every intermediate segment must resolve to a JSON object/dict containing the next segment.
+
+The materializer does not perform:
+
+```text
+array indexing
+wildcard traversal
+attribute lookup
+case conversion
+implicit flattening
+alternative-field guessing
+```
+
+A missing segment or traversal through a non-object carrier makes the token non-materializable; it does not raise an ordinary local exception.
+
+## 6. Materializable scalar carrier
+
+A Location token may materialize only from:
+
+```text
+str
+int, excluding bool
+```
+
+The exact text inserted is `str(value)` after this type check.
+
+The following are non-materializable token values:
+
+```text
+None
+bool
+float
+list
+object/dict
+```
+
+This carrier set is sufficient for the complete eight-operation registry: UUID-like identities are JSON/request strings and versions are integers.
+
+## 7. Literal materialization
+
+After token resolution, materialization performs literal replacement only:
+
+```text
+rendered = template
+for each distinct token occurrence:
+    value = resolve(token)
+    if non-materializable:
+        return NON_MATERIALIZABLE
+    rendered = rendered.replace("{" + token + "}", scalar_text)
+return rendered
+```
+
+Equivalent implementation is allowed, but it must preserve exact literal token replacement semantics.
+
+The materializer must never call Python `str.format()`, `str.format_map()` or another formatter that assigns special semantics to dots or braces.
+
+If the same token occurs multiple times, every exact literal occurrence uses the same resolved scalar value.
+
+The materializer is total over runtime response/request data: it returns either one expected Location string or a non-materializable result. Data-driven missing/non-scalar token state must not escape as an ordinary local exception.
+
+## 8. Complete eight-operation Location matrix
+
+| Operation | Frozen Location template | Token source |
+|---|---|---|
+| `datatype create` | `/api/v1/core/datatypes/{datatype.id}` | nested response path |
+| `datatype create-next` | `/api/v1/core/datatypes/{datatype_id}/versions/{version}` | request `datatype_id`; response `version` unless exact request key exists |
+| `object-template create` | `/api/v1/core/object-templates/{object_template.id}` | nested response path |
+| `object-template create-next` | `/api/v1/core/object-templates/{template_id}/versions/{version}` | request `template_id`; response `version` unless exact request key exists |
+| `object create` | `/api/v1/core/objects/{id}` | response top-level |
+| `relationship-definition create` | `/api/v1/core/relationship-definitions/{relationship_definition.id}` | nested response path |
+| `relationship-definition create-next` | `/api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}` | request definition id; response `version` unless exact request key exists |
+| `relationship create` | `/api/v1/core/relationships/{id}` | response top-level |
+
+The three nested wrapper identities are intentionally preserved. The five flat-token cases remain covered by the same common materializer.
+
+## 9. Protocol outcome semantics
+
+Location validation occurs only after the successful response status/body has passed canonical same-release validation.
+
+For a registered Location template:
+
+```text
+actual Location header count == 1
+AND expected Location is materializable
+AND actual Location == expected Location exactly
+    -> protocol success
+```
+
+Any of the following remains a structured protocol failure:
+
+```text
+Location missing
+Location repeated
+Location value mismatches expected
+expected token absent
+expected token traverses an invalid response path
+expected token resolves to a non-materializable carrier
+```
+
+All such cases produce:
+
+```text
+cli_protocol_error
+```
+
+No new public CLI error code is introduced.
+
+A canonical same-release `201 Created` body plus exactly matching Location must never become `cli_internal_error` solely because of local expected-Location processing.
+
+## 10. Exact validation is not normalization
+
+ADP-07 does not normalize or reinterpret the actual Location header.
+
+It does not add:
+
+```text
+URI canonicalization
+case folding
+trailing-slash repair
+percent-encoding repair
+alternate Location guessing
+hidden identity lookup
+hidden post-create GET
+```
+
+The expected registered Location is materialized deterministically and compared exactly to the one actual header value.
+
+## 11. Shared infrastructure boundary
+
+ADP-07 is common CLI protocol infrastructure. Implementation must not patch only the three currently affected nested templates or add command-specific materializers.
+
+Valid implementation-local choices include helper names, token-scan mechanics and internal sentinel representation, provided they preserve:
+
+```text
+closed token grammar
+request-key presence precedence
+response object-path fallback
+str/int(non-bool) scalar rule
+literal replacement
+no Python format grammar
+non-materializable -> protocol result, not local exception
+exact one-header comparison
+all eight registered creates
+```
+
+The registry templates themselves remain unchanged unless a separate governance reopen authorizes a public contract change.
 
 # Downstream verification constraints
 
-`verification.md` / ADP-08 must prove at minimum:
+`verification.md` / ADP-08 must prove both ADP-06 and ADP-07.
+
+For the ObjectTemplate CLI parent tri-state:
 
 ```text
-CLI omission
-    -> no parent query pair
-
-CLI UUID
-    -> canonical UUID query pair
-
-CLI human selector
-    -> exactly the required selector discovery
-    -> resolved UUID query pair
-
-CLI explicit null
-    -> literal lowercase null query pair
-    -> zero selector discovery for that parameter
-
-explicit null on non-nullable parameter
-    -> cli_invalid_parameter
-
-no global _wire_string(None) behavior
+omission -> no parent query pair
+UUID -> canonical UUID query pair
+human selector -> required selector discovery -> resolved UUID query pair
+explicit null -> literal lowercase null query pair -> zero selector discovery
+explicit null on non-nullable parameter -> cli_invalid_parameter
 BODY nullable null regression
 PATH None rejection/invariant
-interactive and non-interactive carrier equivalence
+interactive/non-interactive carrier equivalence
+root-only cursor identity differs from omitted identity
 ```
 
-Cursor verification must also prove that the resulting root-only request produces the ADP-04 root-only cursor identity rather than the omitted identity.
+For Location materialization:
+
+```text
+registry 201/Location census = 8 / 8
+all eight canonical successes materialize exact expected Location
+three nested response-path templates explicitly covered
+five flat-token templates covered
+request-before-response precedence covered
+request key present but non-materializable does not fall back
+missing Location -> cli_protocol_error
+repeated Location -> cli_protocol_error
+mismatching Location -> cli_protocol_error
+unresolvable/non-scalar expected token -> cli_protocol_error
+valid nested-token success -> success, never cli_internal_error
+interactive and non-interactive create truthfulness
+no hidden post-mutation GET
+static registry token syntax rejection
+```
 
 # Preserved AS-IS responsibilities
 
-ADP-06 does not change:
+ADP-06 / ADP-07 do not change:
 
 ```text
 HTTP-only CLI boundary
@@ -479,15 +556,19 @@ selector GET routes and ambiguity rules
 transport behavior
 structured result/error surface
 BODY DTO validation
-request trace model
+request/response trace model
 interactive/non-interactive shared execution pipeline
+same-release exact status/body validation
+existing eight Location templates
+exact actual Location contract
+mutation operations having no formatted post-success enrichment GET
 ```
 
 # ADP status
 
 ```text
 ADP-06  CLOSED
-ADP-07  OPEN
+ADP-07  CLOSED
 ```
 
-No implementation authority is created by this closure. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN`.
+No implementation authority is created by these closures. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN` until ADP-08 and the architecture consistency/freeze gates are complete.
