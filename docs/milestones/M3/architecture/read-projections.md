@@ -1,6 +1,6 @@
 # M3 — Public Read Projection Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED
+**Status:** FINAL / FROZEN — ADP-01 / ADP-02 / ADP-03 CLOSED
 
 **Authority:** M3 TO-BE ARCHITECTURE — PUBLIC READ PROJECTION OWNER
 
@@ -18,7 +18,7 @@ ADP-02 — Complete 22-route one-statement projection matrix                  CL
 ADP-03 — Historical lifecycle trusted decoder                              CLOSED
 ```
 
-Implementation remains unauthorized while the M3 architecture set is not frozen.
+This owner is `FINAL / FROZEN`. Implementation remains unauthorized until `steps.md` is frozen and `status.md` explicitly authorizes a slice.
 
 ## Frozen contract inputs
 
@@ -980,4 +980,4 @@ ADP-02  CLOSED — 22 / 22
 ADP-03  CLOSED
 ```
 
-No implementation authority is created by these closures. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN`.
+This owner is `FINAL / FROZEN`. No implementation authority is created by architecture freeze; implementation remains gated by frozen `steps.md` and explicit `status.md` authorization.
