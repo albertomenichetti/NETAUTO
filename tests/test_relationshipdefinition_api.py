@@ -800,9 +800,19 @@ async def test_m3_default_pointer_read_boundary_is_resource_family_specific(
         else:
             assert response.json()["default_version"] == 1
 
-    later_slice_requests = (
+    objecttemplate_requests = (
         f"/api/v1/core/object-templates/{template_id}",
         "/api/v1/core/object-templates",
+    )
+    for path in objecttemplate_requests:
+        response = await client.get(path)
+        assert response.status_code == 200, (path, response.text)
+        if path.endswith("/object-templates"):
+            assert response.json()["items"][0]["default_version"] == 1
+        else:
+            assert response.json()["default_version"] == 1
+
+    later_slice_requests = (
         f"/api/v1/core/relationship-definitions/{definition_id}",
         "/api/v1/core/relationship-definitions",
     )

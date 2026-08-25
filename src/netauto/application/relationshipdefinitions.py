@@ -43,7 +43,6 @@ from netauto.persistence.locking import (
     prepare_lock_plan,
     run_semantic_uow_attempts,
 )
-from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.relationships import (
     RelationshipDefinitionDeleteReferenceError,
     RelationshipDefinitionStore,
@@ -1287,54 +1286,18 @@ class RelationshipDefinitionService:
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
 
-        async with self._uow_factory.coherent_read() as uow:
-            template_store = ObjectTemplateStore(uow.connection)
-            current = await template_store.get_lineage(template_id)
-            if current is None:
+        async with self._uow_factory() as uow:
+            projection = await RelationshipDefinitionStore(
+                uow.connection
+            ).list_capabilities(
+                template_id=template_id,
+                name=name,
+                after=after,
+                limit=limit + 1,
+            )
+            if not projection.target_exists:
                 raise _template_not_found(template_id)
-            ancestors: list[UUID] = []
-            seen: set[UUID] = set()
-            while True:
-                if current.id in seen:
-                    raise _internal(
-                        "The persisted ObjectTemplate inheritance graph is invalid."
-                    )
-                seen.add(current.id)
-                ancestors.append(current.id)
-                if current.parent_template_id is None:
-                    break
-                parent = await template_store.get_lineage(current.parent_template_id)
-                if parent is None:
-                    raise _internal(
-                        "The persisted ObjectTemplate inheritance graph is invalid."
-                    )
-                current = parent
-            rows = list(
-                await RelationshipDefinitionStore(uow.connection).list_capabilities(
-                    applicable_from_template_ids=ancestors,
-                    name=name,
-                    after=after,
-                    limit=limit + 1,
-                )
-            )
-            version_store = RelationshipDefinitionVersionStore(uow.connection)
-            default_targets = await version_store.get_headers(
-                tuple(
-                    (item.relationship_definition_id, item.default_version)
-                    for item in rows
-                    if item.default_version is not None
-                )
-            )
-            for item in rows:
-                if item.default_version is None:
-                    continue
-                target = default_targets.get(
-                    (item.relationship_definition_id, item.default_version)
-                )
-                if target is None or target.status is not VersionStatus.PUBLISHED:
-                    raise _internal(
-                        "A persisted RelationshipDefinition default pointer is invalid."
-                    )
+            rows = list(projection.items)
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = (

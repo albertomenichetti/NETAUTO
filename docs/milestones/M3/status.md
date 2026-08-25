@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S03 — READY
+active implementation    M3-S03 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S03 ONLY
 blockers                 none
 ```
@@ -214,20 +214,25 @@ The legacy cross-family default-pointer corruption regression was narrowed only 
 
 The completed M3-S02 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
 
-## M3-S03 implementation authorization
+## M3-S03 implementation candidate
 
 ```text
 authorized slice          M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
-slice state               READY
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 predecessor               M3-S02 — COMPLETED
 assigned evidence         ObjectTemplate targets for M3-VER-04/05/06/07/09/12/19
 exclusive primary bundle  NONE — by frozen decomposition
-affected regression       M3-VER-14 .. M3-VER-16 from completed M3-S01
+candidate evidence        ObjectTemplate targets for M3-VER-04/05/06/09/12/19 — PASS
+M3-VER-07 target          PASS — materially undecodable required migration-default carrier
+affected regression       M3-VER-14 .. M3-VER-16 — PASS
+global M3-VER bundles     NOT YET CLOSED
+business SQL statements   OT-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
+candidate gates           PASS
 later slices              NOT AUTHORIZED
 ```
 
-`READY` authorizes the implementer to perform the mandatory repository pre-flight and then begin work inside the exact frozen `M3-S03` scope. The implementer may transition the slice to `IN PROGRESS` when implementation work actually begins, but reviewer-owned completion remains separate. Because M3-S03 contributes ObjectTemplate targets to global evidence bundles primarily closed later, implementation must report those concrete targets truthfully and must not claim the complete global bundles PASS solely from this slice.
+The mandatory repository pre-flight, assigned ObjectTemplate evidence, affected S01/S02 regressions and complete candidate gate passed inside the exact frozen `M3-S03` scope. All six canonical ObjectTemplate GETs use ordinary read UoWs and exactly one authoritative business SQL statement on real PostgreSQL. Exact-version aggregate children remain independent, effective schema follows persisted exact pins, RelationshipCapability membership follows stable ancestry, and GET paths perform no mutation-owned semantic recertification. The candidate is ready for reviewer inspection; reviewer-owned completion and global M3-VER bundle closure remain separate.
 
 ## Frozen architecture closure
 
@@ -285,13 +290,13 @@ M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 explicit M3-S03 implementation authorization  DONE — M3-S03 ONLY
-M3-S03 execution/review                        READY
+M3-S03 execution/review                        CANDIDATE READY FOR REVIEW
 M3-S04 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S03 pre-flight from repository authorities, then implement and verify `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections` within the frozen slice scope.
+Review the `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections` candidate and its concrete ObjectTemplate evidence targets.
 
 The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S03` `COMPLETED` and authorize the transition to `M3-S04`.

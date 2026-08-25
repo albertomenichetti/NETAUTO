@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import case, func, select, tuple_
+from sqlalchemy import case, func, select, text, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -73,6 +73,12 @@ class RuntimeRelationshipHeader:
     id: UUID
     relationship_definition_id: UUID
     relationship_definition_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipCapabilityPageProjection:
+    target_exists: bool
+    items: tuple[RelationshipCapability, ...]
 
 
 def _aggregate_statement():
@@ -387,64 +393,99 @@ class RelationshipDefinitionStore:
     async def list_capabilities(
         self,
         *,
-        applicable_from_template_ids: Iterable[UUID],
+        template_id: UUID,
         name: str | None,
         after: UUID | None,
         limit: int,
-    ) -> tuple[RelationshipCapability, ...]:
-        statement = (
-            select(
-                relationship_resolutions.c.id,
-                relationship_resolutions.c.relationship_definition_id,
-                relationship_resolutions.c.name,
-                relationship_resolutions.c.from_template_id,
-                relationship_resolutions.c.to_template_id,
-                relationship_definitions.c.default_version,
-            )
-            .join(
-                relationship_definitions,
-                relationship_definitions.c.id
-                == relationship_resolutions.c.relationship_definition_id,
-            )
-            .where(
-                relationship_resolutions.c.from_template_id.in_(
-                    tuple(applicable_from_template_ids)
-                ),
-                select(relationship_definition_versions.c.version)
-                .where(
-                    relationship_definition_versions.c.relationship_definition_id
-                    == relationship_resolutions.c.relationship_definition_id,
-                    relationship_definition_versions.c.status
-                    == VersionStatus.PUBLISHED.value,
-                )
-                .exists(),
-            )
-        )
+    ) -> RelationshipCapabilityPageProjection:
+        conditions = [
+            "resolution.from_template_id IN (SELECT id FROM stable_ancestry)",
+            "EXISTS ("
+            "SELECT 1 FROM relationship_definition_versions AS published "
+            "WHERE published.relationship_definition_id = "
+            "resolution.relationship_definition_id "
+            "AND published.status = 'PUBLISHED'"
+            ")",
+        ]
+        parameters: dict[str, object] = {
+            "template_id": template_id,
+            "limit": limit,
+        }
         if name is not None:
-            statement = statement.where(relationship_resolutions.c.name == name)
+            conditions.append("resolution.name = :name")
+            parameters["name"] = name
         if after is not None:
-            statement = statement.where(relationship_resolutions.c.id > after)
-        rows = (
-            (
-                await self.connection.execute(
-                    statement.order_by(relationship_resolutions.c.id).limit(limit)
-                )
+            conditions.append("resolution.id > :after")
+            parameters["after"] = after
+        membership = " AND ".join(conditions)
+        statement = text(
+            f"""
+            WITH RECURSIVE stable_ancestry AS (
+                SELECT
+                    lineage.id,
+                    lineage.parent_template_id,
+                    ARRAY[lineage.id]::uuid[] AS visited
+                FROM object_templates AS lineage
+                WHERE lineage.id = :template_id
+
+                UNION ALL
+
+                SELECT
+                    parent.id,
+                    parent.parent_template_id,
+                    child.visited || parent.id
+                FROM stable_ancestry AS child
+                JOIN object_templates AS parent
+                  ON parent.id = child.parent_template_id
+                WHERE NOT parent.id = ANY(child.visited)
+            ), capability_page AS (
+                SELECT
+                    resolution.id AS resolution_id,
+                    resolution.relationship_definition_id,
+                    resolution.name,
+                    resolution.from_template_id,
+                    resolution.to_template_id,
+                    definition.default_version
+                FROM relationship_resolutions AS resolution
+                JOIN relationship_definitions AS definition
+                  ON definition.id = resolution.relationship_definition_id
+                WHERE {membership}
+                ORDER BY resolution.id
+                LIMIT :limit
             )
-            .mappings()
-            .all()
+            SELECT
+                target.id AS target_id,
+                capability_page.resolution_id,
+                capability_page.relationship_definition_id,
+                capability_page.name,
+                capability_page.from_template_id,
+                capability_page.to_template_id,
+                capability_page.default_version
+            FROM object_templates AS target
+            LEFT JOIN capability_page ON TRUE
+            WHERE target.id = :template_id
+            ORDER BY capability_page.resolution_id
+            """
         )
-        return tuple(
-            RelationshipCapability(
-                resolution_id=cast(UUID, row["id"]),
-                relationship_definition_id=cast(
-                    UUID, row["relationship_definition_id"]
-                ),
-                name=cast(str, row["name"]),
-                from_template_id=cast(UUID, row["from_template_id"]),
-                to_template_id=cast(UUID, row["to_template_id"]),
-                default_version=cast(int | None, row["default_version"]),
-            )
-            for row in rows
+        rows = (await self.connection.execute(statement, parameters)).mappings().all()
+        if not rows:
+            return RelationshipCapabilityPageProjection(False, ())
+        return RelationshipCapabilityPageProjection(
+            True,
+            tuple(
+                RelationshipCapability(
+                    resolution_id=cast(UUID, row["resolution_id"]),
+                    relationship_definition_id=cast(
+                        UUID, row["relationship_definition_id"]
+                    ),
+                    name=cast(str, row["name"]),
+                    from_template_id=cast(UUID, row["from_template_id"]),
+                    to_template_id=cast(UUID, row["to_template_id"]),
+                    default_version=cast(int | None, row["default_version"]),
+                )
+                for row in rows
+                if row["resolution_id"] is not None
+            ),
         )
 
 
