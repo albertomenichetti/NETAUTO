@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S04 COMPLETED / M3-S05 PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S05 READY
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION AUTHORIZATION
+phase                    IMPLEMENTATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-blockers                 none for M3-S05 authorization decision
+active implementation    M3-S05 — READY
+software implementation  AUTHORIZED — M3-S05 ONLY
+blockers                 none
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, and `M3-S04` are reviewer-owned `COMPLETED`. No later slice is authorized. Software implementation may resume only after this file explicitly authorizes the next exact slice.
+`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, and `M3-S04` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and this file explicitly authorizes the next exact slice.
 
 ## Frozen governance gates
 
@@ -187,7 +187,7 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S05                    NOT AUTHORIZED
+M3-S05                    READY / AUTHORIZED
 ```
 
 The reviewed implementation realizes all six frozen Object read shapes with ordinary read UoWs and exactly one authoritative business SQL statement each. `OBJ-GET-02` now projects intrinsic Object state without transitive ObjectTemplate/DataType recertification. `OBJ-GET-03` and `OBJ-GET-04` use the parent Object's exact template-version chain only to materialize the mandatory `slot_declaring_template_id`, preserving parent/child absence, empty/null states, and bounded internal failure when required declaration context is missing or ambiguous.
@@ -199,6 +199,20 @@ The two S04 cursor repairs are complete. `object_components` now binds `parent_o
 `OBJ-GET-06` projects Object-relative Relationship views directly from persisted factual/runtime/Resolution state, removes `_validated_many()` recertification, performs public semantic `DISTINCT` before keyset/order/limit, and preserves path-target 404 versus successful empty-page behavior. Exact Relationship GET behavior remains unchanged for M3-S05.
 
 No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S04. The completed S04 execution aid has been removed from active `wip/`; Git retains its history.
+
+## M3-S05 implementation authorization
+
+```text
+authorized slice          M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads
+slice state               READY
+human authorization       GRANTED
+predecessor               M3-S04 — COMPLETED
+primary evidence          M3-VER-07 / M3-VER-08 / M3-VER-13
+supporting evidence       RelationshipDefinition / Relationship / lifecycle targets for M3-VER-04/05/06/09/12/19
+later slices              NOT AUTHORIZED
+```
+
+`READY` authorizes the implementer to perform the mandatory repository pre-flight and then implement only the frozen S05 surface. The implementer may transition S05 to `IN PROGRESS` when implementation actually begins. Reviewer-owned `COMPLETED` remains a separate decision.
 
 ## Scope impact
 
@@ -215,7 +229,7 @@ project-version change
 cursor-codec version change
 ```
 
-The accepted S04 candidate introduced none of those changes.
+M3-S05 must preserve these non-deltas.
 
 ## Remaining gates
 
@@ -228,13 +242,14 @@ M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
-explicit M3-S05 implementation authorization  PENDING
-M3-S05 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
+explicit M3-S05 implementation authorization  DONE — M3-S05 ONLY
+M3-S05 execution/review                        READY
+M3-S06 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Make a separate explicit operational decision on whether to authorize `M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads` as the next implementation slice.
+Perform the mandatory M3-S05 pre-flight from repository authorities, then implement and verify `M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads` within the frozen slice scope.
 
-Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
+Do not start M3-S06. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S05 `COMPLETED` and authorize the next slice.
