@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S06 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S06 IN PROGRESS
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S06 — READY
+active implementation    M3-S06 — IN PROGRESS
 software implementation  AUTHORIZED — M3-S06 ONLY
 blockers                 none
 ```
@@ -180,7 +180,7 @@ S00-S05 execution aids were removed from active `wip/` after reviewer acceptance
 
 ```text
 authorized slice          M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure
-slice state               READY
+slice state               IN PROGRESS
 human authorization       GRANTED
 predecessor               M3-S05 — COMPLETED
 primary evidence          M3-VER-04 / 05 / 06 / 09 / 12 / 17 / 18 / 19
@@ -226,7 +226,7 @@ M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 explicit M3-S06 implementation authorization  DONE — M3-S06 ONLY
-M3-S06 execution/review                        READY
+M3-S06 execution/review                        IN PROGRESS
 M3-S07 execution/review                        BLOCKED BY DEPENDENCY / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
