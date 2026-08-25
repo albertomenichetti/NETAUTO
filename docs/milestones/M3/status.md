@@ -66,7 +66,7 @@ architecture/api.md
 architecture/cli.md
     DESIGN IN PROGRESS
     ADP-06 CLOSED
-    ADP-07 OPEN
+    ADP-07 CLOSED — 8 / 8 create Location templates
 
 architecture/verification.md
     NOT YET WRITTEN
@@ -81,15 +81,15 @@ ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  CLOSED   cursor identity realization — 12 / 12
 ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
 ADP-06  CLOSED   CLI nullable selector/query carrier
-ADP-07  OPEN     CLI Location materialization grammar
+ADP-07  CLOSED   CLI Location materialization grammar — 8 / 8 creates
 ADP-08  OPEN     verification architecture
 ```
 
 Progress:
 
 ```text
-closed design points  6 / 8
-open design points    2 / 8
+closed design points  7 / 8
+open design points    1 / 8
 ```
 
 ## Architecture closure to date
@@ -100,6 +100,7 @@ historical lifecycle decoder              CLOSED
 cursor identity matrix                    CLOSED — 12 / 12
 ObjectTemplate HTTP parent tri-state      CLOSED
 ObjectTemplate CLI parent tri-state       CLOSED
+CLI create Location grammar               CLOSED — 8 / 8
 ```
 
 All 22 canonical public business GET/read targets have one complete one-statement logical projection under an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
@@ -145,6 +146,32 @@ explicit null
 ```
 
 Only the ObjectTemplate list `parent_template_id` registry parameter becomes nullable. The request planner treats None by location: nullable QUERY -> lexical `null`; nullable BODY -> JSON null; PATH -> invalid. The generic scalar wire helper is not broadened to accept None.
+
+ADP-07 freezes the CLI Location registry DSL and post-success protocol boundary:
+
+```text
+token grammar
+    {segment(.segment)*}
+
+lookup precedence
+    exact request_values key presence
+    else response JSON-object path
+
+materializable scalar
+    str
+    int excluding bool
+
+materialization
+    literal {token} replacement only
+    no str.format / format_map semantics
+
+failure
+    missing/repeated/mismatching actual Location
+    or non-materializable expected Location
+        -> cli_protocol_error
+```
+
+The eight existing `201 Created` Location templates remain unchanged. The three nested response identities and five flat-token cases share one common materializer. No hidden post-mutation GET is introduced, and a canonical matching 201 cannot become `cli_internal_error` because of local Location formatting.
 
 ## Frozen contract outcomes to realize
 
@@ -193,7 +220,7 @@ Any architecture proposal requiring one of these contradicts the frozen contract
 
 ```text
 contract FINAL / FROZEN                       DONE
-    -> architecture design                    ACTIVE
+    -> architecture design                    ACTIVE — ADP-08 ONLY
     -> architecture consistency closure       PENDING
     -> architecture set FINAL / FROZEN        PENDING
     -> implementation steps FINAL / FROZEN    PENDING
@@ -204,25 +231,24 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Close **ADP-07 — CLI Location materialization grammar** in [`architecture/cli.md`](architecture/cli.md).
+Close **ADP-08 — Verification architecture** in a new [`architecture/verification.md`](architecture/verification.md).
 
-The design must freeze the tiny registry-template grammar used to materialize expected `Location` after a registered successful `201 Created` response:
+The verification design must provide deterministic, permanent evidence for the complete frozen M3 architecture and contract, including:
 
 ```text
-token lookup precedence
-    1. exact request_values[token]
-    2. dot-separated JSON path in the validated response body
-
-materializable token
-    -> scalar required for literal insertion
-
-unresolvable / non-materializable token
-    -> cli_protocol_error
-
-materialization
-    -> literal replacement of the exact {token}
+22 / 22 GET route compatibility and one-business-statement target
+no read-side mutation semantic re-certification
+mutation/write semantic validation preserved
+historical lifecycle trusted decoding
+12 / 12 cursor identity and keyset behavior
+ObjectTemplate HTTP parent tri-state and malformed/repeated rejection
+ObjectTemplate CLI parent tri-state and zero selector lookup for explicit null
+8 / 8 CLI create Location success coverage
+Location missing/repeated/mismatch/unresolvable -> cli_protocol_error
+interactive/non-interactive create truthfulness
+single-request self-consistent committed read projection
+no schema/migration/dependency/lockfile delta
+complete M3 outcome / AC / CQG traceability
 ```
-
-It must preserve exact actual Location validation, cover all eight registered 201 operations, support top-level and nested response fields, and add no hidden post-mutation GET.
 
 Software implementation remains **NOT AUTHORIZED**.
