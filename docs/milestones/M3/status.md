@@ -55,13 +55,13 @@ Current TO-BE owners:
 architecture/read-projections.md
     DESIGN IN PROGRESS
     ADP-01 CLOSED
-    ADP-02 CLOSED — 22 / 22 routes defined
+    ADP-02 CLOSED — 22 / 22 routes
     ADP-03 CLOSED
 
 architecture/api.md
     DESIGN IN PROGRESS
     ADP-04 CLOSED — 12 / 12 cursor routes
-    ADP-05 OPEN
+    ADP-05 CLOSED
 
 architecture/cli.md
     NOT YET WRITTEN
@@ -77,7 +77,7 @@ ADP-01  CLOSED   read projection responsibility / persistence boundary
 ADP-02  CLOSED   complete 22-route one-statement projection matrix — 22 / 22
 ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  CLOSED   cursor identity realization — 12 / 12
-ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
+ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
 ADP-06  OPEN     CLI nullable selector/query carrier
 ADP-07  OPEN     CLI Location materialization grammar
 ADP-08  OPEN     verification architecture
@@ -86,34 +86,42 @@ ADP-08  OPEN     verification architecture
 Progress:
 
 ```text
-closed design points  4 / 8
-open design points    4 / 8
+closed design points  5 / 8
+open design points    3 / 8
 ```
 
-Read / cursor architecture closure:
+## Architecture closure to date
 
 ```text
-ADP-01 responsibility boundary                  CLOSED
-ADP-02 route projection matrix                  CLOSED — 22 / 22
-ADP-03 historical trusted decoder               CLOSED
-ADP-04 cursor identity realization              CLOSED — 12 / 12
+GET projection matrix                     CLOSED — 22 / 22
+historical lifecycle decoder              CLOSED
+cursor identity matrix                    CLOSED — 12 / 12
+ObjectTemplate HTTP parent tri-state      CLOSED
 ```
 
-The frozen projection-pattern vocabulary is `RP-01 .. RP-10`. Every canonical public business GET/read target has one complete one-statement logical projection, an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
+All 22 canonical public business GET/read targets have one complete one-statement logical projection under an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
 
-Historical lifecycle reads have a frozen decoding-only boundary: typed carrier materialization remains; mutation-transition semantic recertification, duplicated database family/state-shape checks and live-state reinterpretation are removed from the read target. Materially undecodable required carriers continue to fail safely, while mutation/lifecycle-write validation remains strong.
+Historical lifecycle reads have a decoding-only boundary: typed historical carrier materialization remains; mutation-transition semantic recertification and live-state reinterpretation are removed from the read target while write validation remains strong.
 
-Cursor architecture preserves the delivered opaque codec v1 and freezes one canonical semantic identity construction across all twelve paginated routes. The only M3 cursor identity corrections are:
+Cursor architecture preserves the delivered opaque codec v1 and complete canonical keyset tuples. The only cursor identity corrections are `parent_object_id` for Object components and `object_id` for Object-relative Relationships. ObjectTemplate omitted/root-only/exact-parent states remain distinct through internal `parent_filter_set`.
+
+ADP-05 freezes the HTTP ObjectTemplate parent filter as:
 
 ```text
-GET /objects/{parent_object_id}/components
-    -> include parent_object_id
+omitted
+    -> parent_template_id=None
+    -> parent_filter_set=False
 
-GET /objects/{object_id}/relationships
-    -> include object_id
+valid UUID
+    -> parent_template_id=UUID
+    -> parent_filter_set=True
+
+exact lowercase null
+    -> parent_template_id=None
+    -> parent_filter_set=True
 ```
 
-All canonical keyset tuples remain unchanged. `limit` remains excluded from semantic cursor identity. ObjectTemplate omitted/root-only/exact-parent states remain cursor-distinct through internal `parent_filter_set`; global/Object-scoped lifecycle remain distinct through `involving_object_id`.
+Only exact lowercase `null` receives M3 sentinel treatment; all other non-UUID values remain request-validation failures. Repeated query parameters remain `400 invalid_request`. `parent_filter_set` is not public.
 
 ## Frozen contract outcomes to realize
 
@@ -173,21 +181,24 @@ contract FINAL / FROZEN                       DONE
 
 ## Immediate next action
 
-Close **ADP-05 — ObjectTemplate nullable HTTP query carrier** in [`architecture/api.md`](architecture/api.md).
+Close **ADP-06 — CLI nullable selector/query carrier** in a new [`architecture/cli.md`](architecture/cli.md).
 
-The design must freeze the exact HTTP lexical parsing boundary for:
+The design must freeze metadata-driven handling for the ObjectTemplate list parameter so that:
 
 ```text
-parent_template_id omitted
-    -> no parent filter
+parameter omitted
+    -> no parent_template_id query pair
 
-parent_template_id=<UUID>
-    -> exact stable parent filter
+UUID or accepted ObjectTemplate human selector
+    -> normal selector resolution
+    -> exact UUID query pair
 
-parent_template_id=null
-    -> explicit root-only filter
+explicit null
+    -> nullable terminal carrier
+    -> no selector lookup
+    -> lexical query value "null"
 ```
 
-It must preserve strict malformed/repeated query rejection, accept only exact lowercase `null` as the root sentinel, and map the three public states into the internal `parent_template_id + parent_filter_set` representation already frozen by ADP-04.
+It must not globally redefine arbitrary `None` as a valid query/path scalar: nullable QUERY None serializes `null`, nullable BODY None retains JSON null semantics, and PATH None remains invalid/impossible.
 
 Software implementation remains **NOT AUTHORIZED**.
