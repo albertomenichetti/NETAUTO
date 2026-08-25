@@ -1,6 +1,6 @@
 # M3 — Official CLI Architecture
 
-**Status:** DESIGN COMPLETE — ADP-06 / ADP-07 CLOSED — NOT FROZEN
+**Status:** FINAL / FROZEN — ADP-06 / ADP-07 CLOSED
 
 **Authority:** M3 TO-BE ARCHITECTURE — OFFICIAL CLI OWNER
 
@@ -15,7 +15,7 @@ ADP-07 — post-create Location materialization grammar
 
 It derives from the frozen M3 contract and changes only the explicit M3 CLI deltas. The delivered official CLI remains an HTTP-only client driven by one static registry. Existing command grammar, selector kinds, transport behavior, output modes, error catalogue and 63-operation registry remain owned by the delivered AS-IS except where this document explicitly changes them.
 
-Implementation remains unauthorized while the M3 architecture set is not frozen.
+This owner is `FINAL / FROZEN`. Implementation remains unauthorized until `steps.md` is frozen and `status.md` explicitly authorizes a slice.
 
 ## Frozen contract inputs
 
@@ -570,4 +570,4 @@ ADP-06  CLOSED
 ADP-07  CLOSED
 ```
 
-No implementation authority is created by these closures. The architecture set remains `NOT FROZEN` pending consistency closure and explicit freeze approval.
+This owner is `FINAL / FROZEN`. No implementation authority is created by architecture freeze; implementation remains gated by frozen `steps.md` and explicit `status.md` authorization.
