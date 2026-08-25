@@ -39,7 +39,7 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 |---|---|---|
 | [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
 | [`api.md`](api.md) | DESIGN IN PROGRESS — ADP-04 / ADP-05 CLOSED | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
-| [`cli.md`](cli.md) | DESIGN IN PROGRESS — ADP-06 CLOSED; ADP-07 OPEN | nullable selector/query carrier and Location materialization grammar |
+| [`cli.md`](cli.md) | DESIGN IN PROGRESS — ADP-06 / ADP-07 CLOSED | nullable selector/query carrier and Location materialization grammar |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | deterministic architecture/acceptance evidence |
 
 Additional architecture documents may be added only when an open design point cannot be owned cleanly here and may not expand the frozen contract.
@@ -131,7 +131,19 @@ The nullable-selector rule is metadata-driven for direct selector parameters. Nu
 
 Owner: `architecture/cli.md`.
 
-ADP-07 must close Location token grammar, request-vs-response JSON-path resolution, literal materialization, protocol failure on unresolvable expected Location, all eight 201 operations and no hidden mutation enrichment.
+Closed by ADP-07:
+
+```text
+Location template = tiny NETAUTO registry DSL, not Python format syntax
+request-value exact-key presence has precedence
+response fallback is dot-separated JSON-object traversal
+materializable token = str or int excluding bool
+literal {token} replacement only
+unresolvable/non-scalar expected token -> cli_protocol_error
+actual Location count must equal one and match exactly
+all eight registered 201 operations covered
+no hidden post-mutation GET
+```
 
 ## Design-point status
 
@@ -142,20 +154,21 @@ ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  CLOSED   cursor identity realization — 12 / 12 routes
 ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
 ADP-06  CLOSED   CLI nullable selector/query carrier
-ADP-07  OPEN     CLI Location materialization grammar
+ADP-07  CLOSED   CLI Location materialization grammar — 8 / 8 creates
 ADP-08  OPEN     verification architecture
 ```
 
 Current progress:
 
 ```text
-closed design points     6 / 8
-open design points       2 / 8
+closed design points     7 / 8
+open design points       1 / 8
 GET route coverage      22 / 22 CLOSED
 cursor route coverage   12 / 12 CLOSED
 HTTP parent tri-state   CLOSED
 CLI parent tri-state    CLOSED
-next design work         ADP-07 — CLI Location materialization grammar
+CLI create Location      8 / 8 CLOSED
+next design work         ADP-08 — verification architecture
 ```
 
 ## Closed architecture summaries
@@ -178,51 +191,37 @@ The delivered opaque cursor v1 payload is preserved. Application constructs one 
 
 ### ADP-05 — HTTP parent tri-state
 
-`GET /object-templates` accepts exactly:
-
-```text
-parent_template_id omitted
-parent_template_id=<valid delivered UUID carrier>
-parent_template_id=null
-```
-
-A local nullable-UUID lexical adapter intercepts only exact lowercase `null` and delegates all other values to the delivered UUID parser. Raw query presence remains the internal source of `parent_filter_set`, preserving omission versus explicit root-only filtering. Empty, uppercase/special sentinels, malformed UUIDs and repeats remain `400 invalid_request`. No domain/persistence/cursor redesign is introduced.
+`GET /object-templates` accepts exactly omitted, a valid delivered UUID carrier or exact lowercase `null`. A local nullable-UUID adapter intercepts only `null`; raw query presence remains the internal `parent_filter_set` source. Empty, uppercase/special sentinels, malformed UUIDs and repeats remain `400 invalid_request`.
 
 ### ADP-06 — CLI parent tri-state
 
-The ObjectTemplate list registry marks only `parent_template_id` as nullable while retaining its ObjectTemplate selector capability.
+The ObjectTemplate list registry marks only `parent_template_id` as nullable while retaining ObjectTemplate selector capability. Explicit null is a terminal nullable selector value, performs zero selector discovery and emits `parent_template_id=null`. Nullable QUERY/BODY/PATH behavior is location-aware and `_wire_string(None)` is not introduced globally.
 
-```text
-omitted
-    -> no selector target
-    -> no query pair
+### ADP-07 — CLI Location materialization
 
-UUID
-    -> exact-ID selector precedence
-    -> canonical UUID query pair
-
-human selector
-    -> normal ObjectTemplate discovery
-    -> resolved UUID query pair
-
-explicit null
-    -> parser None
-    -> terminal nullable selector value
-    -> zero selector discovery
-    -> query pair parent_template_id=null
-```
-
-The request planner is location-aware: nullable QUERY None emits lexical `null`; nullable BODY None preserves JSON null; PATH None is invalid. `_wire_string(None)` is not introduced globally.
+The eight existing Location templates remain authoritative. Tokens follow a closed `{segment(.segment)*}` grammar. Exact request-key presence wins over response lookup; response fallback traverses JSON objects only. Only `str` and `int` excluding bool are materializable. Replacement is literal and no Python formatter may reinterpret dotted tokens. Missing/repeated/mismatching actual Location or non-materializable expected Location remains `cli_protocol_error`; a canonical matching 201 cannot fail as `cli_internal_error` because of materializer behavior.
 
 ## Open architecture work
 
-### ADP-07 — CLI Location materialization grammar
-
-Must define the static token grammar, request-value precedence, response JSON-path resolution and exact literal replacement used to validate expected `Location` across all eight registered 201 operations.
-
 ### ADP-08 — Verification architecture
 
-Must define deterministic permanent evidence for all frozen contract outcomes, including 22 GET statement/projection checks, 12 cursor routes, lifecycle decoding, HTTP/CLI parent tri-state, eight create/Location operations, mutation-validation preservation and no schema/dependency delta.
+Must define deterministic permanent evidence for all frozen contract outcomes, including:
+
+```text
+22 / 22 GET projection and one-business-statement evidence
+read semantic-certification removal and mutation-validation preservation
+historical lifecycle decoding boundary
+12 / 12 cursor identity/keyset evidence
+HTTP ObjectTemplate omitted / UUID / lowercase-null carrier
+CLI ObjectTemplate omitted / UUID-or-human / explicit-null carrier
+zero selector lookup for CLI explicit null
+8 / 8 CLI create/Location success matrix
+Location missing/repeated/mismatch/unresolvable failures
+interactive/non-interactive create truthfulness
+single-request committed projection coherence
+no schema/migration/dependency/lockfile delta
+complete outcome / acceptance-criterion traceability
+```
 
 ## Architecture design rules
 
@@ -245,6 +244,9 @@ public lexical carrier
 CLI parsed explicit null
     != omitted parameter
     != arbitrary None scalar
+
+Location registry token
+    != Python formatting expression
 
 current AS-IS ownership
     != M3 TO-BE delta ownership
