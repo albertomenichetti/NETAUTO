@@ -38,7 +38,7 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 | Document | Status | Ownership |
 |---|---|---|
 | [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
-| [`api.md`](api.md) | NOT YET WRITTEN | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
+| [`api.md`](api.md) | DESIGN IN PROGRESS — ADP-04 CLOSED; ADP-05 OPEN | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
 | [`cli.md`](cli.md) | NOT YET WRITTEN | Location materialization grammar and nullable selector/query carrier |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | deterministic architecture/acceptance evidence |
 
@@ -96,7 +96,7 @@ write-side lifecycle validation remains intact
 
 Owner: `architecture/api.md`; verification owner: `architecture/verification.md`.
 
-Must freeze:
+Closed by ADP-04:
 
 ```text
 query identity = route + membership-affecting path targets + filters + semantic presence bits
@@ -106,6 +106,7 @@ OBJ-GET-03 adds parent_object_id
 OBJ-GET-06 adds object_id
 lifecycle global/object scope remains distinct
 ObjectTemplate omitted/root/exact-parent states remain distinct
+codec v1 payload/invalid_cursor behavior preserved
 ```
 
 ### ObjectTemplate parent filter
@@ -122,13 +123,15 @@ CLI explicit null    -> lowercase null, no selector lookup
 parent_filter_set    -> internal only
 ```
 
+HTTP lexical realization remains ADP-05; CLI realization remains ADP-06.
+
 ## Design-point status
 
 ```text
 ADP-01  CLOSED   read projection responsibility / persistence boundary
 ADP-02  CLOSED   one-statement projection matrix — 22 / 22 routes
 ADP-03  CLOSED   historical lifecycle trusted decoder
-ADP-04  OPEN     cursor identity realization
+ADP-04  CLOSED   cursor identity realization — 12 / 12 routes
 ADP-05  OPEN     ObjectTemplate nullable HTTP query carrier
 ADP-06  OPEN     CLI nullable selector/query carrier
 ADP-07  OPEN     CLI Location materialization grammar
@@ -138,10 +141,11 @@ ADP-08  OPEN     verification architecture
 Current progress:
 
 ```text
-closed design points     3 / 8
-open design points       5 / 8
-ADP-02 route coverage   22 / 22 CLOSED
-next design work         ADP-04 — cursor identity realization
+closed design points     4 / 8
+open design points       4 / 8
+GET route coverage      22 / 22 CLOSED
+cursor route coverage   12 / 12 CLOSED
+next design work         ADP-05 — ObjectTemplate nullable HTTP query carrier
 ```
 
 ### ADP-01 — CLOSED
@@ -177,9 +181,7 @@ Global lifecycle     1 / 1 CLOSED
 total               22 / 22 CLOSED
 ```
 
-The frozen projection-pattern vocabulary is `RP-01 .. RP-10`: direct pages/exacts, parent-rooted pages, exact aggregates with independent child sets, recursive exact/stable traversal, context-completed pages, optional projections, root-paged aggregates and parent-rooted exact aggregates.
-
-All 22 target projections use one business SQL statement on an ordinary read UoW / PostgreSQL statement snapshot and require no public-GET `coherent_read()` dependency. Query/SQLAlchemy syntax that does not alter the frozen logical shape remains implementation-local.
+The frozen projection-pattern vocabulary is `RP-01 .. RP-10`. All 22 target projections use one business SQL statement on an ordinary read UoW / PostgreSQL statement snapshot and require no public-GET `coherent_read()` dependency. Query/SQLAlchemy syntax that does not alter the frozen logical shape remains implementation-local.
 
 ### ADP-03 — CLOSED
 
@@ -210,9 +212,36 @@ REMOVE
 
 Semantically surprising but representationally decodable history remains readable. Mutation and lifecycle-write validation remain strong; any write invariant previously coupled to a shared decoder must remain or move to the write boundary before the read decoder is weakened.
 
-### ADP-04 .. ADP-08 — OPEN
+### ADP-04 — CLOSED — 12/12
 
-ADP-04 must define one cursor identity construction rule for all 12 routes. ADP-05/06 must freeze HTTP/CLI explicit-null carriers. ADP-07 must freeze Location value-path materialization. ADP-08 must define deterministic verification and statement-count evidence.
+Owned by [`api.md`](api.md).
+
+The delivered opaque cursor v1 payload is preserved:
+
+```text
+v
+route
+filters
+key
+```
+
+Application constructs one canonical semantic identity after request parsing and reuses the same `route + filters` for decode and encode. Canonical UUID/enum/datetime carriers are derived from typed request values, `limit` remains excluded, and `key` remains exactly the complete public ordering tuple.
+
+The complete twelve-route matrix is frozen. The only M3 identity changes are:
+
+```text
+GET /objects/{parent_object_id}/components
+    filters += parent_object_id
+
+GET /objects/{object_id}/relationships
+    filters += object_id
+```
+
+ObjectTemplate lineage cursors retain internal `parent_template_id + parent_filter_set`, distinguishing omitted/root-only/exact-parent states. Global and Object-scoped lifecycle continue sharing `route=lifecycle_events` while `involving_object_id` separates their semantic identities. No canonical keyset tuple changes in M3.
+
+### ADP-05 .. ADP-08 — OPEN
+
+ADP-05 must freeze the HTTP lexical `parent_template_id` omitted/UUID/lowercase-null carrier and map it into the internal tri-state already owned by ADP-04. ADP-06 must freeze the corresponding CLI nullable selector/query carrier. ADP-07 must freeze Location value-path materialization. ADP-08 must define deterministic verification and statement-count evidence.
 
 ## Architecture design rules
 
