@@ -1,12 +1,14 @@
 # M3 — Implementation Steps
 
-**Status:** DESIGN COMPLETE — CONSISTENCY REVIEW PASS — FREEZE APPROVAL PENDING — NOT YET FROZEN — NO IMPLEMENTATION AUTHORITY
+**Status:** FINAL / FROZEN
 
-**Authority:** PRE-IMPLEMENTATION PLANNING AUTHORITY
+**Authority:** NORMATIVE M3 IMPLEMENTATION DECOMPOSITION — FINAL / FROZEN
+
+**Freeze approval:** Explicitly approved by the project owner after the PASS steps consistency review recorded in [`wip/steps-consistency-closure.md`](wip/steps-consistency-closure.md). The approval basis is recorded in [`wip/steps-freeze.md`](wip/steps-freeze.md).
 
 ## 1. Purpose and authority
 
-This document decomposes the frozen M3 contract and architecture into an ordered implementation plan. The separate steps consistency review has passed, but until the project owner explicitly approves the steps freeze this file remains planning authority only and does **not** authorize software changes.
+This document decomposes the frozen M3 contract and architecture into an ordered implementation plan. The separate steps consistency review passed and the project owner explicitly approved the freeze. This file is `FINAL / FROZEN` and owns implementation order, slice scope, evidence assignment and completion conditions. It does **not** by itself authorize software changes; `status.md` must still explicitly authorize the exact slice.
 
 Implementation authority is composed from:
 
@@ -26,7 +28,8 @@ project-wide technologies
     -> docs/general/technology_baseline.md
     -> ratified project stack
 
-this document, only after steps freeze
+this document
+    -> FINAL / FROZEN
     -> implementation order, slice scope, evidence assignment
        and completion conditions
 ```
@@ -515,7 +518,6 @@ docs/milestones/M3/architecture/read-projections.md
     DT-GET-02 -> RP-02
     DT-GET-03 -> RP-03
     DT-GET-04 -> RP-02
-
 docs/milestones/M3/architecture/api.md
     DataType cursor identities unchanged
 docs/milestones/M3/architecture/verification.md
@@ -1275,7 +1277,7 @@ no schema/migration/dependency/lockfile delta is introduced
 final integration and acceptance closure paths are sufficient
 ```
 
-Review PASS does not freeze this document and creates no implementation authority.
+The PASS review preceded the explicit project-owner freeze approval recorded in `wip/steps-freeze.md`. The review itself created no implementation authority; the approved publication transition freezes this document without changing the reviewed decomposition.
 
 ## 7. Implementation gate
 
@@ -1292,12 +1294,12 @@ Current state:
 
 ```text
 steps consistency review  PASS
-steps.md                  NOT YET FROZEN
-project-owner approval    PENDING
+steps.md                  FINAL / FROZEN
+project-owner approval    GRANTED
 active implementation     NONE
 software implementation   NOT AUTHORIZED
 ```
 
 ## Immediate next action
 
-Request explicit project-owner approval to freeze the reviewed `M3-S00 .. M3-S07` implementation decomposition. Only after that publication transition may governance consider authorizing `M3-S00`.
+Make a separate operational decision on whether to authorize `M3-S00`. No implementation begins until `status.md` explicitly marks that exact slice `READY` or `IN PROGRESS` after its mandatory pre-flight.
