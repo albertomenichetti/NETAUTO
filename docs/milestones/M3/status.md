@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S04 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S04 COMPLETED / M3-S05 PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION
+phase                    IMPLEMENTATION AUTHORIZATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S04 — CANDIDATE READY FOR REVIEW
-software implementation  AUTHORIZED — M3-S04 ONLY
-blockers                 none
+active implementation    NONE
+software implementation  NOT AUTHORIZED
+blockers                 none for M3-S05 authorization decision
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, and `M3-S03` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S04 — Object trusted projections and path-target cursor repairs`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and this file explicitly authorizes the next exact slice.
+`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, and `M3-S04` are reviewer-owned `COMPLETED`. No later slice is authorized. Software implementation may resume only after this file explicitly authorizes the next exact slice.
 
 ## Frozen governance gates
 
@@ -161,32 +161,44 @@ candidate gates           PASS
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S04                    CANDIDATE READY FOR REVIEW
+M3-S04                    COMPLETED
 ```
 
 The corrected candidate closes both reviewer findings. A persisted `required=true / migration_default=NULL` property is treated as a representable semantic surprise and projects normally through exact and effective-schema GETs, while new invalid mutations remain rejected. `RP-05` recursion keys its termination guard on exact `(template_id, version)` node identity; `RP-06` remains a separate stable-lineage ancestry projection. The original S03 execution aid and review-fix aid were removed from active `wip/`; Git retains their history.
 
-## M3-S04 candidate
+## M3-S04 reviewer completion
+
+Reviewer result:
 
 ```text
-authorized slice          M3-S04 — Object trusted projections and path-target cursor repairs
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S03 — COMPLETED
-primary evidence          M3-VER-10 / M3-VER-11
-supporting evidence       Object targets for M3-VER-04/05/06/07/08/09/12/13/19
-business SQL statements   OBJ-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL
-M3-VER-10                 PASS — cross-parent cursor rejected; same-parent continued
-M3-VER-11                 PASS — cross-object cursor rejected; same-object continued
+slice                     M3-S04 — Object trusted projections and path-target cursor repairs
+review outcome            COMPLETED
+candidate commit          1a8245e35efc44306079fca9dd201cd397e54ead
+primary evidence          M3-VER-10 / M3-VER-11 — PASS
+supporting Object targets M3-VER-04/05/06/07/08/09/12/13/19 — PASS where assigned
+business SQL statements   OBJ-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
 context failure boundary  PASS — components/owner missing declaration -> bounded 500
-Object lifecycle ADP-03   PASS — trusted surprise + materially undecodable carrier
+Object lifecycle ADP-03   PASS — trusted semantic surprise + materially undecodable carrier
 mutation regressions      PASS — Object/ownership/Relationship semantic validation
 accepted M3 regressions   M3-S00 .. M3-S03 PASS
-candidate gates           PASS — build/static/973-test complete repository suite
-later slices              NOT AUTHORIZED
+global M3-VER bundles     NOT YET CLOSED
+candidate gates           PASS — full repository suite 973 passed
+review findings           0
+contract reopen           NOT REQUIRED
+architecture reopen       NOT REQUIRED
+steps reopen              NOT REQUIRED
+M3-S05                    NOT AUTHORIZED
 ```
 
-The implementation candidate satisfies the assigned S04 gates and awaits reviewer inspection. Reviewer-owned `COMPLETED` remains a separate decision.
+The reviewed implementation realizes all six frozen Object read shapes with ordinary read UoWs and exactly one authoritative business SQL statement each. `OBJ-GET-02` now projects intrinsic Object state without transitive ObjectTemplate/DataType recertification. `OBJ-GET-03` and `OBJ-GET-04` use the parent Object's exact template-version chain only to materialize the mandatory `slot_declaring_template_id`, preserving parent/child absence, empty/null states, and bounded internal failure when required declaration context is missing or ambiguous.
+
+The two S04 cursor repairs are complete. `object_components` now binds `parent_object_id` in semantic cursor identity while retaining `child_object_id` as the position key; `object_relationships` now binds `object_id` while retaining the complete `(relationship_id, destination_object_id, name)` position key. Cross-parent and cross-Object reuse are rejected as `invalid_cursor`, and same-target continuation with changed limit remains valid.
+
+`OBJ-GET-05` uses the shared ADP-03 representational decoder and a target-rooted one-statement Object-scoped lifecycle page. Historical semantic surprises that remain DTO-decodable are readable; materially undecodable required carriers fail through bounded `internal_error`. The shared decoder correction is allowed by the frozen S04 scope, while the global lifecycle route's query/UoW shape remains unchanged and its completion remains owned by M3-S05.
+
+`OBJ-GET-06` projects Object-relative Relationship views directly from persisted factual/runtime/Resolution state, removes `_validated_many()` recertification, performs public semantic `DISTINCT` before keyset/order/limit, and preserves path-target 404 versus successful empty-page behavior. Exact Relationship GET behavior remains unchanged for M3-S05.
+
+No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S04. The completed S04 execution aid has been removed from active `wip/`; Git retains its history.
 
 ## Scope impact
 
@@ -203,7 +215,7 @@ project-version change
 cursor-codec version change
 ```
 
-M3-S04 must preserve these non-deltas.
+The accepted S04 candidate introduced none of those changes.
 
 ## Remaining gates
 
@@ -215,14 +227,14 @@ M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
-explicit M3-S04 implementation authorization  DONE — M3-S04 ONLY
-M3-S04 execution/review                        CANDIDATE READY FOR REVIEW
+M3-S04 execution/review                        DONE — COMPLETED
+explicit M3-S05 implementation authorization  PENDING
 M3-S05 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Review the M3-S04 candidate against the frozen contract, architecture and steps, including the permanent PostgreSQL evidence in `tests/test_m3_s04_object_reads.py`.
+Make a separate explicit operational decision on whether to authorize `M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads` as the next implementation slice.
 
-Do not start M3-S05. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S04 `COMPLETED` and authorize the next slice.
+Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
