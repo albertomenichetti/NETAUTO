@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — ARCHITECTURE CONSISTENCY REVIEW PENDING
+**Milestone status:** ACTIVE — ARCHITECTURE FREEZE APPROVAL PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -19,16 +19,27 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 
 ```text
 phase                    ARCHITECTURE DESIGN COMPLETE
-next gate                ARCHITECTURE CONSISTENCY / FREEZE REVIEW
+consistency review       PASS
+next gate                EXPLICIT ARCHITECTURE FREEZE DECISION
 contract                 FINAL / FROZEN
-architecture set         DESIGN COMPLETE — NOT FROZEN
+architecture set         DESIGN COMPLETE — CONSISTENCY PASS — NOT FROZEN
 implementation steps     NOT YET FROZEN
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none known before consistency review
+blockers                 none for architecture freeze decision
 ```
 
-All eight planned architecture design points are closed. This does not create implementation authority. The architecture set must pass a separate consistency/freeze review and receive explicit project-owner freeze approval before `steps.md` may be finalized.
+All eight planned architecture design points are closed and the dedicated consistency review passed with zero open findings. This does not create implementation authority. The architecture set requires explicit project-owner freeze approval before it may become `FINAL / FROZEN`; `steps.md` remains a later independent gate.
+
+Consistency review:
+
+```text
+report                   docs/milestones/M3/wip/architecture-consistency-closure.md
+status                   PASS
+findings                 2 / 2 CLOSED
+open architecture finding 0
+contract reopening       NOT REQUIRED
+```
 
 ## Frozen contract gate
 
@@ -48,7 +59,7 @@ Any semantic change to frozen Scope, Non-goals, explicit deltas, outcomes or acc
 
 Controller:
 
-- [`architecture/README.md`](architecture/README.md) — `DESIGN COMPLETE — CONSISTENCY REVIEW PENDING — NOT FROZEN`.
+- [`architecture/README.md`](architecture/README.md) — `DESIGN COMPLETE — CONSISTENCY REVIEW PASSED — FREEZE APPROVAL PENDING — NOT FROZEN`.
 
 Current TO-BE owners:
 
@@ -95,6 +106,8 @@ HTTP parent tri-state     CLOSED
 CLI parent tri-state      CLOSED
 CLI create Location        8 / 8 CLOSED
 verification bundles      19 / 19 DESIGNED
+consistency review         PASS
+open architecture findings 0
 ```
 
 ## Architecture closure to date
@@ -254,14 +267,15 @@ new business resource
 new public route
 ```
 
-Any consistency finding that would require one of these or another observable contract change must stop for contract review/reopen rather than being absorbed silently.
+Any requested architecture change that would require one of these or another observable contract change must stop for contract review/reopen rather than being absorbed silently.
 
 ## Remaining gates
 
 ```text
 contract FINAL / FROZEN                       DONE
 architecture design                           DONE — 8 / 8 ADPs CLOSED
-architecture consistency / freeze review      NEXT
+architecture consistency review               DONE — PASS
+explicit architecture freeze approval         NEXT
 architecture set FINAL / FROZEN               PENDING
 implementation steps FINAL / FROZEN            PENDING
 explicit implementation authorization          PENDING
@@ -271,21 +285,8 @@ explicit implementation authorization          PENDING
 
 ## Immediate next action
 
-Perform a dedicated architecture consistency/freeze review across:
+Obtain the explicit project-owner architecture freeze decision.
 
-```text
-docs/milestones/M3/contract.md
-docs/milestones/M3/architecture/read-projections.md
-docs/milestones/M3/architecture/api.md
-docs/milestones/M3/architecture/cli.md
-docs/milestones/M3/architecture/verification.md
-docs/milestones/M3/architecture/README.md
-docs/milestones/M3/status.md
-docs/milestones/M3/steps.md
-```
+If approved, the freeze publication transition must mark the four architecture owners and controller `FINAL / FROZEN`, advance `status.md` to implementation planning and leave `steps.md` not yet frozen. Software implementation remains **NOT AUTHORIZED** until the later steps freeze and explicit implementation authorization.
 
-The review must verify cross-document ownership, terminology, all 8 OUT / 19 AC / 8 CQG obligations, 22/22 GETs, 12/12 cursors, HTTP/CLI parent-carrier consistency, 8/8 Location coverage, 19/19 evidence bundles and absence of stale TODO/TBD/open semantic statements.
-
-Only a review PASS followed by explicit project-owner approval may freeze the architecture set.
-
-Software implementation remains **NOT AUTHORIZED**.
+If changes are requested, the affected ADP(s) must be explicitly reopened before semantic edits. A contract-level contradiction requires formal contract reopening.
