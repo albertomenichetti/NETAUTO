@@ -1,6 +1,6 @@
 # M3 — Public API and Cursor Architecture
 
-**Status:** DESIGN IN PROGRESS — ADP-04 / ADP-05 CLOSED
+**Status:** DESIGN COMPLETE — ADP-04 / ADP-05 CLOSED — NOT FROZEN
 
 **Authority:** M3 TO-BE ARCHITECTURE — PUBLIC API / CURSOR OWNER
 
@@ -33,9 +33,10 @@ M3-AC-09 — Complete twelve-route cursor binding
 M3-AC-10 — Object components cross-parent cursor rejection
 M3-AC-11 — Object Relationship cross-object cursor rejection
 M3-AC-12 — Cursor keyset completeness
-M3-AC-13 — ObjectTemplate HTTP parent-filter tri-state
-M3-AC-14 — ObjectTemplate parent-filter malformed/duplicate rejection
-M3-AC-15 — ObjectTemplate parent-filter cursor distinction
+M3-AC-13 — Lifecycle route-scope cursor distinction
+M3-AC-14 — ObjectTemplate parent-filter HTTP tri-state
+M3-AC-16 — Parent-filter cursor identity
+M3-AC-18 — Complete outcome traceability
 ```
 
 The corresponding official-CLI explicit-null realization is owned by `cli.md` / ADP-06.
@@ -360,7 +361,7 @@ No cursor format/version change is required.
 
 ## Downstream CLI consistency constraint
 
-ADP-06 must expose the same public semantics through the official CLI:
+ADP-06 realizes the same public semantics through the official CLI:
 
 ```text
 parameter omitted
@@ -374,11 +375,11 @@ explicit null
     -> no selector lookup
 ```
 
-ADP-06 may not introduce an alternate CLI root sentinel or expose `parent_filter_set`.
+ADP-06 does not introduce an alternate CLI root sentinel or expose `parent_filter_set`.
 
 # Downstream verification constraints
 
-`verification.md` / ADP-08 must prove at minimum:
+`verification.md` / ADP-08 owns deterministic evidence for at minimum:
 
 ```text
 HTTP omission
@@ -401,7 +402,7 @@ cursor tri-state
     root-only continues root-only pagination successfully
 ```
 
-ADP-08 must also retain the twelve-route cursor evidence frozen by ADP-04, including changed-limit continuation and the two M3 path-target rejection cases.
+ADP-08 also retains the twelve-route cursor evidence frozen by ADP-04, including changed-limit continuation and the two M3 path-target rejection cases.
 
 # Preserved AS-IS responsibilities
 
@@ -426,4 +427,4 @@ ADP-04  CLOSED
 ADP-05  CLOSED
 ```
 
-No implementation authority is created by these closures. The architecture set remains `DESIGN IN PROGRESS — NOT FROZEN`.
+No implementation authority is created by these closures. The architecture set remains `NOT FROZEN` pending consistency closure and explicit freeze approval.
