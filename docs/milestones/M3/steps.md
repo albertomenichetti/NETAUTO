@@ -6,22 +6,25 @@
 
 ## Purpose
 
-This file keeps the active-cycle implementation gate explicit while M3 architecture design is in progress. It does **not** yet define implementation slices and does not authorize software changes.
+This file keeps the implementation gate explicit after M3 architecture design completion. It does **not** yet define implementation slices and does not authorize software changes.
 
 Current prerequisite state:
 
 ```text
 M3 discovery                         COMPLETE
 M3 contract                          FINAL / FROZEN
-M3 architecture set                  DESIGN IN PROGRESS — NOT FROZEN
+M3 architecture design points        8 / 8 CLOSED
+M3 architecture set                  DESIGN COMPLETE — NOT FROZEN
 required architecture consistency    NOT YET PASSED
+architecture freeze approval         NOT YET GRANTED
 ```
 
 The normative implementation decomposition will be written only after:
 
 ```text
-M3 architecture set is FINAL / FROZEN
-required architecture consistency review has passed
+M3 architecture consistency review passes
+M3 architecture set becomes FINAL / FROZEN
+explicit architecture freeze approval is recorded
 ```
 
 ## Current slice registry
