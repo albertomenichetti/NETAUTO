@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S01 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S01 COMPLETED / M3-S02 PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION
+phase                    IMPLEMENTATION AUTHORIZATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S01 — CANDIDATE READY FOR REVIEW
-software implementation  AUTHORIZED — M3-S01 ONLY
-blockers                 none
+active implementation    NONE
+software implementation  NOT AUTHORIZED
+blockers                 none for M3-S02 authorization decision
 ```
 
-Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness` is reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
+Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness` and `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` are reviewer-owned `COMPLETED`. No later slice is authorized: software implementation may resume only after `status.md` explicitly authorizes the next exact slice.
 
 ## Frozen contract gate
 
@@ -153,7 +153,7 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S01                    READY / AUTHORIZED
+M3-S01                    COMPLETED
 ```
 
 The reviewed implementation conforms to the frozen ADP-07 Location DSL and preserves the delivered CLI boundary outside the authorized delta. Review confirmed the common literal materializer, exact request-key presence precedence, nested JSON-object traversal, `str` / non-boolean `int` scalar rule, exact single-Location validation, permanent eight-operation evidence, interactive/non-interactive truthfulness and absence of a hidden post-mutation GET.
@@ -162,20 +162,28 @@ The pre-existing formatter-only change in `docs/milestones/M3/wip/obj-get-06-dec
 
 The completed M3-S00 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
 
-## M3-S01 implementation authorization
+## M3-S01 reviewer completion
+
+Reviewer result:
 
 ```text
-authorized slice          M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S00 — COMPLETED
-primary evidence          M3-VER-14 .. M3-VER-16
-candidate evidence        PASS — M3-VER-14 .. M3-VER-16
+slice                     M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity
+review outcome            COMPLETED
+candidate commit          9ce01224893926e3a28513db0cd85b02426da67e
+primary evidence          M3-VER-14 .. M3-VER-16 — PASS
 candidate gates           PASS
-later slices              NOT AUTHORIZED
+review findings           0
+contract reopen           NOT REQUIRED
+architecture reopen       NOT REQUIRED
+steps reopen              NOT REQUIRED
+M3-S02                    NOT AUTHORIZED
 ```
 
-The mandatory repository pre-flight, assigned evidence and complete candidate gate passed inside the exact frozen `M3-S01` scope. The candidate is ready for reviewer inspection; reviewer-owned completion remains separate.
+The reviewed implementation realizes the frozen ADP-04 / ADP-05 / ADP-06 parent-filter tri-state without changing the existing application/persistence semantic owner or opaque cursor codec. Review confirmed the exact lowercase HTTP `null` carrier, preserved request-parameter presence bit, generic metadata-driven nullable direct-selector terminal rule, location-aware CLI QUERY `null` emission, unchanged BODY JSON-null behavior, PATH-None rejection, bounded human-selector discovery, and interactive/non-interactive carrier equivalence.
+
+Permanent evidence covers HTTP omission / UUID / lowercase-null semantics and invalid lexical carriers, public-surface non-exposure of `parent_filter_set`, cursor incompatibility across omitted / root-only / exact-parent identities with successful root-only continuation, and the required CLI nullable-selector/planning invariants. No schema, migration, dependency, lockfile, DTO, route, persistence or cursor-codec change is part of M3-S01.
+
+The completed M3-S01 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
 
 ## Frozen architecture closure
 
@@ -230,14 +238,14 @@ implementation steps design                   DONE — M3-S00..S07
 implementation steps consistency review       DONE — PASS
 implementation steps FINAL / FROZEN           DONE
 M3-S00 execution/review                        DONE — COMPLETED
-explicit M3-S01 implementation authorization  DONE — M3-S01 ONLY
-M3-S01 execution/review                        CANDIDATE READY FOR REVIEW
+M3-S01 execution/review                        DONE — COMPLETED
+explicit M3-S02 implementation authorization  PENDING
 M3-S02 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Review the `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` candidate and its `M3-VER-14 .. M3-VER-16` evidence.
+Make a separate explicit operational decision on whether to authorize `M3-S02 — DataType trusted one-statement read projections` as the next implementation slice.
 
-The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S01` `COMPLETED` and authorize the transition to `M3-S02`.
+Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
