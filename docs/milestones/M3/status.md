@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S03 COMPLETED / M3-S04 PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S04 READY
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION AUTHORIZATION
+phase                    IMPLEMENTATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-blockers                 none for M3-S04 authorization decision
+active implementation    M3-S04 — READY
+software implementation  AUTHORIZED — M3-S04 ONLY
+blockers                 none
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, and `M3-S03` are reviewer-owned `COMPLETED`. No later slice is authorized. Software implementation may resume only after this file explicitly authorizes the next exact slice.
+`M3-S00`, `M3-S01`, `M3-S02`, and `M3-S03` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S04 — Object trusted projections and path-target cursor repairs`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and this file explicitly authorizes the next exact slice.
 
 ## Frozen governance gates
 
@@ -161,14 +161,24 @@ candidate gates           PASS
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S04                    NOT AUTHORIZED
+M3-S04                    READY / AUTHORIZED
 ```
 
-The corrected candidate closes both reviewer findings. A persisted `required=true / migration_default=NULL` property is treated as a representable semantic surprise and projects normally through exact and effective-schema GETs, while new invalid mutations remain rejected. Permanent schema/DTO evidence establishes that this carrier is not an applicable ObjectTemplate `M3-VER-07` materially-undecodable case.
+The corrected candidate closes both reviewer findings. A persisted `required=true / migration_default=NULL` property is treated as a representable semantic surprise and projects normally through exact and effective-schema GETs, while new invalid mutations remain rejected. `RP-05` recursion keys its termination guard on exact `(template_id, version)` node identity; `RP-06` remains a separate stable-lineage ancestry projection. The original S03 execution aid and review-fix aid were removed from active `wip/`; Git retains their history.
 
-`RP-05` recursion now keys its termination guard on exact `(template_id, version)` node identity rather than stable template identity. PostgreSQL evidence covers the finite exact chain `A:2 -> B:1 -> A:1` and preserves deterministic root-to-leaf projection in one authoritative statement. `RP-06` remains a separate stable-lineage ancestry projection and retains the PUBLISHED-RDV `EXISTS` membership rule without default-target recertification.
+## M3-S04 implementation authorization
 
-The six ObjectTemplate GETs use ordinary read UoWs, remain at exactly one business SQL statement each, preserve public routes/DTOs/cursors, and do not perform mutation-owned semantic recertification. The original S03 execution aid and S03 review-fix aid have been removed from active `wip/`; Git retains their history.
+```text
+authorized slice          M3-S04 — Object trusted projections and path-target cursor repairs
+slice state               READY
+human authorization       GRANTED
+predecessor               M3-S03 — COMPLETED
+primary evidence          M3-VER-10 / M3-VER-11
+supporting evidence       Object targets for M3-VER-04/05/06/07/08/09/12/13/19
+later slices              NOT AUTHORIZED
+```
+
+`READY` authorizes the implementer to perform the mandatory repository pre-flight and then implement only the frozen S04 surface. The implementer may transition S04 to `IN PROGRESS` when implementation actually begins. Reviewer-owned `COMPLETED` remains a separate decision.
 
 ## Scope impact
 
@@ -185,7 +195,7 @@ project-version change
 cursor-codec version change
 ```
 
-The accepted S03 candidate introduced none of those changes.
+M3-S04 must preserve these non-deltas.
 
 ## Remaining gates
 
@@ -197,13 +207,14 @@ M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
-explicit M3-S04 implementation authorization  PENDING
-M3-S04 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
+explicit M3-S04 implementation authorization  DONE — M3-S04 ONLY
+M3-S04 execution/review                        READY
+M3-S05 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Make a separate explicit operational decision on whether to authorize `M3-S04 — Object trusted projections and path-target cursor repairs` as the next implementation slice.
+Perform the mandatory M3-S04 pre-flight from repository authorities, then implement and verify `M3-S04 — Object trusted projections and path-target cursor repairs` within the frozen slice scope.
 
-Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
+Do not start M3-S05. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S04 `COMPLETED` and authorize the next slice.
