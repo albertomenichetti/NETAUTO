@@ -1,6 +1,6 @@
 # M3 — Public API and Cursor Architecture
 
-**Status:** DESIGN COMPLETE — ADP-04 / ADP-05 CLOSED — NOT FROZEN
+**Status:** FINAL / FROZEN — ADP-04 / ADP-05 CLOSED
 
 **Authority:** M3 TO-BE ARCHITECTURE — PUBLIC API / CURSOR OWNER
 
@@ -17,7 +17,7 @@ ADP-04 — Cursor identity realization                    CLOSED
 ADP-05 — ObjectTemplate nullable HTTP query carrier     CLOSED
 ```
 
-Implementation remains unauthorized while the M3 architecture set is not frozen.
+This owner is `FINAL / FROZEN`. Implementation remains unauthorized until `steps.md` is frozen and `status.md` explicitly authorizes a slice.
 
 ## Frozen contract inputs
 
@@ -427,4 +427,4 @@ ADP-04  CLOSED
 ADP-05  CLOSED
 ```
 
-No implementation authority is created by these closures. The architecture set remains `NOT FROZEN` pending consistency closure and explicit freeze approval.
+This owner is `FINAL / FROZEN`. No implementation authority is created by architecture freeze; implementation remains gated by frozen `steps.md` and explicit `status.md` authorization.
