@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — ARCHITECTURE FREEZE APPROVAL PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION PLANNING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,28 +18,18 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    ARCHITECTURE DESIGN COMPLETE
-consistency review       PASS
-next gate                EXPLICIT ARCHITECTURE FREEZE DECISION
+phase                    IMPLEMENTATION PLANNING
 contract                 FINAL / FROZEN
-architecture set         DESIGN COMPLETE — CONSISTENCY PASS — NOT FROZEN
+architecture set         FINAL / FROZEN
+architecture review      PASS
+architecture approval    GRANTED
 implementation steps     NOT YET FROZEN
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for architecture freeze decision
+blockers                 none for implementation planning
 ```
 
-All eight planned architecture design points are closed and the dedicated consistency review passed with zero open findings. This does not create implementation authority. The architecture set requires explicit project-owner freeze approval before it may become `FINAL / FROZEN`; `steps.md` remains a later independent gate.
-
-Consistency review:
-
-```text
-report                   docs/milestones/M3/wip/architecture-consistency-closure.md
-status                   PASS
-findings                 2 / 2 CLOSED
-open architecture finding 0
-contract reopening       NOT REQUIRED
-```
+Architecture freeze does not authorize software changes. `steps.md` is now the only active planning authority and must be designed, reviewed and explicitly frozen before any implementation slice can be authorized.
 
 ## Frozen contract gate
 
@@ -55,204 +45,88 @@ human freeze approval    GRANTED
 
 Any semantic change to frozen Scope, Non-goals, explicit deltas, outcomes or acceptance criteria requires formal contract reopening.
 
-## Architecture set
+## Frozen architecture gate
 
-Controller:
+Consistency review:
 
-- [`architecture/README.md`](architecture/README.md) — `DESIGN COMPLETE — CONSISTENCY REVIEW PASSED — FREEZE APPROVAL PENDING — NOT FROZEN`.
+```text
+report                    docs/milestones/M3/wip/architecture-consistency-closure.md
+status                    PASS
+findings                  2 / 2 CLOSED
+open architecture finding 0
+contract reopening        NOT REQUIRED
+```
 
-Current TO-BE owners:
+Freeze approval:
+
+```text
+record                    docs/milestones/M3/wip/architecture-freeze.md
+human freeze approval     GRANTED
+architecture set status   FINAL / FROZEN
+```
+
+Publication commits:
+
+```text
+read-projections owner    706dd4838a66bac16db10e6d6a983f2e39d61430
+api owner                 8e25a197381b05445e0a9bc0ea395bdf976317e0
+cli owner                 bcd99ab8b3d237fc178b418855309b964bac6069
+verification owner        4ddcf24ed53d8265b7f0d64e0bcc2fbd6e23b35c
+architecture controller   dd5593045c9a6bee5ebbf52931879bdb09441a9f
+freeze approval record    8996fa1875152996dddab4d0609ed978cf50561b
+```
+
+Frozen owners:
 
 ```text
 architecture/read-projections.md
+    FINAL / FROZEN
     ADP-01 CLOSED
     ADP-02 CLOSED — 22 / 22 routes
     ADP-03 CLOSED
 
 architecture/api.md
+    FINAL / FROZEN
     ADP-04 CLOSED — 12 / 12 cursor routes
     ADP-05 CLOSED
 
 architecture/cli.md
+    FINAL / FROZEN
     ADP-06 CLOSED
     ADP-07 CLOSED — 8 / 8 create Location templates
 
 architecture/verification.md
+    FINAL / FROZEN
     ADP-08 CLOSED
     M3-VER-01 .. M3-VER-19 DESIGNED
 ```
 
-## Architecture design-point status
+## Frozen architecture closure
 
 ```text
-ADP-01  CLOSED   read projection responsibility / persistence boundary
-ADP-02  CLOSED   complete 22-route one-statement projection matrix — 22 / 22
-ADP-03  CLOSED   historical lifecycle trusted decoder
-ADP-04  CLOSED   cursor identity realization — 12 / 12
-ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
-ADP-06  CLOSED   CLI nullable selector/query carrier
-ADP-07  CLOSED   CLI Location materialization grammar — 8 / 8 creates
-ADP-08  CLOSED   verification architecture — 19 / 19 AC bundles designed
-```
-
-Progress:
-
-```text
-closed design points       8 / 8
-open design points         0 / 8
-GET route coverage        22 / 22 CLOSED
-cursor route coverage     12 / 12 CLOSED
+ADP-01 .. ADP-08          CLOSED — 8 / 8
+GET route matrix          CLOSED — 22 / 22
+cursor route matrix       CLOSED — 12 / 12
 HTTP parent tri-state     CLOSED
 CLI parent tri-state      CLOSED
-CLI create Location        8 / 8 CLOSED
-verification bundles      19 / 19 DESIGNED
-consistency review         PASS
-open architecture findings 0
+CLI create Location       CLOSED — 8 / 8
+verification bundles      DESIGNED — 19 / 19
+consistency review        PASS
+open architecture finding 0
 ```
 
-## Architecture closure to date
-
-### Public read boundary
-
-All 22 canonical public business GET/read targets have one complete one-statement logical projection under an ordinary read UoW / PostgreSQL statement snapshot and no target dependence on `coherent_read()`.
-
-Historical lifecycle reads have a decoding-only boundary: typed historical carrier materialization remains; mutation-transition semantic recertification and live-state reinterpretation are removed from the read target while write validation remains strong.
-
-### Cursor boundary
-
-Cursor architecture preserves the delivered opaque codec v1 and complete canonical keyset tuples. The only M3 cursor identity corrections are:
+Material frozen architecture outcomes include:
 
 ```text
-GET /objects/{parent_object_id}/components
-    -> include parent_object_id
-
-GET /objects/{object_id}/relationships
-    -> include object_id
+public GETs trust mutation-owned semantic certification
+all 22 canonical GETs target one business SQL statement / statement snapshot
+historical lifecycle reads decode representational carriers without transition recertification
+components cursor binds parent_object_id
+Object Relationship cursor binds object_id
+ObjectTemplate HTTP and CLI expose omitted / UUID / lowercase null tri-state
+CLI Location templates use the frozen tiny registry DSL
+19 stable M3-VER bundles own final acceptance evidence
 ```
-
-ObjectTemplate omitted/root-only/exact-parent states remain distinct through internal `parent_filter_set`. Global/Object-scoped lifecycle remain distinct through `involving_object_id`. `limit` remains excluded from semantic cursor identity.
-
-### ObjectTemplate parent-filter carrier
-
-HTTP:
-
-```text
-omitted
-    -> parent_template_id=None
-    -> parent_filter_set=False
-
-valid UUID
-    -> parent_template_id=UUID
-    -> parent_filter_set=True
-
-exact lowercase null
-    -> parent_template_id=None
-    -> parent_filter_set=True
-```
-
-Malformed/unsupported/repeated query carriers remain `400 invalid_request`; `parent_filter_set` is not public.
-
-CLI:
-
-```text
-omitted
-    -> no selector target
-    -> no query pair
-
-UUID or accepted ObjectTemplate human selector
-    -> normal selector resolution
-    -> exact UUID query pair
-
-explicit null
-    -> parsed None
-    -> terminal nullable selector value
-    -> zero selector-discovery GETs
-    -> parent_template_id=null query pair
-```
-
-Only the ObjectTemplate list `parent_template_id` registry parameter becomes nullable. Nullable QUERY None emits lexical `null`; nullable BODY None remains JSON null; PATH None remains invalid. `_wire_string(None)` is not introduced globally.
-
-### CLI Location grammar
-
-The eight existing `201 Created` Location templates remain unchanged.
-
-```text
-token grammar
-    {segment(.segment)*}
-
-lookup precedence
-    exact request_values key presence
-    else response JSON-object path
-
-materializable scalar
-    str
-    int excluding bool
-
-materialization
-    literal {token} replacement only
-    no str.format / format_map semantics
-
-failure
-    missing/repeated/mismatching actual Location
-    or non-materializable expected Location
-        -> cli_protocol_error
-```
-
-The three nested response identities and five flat-token cases share one common materializer. No hidden post-mutation GET is introduced, and a canonical matching 201 cannot become `cli_internal_error` because of local Location formatting.
-
-### Verification architecture
-
-ADP-08 freezes three distinct verification gates and 19 stable evidence bundles:
-
-```text
-M3-AC-01 -> M3-VER-01
-...
-M3-AC-19 -> M3-VER-19
-```
-
-Permanent evidence design includes:
-
-```text
-22 / 22 GET compatibility + real-PG one-business-statement measurement
-paired read non-recertification + write-validator preservation evidence
-historical lifecycle trusted-decoder positive/negative evidence
-12 / 12 cursor identity/keyset matrix
-HTTP/CLI parent tri-state evidence
-8 / 8 CLI Location success/failure matrix
-single-request committed snapshot evidence
-schema/migration/dependency/lockfile non-delta evidence
-machine-checkable OUT/AC/VER/owner/target traceability
-```
-
-PostgreSQL-required bundles are `BLOCKED`, not `PASS`, when the required environment is unavailable.
-
-## Frozen contract outcomes to realize
-
-```text
-M3-OUT-01 .. M3-OUT-08
-M3-AC-01  .. M3-AC-19
-M3-CQG-01 .. M3-CQG-08
-```
-
-Architecture remains bounded to:
-
-1. CLI post-create correctness and `Location` response processing.
-2. Public business GET/read responsibility, projection compatibility and cursor correctness.
-3. Public `parent_template_id = null` root-only filter carrier across HTTP and official CLI.
-
-The one-business-statement target for all 22 canonical GET/read routes is an architecture/verification obligation, not an additional public-contract delta.
-
-## Discovery closure
-
-All bounded discovery workstreams remain closed:
-
-```text
-Area A — CLI post-create correctness          CLOSED
-Area B — public GET/read audit                CLOSED / 22 of 22 consolidated
-Area C — parent_template_id = null carrier    CLOSED
-```
-
-Discovery material under `wip/` remains non-normative input; the frozen contract and M3 architecture documents own the TO-BE boundary.
 
 ## Scope impact
 
@@ -267,26 +141,26 @@ new business resource
 new public route
 ```
 
-Any requested architecture change that would require one of these or another observable contract change must stop for contract review/reopen rather than being absorbed silently.
+Any implementation-planning proposal that contradicts the frozen contract or architecture must stop for the applicable reopen process rather than silently altering semantics.
 
 ## Remaining gates
 
 ```text
 contract FINAL / FROZEN                       DONE
-architecture design                           DONE — 8 / 8 ADPs CLOSED
+architecture design                           DONE — 8 / 8
 architecture consistency review               DONE — PASS
-explicit architecture freeze approval         NEXT
-architecture set FINAL / FROZEN               PENDING
+architecture set FINAL / FROZEN               DONE
+implementation steps design                   ACTIVE
+implementation steps consistency review       PENDING
 implementation steps FINAL / FROZEN            PENDING
 explicit implementation authorization          PENDING
+final M3 acceptance                            PENDING
 ```
 
-`steps.md` remains a pre-implementation placeholder. No `M3-Snn` slice is defined or active.
+`steps.md` still contains no frozen `M3-Snn` implementation registry. No implementation slice is active.
 
 ## Immediate next action
 
-Obtain the explicit project-owner architecture freeze decision.
+Design the M3 implementation decomposition in [`steps.md`](steps.md), assigning each slice bounded code/doc scope, required `M3-VER-*` evidence, regression gates, ordering/dependencies and completion conditions.
 
-If approved, the freeze publication transition must mark the four architecture owners and controller `FINAL / FROZEN`, advance `status.md` to implementation planning and leave `steps.md` not yet frozen. Software implementation remains **NOT AUTHORIZED** until the later steps freeze and explicit implementation authorization.
-
-If changes are requested, the affected ADP(s) must be explicitly reopened before semantic edits. A contract-level contradiction requires formal contract reopening.
+Implementation remains **NOT AUTHORIZED** until `steps.md` is separately reviewed, explicitly frozen and this status file authorizes the first slice.
