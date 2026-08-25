@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S06 IN PROGRESS
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S06 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S06 — IN PROGRESS
+active implementation    M3-S06 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S06 ONLY
 blockers                 none
 ```
@@ -180,7 +180,7 @@ S00-S05 execution aids were removed from active `wip/` after reviewer acceptance
 
 ```text
 authorized slice          M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure
-slice state               IN PROGRESS
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 predecessor               M3-S05 — COMPLETED
 primary evidence          M3-VER-04 / 05 / 06 / 09 / 12 / 17 / 18 / 19
@@ -189,12 +189,20 @@ GET census                22 exact
 cursor census             12 exact
 CLI 201 census             8 exact
 production behavior       corrections only if frozen evidence exposes a defect
+implementation candidate  c13bf884b8196e256fe4e7cefd73d083660fa54e
+candidate evidence        docs/milestones/M3/evidence/M3-S06-candidate.md
+candidate gates           PASS — 990 full-suite tests; 706 non-PostgreSQL tests; Ruff/Pyright/build/locked sync/lock/collection PASS
+integrated censuses       GET 22/22; cursor 12/12; CLI 201 8/8; statements 22/22 exactly one
+snapshot evidence         PASS — RelationshipDefinition BEFORE and AFTER generations
+non-drift                 PASS — compare_metadata []; migration/dependency/lock/version unchanged
+review outcome            PENDING — reviewer-owned
+reopen required           NO
 M3-S07                    NOT AUTHORIZED
 ```
 
-`READY` authorizes the implementer to perform the mandatory repository pre-flight and then implement only the frozen S06 integration/evidence closure. The implementer may transition S06 to `IN PROGRESS` when work actually begins. Reviewer-owned `COMPLETED` remains a separate decision.
+The S06 candidate is ready for reviewer inspection. Reviewer-owned `COMPLETED` remains a separate decision.
 
-S06 must produce one machine-checkable M3 traceability owner containing exact outcome/acceptance/evidence mappings plus exact 22-route GET, 12-route cursor and 8-operation CLI `201` censuses. It must close global read compatibility/failure behavior, read-vs-mutation authority, cursor identity/keyset traversal, 22/22 real-PostgreSQL one-business-statement evidence, deterministic T3 before/after single-statement snapshot evidence, and schema/migration/dependency/lockfile non-drift. It may correct implementation defects revealed by those frozen obligations but may not add new semantics.
+The candidate contains one machine-checkable M3 traceability owner with exact outcome/acceptance/evidence mappings plus exact 22-route GET, 12-route cursor and 8-operation CLI `201` censuses. The durable evidence record reports the integrated compatibility/failure, read-vs-mutation authority, cursor traversal, one-business-statement, deterministic snapshot and non-drift results.
 
 ## Scope impact
 
@@ -226,13 +234,13 @@ M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 explicit M3-S06 implementation authorization  DONE — M3-S06 ONLY
-M3-S06 execution/review                        IN PROGRESS
+M3-S06 execution/review                        CANDIDATE READY FOR REVIEW
 M3-S07 execution/review                        BLOCKED BY DEPENDENCY / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S06 pre-flight from repository authorities, then implement and verify `M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure` within the frozen slice scope.
+Review the published `M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure` candidate and its durable evidence record.
 
 Do not start M3-S07. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S06 `COMPLETED` and authorize the next slice.
