@@ -1,6 +1,6 @@
 # M3 — Architecture Set
 
-**Architecture set status:** DESIGN COMPLETE — CONSISTENCY REVIEW PASSED — FREEZE APPROVAL PENDING — NOT FROZEN
+**Architecture set status:** FINAL / FROZEN
 
 **Authority:** M3 TO-BE ARCHITECTURE SET CONTROL
 
@@ -10,15 +10,20 @@ This directory defines the M3 TO-BE architecture required to realize the frozen 
 
 The set starts from delivered AS-IS under `docs/architecture/` and changes only explicit M3 deltas. Preserved guarantees remain owned by their current AS-IS documents and must not be duplicated as competing M3 authority.
 
-All planned M3 architecture design points are closed and the dedicated consistency review has passed. Implementation remains unauthorized until the project owner explicitly approves architecture freeze, this set becomes `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes a slice.
+All planned M3 architecture design points are closed, the dedicated consistency review passed with zero open findings, and the project owner explicitly approved architecture freeze. The architecture set is therefore `FINAL / FROZEN`.
 
-Consistency review evidence:
+Architecture freeze does not authorize software implementation. `steps.md` remains the next independent gate and must become `FINAL / FROZEN` before `status.md` may authorize an implementation slice.
+
+Freeze evidence:
 
 ```text
 docs/milestones/M3/wip/architecture-consistency-closure.md
-status  PASS — READY FOR EXPLICIT HUMAN FREEZE DECISION
-open findings  0
-contract reopening  NOT REQUIRED
+    status  PASS
+    open findings  0
+    contract reopening  NOT REQUIRED
+
+docs/milestones/M3/wip/architecture-freeze.md
+    human architecture freeze approval  GRANTED
 ```
 
 ## Frozen contract inputs
@@ -46,12 +51,12 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 
 | Document | Status | Ownership |
 |---|---|---|
-| [`read-projections.md`](read-projections.md) | ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
-| [`api.md`](api.md) | ADP-04 / ADP-05 CLOSED | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
-| [`cli.md`](cli.md) | ADP-06 / ADP-07 CLOSED | nullable selector/query carrier and Location materialization grammar |
-| [`verification.md`](verification.md) | ADP-08 CLOSED | deterministic architecture/acceptance evidence, stable M3-VER bundles and final evidence gates |
+| [`read-projections.md`](read-projections.md) | FINAL / FROZEN — ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
+| [`api.md`](api.md) | FINAL / FROZEN — ADP-04 / ADP-05 CLOSED | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
+| [`cli.md`](cli.md) | FINAL / FROZEN — ADP-06 / ADP-07 CLOSED | nullable selector/query carrier and Location materialization grammar |
+| [`verification.md`](verification.md) | FINAL / FROZEN — ADP-08 CLOSED | deterministic architecture/acceptance evidence, stable M3-VER bundles and final evidence gates |
 
-The four documents above are the complete planned M3 architecture owner set. Additional architecture documents may be added only through an explicitly reopened architecture design point and may not expand the frozen contract.
+The four documents above are the complete frozen M3 architecture owner set. Any semantic change requires explicit architecture reopening and may not expand the frozen contract without formal contract reopening.
 
 ## Current AS-IS dependencies
 
@@ -190,20 +195,22 @@ ADP-07  CLOSED   CLI Location materialization grammar — 8 / 8 creates
 ADP-08  CLOSED   verification architecture — 19 / 19 AC bundles
 ```
 
-Current progress:
+Frozen closure:
 
 ```text
-closed design points       8 / 8
-open design points         0 / 8
-GET route coverage        22 / 22 CLOSED
-cursor route coverage     12 / 12 CLOSED
-HTTP parent tri-state     CLOSED
-CLI parent tri-state      CLOSED
-CLI create Location        8 / 8 CLOSED
-verification bundles      19 / 19 DESIGNED
-consistency review         PASS
+closed design points        8 / 8
+open design points          0 / 8
+GET route coverage         22 / 22 CLOSED
+cursor route coverage      12 / 12 CLOSED
+HTTP parent tri-state      CLOSED
+CLI parent tri-state       CLOSED
+CLI create Location         8 / 8 CLOSED
+verification bundles       19 / 19 DESIGNED
+consistency review          PASS
 open architecture findings 0
-next governance work       EXPLICIT ARCHITECTURE FREEZE DECISION
+human freeze approval       GRANTED
+architecture set            FINAL / FROZEN
+next governance work        IMPLEMENTATION STEPS DESIGN / FREEZE
 ```
 
 ## Closed architecture summary
@@ -219,7 +226,7 @@ ADP-07  CLI Location materialization DSL
 ADP-08  deterministic verification architecture
 ```
 
-No implementation authority is created by design-point closure or consistency PASS.
+No implementation authority is created by architecture freeze.
 
 ## Architecture design rules
 
@@ -253,55 +260,47 @@ current AS-IS ownership
     != M3 TO-BE delta ownership
 ```
 
-## Consistency / freeze gate
+## Freeze basis and change control
 
-Consistency review result:
+The reviewed pre-publication content SHAs and human approval are recorded in:
 
 ```text
-all planned owner documents present                         PASS
-ADP-01 .. ADP-08 all CLOSED                                PASS
-all M3 outcomes/ACs/CQGs have architecture/AS-IS paths     PASS
-22 / 22 GET projection dispositions consistent             PASS
-12 / 12 cursor identity/keyset dispositions consistent     PASS
-HTTP and CLI parent-filter carriers consistent              PASS
-CLI Location grammar covers all 8 registered 201 ops       PASS
-19 / 19 ACs map to stable verification bundles             PASS
-cross-document responsibility boundaries consistent        PASS
-normative TODO/TBD/open semantic statement                  0
-open architecture finding                                   0
-contract contradiction                                      0
-required formal reopen                                      0
+docs/milestones/M3/wip/architecture-freeze.md
 ```
 
-Architecture freeze still requires explicit project-owner approval.
-
-Until that approval and publication transition:
+Consistency closure is recorded in:
 
 ```text
-ARCHITECTURE SET = DESIGN COMPLETE — CONSISTENCY REVIEW PASSED — NOT FROZEN
-IMPLEMENTATION   = NOT AUTHORIZED
+docs/milestones/M3/wip/architecture-consistency-closure.md
+```
+
+The freeze publication changes status/authority wording only. It does not alter the reviewed ADP semantics or verification obligations.
+
+After freeze:
+
+```text
+pure editorial / traceability enrichment that does not change meaning
+    -> may be made under governance without semantic reopen
+
+architecture semantic change
+    -> explicit architecture reopen required
+
+change that alters frozen contract meaning
+    -> formal contract reopen required
 ```
 
 ## Immediate next action
 
-Request the explicit project-owner architecture freeze decision.
+Design and freeze `docs/milestones/M3/steps.md` as the implementation decomposition authority.
 
-If approved, the dedicated freeze publication transition must:
+Until `steps.md` is `FINAL / FROZEN` and `status.md` explicitly authorizes a slice:
 
 ```text
-mark read-projections.md FINAL / FROZEN
-mark api.md FINAL / FROZEN
-mark cli.md FINAL / FROZEN
-mark verification.md FINAL / FROZEN
-mark architecture/README.md ARCHITECTURE SET = FINAL / FROZEN
-update status.md to implementation planning
-update steps.md prerequisite state to architecture FINAL / FROZEN
-leave steps.md NOT YET FROZEN
-leave software implementation NOT AUTHORIZED
+ARCHITECTURE SET = FINAL / FROZEN
+IMPLEMENTATION STEPS = NOT YET FROZEN
+SOFTWARE IMPLEMENTATION = NOT AUTHORIZED
 ```
-
-If architecture changes are requested instead, the affected ADP(s) must be explicitly reopened; the frozen contract must not be silently reinterpreted.
 
 ## Reopen discipline
 
-If a requested architecture change discovers that the frozen contract is contradictory or insufficient to determine an observable outcome, stop the affected freeze path and request formal contract reopening. Architecture must not repair a contract-level gap by silently changing semantics.
+Architecture must not silently reinterpret the frozen contract or frozen architecture. Any semantic inconsistency discovered during implementation planning stops the affected planning path and follows the reopen rules above.
