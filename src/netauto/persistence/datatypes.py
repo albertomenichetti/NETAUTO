@@ -50,6 +50,12 @@ class DataTypeReferenceCounts:
     relationship_definition_property_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class DataTypeVersionPageProjection:
+    parent_exists: bool
+    items: tuple[DataTypeVersionSummary, ...]
+
+
 class DeleteReferenceError(Exception):
     def __init__(self, blocker_type: DataTypeDeleteBlockerType) -> None:
         self.blocker_type = blocker_type
@@ -456,24 +462,29 @@ class DataTypeStore:
         status: VersionStatus | None,
         after: int | None,
         limit: int,
-    ) -> Sequence[DataTypeVersionSummary]:
-        statement = select(datatype_versions).where(
-            datatype_versions.c.datatype_id == datatype_id
-        )
+    ) -> DataTypeVersionPageProjection:
+        membership = datatype_versions.c.datatype_id == datatypes.c.id
         if status is not None:
-            statement = statement.where(datatype_versions.c.status == status.value)
+            membership = and_(membership, datatype_versions.c.status == status.value)
         if after is not None:
-            statement = statement.where(datatype_versions.c.version > after)
-        rows = (
-            (
-                await self.connection.execute(
-                    statement.order_by(datatype_versions.c.version).limit(limit)
-                )
+            membership = and_(membership, datatype_versions.c.version > after)
+        statement = (
+            select(
+                datatypes.c.id.label("parent_id"),
+                *datatype_versions.c,
             )
-            .mappings()
-            .all()
+            .select_from(datatypes.outerjoin(datatype_versions, membership))
+            .where(datatypes.c.id == datatype_id)
+            .order_by(datatype_versions.c.version)
+            .limit(limit)
         )
-        return [_summary(row) for row in rows]
+        rows = (await self.connection.execute(statement)).mappings().all()
+        if not rows:
+            return DataTypeVersionPageProjection(False, ())
+        return DataTypeVersionPageProjection(
+            True,
+            tuple(_summary(row) for row in rows if row["version"] is not None),
+        )
 
     async def admit_exact(
         self, datatype_id: UUID, version: int

@@ -84,14 +84,6 @@ def _state(
     return ApplicationFailure(FailureClass.STATE_CONFLICT, code, message, details)
 
 
-def _internal(message: str) -> ApplicationFailure:
-    return ApplicationFailure(
-        FailureClass.INTERNAL_FAILURE,
-        "internal_error",
-        message,
-    )
-
-
 def _header(datatype_id: UUID, mode: RowLockMode) -> RowLockIntent:
     return RowLockIntent(RowLockKey(RowLockClass.DATA_TYPE_HEADER, datatype_id), mode)
 
@@ -115,24 +107,6 @@ async def _acquire(
 class DataTypeService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
-
-    @staticmethod
-    async def _validate_default_pointers(
-        store: DataTypeStore, lineages: tuple[DataType, ...]
-    ) -> None:
-        targets = await store.get_versions(
-            tuple(
-                (lineage.id, lineage.default_version)
-                for lineage in lineages
-                if lineage.default_version is not None
-            )
-        )
-        for lineage in lineages:
-            if lineage.default_version is None:
-                continue
-            target = targets.get((lineage.id, lineage.default_version))
-            if target is None or target.status is not VersionStatus.PUBLISHED:
-                raise _internal("A persisted DataType default pointer is invalid.")
 
     async def create(
         self,
@@ -447,12 +421,10 @@ class DataTypeService:
             return lineage
 
     async def get_lineage(self, datatype_id: UUID) -> DataType:
-        async with self._uow_factory.coherent_read() as uow:
-            store = DataTypeStore(uow.connection)
-            lineage = await store.get_lineage(datatype_id)
+        async with self._uow_factory() as uow:
+            lineage = await DataTypeStore(uow.connection).get_lineage(datatype_id)
             if lineage is None:
                 raise _not_found(datatype_id)
-            await self._validate_default_pointers(store, (lineage,))
             return lineage
 
     async def get_version(self, datatype_id: UUID, version: int) -> DataTypeVersion:
@@ -483,17 +455,15 @@ class DataTypeService:
                     "The cursor is malformed or incompatible with this query.",
                 )
             after = cast(tuple[str, str], (key[0], key[1]))
-        async with self._uow_factory.coherent_read() as uow:
-            store = DataTypeStore(uow.connection)
+        async with self._uow_factory() as uow:
             rows = list(
-                await store.list_lineages(
+                await DataTypeStore(uow.connection).list_lineages(
                     namespace=namespace,
                     name=name,
                     after=after,
                     limit=limit + 1,
                 )
             )
-            await self._validate_default_pointers(store, tuple(rows))
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = None
@@ -527,14 +497,12 @@ class DataTypeService:
                 )
             after = key[0]
         async with self._uow_factory() as uow:
-            store = DataTypeStore(uow.connection)
-            if await store.get_lineage(datatype_id) is None:
-                raise _not_found(datatype_id)
-            rows = list(
-                await store.list_versions(
-                    datatype_id, status=status, after=after, limit=limit + 1
-                )
+            projection = await DataTypeStore(uow.connection).list_versions(
+                datatype_id, status=status, after=after, limit=limit + 1
             )
+            if not projection.parent_exists:
+                raise _not_found(datatype_id)
+            rows = list(projection.items)
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = None

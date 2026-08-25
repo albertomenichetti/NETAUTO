@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S02 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S02 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S02 — READY
+active implementation    M3-S02 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S02 ONLY
 blockers                 none
 ```
@@ -189,15 +189,19 @@ The completed M3-S01 execution aid has been removed from the active `wip/` worki
 
 ```text
 authorized slice          M3-S02 — DataType trusted one-statement read projections
-slice state               READY
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 predecessor               M3-S01 — COMPLETED
 assigned evidence         DataType targets for M3-VER-04/05/06/07/09/12/19
 exclusive primary bundle  NONE — by frozen decomposition
+candidate evidence        DataType targets for M3-VER-04/05/06/09/12/19 — PASS
+M3-VER-07 target          NOT APPLICABLE — delivered DataType schema closes mandatory carriers
+global M3-VER bundles     NOT YET CLOSED
+candidate gates           PASS
 later slices              NOT AUTHORIZED
 ```
 
-`READY` authorizes the implementer to perform the mandatory repository pre-flight and then begin work inside the exact frozen `M3-S02` scope. The implementer may transition the slice to `IN PROGRESS` when implementation work actually begins, but reviewer-owned completion remains separate. Because M3-S02 contributes DataType targets to global evidence bundles primarily closed later, implementation must report those concrete targets truthfully and must not claim the complete global bundles PASS solely from this slice.
+The mandatory repository pre-flight, assigned DataType evidence and complete candidate gate passed inside the exact frozen `M3-S02` scope. All four canonical DataType GETs were measured at exactly one business SQL statement on real PostgreSQL, no DataType GET depends on `coherent_read()` or read-side mutation certification, and the paired mutation boundary remains active. The candidate is ready for reviewer inspection; reviewer-owned completion and global M3-VER bundle closure remain separate.
 
 ## Frozen architecture closure
 
@@ -254,13 +258,13 @@ implementation steps FINAL / FROZEN           DONE
 M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 explicit M3-S02 implementation authorization  DONE — M3-S02 ONLY
-M3-S02 execution/review                        READY
+M3-S02 execution/review                        CANDIDATE READY FOR REVIEW
 M3-S03 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S02 pre-flight from repository authorities, then implement and verify `M3-S02 — DataType trusted one-statement read projections` within the frozen slice scope.
+Review the `M3-S02 — DataType trusted one-statement read projections` candidate and its concrete DataType evidence targets.
 
 The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S02` `COMPLETED` and authorize the transition to `M3-S03`.

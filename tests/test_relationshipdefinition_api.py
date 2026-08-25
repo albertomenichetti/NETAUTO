@@ -739,7 +739,7 @@ async def test_m2_s01_rdv_properties_versions_defaults_and_factual_pin(
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_uniform_default_pointer_corruption_fails_dt_ot_and_rd_reads(
+async def test_m3_default_pointer_read_boundary_is_resource_family_specific(
     relationshipdefinition_client: httpx.AsyncClient,
     migrated_database_engine: Engine,
 ) -> None:
@@ -788,15 +788,25 @@ async def test_uniform_default_pointer_corruption_fails_dt_ot_and_rd_reads(
             .values(status="DEPRECATED")
         )
 
-    requests = (
+    datatype_requests = (
         f"/api/v1/core/datatypes/{datatype_id}",
         "/api/v1/core/datatypes",
+    )
+    for path in datatype_requests:
+        response = await client.get(path)
+        assert response.status_code == 200, (path, response.text)
+        if path.endswith("/datatypes"):
+            assert response.json()["items"][0]["default_version"] == 1
+        else:
+            assert response.json()["default_version"] == 1
+
+    later_slice_requests = (
         f"/api/v1/core/object-templates/{template_id}",
         "/api/v1/core/object-templates",
         f"/api/v1/core/relationship-definitions/{definition_id}",
         "/api/v1/core/relationship-definitions",
     )
-    for path in requests:
+    for path in later_slice_requests:
         response = await client.get(path)
         assert response.status_code == 500, (path, response.text)
         assert response.json()["code"] == "internal_error"
