@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S00 COMPLETED / M3-S01 PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S01 READY
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION AUTHORIZATION
+phase                    IMPLEMENTATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-blockers                 none for M3-S01 authorization decision
+active implementation    M3-S01 — READY
+software implementation  AUTHORIZED — M3-S01 ONLY
+blockers                 none
 ```
 
-Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness` is reviewer-owned `COMPLETED`. No later slice is authorized: software implementation may resume only after `status.md` explicitly authorizes the next exact slice.
+Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness` is reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
 
 ## Frozen contract gate
 
@@ -153,7 +153,7 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S01                    NOT AUTHORIZED
+M3-S01                    READY / AUTHORIZED
 ```
 
 The reviewed implementation conforms to the frozen ADP-07 Location DSL and preserves the delivered CLI boundary outside the authorized delta. Review confirmed the common literal materializer, exact request-key presence precedence, nested JSON-object traversal, `str` / non-boolean `int` scalar rule, exact single-Location validation, permanent eight-operation evidence, interactive/non-interactive truthfulness and absence of a hidden post-mutation GET.
@@ -161,6 +161,19 @@ The reviewed implementation conforms to the frozen ADP-07 Location DSL and prese
 The pre-existing formatter-only change in `docs/milestones/M3/wip/obj-get-06-decision.md` was explicitly authorized during M3-S00 and reviewed as non-semantic WIP layout only. It creates no M3-S00 behavior, contract or architecture delta.
 
 The completed M3-S00 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
+
+## M3-S01 implementation authorization
+
+```text
+authorized slice          M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity
+slice state               READY
+human authorization       GRANTED
+predecessor               M3-S00 — COMPLETED
+primary evidence          M3-VER-14 .. M3-VER-16
+later slices              NOT AUTHORIZED
+```
+
+`READY` authorizes the implementer to perform the mandatory repository pre-flight and then begin work inside the exact frozen `M3-S01` scope. The implementer may transition the slice to `IN PROGRESS` when implementation work actually begins, but reviewer-owned completion remains separate.
 
 ## Frozen architecture closure
 
@@ -215,13 +228,14 @@ implementation steps design                   DONE — M3-S00..S07
 implementation steps consistency review       DONE — PASS
 implementation steps FINAL / FROZEN           DONE
 M3-S00 execution/review                        DONE — COMPLETED
-explicit M3-S01 implementation authorization  PENDING
-M3-S01 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
+explicit M3-S01 implementation authorization  DONE — M3-S01 ONLY
+M3-S01 execution/review                        READY
+M3-S02 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Make a separate explicit operational decision on whether to authorize `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` as the next implementation slice.
+Perform the mandatory M3-S01 pre-flight from repository authorities, then implement and verify `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` within the frozen slice scope.
 
-Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
+The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S01` `COMPLETED` and authorize the transition to `M3-S02`.
