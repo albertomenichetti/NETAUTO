@@ -51,7 +51,6 @@ from netauto.persistence.locking import (
     prepare_lock_plan,
     run_semantic_uow_attempts,
 )
-from netauto.persistence.objects import ObjectStore
 from netauto.persistence.relationships import (
     ExactRelationshipViewCollision,
     RelationshipDefinitionStore,
@@ -1060,6 +1059,7 @@ class RelationshipService:
         limit: int,
     ) -> Page[ObjectRelationshipView]:
         filters: dict[str, JsonValue] = {
+            "object_id": str(object_id),
             "relationship_definition_id": (
                 None
                 if relationship_definition_id is None
@@ -1090,47 +1090,28 @@ class RelationshipService:
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
 
-        async with self._uow_factory.coherent_read() as uow:
-            if await ObjectStore(uow.connection).get(object_id) is None:
-                raise ApplicationFailure(
-                    FailureClass.NOT_FOUND,
-                    "resource_not_found",
-                    "The requested Object does not exist.",
-                    {"resource_type": "object", "id": str(object_id)},
-                )
+        async with self._uow_factory() as uow:
             store = RuntimeRelationshipStore(uow.connection)
-            rows = list(
-                await store.list_object_views(
+            try:
+                projection = await store.list_object_views(
                     object_id,
                     relationship_definition_id=relationship_definition_id,
                     name=name,
                     after=after,
                     limit=limit + 1,
                 )
-            )
-            definition_store = RelationshipDefinitionStore(uow.connection)
-            relationship_ids = {item.relationship_id for item in rows}
-            projections = await self._validated_many(
-                store, definition_store, relationship_ids
-            )
-            for row in rows:
-                projection = projections[row.relationship_id]
-                expected = {
-                    (view.object_id, view.destination_object_id, view.name)
-                    for view in projection.views
-                }
-                if (
-                    row.relationship_definition_id
-                    != projection.relationship_definition_id
-                    or row.relationship_definition_version
-                    != projection.relationship_definition_version
-                    or row.properties != projection.properties
-                    or (row.object_id, row.destination_object_id, row.name)
-                    not in expected
-                ):
-                    raise _internal(
-                        "The persisted factual Relationship page is invalid."
-                    )
+            except RuntimeError as error:
+                raise _internal(
+                    "The persisted factual Relationship page is invalid."
+                ) from error
+            if not projection.target_exists:
+                raise ApplicationFailure(
+                    FailureClass.NOT_FOUND,
+                    "resource_not_found",
+                    "The requested Object does not exist.",
+                    {"resource_type": "object", "id": str(object_id)},
+                )
+            rows = list(projection.items)
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = (

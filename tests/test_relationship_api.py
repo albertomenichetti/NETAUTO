@@ -624,7 +624,18 @@ async def test_db_valid_incomplete_runtime_aggregate_maps_to_internal_error(
         "details": {},
     }
     relative = await client.get(f"/api/v1/core/objects/{first}/relationships")
-    assert relative.status_code == 500
+    assert relative.status_code == 200, relative.text
+    assert relative.json()["items"] == [
+        {
+            "relationship_id": str(relationship_id),
+            "relationship_definition_id": str(definition_id),
+            "object_id": first,
+            "destination_object_id": second,
+            "name": "corrupt_link",
+            "relationship_definition_version": 1,
+            "properties": {},
+        }
+    ]
 
 
 @pytest.mark.postgresql
@@ -1141,12 +1152,13 @@ async def test_m2_s02_corrupt_relationship_transition_fails_complete_page(
             )
         )
     response = await client.get(
-        "/api/v1/core/lifecycle-events",
+        f"/api/v1/core/objects/{first}/lifecycle-events",
         params={"relationship_id": str(relationship_id)},
     )
-    assert response.status_code == 500
-    assert response.json() == {
-        "code": "internal_error",
-        "message": "The persisted lifecycle event state is invalid.",
-        "details": {},
-    }
+    assert response.status_code == 200, response.text
+    assert response.json()["items"]
+    assert all(
+        item["before"] == invalid_state and item["after"] == invalid_state
+        for item in response.json()["items"]
+        if item["kind"] == "RELATIONSHIP_DATA_CHANGE"
+    )

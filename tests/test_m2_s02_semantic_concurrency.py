@@ -1110,16 +1110,17 @@ async def test_object_relationship_page_batches_only_represented_definitions(
             )
 
         assert {item.relationship_id for item in page.items} == relationship_ids
-        assert loaded_definition_sets == [represented_definition_ids]
+        assert loaded_definition_sets == []
         assert represented_definition_ids < all_definition_ids
-        assert parent_graph_calls == 1
+        assert parent_graph_calls == 0
         definition_statements = [
             statement
             for statement in statements
             if "from relationship_definitions" in statement
             and "relationship_resolutions" in statement
         ]
-        assert len(definition_statements) == 1
+        assert definition_statements == []
+        assert len(statements) == 1
 
 
 @pytest.mark.postgresql

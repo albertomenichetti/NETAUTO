@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S04 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S04 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S04 — READY
+active implementation    M3-S04 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S04 ONLY
 blockers                 none
 ```
@@ -161,24 +161,32 @@ candidate gates           PASS
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S04                    READY / AUTHORIZED
+M3-S04                    CANDIDATE READY FOR REVIEW
 ```
 
 The corrected candidate closes both reviewer findings. A persisted `required=true / migration_default=NULL` property is treated as a representable semantic surprise and projects normally through exact and effective-schema GETs, while new invalid mutations remain rejected. `RP-05` recursion keys its termination guard on exact `(template_id, version)` node identity; `RP-06` remains a separate stable-lineage ancestry projection. The original S03 execution aid and review-fix aid were removed from active `wip/`; Git retains their history.
 
-## M3-S04 implementation authorization
+## M3-S04 candidate
 
 ```text
 authorized slice          M3-S04 — Object trusted projections and path-target cursor repairs
-slice state               READY
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 predecessor               M3-S03 — COMPLETED
 primary evidence          M3-VER-10 / M3-VER-11
 supporting evidence       Object targets for M3-VER-04/05/06/07/08/09/12/13/19
+business SQL statements   OBJ-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL
+M3-VER-10                 PASS — cross-parent cursor rejected; same-parent continued
+M3-VER-11                 PASS — cross-object cursor rejected; same-object continued
+context failure boundary  PASS — components/owner missing declaration -> bounded 500
+Object lifecycle ADP-03   PASS — trusted surprise + materially undecodable carrier
+mutation regressions      PASS — Object/ownership/Relationship semantic validation
+accepted M3 regressions   M3-S00 .. M3-S03 PASS
+candidate gates           PASS — build/static/973-test complete repository suite
 later slices              NOT AUTHORIZED
 ```
 
-`READY` authorizes the implementer to perform the mandatory repository pre-flight and then implement only the frozen S04 surface. The implementer may transition S04 to `IN PROGRESS` when implementation actually begins. Reviewer-owned `COMPLETED` remains a separate decision.
+The implementation candidate satisfies the assigned S04 gates and awaits reviewer inspection. Reviewer-owned `COMPLETED` remains a separate decision.
 
 ## Scope impact
 
@@ -208,13 +216,13 @@ M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
 explicit M3-S04 implementation authorization  DONE — M3-S04 ONLY
-M3-S04 execution/review                        READY
+M3-S04 execution/review                        CANDIDATE READY FOR REVIEW
 M3-S05 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S04 pre-flight from repository authorities, then implement and verify `M3-S04 — Object trusted projections and path-target cursor repairs` within the frozen slice scope.
+Review the M3-S04 candidate against the frozen contract, architecture and steps, including the permanent PostgreSQL evidence in `tests/test_m3_s04_object_reads.py`.
 
 Do not start M3-S05. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S04 `COMPLETED` and authorize the next slice.

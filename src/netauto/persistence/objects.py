@@ -32,16 +32,46 @@ from netauto.persistence.metadata import (
 )
 
 __all__ = [
+    "ComponentPageProjection",
+    "ComponentProjection",
     "EventKind",
     "IntrinsicLifecycleEvent",
     "ObjectDeleteReferenceError",
     "ObjectStore",
     "ObjectTemplateReferenceError",
+    "OwnerProjection",
+    "OwnerReadProjection",
     "OwnershipConflictError",
     "OwnershipFact",
     "OwnershipLifecycleEvent",
     "OwnershipReferenceError",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentProjection:
+    slot_declaring_template_id: UUID
+    slot_name: str
+    child_object_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentPageProjection:
+    parent_exists: bool
+    items: tuple[ComponentProjection, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerProjection:
+    parent_object_id: UUID
+    slot_declaring_template_id: UUID
+    slot_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerReadProjection:
+    child_exists: bool
+    owner: OwnerProjection | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +312,190 @@ class ObjectStore:
             .all()
         )
         return [self._ownership_fact(row) for row in rows]
+
+    async def list_component_projections(
+        self,
+        parent_object_id: UUID,
+        *,
+        slot_name: str | None,
+        after: UUID | None,
+        limit: int,
+    ) -> ComponentPageProjection:
+        conditions = ["edge.parent_object_id = :parent_object_id"]
+        parameters: dict[str, object] = {
+            "parent_object_id": parent_object_id,
+            "limit": limit,
+        }
+        if slot_name is not None:
+            conditions.append("edge.slot_name = :slot_name")
+            parameters["slot_name"] = slot_name
+        if after is not None:
+            conditions.append("edge.child_object_id > :after")
+            parameters["after"] = after
+        membership = " AND ".join(conditions)
+        statement = text(
+            f"""
+            WITH RECURSIVE exact_chain(
+                template_id,
+                template_version,
+                parent_template_id,
+                parent_version
+            ) AS (
+                SELECT
+                    version.template_id,
+                    version.version,
+                    version.parent_template_id,
+                    version.parent_version
+                FROM objects AS parent
+                JOIN object_template_versions AS version
+                  ON version.template_id = parent.template_id
+                 AND version.version = parent.template_version
+                WHERE parent.id = :parent_object_id
+
+                UNION
+
+                SELECT
+                    ancestor.template_id,
+                    ancestor.version,
+                    ancestor.parent_template_id,
+                    ancestor.parent_version
+                FROM exact_chain AS child
+                JOIN object_template_versions AS ancestor
+                  ON ancestor.template_id = child.parent_template_id
+                 AND ancestor.version = child.parent_version
+            ), component_page AS (
+                SELECT
+                    edge.child_object_id,
+                    edge.parent_object_id,
+                    edge.slot_name
+                FROM object_components AS edge
+                WHERE {membership}
+                ORDER BY edge.child_object_id
+                LIMIT :limit
+            )
+            SELECT
+                parent.id AS target_id,
+                page.child_object_id,
+                page.parent_object_id,
+                page.slot_name,
+                ARRAY(
+                    SELECT declaration.template_id
+                    FROM exact_chain AS chain
+                    JOIN object_template_components AS declaration
+                      ON declaration.template_id = chain.template_id
+                     AND declaration.template_version = chain.template_version
+                     AND declaration.name = page.slot_name
+                    ORDER BY declaration.template_id,
+                             declaration.template_version
+                ) AS slot_declaring_template_ids
+            FROM objects AS parent
+            LEFT JOIN component_page AS page ON TRUE
+            WHERE parent.id = :parent_object_id
+            ORDER BY page.child_object_id
+            """
+        )
+        rows = (await self.connection.execute(statement, parameters)).mappings().all()
+        if not rows:
+            return ComponentPageProjection(False, ())
+        items: list[ComponentProjection] = []
+        for row in rows:
+            child_object_id = cast(UUID | None, row["child_object_id"])
+            if child_object_id is None:
+                continue
+            declaring_ids = cast(Sequence[UUID], row["slot_declaring_template_ids"])
+            if len(declaring_ids) != 1:
+                raise RuntimeError(
+                    "persisted ownership slot declaration context is incomplete"
+                )
+            items.append(
+                ComponentProjection(
+                    slot_declaring_template_id=declaring_ids[0],
+                    slot_name=cast(str, row["slot_name"]),
+                    child_object_id=child_object_id,
+                )
+            )
+        return ComponentPageProjection(True, tuple(items))
+
+    async def get_owner_projection(self, child_object_id: UUID) -> OwnerReadProjection:
+        statement = text(
+            """
+            WITH RECURSIVE exact_chain(
+                template_id,
+                template_version,
+                parent_template_id,
+                parent_version
+            ) AS (
+                SELECT
+                    version.template_id,
+                    version.version,
+                    version.parent_template_id,
+                    version.parent_version
+                FROM object_components AS edge
+                JOIN objects AS parent ON parent.id = edge.parent_object_id
+                JOIN object_template_versions AS version
+                  ON version.template_id = parent.template_id
+                 AND version.version = parent.template_version
+                WHERE edge.child_object_id = :child_object_id
+
+                UNION
+
+                SELECT
+                    ancestor.template_id,
+                    ancestor.version,
+                    ancestor.parent_template_id,
+                    ancestor.parent_version
+                FROM exact_chain AS child
+                JOIN object_template_versions AS ancestor
+                  ON ancestor.template_id = child.parent_template_id
+                 AND ancestor.version = child.parent_version
+            )
+            SELECT
+                child.id AS target_id,
+                edge.parent_object_id,
+                edge.slot_name,
+                ARRAY(
+                    SELECT declaration.template_id
+                    FROM exact_chain AS chain
+                    JOIN object_template_components AS declaration
+                      ON declaration.template_id = chain.template_id
+                     AND declaration.template_version = chain.template_version
+                     AND declaration.name = edge.slot_name
+                    ORDER BY declaration.template_id,
+                             declaration.template_version
+                ) AS slot_declaring_template_ids
+            FROM objects AS child
+            LEFT JOIN object_components AS edge
+              ON edge.child_object_id = child.id
+            WHERE child.id = :child_object_id
+            """
+        )
+        row = (
+            (
+                await self.connection.execute(
+                    statement, {"child_object_id": child_object_id}
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            return OwnerReadProjection(False, None)
+        parent_object_id = cast(UUID | None, row["parent_object_id"])
+        if parent_object_id is None:
+            return OwnerReadProjection(True, None)
+        declaring_ids = cast(Sequence[UUID], row["slot_declaring_template_ids"])
+        if len(declaring_ids) != 1:
+            raise RuntimeError(
+                "persisted ownership slot declaration context is incomplete"
+            )
+        return OwnerReadProjection(
+            True,
+            OwnerProjection(
+                parent_object_id=parent_object_id,
+                slot_declaring_template_id=declaring_ids[0],
+                slot_name=cast(str, row["slot_name"]),
+            ),
+        )
 
     @staticmethod
     def _ownership_fact(row: RowMapping) -> OwnershipFact:

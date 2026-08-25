@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import case, func, select, text, tuple_
+from sqlalchemy import case, func, select, text, true, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -79,6 +79,12 @@ class RuntimeRelationshipHeader:
 class RelationshipCapabilityPageProjection:
     target_exists: bool
     items: tuple[RelationshipCapability, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectRelationshipPageProjection:
+    target_exists: bool
+    items: tuple[ObjectRelationshipView, ...]
 
 
 def _aggregate_statement():
@@ -1181,8 +1187,8 @@ class RuntimeRelationshipStore:
         name: str | None,
         after: tuple[UUID, UUID, str] | None,
         limit: int,
-    ) -> tuple[ObjectRelationshipView, ...]:
-        statement = (
+    ) -> ObjectRelationshipPageProjection:
+        page_statement = (
             select(
                 runtime_relationship_resolutions.c.relationship_id,
                 runtime_relationship_resolutions.c.relationship_definition_id,
@@ -1206,33 +1212,77 @@ class RuntimeRelationshipStore:
             .distinct()
         )
         if relationship_definition_id is not None:
-            statement = statement.where(
+            page_statement = page_statement.where(
                 runtime_relationship_resolutions.c.relationship_definition_id
                 == relationship_definition_id
             )
         if name is not None:
-            statement = statement.where(relationship_resolutions.c.name == name)
+            page_statement = page_statement.where(
+                relationship_resolutions.c.name == name
+            )
         ordering = (
             runtime_relationship_resolutions.c.relationship_id,
             runtime_relationship_resolutions.c.to_object_id,
             relationship_resolutions.c.name,
         )
         if after is not None:
-            statement = statement.where(tuple_(*ordering) > after)
-        rows = (
-            await self.connection.execute(statement.order_by(*ordering).limit(limit))
-        ).all()
-        return tuple(
-            ObjectRelationshipView(
-                relationship_id=cast(UUID, row.relationship_id),
-                relationship_definition_id=cast(UUID, row.relationship_definition_id),
-                object_id=cast(UUID, row.from_object_id),
-                destination_object_id=cast(UUID, row.to_object_id),
-                name=cast(str, row.name),
-                relationship_definition_version=cast(
-                    int, row.relationship_definition_version
-                ),
-                properties=cast(dict[str, JsonValue], row.properties),
-            )
-            for row in rows
+            page_statement = page_statement.where(tuple_(*ordering) > after)
+        page = (
+            page_statement.order_by(*ordering)
+            .limit(limit)
+            .cte("object_relationship_page")
         )
+        rows = (
+            (
+                await self.connection.execute(
+                    select(
+                        objects.c.id.label("target_id"),
+                        page.c.relationship_id,
+                        page.c.relationship_definition_id,
+                        page.c.relationship_definition_version,
+                        page.c.properties,
+                        page.c.from_object_id,
+                        page.c.to_object_id,
+                        page.c.name,
+                    )
+                    .select_from(objects.outerjoin(page, true()))
+                    .where(objects.c.id == object_id)
+                    .order_by(
+                        page.c.relationship_id,
+                        page.c.to_object_id,
+                        page.c.name,
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if not rows:
+            return ObjectRelationshipPageProjection(False, ())
+        items: list[ObjectRelationshipView] = []
+        for row in rows:
+            relationship_id = cast(UUID | None, row["relationship_id"])
+            if relationship_id is None:
+                continue
+            raw_properties = cast(object, row["properties"])
+            if not isinstance(raw_properties, dict):
+                raise RuntimeError("persisted Relationship properties are invalid")
+            property_map = cast(dict[object, object], raw_properties)
+            if not all(isinstance(key, str) for key in property_map):
+                raise RuntimeError("persisted Relationship properties are invalid")
+            items.append(
+                ObjectRelationshipView(
+                    relationship_id=relationship_id,
+                    relationship_definition_id=cast(
+                        UUID, row["relationship_definition_id"]
+                    ),
+                    object_id=cast(UUID, row["from_object_id"]),
+                    destination_object_id=cast(UUID, row["to_object_id"]),
+                    name=cast(str, row["name"]),
+                    relationship_definition_version=cast(
+                        int, row["relationship_definition_version"]
+                    ),
+                    properties=cast(dict[str, JsonValue], property_map),
+                )
+            )
+        return ObjectRelationshipPageProjection(True, tuple(items))

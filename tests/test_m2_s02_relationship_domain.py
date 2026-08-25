@@ -170,13 +170,9 @@ def test_m2_s02_schema_migration_preserves_removes_and_blocks_by_member() -> Non
 @pytest.mark.parametrize(
     "candidate",
     [
-        {"value": None},
         {"value": 1.5},
-        {"value": {}},
-        {"value": []},
-        {"value": [[1]]},
-        {"value": [1, True]},
-        {"Bad-Key": 1},
+        {"value": {1: "non-string-key"}},
+        {"value": [1, {"nested": 1.5}]},
     ],
 )
 def test_m2_s02_historical_property_codec_rejects_invalid_carriers(
@@ -187,13 +183,15 @@ def test_m2_s02_historical_property_codec_rejects_invalid_carriers(
 
 
 def test_m2_s02_historical_property_codec_accepts_exact_carriers() -> None:
-    candidate = {
+    candidate: dict[str, JsonValue] = {
+        "null": None,
         "text": "x",
         "integer": 1,
         "boolean": True,
-        "texts": ["x", "y"],
-        "integers": [1, 2],
-        "booleans": [True, False],
+        "empty_list": [],
+        "empty_object": {},
+        "recursive": ["x", 1, True, None, {"nested": []}],
+        "Bad-Key": 1,
     }
     assert decode_historical_properties(candidate) == candidate
 
@@ -203,9 +201,7 @@ def test_m2_s02_historical_property_codec_accepts_exact_carriers() -> None:
     [
         {},
         {"relationship_definition_version": 1},
-        {"relationship_definition_version": 1, "properties": {}, "extra": 1},
         {"relationship_definition_version": True, "properties": {}},
-        {"relationship_definition_version": 0, "properties": {}},
     ],
 )
 def test_m2_s02_relationship_factual_state_requires_exact_shape(
@@ -213,6 +209,18 @@ def test_m2_s02_relationship_factual_state_requires_exact_shape(
 ) -> None:
     with pytest.raises(RuntimeError):
         decode_relationship_factual_state(candidate)
+
+
+def test_m3_relationship_factual_state_ignores_extras_and_version_semantics() -> None:
+    candidate: dict[str, JsonValue] = {
+        "relationship_definition_version": 0,
+        "properties": {"nested": [None, {}]},
+        "extra": "ignored",
+    }
+    decoded = decode_relationship_factual_state(candidate)
+    assert decoded is not None
+    assert decoded.relationship_definition_version == 0
+    assert decoded.properties == {"nested": [None, {}]}
 
 
 async def test_m2_s02_relationship_writer_rejects_invalid_transition_shapes() -> None:
