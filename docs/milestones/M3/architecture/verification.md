@@ -1,6 +1,6 @@
 # M3 — Verification Architecture
 
-**Status:** DESIGN COMPLETE — ADP-08 CLOSED — ARCHITECTURE SET NOT YET FROZEN
+**Status:** FINAL / FROZEN — ADP-08 CLOSED
 
 **Authority:** M3 TO-BE ARCHITECTURE — VERIFICATION OWNER
 
@@ -12,7 +12,7 @@ It extends the delivered verification authority in `docs/architecture/verificati
 
 ADP-08 freezes **what evidence must exist and pass**. It does not require not-yet-authorized M3 implementation code to have already produced that evidence before architecture freeze.
 
-Implementation remains unauthorized until the complete architecture set passes consistency review, becomes `FINAL / FROZEN`, `steps.md` is subsequently frozen and `status.md` explicitly authorizes implementation.
+This owner is `FINAL / FROZEN`. Implementation remains unauthorized until `steps.md` is frozen and `status.md` explicitly authorizes implementation.
 
 ## Frozen inputs
 
@@ -685,28 +685,15 @@ contract -> architecture -> steps -> implementation -> evidence traceability COM
 
 A reviewed third-party warning may be censused under the delivered verification policy; an unexplained new project warning remains a finding.
 
-## 13. Architecture-freeze implication
+## 13. Architecture-freeze publication
 
-ADP-08 is **CLOSED** because all M3 evidence obligations are now designed and traceable.
+ADP-08 is **CLOSED** because all M3 evidence obligations are designed and traceable.
 
-This closure does **not** itself freeze the M3 architecture set.
+The dedicated architecture consistency review passed with zero open findings and no contract reopen requirement. The project owner explicitly approved architecture freeze after that PASS.
 
-Before `FINAL / FROZEN`, a separate architecture consistency/freeze review must prove:
+The architecture set is therefore `FINAL / FROZEN`. This publication changes authority/status only; executed `M3-VER-*` evidence remains pending by governance and is required during implementation slices and final acceptance.
 
-```text
-ADP-01 .. ADP-08 all CLOSED
-all four M3 owner documents mutually consistent
-all M3 OUT/AC/CQG obligations owned
-22/22 GET disposition consistent across owners
-12/12 cursor disposition consistent across owners
-HTTP/CLI parent tri-state mutually consistent
-8/8 Location grammar/census consistent
-verification bundles cover every acceptance criterion
-no stale TODO/TBD/open semantic statement
-no contract contradiction or required reopen
-```
-
-Only after that review passes and explicit project-owner freeze approval is granted may the architecture set become `FINAL / FROZEN`.
+Architecture freeze does not authorize software implementation. `steps.md` remains the next independent frozen gate.
 
 # ADP status
 
@@ -715,4 +702,4 @@ ADP-08  CLOSED
 M3 architecture design points  8 / 8 CLOSED
 ```
 
-Software implementation remains **NOT AUTHORIZED**.
+This owner is `FINAL / FROZEN`. Software implementation remains **NOT AUTHORIZED** until frozen `steps.md` and explicit `status.md` authorization.
