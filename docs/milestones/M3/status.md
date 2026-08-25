@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S05 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S05 COMPLETED / M3-S06 PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION
+phase                    IMPLEMENTATION AUTHORIZATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S05 — CANDIDATE READY FOR REVIEW
-software implementation  AUTHORIZED — M3-S05 ONLY
-blockers                 none
+active implementation    NONE
+software implementation  NOT AUTHORIZED
+blockers                 none for M3-S06 authorization decision
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, and `M3-S04` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and this file explicitly authorizes the next exact slice.
+`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, and `M3-S05` are reviewer-owned `COMPLETED`. No later slice is authorized. Software implementation may resume only after this file explicitly authorizes the next exact slice.
 
 ## Frozen governance gates
 
@@ -143,8 +143,6 @@ The reviewed implementation realizes DataType `RP-01`, `RP-02`, and `RP-03` trus
 
 ## M3-S03 reviewer completion
 
-Reviewer result:
-
 ```text
 slice                     M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
 review outcome            COMPLETED
@@ -161,14 +159,11 @@ candidate gates           PASS
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S04                    COMPLETED
 ```
 
 The corrected candidate closes both reviewer findings. A persisted `required=true / migration_default=NULL` property is treated as a representable semantic surprise and projects normally through exact and effective-schema GETs, while new invalid mutations remain rejected. `RP-05` recursion keys its termination guard on exact `(template_id, version)` node identity; `RP-06` remains a separate stable-lineage ancestry projection. The original S03 execution aid and review-fix aid were removed from active `wip/`; Git retains their history.
 
 ## M3-S04 reviewer completion
-
-Reviewer result:
 
 ```text
 slice                     M3-S04 — Object trusted projections and path-target cursor repairs
@@ -187,44 +182,45 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S05                    READY / AUTHORIZED
 ```
 
-The reviewed implementation realizes all six frozen Object read shapes with ordinary read UoWs and exactly one authoritative business SQL statement each. `OBJ-GET-02` now projects intrinsic Object state without transitive ObjectTemplate/DataType recertification. `OBJ-GET-03` and `OBJ-GET-04` use the parent Object's exact template-version chain only to materialize the mandatory `slot_declaring_template_id`, preserving parent/child absence, empty/null states, and bounded internal failure when required declaration context is missing or ambiguous.
+The reviewed implementation realizes all six frozen Object read shapes with ordinary read UoWs and exactly one authoritative business SQL statement each. `OBJ-GET-02` projects intrinsic Object state without transitive ObjectTemplate/DataType recertification. `OBJ-GET-03` and `OBJ-GET-04` use exact template-version context only to materialize mandatory slot declaration identity. `OBJ-GET-05` uses the shared ADP-03 representational decoder and a target-rooted one-statement Object-scoped lifecycle page. `OBJ-GET-06` projects Object-relative Relationship views directly from persisted factual/runtime/Resolution state and performs public semantic `DISTINCT` before keyset/order/limit.
 
-The two S04 cursor repairs are complete. `object_components` now binds `parent_object_id` in semantic cursor identity while retaining `child_object_id` as the position key; `object_relationships` now binds `object_id` while retaining the complete `(relationship_id, destination_object_id, name)` position key. Cross-parent and cross-Object reuse are rejected as `invalid_cursor`, and same-target continuation with changed limit remains valid.
+The two S04 cursor repairs are complete: `object_components` binds `parent_object_id`, and `object_relationships` binds `object_id`, without changing cursor codec v1. The completed S04 execution aid was removed from active `wip/`; Git retains its history.
 
-`OBJ-GET-05` uses the shared ADP-03 representational decoder and a target-rooted one-statement Object-scoped lifecycle page. Historical semantic surprises that remain DTO-decodable are readable; materially undecodable required carriers fail through bounded `internal_error`. The shared decoder correction is allowed by the frozen S04 scope, while the global lifecycle route's query/UoW shape remains unchanged and its completion remains owned by M3-S05.
+## M3-S05 reviewer completion
 
-`OBJ-GET-06` projects Object-relative Relationship views directly from persisted factual/runtime/Resolution state, removes `_validated_many()` recertification, performs public semantic `DISTINCT` before keyset/order/limit, and preserves path-target 404 versus successful empty-page behavior. Exact Relationship GET behavior remains unchanged for M3-S05.
-
-No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S04. The completed S04 execution aid has been removed from active `wip/`; Git retains its history.
-
-## M3-S05 implementation candidate
+Reviewer result:
 
 ```text
-authorized slice          M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S04 — COMPLETED
+slice                     M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads
+review outcome            COMPLETED
+candidate commit          8f37e1aa07589551ba0d35da2119a914df8b3014
 primary evidence          M3-VER-07 / M3-VER-08 / M3-VER-13 — PASS
-supporting S05 targets    M3-VER-04/05/06/09/12/19 — PASS
-global M3-VER bundles     NOT YET CLOSED
+supporting S05 targets    M3-VER-04/05/06/09/12/19 — PASS where assigned
+global M3-VER bundles     NOT YET CLOSED — integrated closure remains M3-S06
 business SQL statements   RD-GET-01..04 / REL-GET-01 / LC-GET-01 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
-trusted-read boundary     PASS — representable history readable; materially undecodable required carriers -> bounded 500
-cursor scope / continuity PASS — changed limit allowed; cross-target/filter misuse rejected
-mutation regressions      PASS — semantic validation remains active on write paths
+trusted-read boundary     PASS — representable persisted/history surprises readable; materially undecodable required historical carriers -> bounded 500
+lifecycle cursor scope    PASS — global/Object scopes and Object A/B identities are mutually incompatible; same-scope changed-limit continuation preserved
+mutation regressions      PASS — RelationshipDefinition/Relationship/lifecycle write validation remains active
 accepted M3 regressions   M3-S00 .. M3-S04 PASS
-candidate gates           PASS — 979 collected; 700 non-PostgreSQL and 979 full-suite tests passed
-review outcome            PENDING — reviewer-owned
-later slices              NOT AUTHORIZED
+candidate gates           PASS — 979 full-suite tests; 700 non-PostgreSQL tests; Ruff/Pyright/build/locked sync/lock/collection PASS
+review findings           0
+contract reopen           NOT REQUIRED
+architecture reopen       NOT REQUIRED
+steps reopen              NOT REQUIRED
+M3-S06                    NOT AUTHORIZED
 ```
 
-The candidate realizes all six frozen S05 read shapes with ordinary read UoWs and exactly one authoritative business SQL statement each. RelationshipDefinition aggregate and version projections preserve parent/exact-child/empty distinctions, root-first paging, stored child ordering, historical scalar materialization, and default-pointer trust without read-side recertification. Exact Relationship GET projects persisted public views directly, deduplicates their public semantic identity, and preserves exact-target 404 versus a successful empty view set.
+The reviewed implementation realizes the four frozen RelationshipDefinition read projections, exact factual Relationship projection, and global lifecycle projection with ordinary read UoWs and exactly one authoritative business SQL statement each. RelationshipDefinition list paging is root-first so Resolution child cardinality cannot truncate public roots; exact and nested version reads preserve parent/exact-child/empty distinctions. GET-side aggregate/default/history semantic recertification is removed while persisted typed fields and required property carriers remain materialized deterministically.
 
-Global lifecycle reads now use the shared ADP-03 representational decoder through an ordinary one-statement read UoW. DTO-decodable historical semantic surprises remain readable, materially undecodable required carriers fail through bounded `internal_error`, and global/Object-scoped cursor identities remain mutually non-interchangeable. Mutation-side aggregate validation and deterministic concurrency evidence remain active.
+Exact Relationship GET now projects persisted factual state and deduplicated public `views[]` directly from `relationships`, runtime Resolution facts, and persisted Resolution names. It no longer calls the mutation-owned `_validated()` aggregate path. Persisted JSON-object facts that are representable by the public DTO remain readable; mutation topology/schema/property validation remains active on write paths.
 
-No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S05. Reviewer-owned `COMPLETED` remains a separate decision.
+Global lifecycle GET now uses an ordinary read UoW and the same ADP-03 trusted historical decoder already used by the Object-scoped route. `M3-VER-08` covers both intrinsic and Relationship historical semantic surprises; `M3-VER-07` covers materially undecodable required intrinsic and Relationship historical carriers with bounded `internal_error`; `M3-VER-13` closes global/Object-scoped and Object-A/Object-B cursor-scope incompatibility while preserving same-scope continuation and changed-limit compatibility.
+
+With S05 accepted, the production implementation of the frozen trusted-read architecture now covers all **22 / 22 canonical GET routes**. This does not close the integrated cross-route M3 bundles: the exact 22-route/12-cursor censuses, cross-route coherence/non-drift and traceability closure remain owned by `M3-S06`.
+
+No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S05. The completed S05 execution aid has been removed from active `wip/`; Git retains its history.
 
 ## Scope impact
 
@@ -241,7 +237,7 @@ project-version change
 cursor-codec version change
 ```
 
-M3-S05 must preserve these non-deltas.
+The accepted S05 candidate introduced none of those changes.
 
 ## Remaining gates
 
@@ -254,14 +250,14 @@ M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
-explicit M3-S05 implementation authorization  DONE — M3-S05 ONLY
-M3-S05 execution/review                        CANDIDATE READY FOR REVIEW — REVIEW PENDING
+M3-S05 execution/review                        DONE — COMPLETED
+explicit M3-S06 implementation authorization  PENDING
 M3-S06 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Reviewer: inspect the M3-S05 candidate and its recorded evidence, then accept it or issue bounded review findings under the active slice.
+Make a separate explicit operational decision on whether to authorize `M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure` as the next implementation slice.
 
-Do not start M3-S06. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S05 `COMPLETED` and authorize the next slice.
+Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
