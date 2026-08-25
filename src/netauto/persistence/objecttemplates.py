@@ -65,10 +65,6 @@ class ObjectTemplateComponentTargetReferenceError(Exception):
         super().__init__("ObjectTemplate component target disappeared")
 
 
-class ObjectTemplateProjectionError(Exception):
-    """A required persisted carrier cannot form the trusted public projection."""
-
-
 @dataclass(frozen=True, slots=True)
 class ObjectTemplateDeclarationDelta:
     property_deletes: tuple[str, ...]
@@ -144,15 +140,6 @@ def _property(row: RowMapping) -> LocalProperty:
         required=cast(bool, row["required"]),
         migration_default=cast(JsonValue | None, row["migration_default"]),
     )
-
-
-def _projected_property(row: RowMapping) -> LocalProperty:
-    value = _property(row)
-    if value.required and value.migration_default is None:
-        raise ObjectTemplateProjectionError(
-            "a required ObjectTemplate property has no migration-default carrier"
-        )
-    return value
 
 
 def _component(row: RowMapping) -> LocalComponent:
@@ -507,9 +494,7 @@ class ObjectTemplateStore:
             status=header.status,
             parent_template_id=header.parent_template_id,
             parent_version=header.parent_version,
-            properties=tuple(
-                _projected_property(row) for row in rows if row["row_kind"] == 1
-            ),
+            properties=tuple(_property(row) for row in rows if row["row_kind"] == 1),
             components=tuple(_component(row) for row in rows if row["row_kind"] == 2),
         )
 
@@ -526,7 +511,9 @@ class ObjectTemplateStore:
                     exact.parent_template_id,
                     exact.parent_version,
                     0 AS depth,
-                    ARRAY[exact.template_id]::uuid[] AS visited
+                    ARRAY[
+                        exact.template_id::text || ':' || exact.version::text
+                    ]::text[] AS visited_exact_nodes
                 FROM object_template_versions AS exact
                 WHERE exact.template_id = :template_id
                   AND exact.version = :version
@@ -539,12 +526,16 @@ class ObjectTemplateStore:
                     parent.parent_template_id,
                     parent.parent_version,
                     child.depth + 1,
-                    child.visited || parent.template_id
+                    child.visited_exact_nodes || ARRAY[
+                        parent.template_id::text || ':' || parent.version::text
+                    ]
                 FROM exact_chain AS child
                 JOIN object_template_versions AS parent
                   ON parent.template_id = child.parent_template_id
                  AND parent.version = child.parent_version
-                WHERE NOT parent.template_id = ANY(child.visited)
+                WHERE NOT (
+                    parent.template_id::text || ':' || parent.version::text
+                ) = ANY(child.visited_exact_nodes)
             ), projection AS (
                 SELECT
                     0 AS row_kind,
@@ -621,7 +612,7 @@ class ObjectTemplateStore:
             properties=tuple(
                 EffectiveProperty(
                     declaring_template_id=cast(UUID, row["declaring_template_id"]),
-                    declaration=_projected_property(row),
+                    declaration=_property(row),
                 )
                 for row in rows
                 if row["row_kind"] == 1

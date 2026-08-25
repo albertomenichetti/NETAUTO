@@ -16,9 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from netauto.application.cursors import encode_cursor
 from netauto.application.objecttemplates import ObjectTemplateService
 from netauto.application.relationshipdefinitions import RelationshipDefinitionService
+from netauto.domain.datatypes import VersionStatus
+from netauto.domain.objecttemplates import ValueMode
 from netauto.entrypoints.http import build_app
 from netauto.persistence.engine import RuntimeContext
 from netauto.persistence.metadata import (
+    object_template_components,
     object_template_properties,
     object_template_versions,
     object_templates,
@@ -28,6 +31,7 @@ from netauto.persistence.metadata import (
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.relationships import RelationshipDefinitionStore
 from netauto.settings import Settings
+from netauto.transport.http.objecttemplates import PropertyDto
 
 
 @dataclass(frozen=True, slots=True)
@@ -413,6 +417,115 @@ async def test_m3_s03_exact_pin_and_stable_ancestry_are_distinct_and_writes_stay
 
 @pytest.mark.api
 @pytest.mark.postgresql
+async def test_m3_s03_exact_chain_keeps_repeated_stable_id_at_distinct_versions(
+    m3_s03_runtime: M3S03Runtime,
+) -> None:
+    client = m3_s03_runtime.client
+    datatype_id = await _published_datatype(client, "exact_pair_value")
+    template_a = await _template(
+        client,
+        "exact_pair_a",
+        abstract=True,
+        properties=[
+            {
+                "name": "a1_member",
+                "position": 1,
+                "datatype_id": datatype_id,
+                "datatype_version": 1,
+                "value_mode": "SCALAR",
+                "required": False,
+            }
+        ],
+    )
+    await _publish_template(client, template_a)
+    template_b = await _template(
+        client,
+        "exact_pair_b",
+        abstract=True,
+        parent_template_id=template_a,
+        parent_version=1,
+        properties=[
+            {
+                "name": "b1_member",
+                "position": 1,
+                "datatype_id": datatype_id,
+                "datatype_version": 1,
+                "value_mode": "SCALAR",
+                "required": False,
+            }
+        ],
+    )
+    created_next = await client.post(
+        f"/api/v1/core/object-templates/{template_a}/create-next",
+        json={"source_version": 1},
+    )
+    assert created_next.status_code == 201, created_next.text
+
+    with m3_s03_runtime.database_engine.begin() as connection:
+        connection.execute(
+            object_template_versions.update()
+            .where(
+                object_template_versions.c.template_id == UUID(template_a),
+                object_template_versions.c.version == 2,
+            )
+            .values(parent_template_id=UUID(template_b), parent_version=1)
+        )
+        connection.execute(
+            object_template_properties.update()
+            .where(
+                object_template_properties.c.template_id == UUID(template_a),
+                object_template_properties.c.template_version == 2,
+                object_template_properties.c.name == "a1_member",
+            )
+            .values(name="a2_member")
+        )
+
+    statements: list[str] = []
+
+    def observe_statement(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        del connection, cursor, parameters, context, executemany
+        statements.append(statement)
+
+    event.listen(
+        m3_s03_runtime.engine.sync_engine,
+        "before_cursor_execute",
+        observe_statement,
+    )
+    try:
+        response = await client.get(
+            f"/api/v1/core/object-templates/{template_a}/versions/2/effective-schema"
+        )
+    finally:
+        event.remove(
+            m3_s03_runtime.engine.sync_engine,
+            "before_cursor_execute",
+            observe_statement,
+        )
+
+    assert response.status_code == 200, response.text
+    assert len(statements) == 1, statements
+    properties = response.json()["properties"]
+    assert [item["name"] for item in properties] == [
+        "a1_member",
+        "b1_member",
+        "a2_member",
+    ]
+    assert [item["declaring_template_id"] for item in properties] == [
+        template_a,
+        template_b,
+        template_a,
+    ]
+
+
+@pytest.mark.api
+@pytest.mark.postgresql
 async def test_m3_s03_capabilities_keep_published_membership_without_default_recheck(
     m3_s03_runtime: M3S03Runtime,
 ) -> None:
@@ -615,12 +728,12 @@ async def test_m3_s03_three_cursor_routes_traverse_and_bind_query_identity(
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_m3_s03_materially_undecodable_required_carrier_is_bounded_500(
+async def test_m3_s03_required_property_without_default_remains_readable(
     m3_s03_runtime: M3S03Runtime,
 ) -> None:
     client = m3_s03_runtime.client
-    datatype_id = await _published_datatype(client, "undecodable_value")
-    template_id = await _template(client, "undecodable_template")
+    datatype_id = await _published_datatype(client, "nullable_default_value")
+    template_id = await _template(client, "nullable_default_template")
     with m3_s03_runtime.database_engine.begin() as connection:
         connection.execute(
             object_template_properties.insert().values(
@@ -641,9 +754,160 @@ async def test_m3_s03_materially_undecodable_required_carrier_is_bounded_500(
         f"/api/v1/core/object-templates/{template_id}/versions/1/effective-schema"
     )
     for response in (exact, effective):
-        assert response.status_code == 500, response.text
-        assert response.json()["code"] == "internal_error"
-        assert response.json()["details"] == {}
+        assert response.status_code == 200, response.text
+        properties = response.json()["properties"]
+        assert len(properties) == 1
+        assert properties[0]["name"] == "missing_default"
+        assert properties[0]["required"] is True
+        assert "migration_default" not in properties[0]
+
+    invalid_property: dict[str, object] = {
+        "name": "required_value",
+        "position": 1,
+        "datatype_id": datatype_id,
+        "datatype_version": 1,
+        "value_mode": "SCALAR",
+        "required": True,
+    }
+    missing_default = await client.post(
+        "/api/v1/core/object-templates",
+        json={
+            "namespace": "m3s03",
+            "name": "missing_required_default",
+            "abstract": False,
+            "properties": [invalid_property],
+        },
+    )
+    null_default = await client.post(
+        "/api/v1/core/object-templates",
+        json={
+            "namespace": "m3s03",
+            "name": "null_required_default",
+            "abstract": False,
+            "properties": [{**invalid_property, "migration_default": None}],
+        },
+    )
+    for response in (missing_default, null_default):
+        assert response.status_code == 400, response.text
+        assert response.json()["code"] == "invalid_request"
+
+
+def test_m3_s03_objecttemplate_ver_07_target_is_not_applicable() -> None:
+    column_types = {
+        table.name: {
+            column.name: type(column.type).__name__ for column in table.columns
+        }
+        for table in (
+            object_templates,
+            object_template_versions,
+            object_template_properties,
+            object_template_components,
+        )
+    }
+    nullable_columns = {
+        table.name: {column.name for column in table.columns if column.nullable}
+        for table in (
+            object_templates,
+            object_template_versions,
+            object_template_properties,
+            object_template_components,
+        )
+    }
+    constraint_names = {
+        constraint.name
+        for table in (
+            object_templates,
+            object_template_versions,
+            object_template_properties,
+            object_template_components,
+        )
+        for constraint in table.constraints
+    }
+
+    assert column_types == {
+        "object_templates": {
+            "id": "UUID",
+            "namespace": "Text",
+            "name": "Text",
+            "description": "Text",
+            "abstract": "Boolean",
+            "default_version": "Integer",
+            "parent_template_id": "UUID",
+        },
+        "object_template_versions": {
+            "template_id": "UUID",
+            "version": "Integer",
+            "revision": "Integer",
+            "status": "Text",
+            "parent_template_id": "UUID",
+            "parent_version": "Integer",
+        },
+        "object_template_properties": {
+            "template_id": "UUID",
+            "template_version": "Integer",
+            "name": "Text",
+            "position": "Integer",
+            "datatype_id": "UUID",
+            "datatype_version": "Integer",
+            "value_mode": "Text",
+            "required": "Boolean",
+            "migration_default": "JSONB",
+        },
+        "object_template_components": {
+            "template_id": "UUID",
+            "template_version": "Integer",
+            "name": "Text",
+            "position": "Integer",
+            "target_template_id": "UUID",
+        },
+    }
+    assert nullable_columns == {
+        "object_templates": {
+            "description",
+            "default_version",
+            "parent_template_id",
+        },
+        "object_template_versions": {"parent_template_id", "parent_version"},
+        "object_template_properties": {"migration_default"},
+        "object_template_components": set(),
+    }
+    assert {
+        "ck_object_template_versions_status",
+        "ck_object_template_versions_parent_pair",
+        "ck_object_template_properties_value_mode",
+        "ck_object_template_properties_optional_default",
+        "fk_object_template_properties_datatype_version",
+        "fk_object_template_components_target",
+    } <= constraint_names
+    assert {item.value for item in VersionStatus} == {
+        "DRAFT",
+        "PUBLISHED",
+        "DEPRECATED",
+    }
+    assert {item.value for item in ValueMode} == {"SCALAR", "LIST"}
+    assert object_template_properties.c.migration_default.nullable
+    migration_default = PropertyDto.model_fields["migration_default"]
+    assert not migration_default.is_required()
+    assert migration_default.default is None
+    assert set(PropertyDto.model_fields) == {
+        "name",
+        "position",
+        "datatype_id",
+        "datatype_version",
+        "value_mode",
+        "required",
+        "migration_default",
+    }
+    projected = PropertyDto(
+        name="required_value",
+        position=1,
+        datatype_id=uuid4(),
+        datatype_version=1,
+        value_mode=ValueMode.SCALAR,
+        required=True,
+        migration_default=None,
+    ).model_dump(mode="json")
+    assert "migration_default" not in projected
 
 
 @pytest.mark.api
@@ -770,6 +1034,9 @@ def test_m3_s03_get_paths_have_no_read_certification_dependencies() -> None:
     assert "exact_chain" in exact_source
     assert "object_template_versions" in exact_source
     assert "stable_ancestry" not in exact_source
+    assert "visited_exact_nodes" in exact_source
+    assert "exact.version::text" in exact_source
+    assert "parent.version::text" in exact_source
     assert "stable_ancestry" in stable_source
     assert "object_templates" in stable_source
     assert "exact_chain" not in stable_source

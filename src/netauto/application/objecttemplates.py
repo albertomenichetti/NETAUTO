@@ -45,7 +45,6 @@ from netauto.persistence.locking import (
 from netauto.persistence.objecttemplates import (
     ObjectTemplateComponentTargetReferenceError,
     ObjectTemplateDeleteReferenceError,
-    ObjectTemplateProjectionError,
     ObjectTemplateQualifiedNameError,
     ObjectTemplateStore,
 )
@@ -1221,14 +1220,9 @@ class ObjectTemplateService:
         self, template_id: UUID, version: int
     ) -> ObjectTemplateVersion:
         async with self._uow_factory() as uow:
-            try:
-                current = await ObjectTemplateStore(uow.connection).project_version(
-                    template_id, version
-                )
-            except ObjectTemplateProjectionError as error:
-                raise _internal(
-                    "The persisted ObjectTemplateVersion cannot be materialized."
-                ) from error
+            current = await ObjectTemplateStore(uow.connection).project_version(
+                template_id, version
+            )
             if current is None:
                 raise _not_found(template_id, version)
             return current
@@ -1238,13 +1232,7 @@ class ObjectTemplateService:
     ) -> EffectiveSchema:
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            try:
-                projection = await store.project_effective_schema(template_id, version)
-            except ObjectTemplateProjectionError as error:
-                raise _internal(
-                    "The persisted ObjectTemplate effective schema cannot be "
-                    "materialized."
-                ) from error
+            projection = await store.project_effective_schema(template_id, version)
             if projection is None:
                 raise _not_found(template_id, version)
             return projection

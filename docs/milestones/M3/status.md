@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 REVIEW CHANGES REQUIRED
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,9 +26,9 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S03 — REVIEW CHANGES REQUIRED
+active implementation    M3-S03 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S03 ONLY
-blockers                 S03-RF-01 / S03-RF-02
+blockers                 reviewer closure pending — S03-RF-01 / S03-RF-02
 ```
 
 Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness`, `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`, and `M3-S02 — DataType trusted one-statement read projections` are reviewer-owned `COMPLETED`. Software implementation remains authorized only for bounded M3-S03 review corrections. No later slice may begin before M3-S03 is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
@@ -271,6 +271,30 @@ keep RP-06 stable ancestry separate and unchanged in meaning
 
 Both findings are implementation defects inside the already-frozen S03 design. No contract, architecture or steps reopen is required. The existing S03 execution aid remains active in `wip/`; do not remove it until reviewer acceptance.
 
+## M3-S03 corrected implementation candidate
+
+```text
+authorized slice          M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
+slice state               CANDIDATE READY FOR REVIEW
+reviewed candidate        2f287723703d33f2531328d8b85511603f881590
+review findings record    1e955f2a9c42f2bd27167635b2774f1f0cd952f9
+S03-RF-01 correction      IMPLEMENTED — PENDING REVIEWER CLOSURE
+S03-RF-02 correction      IMPLEMENTED — PENDING REVIEWER CLOSURE
+candidate evidence        ObjectTemplate targets for M3-VER-04/05/06/09/12/19 — PASS
+M3-VER-07 target          NOT APPLICABLE — schema and DTO make the nullable carrier materializable
+affected regression       M3-VER-14 .. M3-VER-16 — PASS
+global M3-VER bundles     NOT YET CLOSED
+business SQL statements   OT-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
+candidate gates           PASS
+later slices              NOT AUTHORIZED
+```
+
+`S03-RF-01` is corrected by projecting a committed `required=true / migration_default=NULL` property through both exact and effective-schema reads without fabricating a default. Permanent paired evidence confirms missing and explicit-null defaults remain rejected for new mutation requests. ObjectTemplate has no applicable `M3-VER-07` target for this carrier: the delivered column is nullable, `PropertyDto.migration_default` is nullable and omitted when `None`, and the remaining mandatory carriers are structurally typed/constrained by the delivered schema.
+
+`S03-RF-02` is corrected by keying recursive safety on exact `(template_id, version)` node identity. Permanent PostgreSQL evidence follows the finite exact chain `A:2 -> B:1 -> A:1`, retains both distinct A versions in deterministic root-to-leaf order, and measures one authoritative business SQL statement. `OT-GET-06` remains the separate stable-ancestry projection.
+
+Both corrections and the complete original S03 candidate gate pass. The findings are not reviewer-closed by this candidate; reviewer inspection and reviewer-owned completion remain pending.
+
 ## Frozen architecture closure
 
 ```text
@@ -327,13 +351,13 @@ M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 explicit M3-S03 implementation authorization  DONE — M3-S03 ONLY
-M3-S03 execution/review                        REVIEW CHANGES REQUIRED — S03-RF-01 / S03-RF-02
+M3-S03 execution/review                        CORRECTED CANDIDATE READY FOR REVIEW — reviewer closure pending
 M3-S04 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Correct `S03-RF-01` and `S03-RF-02` inside the existing M3-S03 authorization, rerun the complete S03 candidate gate and publish a corrected candidate for reviewer inspection.
+Review the corrected `M3-S03` candidate and its permanent `S03-RF-01` / `S03-RF-02` evidence.
 
 Do not start M3-S04. Reviewer-owned `COMPLETED` remains pending until both findings are closed and the corrected evidence is accepted.
