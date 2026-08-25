@@ -1,12 +1,12 @@
 # M3 — Implementation Steps
 
-**Status:** DESIGN COMPLETE — REVIEW PENDING — NOT YET FROZEN — NO IMPLEMENTATION AUTHORITY
+**Status:** DESIGN COMPLETE — CONSISTENCY REVIEW PASS — FREEZE APPROVAL PENDING — NOT YET FROZEN — NO IMPLEMENTATION AUTHORITY
 
 **Authority:** PRE-IMPLEMENTATION PLANNING AUTHORITY
 
 ## 1. Purpose and authority
 
-This document decomposes the frozen M3 contract and architecture into an ordered implementation plan. Until the separate steps consistency review passes and the project owner explicitly approves the steps freeze, this file is planning authority only and does **not** authorize software changes.
+This document decomposes the frozen M3 contract and architecture into an ordered implementation plan. The separate steps consistency review has passed, but until the project owner explicitly approves the steps freeze this file remains planning authority only and does **not** authorize software changes.
 
 Implementation authority is composed from:
 
@@ -277,8 +277,8 @@ none
 
 ```text
 docs/milestones/M3/contract.md
-docs/milestones/M3/architecture/cli.md          ADP-07
-docs/milestones/M3/architecture/verification.md M3-VER-01..03
+docs/milestones/M3/architecture/cli.md           ADP-07
+docs/milestones/M3/architecture/verification.md  M3-VER-01..03
 docs/architecture/cli.md
 ```
 
@@ -385,9 +385,9 @@ M3-S00 COMPLETED
 ## Frozen authorities
 
 ```text
-docs/milestones/M3/architecture/api.md          ADP-04 / ADP-05
-docs/milestones/M3/architecture/cli.md          ADP-06
-docs/milestones/M3/architecture/verification.md M3-VER-14..16
+docs/milestones/M3/architecture/api.md           ADP-04 / ADP-05
+docs/milestones/M3/architecture/cli.md           ADP-06
+docs/milestones/M3/architecture/verification.md  M3-VER-14..16
 ```
 
 ## Bounded implementation scope
@@ -401,7 +401,7 @@ src/netauto/application/cursors.py only if required by existing cursor helper ow
 src/netauto/cli/registry.py
 src/netauto/cli/parser.py
 src/netauto/cli/selectors.py
-src/netauto/cli/execution.py / existing request planner owner as applicable
+src/netauto/cli/execution.py
 relevant HTTP/CLI/cursor tests
 ```
 
@@ -902,13 +902,16 @@ Principally:
 ```text
 src/netauto/application/relationshipdefinitions.py
 src/netauto/application/relationships.py
+src/netauto/application/objects.py only for the existing global lifecycle application read path
 src/netauto/persistence/relationships.py
 src/netauto/persistence/lifecycle.py
 src/netauto/entrypoints/api/relationshipdefinitions.py
 src/netauto/entrypoints/api/relationships.py
-existing global lifecycle API owner
+src/netauto/entrypoints/api/objects.py only for the existing global lifecycle route
 RelationshipDefinition/Relationship/lifecycle tests
 ```
+
+The only intentional production overlap with `M3-S04` is shared lifecycle infrastructure/API ownership needed to separate Object-scoped and global lifecycle routes while using the same trusted decoder. `M3-S05` must not reopen completed non-lifecycle Object projections.
 
 No new Relationship schema, route or mutation capability is introduced.
 
@@ -1237,29 +1240,42 @@ M3-OUT-01 .. M3-OUT-08
 
 ---
 
-## 6. Steps-design review gate
+## 6. Steps consistency review — PASS
 
-This decomposition is **not yet frozen**.
-
-Before a steps freeze may be proposed, a separate steps consistency review must verify at minimum:
+The separate review is recorded in:
 
 ```text
-slice registry is complete and ordered
-slice dependency graph is acyclic and implementation-safe
-scope boundaries are bounded and non-overlapping except explicit shared infrastructure
-all frozen ADP responsibilities are realized by one or more slices
-all 22 GET routes are assigned exactly once to behavior implementation slices
-all 12 cursor routes have an implementation/evidence path
-all 8 CLI 201 Location operations have an implementation/evidence path
-all 19 M3-VER bundles have exactly one primary implementation owner
-all M3-OUT / M3-AC / M3-VER obligations are traceable through slices
-no slice invents semantics beyond frozen contract/architecture
-no required schema/migration/dependency/lockfile delta is introduced
-final integration and final acceptance paths are sufficient
-no open TODO/TBD/ambiguous implementation authority remains
+docs/milestones/M3/wip/steps-consistency-closure.md
 ```
 
-Findings must be closed before steps freeze approval is requested.
+Review result:
+
+```text
+steps design                   COMPLETE
+steps consistency review      PASS
+blocking findings             0
+open findings                 0
+contract reopen required      NO
+architecture reopen required  NO
+steps correction required     NO
+```
+
+The review verified:
+
+```text
+complete ordered slice registry
+acyclic implementation-safe dependencies
+22 / 22 GET routes assigned exactly once to behavior slices
+12 / 12 cursor routes have implementation/evidence paths
+8 / 8 CLI 201 operations have implementation/evidence paths
+19 / 19 M3-VER bundles have exactly one primary owner
+all M3-OUT / M3-AC / M3-VER obligations trace through slices
+no slice invents semantics beyond frozen contract/architecture
+no schema/migration/dependency/lockfile delta is introduced
+final integration and acceptance closure paths are sufficient
+```
+
+Review PASS does not freeze this document and creates no implementation authority.
 
 ## 7. Implementation gate
 
@@ -1272,13 +1288,16 @@ project-owner steps approval    GRANTED
 status.md                       explicitly authorizes an M3-Snn slice
 ```
 
-Until then:
+Current state:
 
 ```text
-active implementation    NONE
-software implementation  NOT AUTHORIZED
+steps consistency review  PASS
+steps.md                  NOT YET FROZEN
+project-owner approval    PENDING
+active implementation     NONE
+software implementation   NOT AUTHORIZED
 ```
 
 ## Immediate next action
 
-Run the separate M3 steps consistency review against this complete decomposition. Correct any finding before requesting explicit project-owner approval to freeze `steps.md`.
+Request explicit project-owner approval to freeze the reviewed `M3-S00 .. M3-S07` implementation decomposition. Only after that publication transition may governance consider authorizing `M3-S00`.
