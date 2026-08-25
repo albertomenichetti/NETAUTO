@@ -57,6 +57,7 @@ from netauto.persistence.metadata import (
 from netauto.persistence.relationships import (
     RelationshipDefinitionStore,
     RelationshipDefinitionVersionStore,
+    RuntimeRelationshipProjection,
     RuntimeRelationshipStore,
 )
 from netauto.persistence.uow import UnitOfWorkFactory
@@ -2006,11 +2007,11 @@ async def test_relationship_snapshot_cut_commits_between_physical_reads(
         )
         cut = PhaseCut()
         if read_kind == "get":
-            original_get = RuntimeRelationshipStore.get
+            original_get = RuntimeRelationshipStore.project
 
             async def cut_get(
                 store: RuntimeRelationshipStore, relationship_id: UUID
-            ) -> Relationship | None:
+            ) -> RuntimeRelationshipProjection | None:
                 value = await original_get(store, relationship_id)
                 task = asyncio.current_task()
                 if (
@@ -2022,7 +2023,7 @@ async def test_relationship_snapshot_cut_commits_between_physical_reads(
                     await cut.release.wait()
                 return value
 
-            monkeypatch.setattr(RuntimeRelationshipStore, "get", cut_get)
+            monkeypatch.setattr(RuntimeRelationshipStore, "project", cut_get)
         else:
             original_page = RuntimeRelationshipStore.list_object_views
 

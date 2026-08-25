@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import case, func, select, text, true, tuple_
+from sqlalchemy import and_, case, func, select, text, true, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -22,6 +22,7 @@ from netauto.domain.relationships import (
     RelationshipDefinitionVersion,
     RelationshipDefinitionVersionSummary,
     RelationshipResolution,
+    RelationshipView,
     RuntimeRelationshipResolution,
 )
 from netauto.persistence.locking import (
@@ -85,6 +86,27 @@ class RelationshipCapabilityPageProjection:
 class ObjectRelationshipPageProjection:
     target_exists: bool
     items: tuple[ObjectRelationshipView, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipDefinitionVersionPageProjection:
+    parent_exists: bool
+    items: tuple[RelationshipDefinitionVersionSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipDefinitionVersionProjection:
+    parent_exists: bool
+    version: RelationshipDefinitionVersion | None
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeRelationshipProjection:
+    id: UUID
+    relationship_definition_id: UUID
+    relationship_definition_version: int
+    properties: dict[str, JsonValue]
+    views: tuple[RelationshipView, ...]
 
 
 def _aggregate_statement():
@@ -611,6 +633,88 @@ class RelationshipDefinitionVersionStore:
             await self.get_properties(definition_id, version),
         )
 
+    async def project_version(
+        self, definition_id: UUID, version: int
+    ) -> RelationshipDefinitionVersionProjection:
+        """Project parent presence, one exact version, and its properties once."""
+        exact_membership = and_(
+            relationship_definition_versions.c.relationship_definition_id
+            == relationship_definitions.c.id,
+            relationship_definition_versions.c.version == version,
+        )
+        property_membership = and_(
+            relationship_definition_properties.c.relationship_definition_id
+            == relationship_definition_versions.c.relationship_definition_id,
+            relationship_definition_properties.c.relationship_definition_version
+            == relationship_definition_versions.c.version,
+        )
+        rows = (
+            (
+                await self.connection.execute(
+                    select(
+                        relationship_definitions.c.id.label("parent_id"),
+                        relationship_definition_versions.c.relationship_definition_id.label(
+                            "version_definition_id"
+                        ),
+                        relationship_definition_versions.c.version,
+                        relationship_definition_versions.c.revision,
+                        relationship_definition_versions.c.status,
+                        relationship_definition_properties.c.name.label(
+                            "property_name"
+                        ),
+                        relationship_definition_properties.c.position.label(
+                            "property_position"
+                        ),
+                        relationship_definition_properties.c.datatype_id.label(
+                            "property_datatype_id"
+                        ),
+                        relationship_definition_properties.c.datatype_version.label(
+                            "property_datatype_version"
+                        ),
+                        relationship_definition_properties.c.value_mode.label(
+                            "property_value_mode"
+                        ),
+                    )
+                    .select_from(
+                        relationship_definitions.outerjoin(
+                            relationship_definition_versions, exact_membership
+                        ).outerjoin(
+                            relationship_definition_properties, property_membership
+                        )
+                    )
+                    .where(relationship_definitions.c.id == definition_id)
+                    .order_by(relationship_definition_properties.c.position)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if not rows:
+            return RelationshipDefinitionVersionProjection(False, None)
+        if rows[0]["version"] is None:
+            return RelationshipDefinitionVersionProjection(True, None)
+        properties = tuple(
+            RelationshipDefinitionProperty(
+                name=cast(str, row["property_name"]),
+                position=cast(int, row["property_position"]),
+                datatype_id=cast(UUID, row["property_datatype_id"]),
+                datatype_version=cast(int, row["property_datatype_version"]),
+                value_mode=ValueMode(cast(str, row["property_value_mode"])),
+            )
+            for row in rows
+            if row["property_name"] is not None
+        )
+        return RelationshipDefinitionVersionProjection(
+            True,
+            RelationshipDefinitionVersion(
+                relationship_definition_id=cast(UUID, rows[0]["version_definition_id"]),
+                version=cast(int, rows[0]["version"]),
+                revision=cast(int, rows[0]["revision"]),
+                status=VersionStatus(cast(str, rows[0]["status"])),
+                properties=properties,
+            ),
+        )
+
     async def get_versions(
         self, keys: Sequence[tuple[UUID, int]]
     ) -> dict[tuple[UUID, int], RelationshipDefinitionVersion]:
@@ -842,34 +946,49 @@ class RelationshipDefinitionVersionStore:
         self,
         definition_id: UUID,
         *,
-        status: str | None,
+        status: VersionStatus | None,
         after: int | None,
         limit: int,
-    ) -> tuple[RelationshipDefinitionVersionSummary, ...]:
-        statement = select(relationship_definition_versions).where(
+    ) -> RelationshipDefinitionVersionPageProjection:
+        membership = (
             relationship_definition_versions.c.relationship_definition_id
-            == definition_id
+            == relationship_definitions.c.id
         )
         if status is not None:
-            statement = statement.where(
-                relationship_definition_versions.c.status == status
+            membership = and_(
+                membership,
+                relationship_definition_versions.c.status == status.value,
             )
         if after is not None:
-            statement = statement.where(
-                relationship_definition_versions.c.version > after
+            membership = and_(
+                membership,
+                relationship_definition_versions.c.version > after,
             )
-        rows = (
-            (
-                await self.connection.execute(
-                    statement.order_by(
-                        relationship_definition_versions.c.version
-                    ).limit(limit)
+        statement = (
+            select(
+                relationship_definitions.c.id.label("parent_id"),
+                *relationship_definition_versions.c,
+            )
+            .select_from(
+                relationship_definitions.outerjoin(
+                    relationship_definition_versions, membership
                 )
             )
-            .mappings()
-            .all()
+            .where(relationship_definitions.c.id == definition_id)
+            .order_by(relationship_definition_versions.c.version)
+            .limit(limit)
         )
-        return tuple(_definition_version_summary(row) for row in rows)
+        rows = (await self.connection.execute(statement)).mappings().all()
+        if not rows:
+            return RelationshipDefinitionVersionPageProjection(False, ())
+        return RelationshipDefinitionVersionPageProjection(
+            True,
+            tuple(
+                _definition_version_summary(row)
+                for row in rows
+                if row["version"] is not None
+            ),
+        )
 
 
 def _runtime_relationship(rows: Sequence[RowMapping]) -> Relationship | None:
@@ -997,6 +1116,91 @@ class RuntimeRelationshipStore:
             .all()
         )
         return _runtime_relationship(rows)
+
+    async def project(
+        self, relationship_id: UUID
+    ) -> RuntimeRelationshipProjection | None:
+        """Project one factual root and its deduplicated public views once."""
+        statement = (
+            select(
+                relationships.c.id.label("relationship_id"),
+                relationships.c.relationship_definition_id,
+                relationships.c.relationship_definition_version,
+                relationships.c.properties,
+                runtime_relationship_resolutions.c.resolution_id.label(
+                    "runtime_resolution_id"
+                ),
+                runtime_relationship_resolutions.c.from_object_id,
+                runtime_relationship_resolutions.c.to_object_id,
+                relationship_resolutions.c.name,
+            )
+            .select_from(
+                relationships.outerjoin(
+                    runtime_relationship_resolutions,
+                    runtime_relationship_resolutions.c.relationship_id
+                    == relationships.c.id,
+                ).outerjoin(
+                    relationship_resolutions,
+                    and_(
+                        relationship_resolutions.c.id
+                        == runtime_relationship_resolutions.c.resolution_id,
+                        relationship_resolutions.c.relationship_definition_id
+                        == runtime_relationship_resolutions.c[
+                            "relationship_definition_id"
+                        ],
+                    ),
+                )
+            )
+            .where(relationships.c.id == relationship_id)
+            .order_by(
+                runtime_relationship_resolutions.c.from_object_id,
+                runtime_relationship_resolutions.c.to_object_id,
+                relationship_resolutions.c.name,
+            )
+        )
+        rows = (await self.connection.execute(statement)).mappings().all()
+        if not rows:
+            return None
+        raw_properties = cast(object, rows[0]["properties"])
+        if not isinstance(raw_properties, dict):
+            raise RuntimeError("persisted Relationship properties are invalid")
+        property_map = cast(dict[object, object], raw_properties)
+        if not all(isinstance(key, str) for key in property_map):
+            raise RuntimeError("persisted Relationship properties are invalid")
+        views: set[RelationshipView] = set()
+        for row in rows:
+            if row["runtime_resolution_id"] is None:
+                continue
+            object_id = row["from_object_id"]
+            destination_object_id = row["to_object_id"]
+            name = row["name"]
+            if (
+                not isinstance(object_id, UUID)
+                or not isinstance(destination_object_id, UUID)
+                or not isinstance(name, str)
+            ):
+                raise RuntimeError("persisted Relationship view cannot be materialized")
+            views.add(RelationshipView(object_id, destination_object_id, name))
+        return RuntimeRelationshipProjection(
+            id=cast(UUID, rows[0]["relationship_id"]),
+            relationship_definition_id=cast(
+                UUID, rows[0]["relationship_definition_id"]
+            ),
+            relationship_definition_version=cast(
+                int, rows[0]["relationship_definition_version"]
+            ),
+            properties=cast(dict[str, JsonValue], property_map),
+            views=tuple(
+                sorted(
+                    views,
+                    key=lambda item: (
+                        item.object_id.int,
+                        item.destination_object_id.int,
+                        item.name,
+                    ),
+                )
+            ),
+        )
 
     async def get_many(
         self, relationship_ids: Iterable[UUID]

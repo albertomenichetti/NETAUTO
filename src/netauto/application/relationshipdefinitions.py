@@ -1107,59 +1107,30 @@ class RelationshipDefinitionService:
                 ) from error
             await uow.commit()
 
-    async def _validate_default_pointers(
-        self,
-        store: RelationshipDefinitionVersionStore,
-        values: tuple[RelationshipDefinition, ...],
-    ) -> None:
-        targets = await store.get_headers(
-            tuple(
-                (value.id, value.default_version)
-                for value in values
-                if value.default_version is not None
-            )
-        )
-        for value in values:
-            if value.default_version is None:
-                continue
-            target = targets.get((value.id, value.default_version))
-            if target is None or target.status is not VersionStatus.PUBLISHED:
-                raise _internal(
-                    "A persisted RelationshipDefinition default pointer is invalid."
-                )
-
     async def get(self, definition_id: UUID) -> RelationshipDefinition:
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             value = await RelationshipDefinitionStore(uow.connection).get(definition_id)
             if value is None:
                 raise _not_found(definition_id)
-            _validate_persisted(value)
-            await self._validate_default_pointers(
-                RelationshipDefinitionVersionStore(uow.connection), (value,)
-            )
             return value
 
     async def get_version(
         self, definition_id: UUID, version: int
     ) -> RelationshipDefinitionVersion:
-        async with self._uow_factory.coherent_read() as uow:
-            if (
-                await RelationshipDefinitionStore(uow.connection).get(definition_id)
-                is None
-            ):
-                raise _not_found(definition_id)
-            value = await RelationshipDefinitionVersionStore(
-                uow.connection
-            ).get_version(definition_id, version)
-            if value is None:
-                raise _version_not_found(definition_id, version)
+        async with self._uow_factory() as uow:
             try:
-                validate_relationship_definition_version(value)
-            except RelationshipDefinitionValidationError as error:
+                projection = await RelationshipDefinitionVersionStore(
+                    uow.connection
+                ).project_version(definition_id, version)
+            except (RuntimeError, ValueError) as error:
                 raise _internal(
-                    "A persisted RelationshipDefinitionVersion is invalid."
+                    "A persisted RelationshipDefinitionVersion cannot be materialized."
                 ) from error
-            return value
+            if not projection.parent_exists:
+                raise _not_found(definition_id)
+            if projection.version is None:
+                raise _version_not_found(definition_id, version)
+            return projection.version
 
     async def list_versions(
         self,
@@ -1188,22 +1159,18 @@ class RelationshipDefinitionService:
                     "The cursor is malformed or incompatible with this query.",
                 )
             after = key[0]
-        async with self._uow_factory.coherent_read() as uow:
-            definition = await RelationshipDefinitionStore(uow.connection).get(
-                definition_id
+        async with self._uow_factory() as uow:
+            projection = await RelationshipDefinitionVersionStore(
+                uow.connection
+            ).list_versions(
+                definition_id,
+                status=status,
+                after=after,
+                limit=limit + 1,
             )
-            if definition is None:
+            if not projection.parent_exists:
                 raise _not_found(definition_id)
-            store = RelationshipDefinitionVersionStore(uow.connection)
-            await self._validate_default_pointers(store, (definition,))
-            rows = list(
-                await store.list_versions(
-                    definition_id,
-                    status=None if status is None else status.value,
-                    after=after,
-                    limit=limit + 1,
-                )
-            )
+            rows = list(projection.items)
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = (
@@ -1236,16 +1203,11 @@ class RelationshipDefinitionService:
                     "invalid_cursor",
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             rows = list(
                 await RelationshipDefinitionStore(uow.connection).list_definitions(
                     after=after, limit=limit + 1
                 )
-            )
-            for item in rows:
-                _validate_persisted(item)
-            await self._validate_default_pointers(
-                RelationshipDefinitionVersionStore(uow.connection), tuple(rows)
             )
         more = len(rows) > limit
         items = rows[:limit]

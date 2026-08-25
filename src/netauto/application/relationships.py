@@ -767,14 +767,23 @@ class RelationshipService:
         raise _internal("The Relationship create restart budget was exhausted.")
 
     async def get(self, relationship_id: UUID) -> RelationshipProjection:
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             store = RuntimeRelationshipStore(uow.connection)
-            if await store.get(relationship_id) is None:
+            try:
+                value = await store.project(relationship_id)
+            except RuntimeError as error:
+                raise _internal(
+                    "The persisted factual Relationship cannot be materialized."
+                ) from error
+            if value is None:
                 raise _not_found(relationship_id)
-            _, _, projection = await self._validated(
-                store, RelationshipDefinitionStore(uow.connection), relationship_id
+            return RelationshipProjection(
+                value.id,
+                value.relationship_definition_id,
+                value.relationship_definition_version,
+                value.properties,
+                value.views,
             )
-            return projection
 
     async def data_change(
         self,

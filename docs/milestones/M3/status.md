@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S05 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S05 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S05 — READY
+active implementation    M3-S05 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S05 ONLY
 blockers                 none
 ```
@@ -200,19 +200,31 @@ The two S04 cursor repairs are complete. `object_components` now binds `parent_o
 
 No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S04. The completed S04 execution aid has been removed from active `wip/`; Git retains its history.
 
-## M3-S05 implementation authorization
+## M3-S05 implementation candidate
 
 ```text
 authorized slice          M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads
-slice state               READY
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 predecessor               M3-S04 — COMPLETED
-primary evidence          M3-VER-07 / M3-VER-08 / M3-VER-13
-supporting evidence       RelationshipDefinition / Relationship / lifecycle targets for M3-VER-04/05/06/09/12/19
+primary evidence          M3-VER-07 / M3-VER-08 / M3-VER-13 — PASS
+supporting S05 targets    M3-VER-04/05/06/09/12/19 — PASS
+global M3-VER bundles     NOT YET CLOSED
+business SQL statements   RD-GET-01..04 / REL-GET-01 / LC-GET-01 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
+trusted-read boundary     PASS — representable history readable; materially undecodable required carriers -> bounded 500
+cursor scope / continuity PASS — changed limit allowed; cross-target/filter misuse rejected
+mutation regressions      PASS — semantic validation remains active on write paths
+accepted M3 regressions   M3-S00 .. M3-S04 PASS
+candidate gates           PASS — 979 collected; 700 non-PostgreSQL and 979 full-suite tests passed
+review outcome            PENDING — reviewer-owned
 later slices              NOT AUTHORIZED
 ```
 
-`READY` authorizes the implementer to perform the mandatory repository pre-flight and then implement only the frozen S05 surface. The implementer may transition S05 to `IN PROGRESS` when implementation actually begins. Reviewer-owned `COMPLETED` remains a separate decision.
+The candidate realizes all six frozen S05 read shapes with ordinary read UoWs and exactly one authoritative business SQL statement each. RelationshipDefinition aggregate and version projections preserve parent/exact-child/empty distinctions, root-first paging, stored child ordering, historical scalar materialization, and default-pointer trust without read-side recertification. Exact Relationship GET projects persisted public views directly, deduplicates their public semantic identity, and preserves exact-target 404 versus a successful empty view set.
+
+Global lifecycle reads now use the shared ADP-03 representational decoder through an ordinary one-statement read UoW. DTO-decodable historical semantic surprises remain readable, materially undecodable required carriers fail through bounded `internal_error`, and global/Object-scoped cursor identities remain mutually non-interchangeable. Mutation-side aggregate validation and deterministic concurrency evidence remain active.
+
+No schema, migration, dependency, lockfile, project-version, public route, DTO, or cursor-codec change is part of M3-S05. Reviewer-owned `COMPLETED` remains a separate decision.
 
 ## Scope impact
 
@@ -243,13 +255,13 @@ M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 explicit M3-S05 implementation authorization  DONE — M3-S05 ONLY
-M3-S05 execution/review                        READY
+M3-S05 execution/review                        CANDIDATE READY FOR REVIEW — REVIEW PENDING
 M3-S06 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S05 pre-flight from repository authorities, then implement and verify `M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads` within the frozen slice scope.
+Reviewer: inspect the M3-S05 candidate and its recorded evidence, then accept it or issue bounded review findings under the active slice.
 
 Do not start M3-S06. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S05 `COMPLETED` and authorize the next slice.

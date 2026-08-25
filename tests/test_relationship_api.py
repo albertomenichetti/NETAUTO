@@ -617,11 +617,19 @@ async def test_db_valid_incomplete_runtime_aggregate_maps_to_internal_error(
         )
 
     response = await client.get(f"/api/v1/core/relationships/{relationship_id}")
-    assert response.status_code == 500
+    assert response.status_code == 200
     assert response.json() == {
-        "code": "internal_error",
-        "message": "The persisted factual Relationship aggregate is invalid.",
-        "details": {},
+        "id": str(relationship_id),
+        "relationship_definition_id": str(definition_id),
+        "relationship_definition_version": 1,
+        "properties": {},
+        "views": [
+            {
+                "object_id": first,
+                "destination_object_id": second,
+                "name": "corrupt_link",
+            }
+        ],
     }
     relative = await client.get(f"/api/v1/core/objects/{first}/relationships")
     assert relative.status_code == 200, relative.text

@@ -1011,7 +1011,7 @@ class ObjectService:
                     "invalid_cursor",
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             try:
                 rows = list(
                     await LifecycleStore(uow.connection).list_events(

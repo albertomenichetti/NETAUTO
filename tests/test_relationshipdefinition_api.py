@@ -446,7 +446,7 @@ async def test_definition_references_block_lineage_and_factual_rows_block_delete
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_corrupted_definition_aggregate_maps_to_internal_error(
+async def test_representable_definition_surprise_is_readable_but_mutation_rejects_it(
     relationshipdefinition_client: httpx.AsyncClient,
     migrated_database_engine: Engine,
 ) -> None:
@@ -458,11 +458,12 @@ async def test_corrupted_definition_aggregate_maps_to_internal_error(
     response = await relationshipdefinition_client.get(
         f"/api/v1/core/relationship-definitions/{definition_id}"
     )
-    assert response.status_code == 500
+    assert response.status_code == 200
     assert response.json() == {
-        "code": "internal_error",
-        "message": "A persisted RelationshipDefinition aggregate is invalid.",
-        "details": {},
+        "id": str(definition_id),
+        "symmetric": False,
+        "default_version": None,
+        "resolutions": [],
     }
     template_id = await _template(
         relationshipdefinition_client, "corrupt_certified_set_operand"
@@ -812,11 +813,13 @@ async def test_m3_default_pointer_read_boundary_is_resource_family_specific(
         else:
             assert response.json()["default_version"] == 1
 
-    later_slice_requests = (
+    relationshipdefinition_requests = (
         f"/api/v1/core/relationship-definitions/{definition_id}",
         "/api/v1/core/relationship-definitions",
     )
-    for path in later_slice_requests:
+    for path in relationshipdefinition_requests:
         response = await client.get(path)
-        assert response.status_code == 500, (path, response.text)
-        assert response.json()["code"] == "internal_error"
+        assert response.status_code == 200, (path, response.text)
+        payload = response.json()
+        value = payload["items"][0] if path.endswith("definitions") else payload
+        assert value["default_version"] == 1
