@@ -72,6 +72,17 @@ def _strict_boolean(value: object) -> bool:
 QueryBoolean = Annotated[bool, BeforeValidator(_strict_boolean), Query()]
 
 
+def _nullable_uuid_query(value: object) -> object:
+    if value == "null":
+        return None
+    return value
+
+
+QueryNullableUUID = Annotated[
+    UUID | None, BeforeValidator(_nullable_uuid_query), Query()
+]
+
+
 def _service(request: Request) -> ObjectTemplateService:
     runtime = cast(RuntimeContext, request.app.state.runtime)
     return ObjectTemplateService(runtime.uow_factory)
@@ -220,7 +231,7 @@ async def list_object_templates(
     namespace: str | None = None,
     name: str | None = None,
     abstract: QueryBoolean | None = None,
-    parent_template_id: UUID | None = None,
+    parent_template_id: QueryNullableUUID = None,
     cursor: str | None = None,
     limit: PageLimit = 100,
 ) -> ObjectTemplatePageDto:

@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S01 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S01 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,7 +26,7 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S01 — READY
+active implementation    M3-S01 — CANDIDATE READY FOR REVIEW
 software implementation  AUTHORIZED — M3-S01 ONLY
 blockers                 none
 ```
@@ -166,14 +166,16 @@ The completed M3-S00 execution aid has been removed from the active `wip/` worki
 
 ```text
 authorized slice          M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity
-slice state               READY
+slice state               CANDIDATE READY FOR REVIEW
 human authorization       GRANTED
 predecessor               M3-S00 — COMPLETED
 primary evidence          M3-VER-14 .. M3-VER-16
+candidate evidence        PASS — M3-VER-14 .. M3-VER-16
+candidate gates           PASS
 later slices              NOT AUTHORIZED
 ```
 
-`READY` authorizes the implementer to perform the mandatory repository pre-flight and then begin work inside the exact frozen `M3-S01` scope. The implementer may transition the slice to `IN PROGRESS` when implementation work actually begins, but reviewer-owned completion remains separate.
+The mandatory repository pre-flight, assigned evidence and complete candidate gate passed inside the exact frozen `M3-S01` scope. The candidate is ready for reviewer inspection; reviewer-owned completion remains separate.
 
 ## Frozen architecture closure
 
@@ -229,13 +231,13 @@ implementation steps consistency review       DONE — PASS
 implementation steps FINAL / FROZEN           DONE
 M3-S00 execution/review                        DONE — COMPLETED
 explicit M3-S01 implementation authorization  DONE — M3-S01 ONLY
-M3-S01 execution/review                        READY
+M3-S01 execution/review                        CANDIDATE READY FOR REVIEW
 M3-S02 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Perform the mandatory M3-S01 pre-flight from repository authorities, then implement and verify `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` within the frozen slice scope.
+Review the `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity` candidate and its `M3-VER-14 .. M3-VER-16` evidence.
 
 The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S01` `COMPLETED` and authorize the transition to `M3-S02`.
