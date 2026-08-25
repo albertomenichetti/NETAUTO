@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION STEPS CONSISTENCY REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION STEPS FREEZE APPROVAL PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,19 +18,20 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION STEPS CONSISTENCY REVIEW
+phase                    IMPLEMENTATION STEPS FREEZE APPROVAL
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
 architecture approval    GRANTED
-implementation steps     DESIGN COMPLETE — NOT YET FROZEN
-steps review             PENDING
+implementation steps     DESIGN COMPLETE — REVIEW PASS — NOT YET FROZEN
+steps review             PASS
+steps approval           PENDING
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-blockers                 none for steps consistency review
+blockers                 none for steps freeze decision
 ```
 
-Architecture freeze does not authorize software changes. `steps.md` now contains a complete proposed decomposition and must pass a separate consistency review and explicit project-owner freeze approval before any implementation slice can be authorized.
+Architecture freeze does not authorize software changes. The proposed `M3-S00 .. M3-S07` decomposition has passed its separate consistency review, but `steps.md` remains non-frozen until explicit project-owner approval.
 
 ## Frozen contract gate
 
@@ -77,34 +78,27 @@ architecture controller   dd5593045c9a6bee5ebbf52931879bdb09441a9f
 freeze approval record    8996fa1875152996dddab4d0609ed978cf50561b
 ```
 
-Frozen owners:
+## Steps design and review gate
+
+Proposed decomposition owner:
 
 ```text
-architecture/read-projections.md
-    FINAL / FROZEN
-    ADP-01 CLOSED
-    ADP-02 CLOSED — 22 / 22 routes
-    ADP-03 CLOSED
-
-architecture/api.md
-    FINAL / FROZEN
-    ADP-04 CLOSED — 12 / 12 cursor routes
-    ADP-05 CLOSED
-
-architecture/cli.md
-    FINAL / FROZEN
-    ADP-06 CLOSED
-    ADP-07 CLOSED — 8 / 8 create Location templates
-
-architecture/verification.md
-    FINAL / FROZEN
-    ADP-08 CLOSED
-    M3-VER-01 .. M3-VER-19 DESIGNED
+document                  docs/milestones/M3/steps.md
+status                    DESIGN COMPLETE — REVIEW PASS — NOT YET FROZEN
+slice registry            M3-S00 .. M3-S07
+slice count               8
 ```
 
-## Proposed implementation decomposition
+Consistency review:
 
-`docs/milestones/M3/steps.md` is now `DESIGN COMPLETE — REVIEW PENDING — NOT YET FROZEN`.
+```text
+report                    docs/milestones/M3/wip/steps-consistency-closure.md
+status                    PASS
+blocking findings         0
+open findings             0
+contract reopening        NOT REQUIRED
+architecture reopening    NOT REQUIRED
+```
 
 Proposed linear registry:
 
@@ -125,9 +119,17 @@ Dependency graph:
 M3-S00 -> M3-S01 -> M3-S02 -> M3-S03 -> M3-S04 -> M3-S05 -> M3-S06 -> M3-S07
 ```
 
-Primary evidence ownership covers `M3-VER-01 .. M3-VER-19` exactly once; `M3-S07` re-executes all nineteen on one final candidate.
+Review closure proves:
 
-This decomposition is still reviewable planning material, not implementation authority.
+```text
+GET route assignment       22 / 22 exact
+cursor route path          12 / 12 exact
+CLI 201 path                8 / 8 exact
+M3-VER primary ownership   19 / 19 exact
+open decomposition finding  0
+```
+
+No implementation slice is active and the reviewed decomposition is still not implementation authority.
 
 ## Frozen architecture closure
 
@@ -169,7 +171,7 @@ new business resource
 new public route
 ```
 
-Any steps-review or implementation proposal that contradicts the frozen contract or architecture must stop for the applicable reopen process rather than silently altering semantics.
+Any implementation proposal that contradicts frozen contract, architecture or—after freeze—steps must stop for the applicable reopen process rather than silently altering semantics.
 
 ## Remaining gates
 
@@ -178,17 +180,15 @@ contract FINAL / FROZEN                       DONE
 architecture design                           DONE — 8 / 8
 architecture consistency review               DONE — PASS
 architecture set FINAL / FROZEN               DONE
-implementation steps design                   DONE — PROPOSED M3-S00..S07
-implementation steps consistency review       ACTIVE
-implementation steps FINAL / FROZEN            PENDING
+implementation steps design                   DONE — M3-S00..S07
+implementation steps consistency review       DONE — PASS
+implementation steps FINAL / FROZEN            PENDING HUMAN APPROVAL
 explicit implementation authorization          PENDING
 final M3 acceptance                            PENDING
 ```
 
-No implementation slice is active.
-
 ## Immediate next action
 
-Run the separate M3 steps consistency review against the complete proposed decomposition in [`steps.md`](steps.md). Correct every finding before requesting explicit project-owner approval to freeze the steps.
+Obtain explicit project-owner approval to freeze the reviewed `M3-S00 .. M3-S07` implementation decomposition. A freeze publication transition may then mark `steps.md` `FINAL / FROZEN` and separately advance governance to authorization of the first implementation slice.
 
-Implementation remains **NOT AUTHORIZED** until `steps.md` is separately reviewed, explicitly frozen and this status file authorizes the first slice.
+Implementation remains **NOT AUTHORIZED** until `steps.md` is explicitly frozen and this status file authorizes `M3-S00`.
