@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 REVIEW CHANGES REQUIRED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S03 — CANDIDATE READY FOR REVIEW
+active implementation    M3-S03 — REVIEW CHANGES REQUIRED
 software implementation  AUTHORIZED — M3-S03 ONLY
-blockers                 none
+blockers                 S03-RF-01 / S03-RF-02
 ```
 
-Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness`, `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`, and `M3-S02 — DataType trusted one-statement read projections` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
+Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness`, `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`, and `M3-S02 — DataType trusted one-statement read projections` are reviewer-owned `COMPLETED`. Software implementation remains authorized only for bounded M3-S03 review corrections. No later slice may begin before M3-S03 is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
 
 ## Frozen contract gate
 
@@ -203,7 +203,7 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S03                    READY / AUTHORIZED
+M3-S03                    REVIEW CHANGES REQUIRED / AUTHORIZED
 ```
 
 The reviewed implementation realizes the frozen DataType `RP-01`, `RP-02` and `RP-03` trusted-read patterns while preserving public routes, DTOs, filters, ordering, cursor identities and mutation semantic authority. Review confirmed that all four canonical DataType GETs use ordinary read UoWs, perform no `coherent_read()` dependency or default-target publication recertification, and issue exactly one authoritative business SQL statement per request on real PostgreSQL.
@@ -214,25 +214,62 @@ The legacy cross-family default-pointer corruption regression was narrowed only 
 
 The completed M3-S02 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
 
-## M3-S03 implementation candidate
+## M3-S03 reviewer result
+
+Reviewer result:
 
 ```text
-authorized slice          M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S02 — COMPLETED
-assigned evidence         ObjectTemplate targets for M3-VER-04/05/06/07/09/12/19
-exclusive primary bundle  NONE — by frozen decomposition
-candidate evidence        ObjectTemplate targets for M3-VER-04/05/06/09/12/19 — PASS
-M3-VER-07 target          PASS — materially undecodable required migration-default carrier
-affected regression       M3-VER-14 .. M3-VER-16 — PASS
-global M3-VER bundles     NOT YET CLOSED
-business SQL statements   OT-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
-candidate gates           PASS
-later slices              NOT AUTHORIZED
+slice                     M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
+review outcome            REVIEW CHANGES REQUIRED
+reviewed candidate        2f287723703d33f2531328d8b85511603f881590
+review findings           2 — S03-RF-01 / S03-RF-02
+candidate SQL census      OT-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
+candidate global bundles  NOT YET CLOSED
+contract reopen           NOT REQUIRED
+architecture reopen       NOT REQUIRED
+steps reopen              NOT REQUIRED
+M3-S04                    NOT AUTHORIZED
 ```
 
-The mandatory repository pre-flight, assigned ObjectTemplate evidence, affected S01/S02 regressions and complete candidate gate passed inside the exact frozen `M3-S03` scope. All six canonical ObjectTemplate GETs use ordinary read UoWs and exactly one authoritative business SQL statement on real PostgreSQL. Exact-version aggregate children remain independent, effective schema follows persisted exact pins, RelationshipCapability membership follows stable ancestry, and GET paths perform no mutation-owned semantic recertification. The candidate is ready for reviewer inspection; reviewer-owned completion and global M3-VER bundle closure remain separate.
+### S03-RF-01 — required migration-default absence is semantic surprise, not undecodable carrier
+
+The candidate introduces `_projected_property()` and returns `500 internal_error` whenever a persisted property has `required=True` and `migration_default=None`. That condition is mutation-owned semantic admission, not a representational materialization requirement. The delivered schema permits the row structurally, and the public `PropertyDto` represents `migration_default` as nullable and excludes it when `None`.
+
+Therefore a committed `required=True / migration_default=None` row is a representable persisted semantic surprise and must remain readable under the M3 trusted-read boundary. It cannot serve as the ObjectTemplate `M3-VER-07` materially-undecodable fixture.
+
+Required correction:
+
+```text
+remove the GET-side required/migration_default semantic check
+project migration_default=None normally through exact/effective GETs
+add positive trusted-read evidence for the representable surprise
+retain mutation-side rejection for newly submitted required properties without a default
+reassess ObjectTemplate M3-VER-07 applicability
+if no genuinely non-materializable mandatory public carrier exists, record NOT APPLICABLE with schema/DTO evidence
+```
+
+### S03-RF-02 — exact-chain recursion is incorrectly bounded by stable template identity
+
+`ObjectTemplateStore.project_effective_schema()` tracks `visited` as `template_id` only and suppresses a recursive parent whenever that stable template id has already appeared. That imports stable-lineage cycle semantics into `RP-05` and can truncate a finite persisted exact-pin chain containing the same stable template at different exact versions, for example:
+
+```text
+A:2 -> B:1 -> A:1 -> root
+```
+
+The frozen `RP-05` source of truth is the persisted exact `(template_id, version)` parent pair, and GET must not recertify stable-lineage acyclicity. Recursion safety must therefore not discard a distinct exact pair merely because its stable template id repeated.
+
+Required correction:
+
+```text
+follow every distinct persisted exact (template_id, version) pair
+if a recursion guard is required for termination, key it by the exact pair or an equivalent exact-node identity
+never reject/truncate solely because the same stable template id reappears at another version
+add permanent evidence with a finite repeated-stable-lineage / distinct-exact-version chain
+preserve one-statement execution and deterministic root-to-leaf projection
+keep RP-06 stable ancestry separate and unchanged in meaning
+```
+
+Both findings are implementation defects inside the already-frozen S03 design. No contract, architecture or steps reopen is required. The existing S03 execution aid remains active in `wip/`; do not remove it until reviewer acceptance.
 
 ## Frozen architecture closure
 
@@ -290,13 +327,13 @@ M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
 explicit M3-S03 implementation authorization  DONE — M3-S03 ONLY
-M3-S03 execution/review                        CANDIDATE READY FOR REVIEW
+M3-S03 execution/review                        REVIEW CHANGES REQUIRED — S03-RF-01 / S03-RF-02
 M3-S04 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Review the `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections` candidate and its concrete ObjectTemplate evidence targets.
+Correct `S03-RF-01` and `S03-RF-02` inside the existing M3-S03 authorization, rerun the complete S03 candidate gate and publish a corrected candidate for reviewer inspection.
 
-The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S03` `COMPLETED` and authorize the transition to `M3-S04`.
+Do not start M3-S04. Reviewer-owned `COMPLETED` remains pending until both findings are closed and the corrected evidence is accepted.
