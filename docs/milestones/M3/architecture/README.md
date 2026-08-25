@@ -39,7 +39,7 @@ No M3 architecture may broaden these outcomes into new routes/resources, schema/
 |---|---|---|
 | [`read-projections.md`](read-projections.md) | DESIGN IN PROGRESS — ADP-01 / ADP-02 / ADP-03 CLOSED | GET/read responsibility, one-statement route matrix, read UoW/snapshot model, trusted lifecycle decoder boundary |
 | [`api.md`](api.md) | DESIGN IN PROGRESS — ADP-04 / ADP-05 CLOSED | public cursor identity/keyset realization and ObjectTemplate HTTP parent tri-state |
-| [`cli.md`](cli.md) | NOT YET WRITTEN | nullable selector/query carrier and Location materialization grammar |
+| [`cli.md`](cli.md) | DESIGN IN PROGRESS — ADP-06 CLOSED; ADP-07 OPEN | nullable selector/query carrier and Location materialization grammar |
 | [`verification.md`](verification.md) | NOT YET WRITTEN | deterministic architecture/acceptance evidence |
 
 Additional architecture documents may be added only when an open design point cannot be owned cleanly here and may not expand the frozen contract.
@@ -105,7 +105,7 @@ codec v1 payload/invalid_cursor behavior preserved
 
 ### ObjectTemplate parent filter
 
-HTTP owner: `api.md`; CLI owner: `cli.md`.
+HTTP owner: `architecture/api.md`; CLI owner: `architecture/cli.md`.
 
 ADP-05 closes HTTP:
 
@@ -117,13 +117,15 @@ malformed/repeated   -> 400 invalid_request
 parent_filter_set    -> internal only
 ```
 
-ADP-06 must close the corresponding CLI carrier:
+ADP-06 closes CLI:
 
 ```text
 CLI omitted          -> no query pair
-CLI UUID/human       -> resolved UUID query pair
-CLI explicit null    -> lowercase null, no selector lookup
+CLI UUID/human       -> normal selector resolution -> UUID query pair
+CLI explicit null    -> parsed None -> zero selector lookup -> lowercase null query pair
 ```
+
+The nullable-selector rule is metadata-driven for direct selector parameters. Nullable QUERY None emits lexical `null`; nullable BODY None remains JSON null; PATH None remains invalid. The generic scalar serializer is not broadened to accept None.
 
 ### CLI post-create
 
@@ -139,7 +141,7 @@ ADP-02  CLOSED   one-statement projection matrix — 22 / 22 routes
 ADP-03  CLOSED   historical lifecycle trusted decoder
 ADP-04  CLOSED   cursor identity realization — 12 / 12 routes
 ADP-05  CLOSED   ObjectTemplate nullable HTTP query carrier
-ADP-06  OPEN     CLI nullable selector/query carrier
+ADP-06  CLOSED   CLI nullable selector/query carrier
 ADP-07  OPEN     CLI Location materialization grammar
 ADP-08  OPEN     verification architecture
 ```
@@ -147,11 +149,13 @@ ADP-08  OPEN     verification architecture
 Current progress:
 
 ```text
-closed design points     5 / 8
-open design points       3 / 8
+closed design points     6 / 8
+open design points       2 / 8
 GET route coverage      22 / 22 CLOSED
 cursor route coverage   12 / 12 CLOSED
-next design work         ADP-06 — CLI nullable selector/query carrier
+HTTP parent tri-state   CLOSED
+CLI parent tri-state    CLOSED
+next design work         ADP-07 — CLI Location materialization grammar
 ```
 
 ## Closed architecture summaries
@@ -184,11 +188,33 @@ parent_template_id=null
 
 A local nullable-UUID lexical adapter intercepts only exact lowercase `null` and delegates all other values to the delivered UUID parser. Raw query presence remains the internal source of `parent_filter_set`, preserving omission versus explicit root-only filtering. Empty, uppercase/special sentinels, malformed UUIDs and repeats remain `400 invalid_request`. No domain/persistence/cursor redesign is introduced.
 
+### ADP-06 — CLI parent tri-state
+
+The ObjectTemplate list registry marks only `parent_template_id` as nullable while retaining its ObjectTemplate selector capability.
+
+```text
+omitted
+    -> no selector target
+    -> no query pair
+
+UUID
+    -> exact-ID selector precedence
+    -> canonical UUID query pair
+
+human selector
+    -> normal ObjectTemplate discovery
+    -> resolved UUID query pair
+
+explicit null
+    -> parser None
+    -> terminal nullable selector value
+    -> zero selector discovery
+    -> query pair parent_template_id=null
+```
+
+The request planner is location-aware: nullable QUERY None emits lexical `null`; nullable BODY None preserves JSON null; PATH None is invalid. `_wire_string(None)` is not introduced globally.
+
 ## Open architecture work
-
-### ADP-06 — CLI nullable selector/query carrier
-
-Must define metadata-driven nullable selector behavior so explicit `None` is terminal for a nullable selector parameter, skips selector lookup and serializes lowercase `null` only when the registry location is QUERY. It must preserve BODY JSON null semantics and keep PATH None invalid.
 
 ### ADP-07 — CLI Location materialization grammar
 
@@ -215,6 +241,10 @@ cursor query identity
 
 public lexical carrier
     != internal semantic presence bit
+
+CLI parsed explicit null
+    != omitted parameter
+    != arbitrary None scalar
 
 current AS-IS ownership
     != M3 TO-BE delta ownership
