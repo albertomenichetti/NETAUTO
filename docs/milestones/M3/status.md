@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S02 COMPLETED / M3-S03 PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S03 READY
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION AUTHORIZATION
+phase                    IMPLEMENTATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-blockers                 none for M3-S03 authorization decision
+active implementation    M3-S03 — READY
+software implementation  AUTHORIZED — M3-S03 ONLY
+blockers                 none
 ```
 
-Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness`, `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`, and `M3-S02 — DataType trusted one-statement read projections` are reviewer-owned `COMPLETED`. No later slice is authorized: software implementation may resume only after `status.md` explicitly authorizes the next exact slice.
+Contract, architecture and implementation decomposition remain frozen. `M3-S00 — Official CLI Location protocol correctness`, `M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity`, and `M3-S02 — DataType trusted one-statement read projections` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections`. No later slice may begin before its predecessor is reviewer-owned `COMPLETED` and `status.md` explicitly authorizes the next exact slice.
 
 ## Frozen contract gate
 
@@ -203,7 +203,7 @@ review findings           0
 contract reopen           NOT REQUIRED
 architecture reopen       NOT REQUIRED
 steps reopen              NOT REQUIRED
-M3-S03                    NOT AUTHORIZED
+M3-S03                    READY / AUTHORIZED
 ```
 
 The reviewed implementation realizes the frozen DataType `RP-01`, `RP-02` and `RP-03` trusted-read patterns while preserving public routes, DTOs, filters, ordering, cursor identities and mutation semantic authority. Review confirmed that all four canonical DataType GETs use ordinary read UoWs, perform no `coherent_read()` dependency or default-target publication recertification, and issue exactly one authoritative business SQL statement per request on real PostgreSQL.
@@ -213,6 +213,21 @@ The parent-rooted version page carries parent-presence evidence through one LEFT
 The legacy cross-family default-pointer corruption regression was narrowed only for the completed DataType read boundary: DataType reads now remain readable as required by M3-S02, while ObjectTemplate and RelationshipDefinition retain their pre-S03/pre-S05 internal-failure expectations. No later-family read behavior was silently migrated.
 
 The completed M3-S02 execution aid has been removed from the active `wip/` working tree in accordance with project governance. Its history remains in Git.
+
+## M3-S03 implementation authorization
+
+```text
+authorized slice          M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
+slice state               READY
+human authorization       GRANTED
+predecessor               M3-S02 — COMPLETED
+assigned evidence         ObjectTemplate targets for M3-VER-04/05/06/07/09/12/19
+exclusive primary bundle  NONE — by frozen decomposition
+affected regression       M3-VER-14 .. M3-VER-16 from completed M3-S01
+later slices              NOT AUTHORIZED
+```
+
+`READY` authorizes the implementer to perform the mandatory repository pre-flight and then begin work inside the exact frozen `M3-S03` scope. The implementer may transition the slice to `IN PROGRESS` when implementation work actually begins, but reviewer-owned completion remains separate. Because M3-S03 contributes ObjectTemplate targets to global evidence bundles primarily closed later, implementation must report those concrete targets truthfully and must not claim the complete global bundles PASS solely from this slice.
 
 ## Frozen architecture closure
 
@@ -269,13 +284,14 @@ implementation steps FINAL / FROZEN           DONE
 M3-S00 execution/review                        DONE — COMPLETED
 M3-S01 execution/review                        DONE — COMPLETED
 M3-S02 execution/review                        DONE — COMPLETED
-explicit M3-S03 implementation authorization  PENDING
-M3-S03 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
+explicit M3-S03 implementation authorization  DONE — M3-S03 ONLY
+M3-S03 execution/review                        READY
+M3-S04 .. M3-S07 execution/review              BLOCKED BY DEPENDENCIES / NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Make a separate explicit operational decision on whether to authorize `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections` as the next implementation slice.
+Perform the mandatory M3-S03 pre-flight from repository authorities, then implement and verify `M3-S03 — ObjectTemplate trusted recursive and aggregate read projections` within the frozen slice scope.
 
-Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
+The implementer produces a candidate and reports verified evidence. The reviewer alone may mark `M3-S03` `COMPLETED` and authorize the transition to `M3-S04`.
