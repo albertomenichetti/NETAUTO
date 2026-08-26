@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — FINAL ACCEPTANCE REVIEW — M3-S07 REVIEW CHANGES REQUIRED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION
+phase                    FINAL ACCEPTANCE REVIEW
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S07 — CANDIDATE READY FOR REVIEW
-software implementation  AUTHORIZED — M3-S07 ONLY
-blockers                 none
+active implementation    M3-S07 — REVIEW CHANGES REQUIRED
+software implementation  AUTHORIZED — M3-S07 REVIEW FIX ONLY
+blockers                 S07-RF-01 / S07-RF-02
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, `M3-S05`, and `M3-S06` are reviewer-owned `COMPLETED`. The `M3-S07 — Full M3 acceptance and delivery-candidate gate` candidate is ready for reviewer inspection. No business behavior was planned or introduced in S07; the slice remained limited to the frozen final-candidate verification/evidence gate.
+`M3-S00` through `M3-S06` are reviewer-owned `COMPLETED`. The first `M3-S07 — Full M3 acceptance and delivery-candidate gate` candidate was reviewed and is **not accepted**. Only bounded same-slice review fixes for `S07-RF-01` and `S07-RF-02` are authorized. M3 is not accepted or delivered.
 
 ## Frozen governance gates
 
@@ -54,9 +54,10 @@ steps status             FINAL / FROZEN
 slice registry           M3-S00 .. M3-S07
 slice count              8
 open decomposition finding 0
+steps reopening          NOT REQUIRED
 ```
 
-Any semantic change contradicting frozen contract, architecture, or steps requires the applicable formal reopen process rather than silent implementation drift.
+Any semantic change contradicting frozen contract, architecture, or steps requires the applicable formal reopen process rather than silent implementation drift. The current S07 findings do not require any reopen.
 
 ## Frozen implementation registry
 
@@ -91,150 +92,120 @@ open architecture finding 0
 
 ## Reviewer-owned completed slices
 
-### M3-S00
-
 ```text
-slice                     M3-S00 — Official CLI Location protocol correctness
-review outcome            COMPLETED
-candidate commit          7658c1d1f0e7e7c042bad94ea8258f4e91f48d09
-primary evidence          M3-VER-01 .. M3-VER-03 — PASS
-candidate gates           PASS
-review findings           0
-reopen required           NO
+M3-S00  COMPLETED  candidate 7658c1d1f0e7e7c042bad94ea8258f4e91f48d09  findings 0
+M3-S01  COMPLETED  candidate 9ce01224893926e3a28513db0cd85b02426da67e  findings 0
+M3-S02  COMPLETED  candidate dbd5f7aa5c8c1bfaffca892182e0cf47338f6936  findings 0
+M3-S03  COMPLETED  corrected 24e80fb80d6d7b6adfb8a1f212094df33716a960  findings 2/2 CLOSED
+M3-S04  COMPLETED  candidate 1a8245e35efc44306079fca9dd201cd397e54ead  findings 0
+M3-S05  COMPLETED  candidate 8f37e1aa07589551ba0d35da2119a914df8b3014  findings 0
+M3-S06  COMPLETED  candidate c13bf884b8196e256fe4e7cefd73d083660fa54e  findings 0
 ```
 
-### M3-S01
+S06 closed the integrated implementation evidence with all `M3-VER-01 .. M3-VER-19` passing, exact `22 / 22` GET, `12 / 12` cursor and `8 / 8` CLI censuses, `22 / 22` one-business-statement evidence, deterministic T3 BEFORE/AFTER evidence and schema/dependency/lock/version non-drift.
+
+## M3-S07 first candidate review
 
 ```text
-slice                     M3-S01 — ObjectTemplate parent tri-state across HTTP, CLI and cursor identity
-review outcome            COMPLETED
-candidate commit          9ce01224893926e3a28513db0cd85b02426da67e
-primary evidence          M3-VER-14 .. M3-VER-16 — PASS
-candidate gates           PASS
-review findings           0
-reopen required           NO
-```
-
-### M3-S02
-
-```text
-slice                     M3-S02 — DataType trusted one-statement read projections
-review outcome            COMPLETED
-candidate commit          dbd5f7aa5c8c1bfaffca892182e0cf47338f6936
-assigned evidence         DataType targets for M3-VER-04/05/06/09/12/19 — PASS
-M3-VER-07 DataType target NOT APPLICABLE — delivered schema closes mandatory carriers
-business SQL statements   DT-GET-01..04 = 1 / 1 / 1 / 1 on PostgreSQL 16.15
-candidate gates           PASS
-review findings           0
-reopen required           NO
-```
-
-### M3-S03
-
-```text
-slice                     M3-S03 — ObjectTemplate trusted recursive and aggregate read projections
-review outcome            COMPLETED
-initial candidate         2f287723703d33f2531328d8b85511603f881590
-review findings record    1e955f2a9c42f2bd27167635b2774f1f0cd952f9
-corrected candidate       24e80fb80d6d7b6adfb8a1f212094df33716a960
-review findings           2 / 2 CLOSED — S03-RF-01 / S03-RF-02
-assigned evidence         ObjectTemplate targets for M3-VER-04/05/06/09/12/19 — PASS
-M3-VER-07 ObjectTemplate  NOT APPLICABLE — schema/DTO make nullable migration-default materializable
-business SQL statements   OT-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
-candidate gates           PASS
-reopen required           NO
-```
-
-### M3-S04
-
-```text
-slice                     M3-S04 — Object trusted projections and path-target cursor repairs
-review outcome            COMPLETED
-candidate commit          1a8245e35efc44306079fca9dd201cd397e54ead
-primary evidence          M3-VER-10 / M3-VER-11 — PASS
-supporting Object targets M3-VER-04/05/06/07/08/09/12/13/19 — PASS where assigned
-business SQL statements   OBJ-GET-01..06 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
-candidate gates           PASS — full repository suite 973 passed
-review findings           0
-reopen required           NO
-```
-
-### M3-S05
-
-```text
-slice                     M3-S05 — RelationshipDefinition, Relationship and lifecycle trusted reads
-review outcome            COMPLETED
-candidate commit          8f37e1aa07589551ba0d35da2119a914df8b3014
-primary evidence          M3-VER-07 / M3-VER-08 / M3-VER-13 — PASS
-supporting S05 targets    M3-VER-04/05/06/09/12/19 — PASS where assigned
-business SQL statements   RD-GET-01..04 / REL-GET-01 / LC-GET-01 = 1 / 1 / 1 / 1 / 1 / 1 on PostgreSQL 16.15
-trusted-read production   22 / 22 canonical GET routes implemented
-candidate gates           PASS — 979 full-suite tests; 700 non-PostgreSQL tests; Ruff/Pyright/build/locked sync/lock/collection PASS
-review findings           0
-reopen required           NO
-```
-
-### M3-S06
-
-```text
-slice                     M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure
-review outcome            COMPLETED
-implementation candidate  c13bf884b8196e256fe4e7cefd73d083660fa54e
-publication commit        0cba7219b2501952de761e4bb54fc2a76eb47e5c
-candidate evidence        docs/milestones/M3/evidence/M3-S06-candidate.md
-primary evidence          M3-VER-04 / 05 / 06 / 09 / 12 / 17 / 18 / 19 — PASS
-re-executed evidence      M3-VER-01..03 / 07..08 / 10..11 / 13..16 — PASS
-all evidence bundles      M3-VER-01 .. M3-VER-19 — PASS on the S06 candidate evidence run
-GET census                22 / 22 exact
-cursor census             12 / 12 exact
-CLI 201 census             8 / 8 exact
-business SQL statements   22 / 22 = exactly one on PostgreSQL 16.15
-snapshot evidence         PASS — deterministic BEFORE and AFTER committed generations
-traceability              PASS — 8 OUT / 19 AC / 19 VER, owner and non-empty collected-target closure
-non-drift                 PASS — compare_metadata []; one migration root/head; dependency/lock/version unchanged
-production corrections    NONE
-candidate gates           PASS — 990 full-suite tests; 706 non-PostgreSQL tests; Ruff/Pyright/build/locked sync/lock/collection PASS
-normative skip/xfail/rerun 0 / 0 / 0
-review findings           0
-reopen required           NO
-M3-S07                    CANDIDATE READY / AWAITS REVIEW
-```
-
-The reviewed S06 implementation adds permanent integration evidence only and introduces no production correction. The traceability registry exactly closes the frozen 8-outcome, 19-acceptance-criterion and 19-evidence-bundle sets, maps every bundle to architecture owner(s) and non-empty collected pytest targets, and exactly represents the 22 business GET routes, 12 cursor-bearing routes and 8 registered CLI `201 + Location` operations.
-
-Integrated public evidence covers all 22 canonical GET success targets and the required request/path-target failure classes. All twelve cursor routes perform true multipage continuation with changed limit and reject incompatible route/filter/path identities and malformed keys. The real PostgreSQL observer measures exactly one authoritative business statement for each of the 22 canonical GET routes.
-
-`M3-VER-19` additionally has deterministic real-PostgreSQL BEFORE/AFTER evidence on a multi-fragment RelationshipDefinition projection. The AFTER cut pauses immediately before the production authoritative execute, commits the writer generation and then reads the complete AFTER generation. The BEFORE cut completes the production authoritative statement, commits the writer before application return, and retains the complete BEFORE generation. The harness changes no production SQL, isolation, locking or route selection and introduces no cross-request snapshot promise.
-
-`M3-VER-17` confirms no schema, Alembic, runtime dependency, lockfile or project-version drift. Live `compare_metadata == []`; the shipped graph remains one root/head at `0001_m2_kernel`; the authorized `pyproject.toml`, `uv.lock` and migration blob baselines are unchanged.
-
-All `M3-VER-01 .. M3-VER-19` have passing concrete evidence on the S06 candidate run. This closes S06 integration evidence but does not constitute final M3 acceptance or authorize delivery; final candidate acceptance remains the separate frozen `M3-S07` gate. The completed S06 execution aid has been removed from active `wip/`; Git retains its history.
-
-## M3-S07 candidate publication
-
-```text
-authorized slice          M3-S07 — Full M3 acceptance and delivery-candidate gate
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S00 .. M3-S06 — reviewer-owned COMPLETED
-planned business behavior NONE
-stable evidence identities none new — re-execute M3-VER-01 .. M3-VER-19
-tested candidate          1f018a771227087a5c629e644d77c06879585003
+slice                     M3-S07 — Full M3 acceptance and delivery-candidate gate
+authorization baseline    16b761802369ff85b71aa966bfcfaeaac55b4ccf
+prompt baseline           3c3471a36939f2ee8dbe5bdf55c692204abca506
+first tested candidate    1f018a771227087a5c629e644d77c06879585003
+publication commit        5af225375a1f27414be5455199f0ae84991b379b
 candidate evidence        docs/milestones/M3/evidence/M3-S07-candidate.md
-GET census                22 exact
-cursor census             12 exact
-CLI 201 census             8 exact
-required PostgreSQL       mandatory
-implementer final gate    PASS
-final reviewer decision   PENDING / reviewer-owned
-M3 delivery approval      NOT YET GRANTED
+implementer final gate    PASS reported
+review outcome            REVIEW CHANGES REQUIRED
+review findings           2 OPEN — S07-RF-01 / S07-RF-02
+product findings          0
+schema/dependency findings 0
+contract reopen           NOT REQUIRED
+architecture reopen       NOT REQUIRED
+steps reopen              NOT REQUIRED
+M3-S07                    NOT COMPLETED
+M3                        NOT ACCEPTED / NOT DELIVERED
 ```
 
-`CANDIDATE READY FOR REVIEW` records that Codex executed the complete frozen final gate against the identified immutable candidate and published implementer evidence. It does not declare M3-S07 completed or M3 delivered/accepted. Reviewer-owned `COMPLETED` and final milestone delivery approval remain separate decisions.
+### S07-RF-01 — final-acceptance lifecycle is not closed in permanent evidence
+
+The tested candidate changed `tests/test_m3_traceability.py::test_m3_contract_quality_gates_and_normative_state_are_closed` so that it accepts only these active S07 milestone states:
+
+```text
+READY
+IN PROGRESS
+CANDIDATE READY FOR REVIEW
+```
+
+and it requires:
+
+```text
+software implementation  AUTHORIZED — M3-S07 ONLY
+active M3 prompt set      {M3-S07-codex-prompt.md}
+```
+
+That target is part of the permanent `M3-VER-18` traceability evidence. A normal reviewer-owned acceptance would need to transition S07 to `COMPLETED`, set software implementation to `NOT AUTHORIZED`, and retire the completed execution aid. On the first tested candidate those reviewer-only documentation changes would make the permanent `M3-VER-18` target fail immediately.
+
+Required correction:
+
+```text
+add lifecycle-aware permanent S07 final-acceptance evidence before selecting the replacement candidate
+candidate/review states remain strictly validated
+reviewer-owned COMPLETED state is explicitly modeled
+COMPLETED requires accepted acceptance.md markers
+COMPLETED requires no active M3-S* execution prompt
+COMPLETED keeps M3 NOT DELIVERED until the separate delivery/consolidation transition
+no reviewer acceptance should require changing test semantics after the tested candidate
+```
+
+A pure helper/unit lifecycle model plus one repository-state assertion is acceptable. The pattern may take bounded inspiration from the existing M2 final-acceptance lifecycle helpers but must remain derived from M3 authority.
+
+Because this correction changes permanent test/evidence code, the first tested SHA is rejected as the final candidate. A new immutable candidate SHA and complete S07 final-gate rerun are mandatory.
+
+### S07-RF-02 — mapped-target final-gate command is not recorded exactly
+
+The frozen S07 prompt requires `docs/milestones/M3/evidence/M3-S07-candidate.md` to record exact verification commands. The first publication records the registry-derived `43` target / `65` case gate as:
+
+```text
+uv run python - <<'PY'
+    [assert clean candidate; derive the sorted union from
+     M3_EVIDENCE_TO_TARGETS; execute pytest with JUnit; require every mapped
+     exact/parametrized case to have no failure/error/skip/xfail/rerun]
+PY
+```
+
+The bracketed description is not an executable reproduction of the command that produced the claimed gate result.
+
+Required correction:
+
+```text
+record the literal executable command/script used for the mapped-target gate
+or add a small committed S07 helper/CLI and record its exact invocation
+derive from tests/support/m3_evidence.py; do not duplicate/redefine the registry
+record exact exit/result/census for the replacement candidate
+```
+
+Since RF-01 already requires a replacement candidate and complete rerun, RF-02 must be closed in the replacement candidate evidence publication from that new run.
+
+## S07 review-fix authorization
+
+```text
+authorized work           S07-RF-01 / S07-RF-02 only
+production changes        NOT AUTHORIZED unless a newly failing frozen gate exposes a separate defect
+new business behavior     NOT AUTHORIZED
+new M3-VER identity       NOT AUTHORIZED
+schema/migration changes  NOT AUTHORIZED
+dependency/lock changes   NOT AUTHORIZED
+project-version change    NOT AUTHORIZED
+new candidate SHA         REQUIRED
+complete S07 final rerun  REQUIRED
+reviewer acceptance       PENDING
+final M3 delivery         NOT AUTHORIZED
+```
+
+The replacement candidate must include every permanent test/helper required for both candidate and reviewer-completed lifecycle states before the final gate begins. Any change after candidate selection abandons that candidate and requires another complete rerun.
 
 ## Scope impact
 
-M3 requires no:
+M3 still requires no:
 
 ```text
 database schema change
@@ -247,7 +218,7 @@ project-version change
 cursor-codec version change
 ```
 
-S07 must re-prove these non-deltas on the final candidate rather than introduce them.
+The first S07 candidate introduced none of those changes.
 
 ## Remaining gates
 
@@ -262,13 +233,16 @@ M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 M3-S06 execution/review                        DONE — COMPLETED
-explicit M3-S07 implementation authorization  DONE — M3-S07 ONLY
-M3-S07 execution/review                        CANDIDATE READY — REVIEW PENDING
-final M3 acceptance                            PENDING
+explicit M3-S07 implementation authorization  DONE — REVIEW FIX ONLY
+M3-S07 final acceptance review                 REVIEW CHANGES REQUIRED
+S07-RF-01                                      OPEN
+S07-RF-02                                      OPEN
+final M3 acceptance                            BLOCKED BY S07 REVIEW
+final M3 delivery/consolidation                NOT AUTHORIZED
 ```
 
 ## Immediate next action
 
-Review the exact M3-S07 candidate, its durable evidence record and candidate-state acceptance summary. Record a reviewer-owned decision before any completion or milestone-delivery transition.
+Execute the bounded `M3-S07` review fix, select a replacement immutable candidate, restart the complete frozen S07 final gate from the first command, publish corrected candidate evidence and return it for reviewer inspection.
 
-Do not mark `M3-S07` `COMPLETED`, do not mark M3 `ACCEPTED`/`DELIVERED`, and do not create a PR unless separately instructed. The reviewer alone may accept the final candidate and advance milestone governance.
+Do not mark `M3-S07` `COMPLETED`, do not mark M3 `ACCEPTED` or `DELIVERED`, and do not start delivery/consolidation work. The reviewer alone may close the findings and accept the replacement final candidate.
