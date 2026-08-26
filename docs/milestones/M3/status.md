@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW — M3-S07 COMPLETED
+**Milestone status:** ACTIVE — AS-IS CONSOLIDATION COMPLETED — M3-S07 COMPLETED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -10,15 +10,15 @@
 cycle          M3
 cycle type     milestone
 source branch  M3
-baseline       delivered AS-IS in docs/architecture/
+baseline       delivered M2 AS-IS under docs/architecture/
 ```
 
-M3 starts from the delivered and merged M2 baseline. The root `README.md` identifies `M3` as the active milestone and this branch as the cycle branch.
+The root `README.md` identifies `M3` as the active milestone and this branch as the cycle branch.
 
 ## Current phase
 
 ```text
-phase                    AS-IS CONSOLIDATION
+phase                    POST-ACCEPTANCE GOVERNANCE
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -28,14 +28,16 @@ steps review             PASS
 steps approval           GRANTED
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-documentation gate       AS-IS CONSOLIDATION — CANDIDATE READY FOR REVIEW
-blockers                 none
-review findings          S03 2/2 CLOSED; S07 2/2 CLOSED
 final acceptance         ACCEPTED — M3-S07 COMPLETED
+AS-IS consolidation      COMPLETED — reviewer-owned
+consistency closure      PENDING / NOT AUTHORIZED
+final delivery approval  NOT GRANTED
 M3                       NOT DELIVERED
+blockers                 none for a future consistency-closure authorization decision
+review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0
 ```
 
-All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`, and the final acceptance gate is reviewer-owned `ACCEPTED`. The separate post-acceptance AS-IS consolidation gate has produced one documentation-only candidate under `docs/milestones/M3/as-is-consolidation.md`; reviewer inspection is pending. This state does not reopen software implementation and does not authorize consistency closure, delivery, merge, tag, release or artifact publication.
+All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`. The final acceptance gate is reviewer-owned `ACCEPTED`. The accepted M3 result has now also been consolidated into the current authoritative `docs/architecture/` corpus. No software implementation, consistency closure, delivery, merge, tag, release or artifact publication is currently authorized.
 
 ## Frozen governance gates
 
@@ -61,7 +63,7 @@ open decomposition finding 0
 steps reopening          NOT REQUIRED
 ```
 
-No incompatible reopen is active. Any future semantic change still requires the applicable formal reopen or a new cycle.
+No incompatible reopen is active. Any future semantic change requires the applicable formal reopen or a new cycle.
 
 ## Frozen implementation registry
 
@@ -170,13 +172,13 @@ new blocking findings           0
 open incompatible reopen        0
 ```
 
-`S07-RF-01` is closed by the permanent lifecycle-aware final-acceptance model and tests committed before replacement-candidate selection. The model explicitly supports reviewer-owned `COMPLETED`, requires accepted `acceptance.md` markers, `software implementation NOT AUTHORIZED`, accepted candidate evidence, no active S07 execution aid, and keeps M3 not delivered until a separate delivery transition.
+`S07-RF-01` is closed by the permanent lifecycle-aware final-acceptance model and tests committed before replacement-candidate selection. Reviewer-owned `COMPLETED` requires accepted `acceptance.md` markers, `software implementation NOT AUTHORIZED`, accepted candidate evidence, no active S07 execution aid, and keeps M3 not delivered until a separate delivery transition.
 
-`S07-RF-02` is closed by the committed registry-derived mapped-target runner. The exact invocation used on the replacement candidate is recorded in `docs/milestones/M3/evidence/M3-S07-candidate.md`; it derives from `M3_EVIDENCE_TO_TARGETS`, validates the immutable candidate and clean tree, parses JUnit, and fails closed on any missing/non-pass result.
+`S07-RF-02` is closed by the committed registry-derived mapped-target runner recorded in `docs/milestones/M3/evidence/M3-S07-candidate.md`.
 
 ## Accepted final artifact identities
 
-Artifacts were built from the clean replacement candidate and were not published:
+Artifacts were built from the clean replacement S07 candidate and were not published:
 
 ```text
 wheel  netauto-0.2.0-py3-none-any.whl
@@ -187,6 +189,63 @@ sdist  netauto-0.2.0.tar.gz
        1061100 bytes
        SHA-256 60e927a6cfd562880a75e39313c3edfaca203606941df75cf6af06ca94b30644
 ```
+
+## Accepted M3 AS-IS consolidation
+
+```text
+gate specification          docs/milestones/M3/as-is-consolidation.md
+specification status        FINAL
+candidate                   d5b73b892defe554e21dff0c29d1e0e221157d9a
+candidate parent            5848d6e48e3be0c20163e4903447a11a270b7960
+reviewer decision           ACCEPTED
+AS-IS consolidation        COMPLETED
+review findings             0
+current architecture files  15 / 15 exact
+broken internal links       0
+semantic milestone leakage  0
+unresolved placeholders     0
+business HTTP / Health      63 / 1 exact
+canonical GET routes        22 exact
+cursor-bearing routes       12 exact
+CLI 201 Location operations 8 exact
+metadata tables             15
+Alembic root/head           0001_m2_kernel / 0001_m2_kernel
+authoritative scenarios     83 exact
+safety predicates           21 exact
+project version             0.2.0
+production/test/schema/dependency delta 0
+M3 traceability/lifecycle   26 passed
+accepted M3 evidence        119 passed
+migration/schema            5 passed; compare_metadata []
+non-PostgreSQL              726 passed / 284 deselected
+full repository             1010 passed
+normative skip/xfail/rerun  0 / 0 / 0
+supported-path 40P01        0
+unexpected 40001            0
+warnings                     1 reviewed Starlette deprecation
+```
+
+The accepted current architecture corpus remains exactly fifteen owners. It expresses the accepted M3 result as autonomous present-tense current state rather than milestone delta narration.
+
+Current durable semantics now include:
+
+```text
+public GET responsibility = request/cursor validation + target classification + persisted-fact composition + typed carrier decoding
+representable persisted semantic surprise = readable
+materially undecodable mandatory carrier = bounded complete-projection internal failure
+22 canonical GETs = one authoritative business SQL statement / one PostgreSQL statement snapshot each
+cursor identity = route + membership-affecting path/filter/presence state; limit excluded
+Object components cursor binds parent_object_id
+Object-relative Relationship cursor binds object_id
+lifecycle global/Object scope differs through involving_object_id
+ObjectTemplate parent_template_id = omitted / exact UUID / exact lowercase null
+CLI nullable QUERY None emits lexical null only through nullable parameter metadata
+registered 201 Location = closed token grammar + request-key precedence + response JSON path fallback + exact one-header equality
+```
+
+Preserved M2/current guarantees remain unchanged, including the 41 mutation primitives, 15-table schema, 83 canonical concurrency scenarios, 21 safety predicates, Health/runtime/deployment boundaries and mutation semantic authority.
+
+The completed consolidation execution aid has been removed from active `wip/`; Git history retains it.
 
 ## Scope closure
 
@@ -200,12 +259,12 @@ The only intentional observable M3 deltas remain the frozen set:
 5. CLI registered Location materializer supports nested response JSON paths
 ```
 
-Accepted S07 evidence confirms no accidental change in:
+There is no accepted change to:
 
 ```text
 public business route/resource inventory
 response DTO fields
-filter/order semantics outside the frozen root-null delta
+filter/order semantics outside the root-null delta
 cursor codec/version
 schema/table/index/constraint set
 Alembic graph
@@ -217,34 +276,14 @@ cross-request snapshot contract
 runtime/deployment capability
 ```
 
-## Post-acceptance AS-IS consolidation authorization
-
-```text
-gate specification          docs/milestones/M3/as-is-consolidation.md
-specification status        FINAL
-gate state                  CANDIDATE READY FOR REVIEW
-human authorization         GRANTED by explicit post-S07 proceed decision
-authorization basis         final acceptance ACCEPTED / M3-S07 COMPLETED
-purpose                     consolidate accepted M3 state into current docs/architecture/
-target AS-IS corpus         exactly 15 existing files
-authorized repository delta docs/architecture/*.md + docs/milestones/M3/status.md
-software changes            NOT AUTHORIZED
-test/schema/dependency changes NOT AUTHORIZED
-consistency closure         NOT AUTHORIZED
-final delivery              NOT AUTHORIZED
-merge/tag/release/publish   NOT AUTHORIZED
-```
-
-The consolidation must derive current-state wording from the delivered AS-IS plus the frozen M3 owners and accepted final result. It may not introduce new semantics, copy milestone bookkeeping into current architecture, or use implementation/test behavior as a competing authority. A need to modify code, tests, schema, frozen M3 documents or project-wide technology is a STOP condition.
-
 ## Remaining governance
 
 ```text
 contract / architecture / steps           FINAL / FROZEN
 implementation M3-S00 .. M3-S07           COMPLETED
 final acceptance                          ACCEPTED
-AS-IS consolidation                       CANDIDATE READY FOR REVIEW
-consistency closure                       NOT AUTHORIZED / NOT STARTED
+AS-IS consolidation                       COMPLETED
+consistency closure                       PENDING / NOT AUTHORIZED
 M3                                        NOT DELIVERED
 final delivery approval                   NOT GRANTED
 merge / tag / release / artifact publish  NOT AUTHORIZED
@@ -253,6 +292,6 @@ software implementation                   NOT AUTHORIZED
 
 ## Immediate next action
 
-Review the complete documentation-only M3 AS-IS consolidation candidate under `docs/milestones/M3/as-is-consolidation.md`.
+Make a separate explicit governance decision on whether to authorize the M3 consistency-closure gate against the accepted current AS-IS corpus.
 
-Do not start consistency closure or any delivery/merge/release action. The consolidator may mark only `AS-IS consolidation = CANDIDATE READY FOR REVIEW`; reviewer-owned `COMPLETED` remains a separate decision.
+Until that decision is recorded, consistency closure, delivery, merge, tag, release and artifact publication remain **NOT AUTHORIZED**.
