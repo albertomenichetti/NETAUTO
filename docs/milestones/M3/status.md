@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — CONSISTENCY CLOSURE COMPLETED — M3-S07 COMPLETED
+**Milestone status:** DELIVERED — MERGE NOT EXECUTED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -10,61 +10,63 @@
 cycle          M3
 cycle type     milestone
 source branch  M3
-baseline       delivered M2 AS-IS under docs/architecture/
+merged target  master
 ```
 
-The root `README.md` identifies `M3` as the active milestone and this branch as the cycle branch.
-
-## Current phase
+## Final operational state
 
 ```text
-phase                    POST-ACCEPTANCE GOVERNANCE
-contract                 FINAL / FROZEN
-architecture set         FINAL / FROZEN
-architecture review      PASS
-architecture approval    GRANTED
-implementation steps     FINAL / FROZEN
-steps review             PASS
-steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-final acceptance         ACCEPTED — M3-S07 COMPLETED
-AS-IS consolidation      COMPLETED — reviewer-owned
-consistency closure      COMPLETED — reviewer-owned
-final delivery approval  NOT GRANTED
-M3                       NOT DELIVERED
-blockers                 none for a separate delivery authorization decision
-review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0; consistency closure 1/1 CLOSED
+phase                    DELIVERED
+implementation            COMPLETED — M3-S00 .. M3-S07
+final acceptance          ACCEPTED
+AS-IS consolidation       COMPLETED
+consistency closure       COMPLETED
+M3                        DELIVERED
+merge                     NOT EXECUTED — human-owned
+active software cycle     NONE
+software implementation   NOT AUTHORIZED
+blockers                   none; human-owned merge pending
 ```
 
-All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`. The final acceptance gate is `ACCEPTED`, the accepted result has been consolidated into the current authoritative `docs/architecture/` corpus, and the independent consistency closure has been reviewer-accepted. No software implementation, delivery, merge, tag, release or artifact publication is currently authorized.
+The M3 contract, architecture set and implementation decomposition remain `FINAL / FROZEN`. No incompatible contract, architecture or steps reopen is active. Implementation, final acceptance, AS-IS consolidation, consistency closure and the reviewer-owned delivery decision are complete.
 
-## Frozen governance gates
+The authoritative current system is the accepted fifteen-file corpus under `docs/architecture/`. It expresses the delivered M3 state as autonomous current AS-IS and does not require milestone reconstruction.
+
+Delivery does not imply merge, tag, GitHub Release or artifact publication. Merge into `master` remains a separate human-owned operation.
+
+## Design, implementation and closure gates
+
+| Gate | State |
+|---|---|
+| Contract | FINAL / FROZEN |
+| Architecture set | FINAL / FROZEN |
+| Implementation steps | FINAL / FROZEN |
+| Implementation | COMPLETED — `M3-S00 .. M3-S07` |
+| Final acceptance | ACCEPTED — `M3-S07 COMPLETED` |
+| AS-IS consolidation | COMPLETED — candidate `d5b73b892defe554e21dff0c29d1e0e221157d9a` accepted |
+| Consistency closure | COMPLETED — `CC-01 .. CC-15 PASS` |
+| Delivery | DELIVERED — reviewer-owned |
+| Merge | NOT EXECUTED — human-owned |
+
+## Reviewer-owned delivery decision
 
 ```text
-contract                 docs/milestones/M3/contract.md
-contract status          FINAL / FROZEN
-contract freeze commit   e48a81a2a7436a01644509579a02546fa777cc4a
-reviewed content SHA     6f1ffd5f8e85c3bb90578db3ec2067f36df53e34
-open contract findings   0
-human freeze approval    GRANTED
-
-architecture set         docs/milestones/M3/architecture/
-architecture status      FINAL / FROZEN
-ADP-01 .. ADP-08         CLOSED — 8 / 8
-open architecture finding 0
-contract reopening       NOT REQUIRED
-architecture reopening   NOT REQUIRED
-
-implementation steps     docs/milestones/M3/steps.md
-steps status             FINAL / FROZEN
-slice registry           M3-S00 .. M3-S07
-slice count              8
-open decomposition finding 0
-steps reopening          NOT REQUIRED
+delivered branch                   M3
+delivered repository boundary      db7be8a03c4716414bc2a43715ad393d14a60333
+accepted final candidate            58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+final acceptance commit             2a9390086b07b5d8248d016f3d80e34d665c046d
+accepted consolidation candidate    d5b73b892defe554e21dff0c29d1e0e221157d9a
+consolidation acceptance commit     cb444bbe797f6ff74df833b512667876188c150d
+AUDITED_ASIS_SHA                    2f091f4ca021153280ed37fad7b4b2cc730195f9
+consistency report publication      68943e222a612577dd66a36af4a6b7e82b3f1b35
+consistency review-fix publication  4815bff65306ab3b5f041dc86c8329d0046750df
+consistency acceptance commit       44a07d594a45c95d3ba17de31102e4073d9d6367
+reviewer delivery decision          DELIVERED
+M3                                  DELIVERED
+merge                               NOT EXECUTED
 ```
 
-No incompatible reopen is active. Any future semantic change requires the applicable formal reopen or a new cycle.
+The delivered repository boundary is the exact `M3` head at which every implementation and post-implementation gate was already reviewer-accepted and all completed execution aids had been retired. The delivery projection changes governance/navigation only; it does not change delivered software, schema, dependencies or current architecture.
 
 ## Reviewer-owned implementation completion
 
@@ -79,13 +81,11 @@ M3-S06  COMPLETED
 M3-S07  COMPLETED — S07-RF-01 / S07-RF-02 CLOSED
 ```
 
-## Accepted final acceptance gate
+## Accepted final acceptance
 
 ```text
 replacement tested candidate    58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
 replacement publication         a816567091fd2e4e7e179e722ad8d0bf1de958d9
-candidate evidence              docs/milestones/M3/evidence/M3-S07-candidate.md
-acceptance review               docs/milestones/M3/acceptance.md
 M3-VER-01 .. M3-VER-19          19 / 19 PASS
 mapped evidence targets         45 / 45
 mapped concrete cases           72 / 72 PASS
@@ -95,55 +95,43 @@ T3 snapshot                     BEFORE / AFTER PASS
 schema compare_metadata         []
 authoritative concurrency IDs   83 exact
 normative skip/xfail/rerun      0 / 0 / 0
+review findings                 S07 2 / 2 CLOSED
 reviewer decision               ACCEPTED
 ```
 
 ## Accepted AS-IS consolidation
 
 ```text
-gate specification          docs/milestones/M3/as-is-consolidation.md
-candidate                   d5b73b892defe554e21dff0c29d1e0e221157d9a
-candidate parent            5848d6e48e3be0c20163e4903447a11a270b7960
-acceptance commit           cb444bbe797f6ff74df833b512667876188c150d
-reviewer decision           ACCEPTED
-AS-IS consolidation        COMPLETED
-review findings             0
-current architecture files  15 / 15 exact
-broken internal links       0
-semantic milestone leakage  0
-unresolved placeholders     0
-business HTTP / Health      63 / 1 exact
-canonical GET routes        22 exact
-cursor-bearing routes       12 exact
-CLI 201 Location operations 8 exact
-metadata tables             15
-Alembic root/head           0001_m2_kernel / 0001_m2_kernel
-authoritative scenarios     83 exact
-safety predicates           21 exact
-project version             0.2.0
+candidate                       d5b73b892defe554e21dff0c29d1e0e221157d9a
+reviewer decision               ACCEPTED
+AS-IS consolidation             COMPLETED
+current architecture files      15 / 15 exact
+broken internal links           0
+semantic milestone leakage      0
+unresolved placeholders         0
+business HTTP / Health          63 / 1 exact
+canonical GET routes            22 exact
+cursor-bearing routes           12 exact
+CLI 201 Location operations     8 exact
+metadata tables                 15
+Alembic root/head               0001_m2_kernel / 0001_m2_kernel
+authoritative scenarios         83 exact
+safety predicates               21 exact
+project version                 0.2.0
 production/test/schema/dependency delta 0
-full repository             1010 passed
+full repository                 1010 passed
 ```
-
-The accepted current architecture corpus remains exactly fifteen owners and expresses the accepted result as autonomous present-tense AS-IS.
 
 ## Accepted consistency closure
 
 ```text
 gate specification          docs/milestones/M3/consistency-closure.md
-specification commit        994414747ef3577e5a6f83bdb62bd2fc9146beff
-authorization commit        55cccf0a19786a904d4fad48fd614b211ead48af
-prompt publication          2f091f4ca021153280ed37fad7b4b2cc730195f9
 AUDITED_ASIS_SHA            2f091f4ca021153280ed37fad7b4b2cc730195f9
-original publication        68943e222a612577dd66a36af4a6b7e82b3f1b35
-review finding commit       3c804d2fb8477b61bd2345ff442585750c5e0a4d
-review-fix prompt           10d3523468f5f1231a118de63aab2ed4acfbfd4a
-review-fix publication      4815bff65306ab3b5f041dc86c8329d0046750df
 report                      docs/milestones/M3/consistency-closure-report.md
 CC-01 .. CC-15              15 / 15 PASS
 semantic/current-owner findings 0
 owner corrections           0
-M3-CC-RF-01                 CLOSED — post-publication integrity/lifecycle evidence completed
+M3-CC-RF-01                 CLOSED
 reviewer decision           ACCEPTED
 consistency closure         COMPLETED
 production/test/schema/dependency delta 0
@@ -156,81 +144,73 @@ unexpected 40001            0
 known warnings              1 reviewed Starlette/httpx deprecation
 ```
 
-### M3-CC-RF-01 reviewer closure
+## Delivered capability
 
-The first consistency candidate had one evidence-only gap: the original publication did not record the bounded post-publication integrity/lifecycle checks required by the gate. The semantic closure result, `AUDITED_ASIS_SHA`, CC matrix and full repository verification were not rejected.
+M3 delivers the accepted current boundary in which:
 
-The bounded review fix proved the original publication directly:
+- all 22 canonical public business GETs use trusted projection responsibility rather than mutation-semantic recertification;
+- every canonical GET obtains its complete business projection through one authoritative PostgreSQL business statement and one statement snapshot;
+- all 12 cursor-bearing routes bind complete membership identity, including Object components `parent_object_id`, Object-relative Relationship `object_id`, lifecycle scope and ObjectTemplate parent-filter presence state;
+- ObjectTemplate list filtering distinguishes omitted parent, exact parent UUID and exact lowercase `null` root-only semantics in HTTP and the official CLI;
+- lifecycle historical reads decode mandatory typed carriers and recursive `JsonValue` without replaying mutation transition certification;
+- the eight registered CLI `201 Created` operations validate `Location` through the closed NETAUTO token grammar with request-key precedence and response JSON-path fallback;
+- schema, migration graph, dependency/lock baseline, project version, mutation concurrency design, runtime/deployment surface and public route/resource inventory remain unchanged.
+
+The authoritative complete description is under `docs/architecture/`.
+
+## Delivered verification boundary
 
 ```text
-original publication file set
-    docs/milestones/M3/consistency-closure-report.md
-    docs/milestones/M3/status.md
-    -> exact / PASS
-
-protected semantic/executable diff
-    docs/architecture + src + tests + pyproject.toml + uv.lock + migrations
-    -> empty / PASS
-
-publication marker audit
-    7 / 7 PASS
-    CC-01 .. CC-15 = PASS
-
-current lifecycle / traceability
-    tests/test_m3_traceability.py
-    tests/test_m3_s07_acceptance.py
-    -> 26 passed
-    -> skip / xfail / rerun = 0 / 0 / 0
-
-new substantive finding
-    none
-
-consistency-closure report changed by review fix
-    no
+M3-VER                          19 / 19 PASS
+M3 acceptance criteria          19 / 19
+M3 outcomes                      8 / 8
+canonical business GET routes   22 / 22
+cursor-bearing routes           12 / 12
+CLI 201 + Location operations    8 / 8
+business SQL statements         22 / 22 exactly one
+T3 statement-snapshot cuts      BEFORE / AFTER PASS
+metadata tables                 15
+compare_metadata                []
+Alembic root/head/current       0001_m2_kernel
+canonical concurrency scenarios 83 exact
+safety predicates               21 exact
+full repository                 1010 passed
+non-PostgreSQL                  726 passed / 284 deselected
+skip / xfail / rerun             0 / 0 / 0
+supported-path 40P01             0
+unexpected 40001                 0
+known warnings                   1 reviewed Starlette/httpx deprecation
+open product findings            0
+open consolidation findings      0
+open consistency findings        0
 ```
 
-The initial marker-check attempt contained a shell-quoting error and failed with a Python `SyntaxError`; it produced no semantic result. The corrected literal command was rerun and passed, and the failed attempt remains transparently recorded in the review-fix evidence/handoff rather than being treated as a gate PASS.
-
-`AUDITED_ASIS_SHA` remains unchanged at `2f091f4ca021153280ed37fad7b4b2cc730195f9`.
-
-## Current durable architecture census
+## Delivered artifact identity
 
 ```text
-current architecture files       15
-mutation primitives              41
-semantic family blocks           15
-unordered concurrency cells     861
-safety predicates                21
-canonical concurrency scenarios  83
-authoritative tables             15
-business HTTP operations         63
-Health operations                 1
-canonical business GET routes    22
-cursor-bearing routes            12
-CLI remote operations            63
-CLI 201 + Location operations     8
-CLI local commands                8
-public error codes               23
-Alembic base/head/current         0001_m2_kernel
-project version                   0.2.0
+release version  0.2.0
+wheel            netauto-0.2.0-py3-none-any.whl
+wheel size       170185 bytes
+wheel SHA-256    428a2fe05a9905f3794dd15de65667d5506fa5bef2f0568d1ca1dd2b59fb0ba2
+PostgreSQL       16.15
+Python           3.14.7
 ```
 
-## Remaining governance
+No artifact publication, tag or GitHub Release is implied by milestone delivery.
+
+## Repository state pending merge
 
 ```text
-contract / architecture / steps           FINAL / FROZEN
-implementation M3-S00 .. M3-S07           COMPLETED
-final acceptance                          ACCEPTED
-AS-IS consolidation                       COMPLETED
-consistency closure                       COMPLETED
-M3                                        NOT DELIVERED
-final delivery approval                   PENDING / NOT AUTHORIZED
-merge / tag / release / artifact publish  NOT AUTHORIZED
-software implementation                   NOT AUTHORIZED
+M3 source branch        DELIVERED historical branch pending merge
+master                  does not yet contain the delivered M3 boundary
+active software cycle   NONE
+software changes        NOT AUTHORIZED without a new cycle or formal reopen
+merge                   NOT EXECUTED — human-owned
+PR                      NOT CREATED by delivery decision
 ```
 
 ## Immediate next action
 
-Make a separate explicit reviewer/human governance decision on whether to authorize final M3 delivery using the accepted final-acceptance, AS-IS consolidation and consistency-closure results as its input boundary.
+The only remaining M3 repository operation is the **human-owned merge of `M3` into `master`** if desired. The merge is not part of the reviewer delivery decision and must not be inferred from `M3 = DELIVERED`.
 
-Until that separate decision is recorded, M3 remains **NOT DELIVERED** and delivery, merge, tag, release and artifact publication remain **NOT AUTHORIZED**.
+After merge, update the root README and this status to record the actual merge commit/PR and `DELIVERED / MERGED`. Until then, `M3` remains `DELIVERED / NOT MERGED` and no software implementation is authorized.
