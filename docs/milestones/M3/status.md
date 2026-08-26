@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — AS-IS CONSOLIDATION — M3-S07 COMPLETED
+**Milestone status:** ACTIVE — AS-IS CONSOLIDATION CANDIDATE READY FOR REVIEW — M3-S07 COMPLETED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -28,14 +28,14 @@ steps review             PASS
 steps approval           GRANTED
 active implementation    NONE
 software implementation  NOT AUTHORIZED
-documentation gate       AS-IS CONSOLIDATION — READY / AUTHORIZED
+documentation gate       AS-IS CONSOLIDATION — CANDIDATE READY FOR REVIEW
 blockers                 none
 review findings          S03 2/2 CLOSED; S07 2/2 CLOSED
 final acceptance         ACCEPTED — M3-S07 COMPLETED
 M3                       NOT DELIVERED
 ```
 
-All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`, and the final acceptance gate is reviewer-owned `ACCEPTED`. The separate post-acceptance AS-IS consolidation gate is now authorized as documentation-only work under `docs/milestones/M3/as-is-consolidation.md`. This authorization does not reopen software implementation and does not authorize consistency closure, delivery, merge, tag, release or artifact publication.
+All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`, and the final acceptance gate is reviewer-owned `ACCEPTED`. The separate post-acceptance AS-IS consolidation gate has produced one documentation-only candidate under `docs/milestones/M3/as-is-consolidation.md`; reviewer inspection is pending. This state does not reopen software implementation and does not authorize consistency closure, delivery, merge, tag, release or artifact publication.
 
 ## Frozen governance gates
 
@@ -222,7 +222,7 @@ runtime/deployment capability
 ```text
 gate specification          docs/milestones/M3/as-is-consolidation.md
 specification status        FINAL
-gate state                  READY / AUTHORIZED
+gate state                  CANDIDATE READY FOR REVIEW
 human authorization         GRANTED by explicit post-S07 proceed decision
 authorization basis         final acceptance ACCEPTED / M3-S07 COMPLETED
 purpose                     consolidate accepted M3 state into current docs/architecture/
@@ -243,7 +243,7 @@ The consolidation must derive current-state wording from the delivered AS-IS plu
 contract / architecture / steps           FINAL / FROZEN
 implementation M3-S00 .. M3-S07           COMPLETED
 final acceptance                          ACCEPTED
-AS-IS consolidation                       READY / AUTHORIZED
+AS-IS consolidation                       CANDIDATE READY FOR REVIEW
 consistency closure                       NOT AUTHORIZED / NOT STARTED
 M3                                        NOT DELIVERED
 final delivery approval                   NOT GRANTED
@@ -253,6 +253,6 @@ software implementation                   NOT AUTHORIZED
 
 ## Immediate next action
 
-Execute the documentation-only M3 AS-IS consolidation gate under `docs/milestones/M3/as-is-consolidation.md`, produce one complete current-architecture candidate and return it for reviewer inspection.
+Review the complete documentation-only M3 AS-IS consolidation candidate under `docs/milestones/M3/as-is-consolidation.md`.
 
 Do not start consistency closure or any delivery/merge/release action. The consolidator may mark only `AS-IS consolidation = CANDIDATE READY FOR REVIEW`; reviewer-owned `COMPLETED` remains a separate decision.

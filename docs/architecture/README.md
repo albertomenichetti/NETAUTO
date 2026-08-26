@@ -19,6 +19,7 @@ required to understand or implement the current system.
 |---|---|---|
 | M1 | [`../milestones/M1/`](../milestones/M1/) | PostgreSQL kernel, versioned model resources, factual objects and relationships, ownership, HTTP and deterministic concurrency foundations. |
 | M2 | [`../milestones/M2/`](../milestones/M2/) | Versioned Relationship schemas and factual state, durable migration baseline, centralized lock planning, Health, official CLI and installed Linux runtime. |
+| M3 | [`../milestones/M3/`](../milestones/M3/) | Trusted one-statement public reads, complete cursor query identity, ObjectTemplate root filtering and exact CLI create-response validation. |
 
 Provenance is historical navigation only. The owner map below is the semantic
 entry point.
@@ -90,11 +91,19 @@ matrix. The PostgreSQL realization stabilizes complete predicates before DML,
 preserves referential lifetime and has no supported-path deadlock recovery
 contract.
 
-### Coherent reads and safe corruption boundary
+### Trusted reads and safe materialization boundary
 
-A public aggregate or page observes one coherent committed state. Persisted
-invariant corruption fails the complete representation safely; it is never
-repaired, filtered or partially projected at a read boundary.
+Each canonical public business GET obtains its complete projection through one
+authoritative SQL statement and therefore observes one PostgreSQL statement
+snapshot. Reads validate request and cursor carriers, classify path targets,
+compose persisted facts and decode the mandatory typed response carriers. They
+do not re-certify mutation-owned semantic invariants solely because state is
+being read.
+
+A representable persisted semantic surprise remains readable. State that cannot
+materialize a mandatory response carrier fails the complete representation
+through the bounded internal-failure boundary; reads never repair state, invent
+defaults, silently omit required members or return a partial projection.
 
 ### Explicit operation and remediation
 

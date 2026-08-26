@@ -319,7 +319,22 @@ relationship-capability projection
 
 The exact version read exposes the local snapshot and exact parent pin. Effective schema is a separate derived projection and identifies the declaring lineage of each member.
 
-Ordinary reads are snapshot-consistent for the request but do not promise repeatability across requests.
+Read projections trust the admitted persisted facts and decode only the carriers
+needed by their typed response. The exact-version aggregate projects its local
+properties and components as independent ordered sets. Effective-schema reads
+follow the persisted exact `(template_id, version)` parent chain, while
+relationship-capability reads follow stable lineage ancestry. Neither traversal
+re-runs inheritance admissibility, cycle/agreement certification, default-version
+publication certification or declaration mutation validation.
+
+A representable persisted semantic surprise remains readable. A missing,
+ambiguous or unusable mandatory carrier fails the complete projection through
+the bounded internal-failure boundary; reads do not repair ancestry, substitute
+defaults or silently omit required members.
+
+Each public ObjectTemplate projection uses one authoritative business statement
+and is snapshot-consistent for that request. Separate requests do not promise
+repeatability.
 
 ## Key invariants
 

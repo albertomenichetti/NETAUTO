@@ -247,9 +247,22 @@ Cross-aggregate persistence references are protected with non-cascading lifetime
 
 ## Read consistency
 
-Ordinary GET/list operations are non-locking and snapshot-consistent for the single request/operation. No repeatability is promised across separate requests.
+DataType GET/list projections trust the admitted persisted facts. They decode the
+stable lineage and exact-version carriers required by the public response, but
+do not re-certify that a persisted default is PUBLISHED or re-run constraint
+canonicalization and mutation-domain validation over an exact version merely
+because it is being read.
 
-Composite reads must not expose lineage/default/version combinations that never coexisted in one coherent database snapshot.
+A representable persisted semantic surprise remains readable. An unusable
+mandatory UUID, lifecycle, primitive-type or constraint carrier fails through
+the bounded internal-failure boundary; the read does not repair, replace or omit
+it.
+
+Ordinary GET/list operations are non-locking and snapshot-consistent for the
+single request/operation. Each public DataType projection uses one authoritative
+business statement, so it cannot expose lineage/default/version fragments that
+never coexisted in that statement snapshot. No repeatability is promised across
+separate requests.
 
 Mutation/admission reads stabilize lifecycle/default predicates through the transaction contract defined in `concurrency.md`.
 

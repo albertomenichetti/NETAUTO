@@ -43,6 +43,7 @@ PostgreSQL.
 
 Proves live metadata/schema behavior, PK/UNIQUE/FK/CHECK/delete actions, canonical
 JSONB codecs, aggregate commit/rollback, lock-plan SQL, constraint classification,
+trusted projection decoding, exact one-business-statement public GET execution,
 read snapshots and active Health query behavior.
 
 T2 requires the externally supplied `TEST_DATABASE_URL`.
@@ -51,7 +52,9 @@ T2 requires the externally supplied `TEST_DATABASE_URL`.
 
 Proves supported interleavings, required blocking/progress, fresh post-wait reads,
 advisory-gate visibility, PK/UNIQUE/FK arbitration, bounded whole-UoW restart and
-supported-path deadlock absence through independent sessions.
+supported-path deadlock absence through independent sessions. It also proves the
+BEFORE/AFTER statement-snapshot cuts for a representative multi-fragment public
+read without changing production SQL, isolation or path selection.
 
 Stress and sleep are not correctness authorities.
 
@@ -59,8 +62,9 @@ Stress and sleep are not correctness authorities.
 
 Proves the exact 63 business plus one Health operation inventory, strict request
 carriers, omission/null distinction, DTO/status/Location/failure mapping, bounded
-details, projection/filter/order/cursor behavior, OpenAPI closure and forbidden
-surfaces. Lifespan-sensitive cases use the real ASGI lifespan.
+details, trusted read responsibility, projection/filter/order/cursor behavior,
+ObjectTemplate parent tri-state, historical decoder boundary, OpenAPI closure
+and forbidden surfaces. Lifespan-sensitive cases use the real ASGI lifespan.
 
 ### T5 — Migration, schema lifecycle and startup compatibility
 
@@ -84,7 +88,8 @@ finding is reduced to a deterministic regression where reasonably possible.
 
 Proves parsing, selector planning, session transitions, HTTP trace truthfulness,
 FORMATTED/JSON rendering, PTY-visible editing/history, stdout/stderr/exit behavior,
-HTTPS validation and HTTP-only authority.
+HTTPS validation and HTTP-only authority. It covers the nullable QUERY/BODY/PATH
+boundary and the closed registered Location materialization protocol.
 
 ### T9 — Installed artifact and Linux operation
 
@@ -149,8 +154,11 @@ canonical concurrency scenarios 83
 authoritative tables            15
 Alembic base/head                 1 / 1 = 0001_m2_kernel
 business HTTP operations         63 = 41 mutation + 22 read
+canonical business GET routes    22
+cursor-bearing GET routes        12
 Health operations                 1
 CLI remote operations            63
+CLI 201 + Location operations      8
 CLI local commands                8
 public error codes               23
 ```
@@ -203,7 +211,12 @@ Verification preserves:
   CREATE/DATA_CHANGE/SCHEMA_CHANGE/DELETE;
 - lifecycle transition codecs, semantic-view fan-out and history independent of
   live metadata;
-- coherent before-or-after aggregate/page reads and full corruption failure;
+- trusted public reads that return representable persisted semantic surprises
+  without mutation-semantic recertification;
+- bounded complete-projection failure for materially undecodable mandatory
+  carriers, with no repair, fabricated default or silent omission;
+- exactly one authoritative business statement and one BEFORE-or-AFTER
+  PostgreSQL statement snapshot for each canonical public GET;
 - all-or-nothing header/child/closure/event behavior;
 - reference lifetime, delete blockers and exact-ID ABA safety.
 
@@ -215,6 +228,61 @@ indexes and unowned schema objects are checked negatively.
 The migration suite proves empty database to head, head to base ownership,
 base/head repeatability, failure rollback, external sentinel survival, one graph
 root/head and `compare_metadata == []`.
+
+## Public read, cursor and client protocol obligations
+
+The exact 22-route business GET census is checked against the application
+registry and generated OpenAPI. For every route, durable evidence proves strict
+request/target behavior, the typed public projection and exactly one observed
+business SQL statement on real PostgreSQL. Static and runtime evidence jointly
+prove that GET services do not depend on `coherent_read()` or mutation semantic
+validators solely to re-certify persisted facts.
+
+Representative persisted fixtures cover both sides of the trust boundary:
+
+```text
+representable semantic surprise
+    -> public projection succeeds
+
+materially undecodable mandatory carrier
+    -> bounded internal_error
+
+semantically invalid mutation candidate/transition
+    -> mutation validation still rejects it
+```
+
+Global and Object-scoped lifecycle evidence uses the existing discriminated
+event DTOs and `(occurred_at, id) DESC` order. It proves recursive `JsonValue` and
+required UUID/string/integer decoding while ensuring historical transition
+admissibility, changedness, version increase and live-state agreement are not
+replayed by GET.
+
+The exact 12-route cursor registry records, for every route, codec route identity,
+all membership-affecting path targets and filters, required presence bits, the
+complete keyset tuple and order. Evidence requires true multipage traversal with
+no cursor-induced omission/duplication, accepts a changed limit, and rejects
+changed route/filter/path/presence or malformed keys. It explicitly covers:
+
+```text
+Object components      parent_object_id + slot_name / child_object_id
+Object relationships   object_id + definition/name filters /
+                       relationship_id + destination_object_id + name
+lifecycle              global None vs Object path UUID /
+                       occurred_at + id DESC
+ObjectTemplate parent  omitted vs root-only vs exact parent
+```
+
+HTTP and CLI evidence agree on ObjectTemplate parent filtering: omission means
+no predicate/query pair, UUID or human selector yields an exact UUID query pair,
+and exact lowercase `null` means roots only with zero CLI selector discovery.
+Empty, malformed, repeated and unsupported HTTP carriers remain invalid.
+
+The exact eight registered `201 + Location` operations are derived from the CLI
+registry. Static evidence checks the closed token grammar; runtime evidence
+covers all three nested and five flat templates, request-key precedence,
+str/int-non-bool carriers, exact one-header comparison, every protocol-failure
+class, interactive/non-interactive truthfulness and absence of a hidden
+post-mutation GET.
 
 ## HTTP, Health and CLI obligations
 
