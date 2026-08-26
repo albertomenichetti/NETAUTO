@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — CONSISTENCY CLOSURE CANDIDATE — M3-S07 COMPLETED
+**Milestone status:** ACTIVE — CONSISTENCY CLOSURE REVIEW CHANGES REQUIRED — M3-S07 COMPLETED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ The root `README.md` identifies `M3` as the active milestone and this branch as 
 ## Current phase
 
 ```text
-phase                    CONSISTENCY CLOSURE
+phase                    CONSISTENCY CLOSURE REVIEW
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -30,16 +30,16 @@ active implementation    NONE
 software implementation  NOT AUTHORIZED
 final acceptance         ACCEPTED — M3-S07 COMPLETED
 AS-IS consolidation      COMPLETED — reviewer-owned
-consistency closure      CANDIDATE READY FOR REVIEW
+consistency closure      REVIEW CHANGES REQUIRED
 final delivery approval  NOT GRANTED
 M3                       NOT DELIVERED
-blockers                 none
-review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0; consistency closure 0
+blockers                 M3-CC-RF-01
+review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0; consistency closure 1 OPEN
 ```
 
-All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`. The final acceptance gate is reviewer-owned `ACCEPTED`, and the accepted result has been consolidated into the current authoritative `docs/architecture/` corpus. The independent consistency-closure candidate is published for reviewer inspection under `docs/milestones/M3/consistency-closure.md`; all fifteen matrix cells pass and the finding registry is empty.
+All implementation slices `M3-S00 .. M3-S07` remain reviewer-owned `COMPLETED`. The final acceptance gate remains `ACCEPTED`, and the accepted AS-IS consolidation remains `COMPLETED`. The first M3 consistency-closure candidate was reviewed and is **not yet accepted** because one bounded post-publication evidence requirement is missing. No semantic, product, schema, dependency, current-owner or CC-01..CC-15 finding was discovered.
 
-This authorization does not reopen software implementation and does not authorize delivery, merge, tag, release or artifact publication.
+Software implementation remains closed. Delivery, merge, tag, release and artifact publication remain unauthorized.
 
 ## Frozen governance gates
 
@@ -66,28 +66,24 @@ open decomposition finding 0
 steps reopening          NOT REQUIRED
 ```
 
-No incompatible reopen is active. Any semantic change discovered by consistency closure requires classification and the applicable STOP/reopen path rather than silent correction.
+No incompatible reopen is active. The current consistency-closure finding is evidence-only and does not reopen any semantic authority.
 
-## Reviewer-owned implementation completion
+## Reviewer-owned implementation and post-acceptance gates
 
 ```text
-M3-S00  COMPLETED
-M3-S01  COMPLETED
-M3-S02  COMPLETED
-M3-S03  COMPLETED — S03-RF-01 / S03-RF-02 CLOSED
-M3-S04  COMPLETED
-M3-S05  COMPLETED
-M3-S06  COMPLETED
-M3-S07  COMPLETED — S07-RF-01 / S07-RF-02 CLOSED
+M3-S00 .. M3-S07         COMPLETED
+final acceptance         ACCEPTED
+AS-IS consolidation      COMPLETED
+consistency closure      REVIEW CHANGES REQUIRED
+M3                       NOT DELIVERED
+software implementation  NOT AUTHORIZED
 ```
 
-Accepted final candidate:
+Accepted final S07 candidate remains:
 
 ```text
 replacement tested candidate    58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
 replacement publication         a816567091fd2e4e7e179e722ad8d0bf1de958d9
-candidate evidence              docs/milestones/M3/evidence/M3-S07-candidate.md
-acceptance review               docs/milestones/M3/acceptance.md
 M3-VER-01 .. M3-VER-19          19 / 19 PASS
 GET / cursor / CLI censuses     22 / 12 / 8 exact
 business SQL statements         22 / 22 exactly one
@@ -98,76 +94,75 @@ normative skip/xfail/rerun      0 / 0 / 0
 reviewer decision               ACCEPTED
 ```
 
-## Accepted AS-IS consolidation
+Accepted AS-IS consolidation remains:
 
 ```text
-gate specification          docs/milestones/M3/as-is-consolidation.md
 candidate                   d5b73b892defe554e21dff0c29d1e0e221157d9a
-candidate parent            5848d6e48e3be0c20163e4903447a11a270b7960
 acceptance commit           cb444bbe797f6ff74df833b512667876188c150d
 reviewer decision           ACCEPTED
-AS-IS consolidation        COMPLETED
+AS-IS consolidation         COMPLETED
 review findings             0
 current architecture files  15 / 15 exact
 broken internal links       0
-semantic milestone leakage  0
-unresolved placeholders     0
-business HTTP / Health      63 / 1 exact
 canonical GET routes        22 exact
 cursor-bearing routes       12 exact
 CLI 201 Location operations 8 exact
-metadata tables             15
-Alembic root/head           0001_m2_kernel / 0001_m2_kernel
 authoritative scenarios     83 exact
 safety predicates           21 exact
-project version             0.2.0
-production/test/schema/dependency delta 0
 full repository             1010 passed
 ```
 
-Consistency-closure candidate evidence:
-
-```text
-report                      docs/milestones/M3/consistency-closure-report.md
-AUDITED_ASIS_SHA            2f091f4ca021153280ed37fad7b4b2cc730195f9
-CC-01 .. CC-15              15 / 15 PASS
-open consistency findings  0
-current owner corrections  0
-broken current-owner links 0
-production/test/schema/dependency delta 0
-wheel                       170185 bytes / 428a2fe05a9905f3794dd15de65667d5506fa5bef2f0568d1ca1dd2b59fb0ba2
-non-PostgreSQL repository   726 passed / 284 deselected
-full repository            1010 passed
-known warning              1 Starlette/httpx deprecation
-```
-
-The current `docs/architecture/` corpus expresses the accepted result as autonomous present-tense AS-IS. It preserves all delivered mutation, schema, concurrency, Health, runtime and deployment guarantees while owning the current trusted-read, cursor, parent-filter and CLI Location behavior directly.
-
-## Consistency-closure candidate
+## M3 consistency-closure first candidate review
 
 ```text
 gate specification          docs/milestones/M3/consistency-closure.md
 specification commit        994414747ef3577e5a6f83bdb62bd2fc9146beff
-specification status        FINAL
-gate state                  CANDIDATE READY FOR REVIEW
-authorization basis         AS-IS consolidation COMPLETED
-purpose                     independently audit current owner coherence
-finite matrix               CC-01 .. CC-15
-starting accepted AS-IS     consolidation candidate d5b73b892defe554e21dff0c29d1e0e221157d9a
-default write scope         consistency-closure-report.md + status.md
-conditional owner edits     bounded lossless corrections only after concrete finding
-software/test changes       NOT AUTHORIZED
-schema/migration changes    NOT AUTHORIZED
-dependency/lock changes     NOT AUTHORIZED
-frozen M3 authority changes NOT AUTHORIZED
-technology changes          NOT AUTHORIZED
-final delivery              NOT AUTHORIZED
-merge/tag/release/publish   NOT AUTHORIZED
+authorization commit        55cccf0a19786a904d4fad48fd614b211ead48af
+prompt publication          2f091f4ca021153280ed37fad7b4b2cc730195f9
+AUDITED_ASIS_SHA            2f091f4ca021153280ed37fad7b4b2cc730195f9
+publication commit          68943e222a612577dd66a36af4a6b7e82b3f1b35
+report                      docs/milestones/M3/consistency-closure-report.md
+CC-01 .. CC-15              15 / 15 PASS
+semantic/current-owner findings 0
+owner corrections           0
+production/test/schema/dependency delta 0
+wheel invariant             PASS — 170185 bytes / 428a2fe05a9905f3794dd15de65667d5506fa5bef2f0568d1ca1dd2b59fb0ba2
+non-PostgreSQL              726 passed / 284 deselected
+full repository             1010 passed
+review outcome              REVIEW CHANGES REQUIRED
+review findings             1 OPEN — M3-CC-RF-01
 ```
 
-The closure must use the current `docs/architecture/` owners as semantic authority, technology baseline where applicable, and frozen/accepted milestone material only as cross-check evidence. Code/tests never gain precedence over an unambiguous current owner.
+### M3-CC-RF-01 — post-publication remote-HEAD integrity/lifecycle evidence missing
 
-The closure may publish a candidate only with all `CC-01 .. CC-15 = PASS`, zero open consistency findings, exact current inventories, real-PostgreSQL required evidence, and no unauthorized product/schema/dependency delta.
+The consistency-closure specification and execution prompt require, after the report/status publication is pushed:
+
+```text
+verify local HEAD = origin/M3 = remote M3
+verify clean working tree
+rerun bounded lifecycle/integrity checks on the exact remote HEAD
+```
+
+The candidate handoff proves local/origin/remote equality and a clean working tree, and the reviewer independently verified that remote `M3` points exactly to `68943e222a612577dd66a36af4a6b7e82b3f1b35`. However, neither the candidate report, `status.md`, nor the handoff records the required bounded post-publication lifecycle/integrity rerun on that exact remote HEAD.
+
+This is an evidence gap only. The audited AS-IS SHA, CC matrix, full gate, current owners and publication commit are not rejected or invalidated.
+
+Required correction:
+
+```text
+1. keep AUDITED_ASIS_SHA = 2f091f4ca021153280ed37fad7b4b2cc730195f9 unchanged;
+2. do not rerun or rewrite CC-01..CC-15 unless a bounded check actually exposes a new defect;
+3. from an exact clean checkout of current remote M3, run bounded post-publication lifecycle/integrity checks that prove at minimum:
+   - M3-S07 completed lifecycle remains valid;
+   - current M3 traceability/governance integrity remains valid;
+   - publication changed no docs/architecture owner or executable/test semantic input;
+   - report/status candidate state is internally coherent;
+4. record the literal commands, exact remote HEAD, exit statuses and results in status.md and the reviewer handoff;
+5. do not modify consistency-closure-report.md merely to embed post-publication evidence;
+6. if any bounded check fails for a substantive reason, stop and report the newly discovered finding instead of masking it.
+```
+
+No new audited AS-IS candidate is required if the bounded checks pass without repository correction, because the missing evidence concerns the later publication commit rather than the audited semantic corpus.
 
 ## Current durable architecture census
 
@@ -198,7 +193,7 @@ contract / architecture / steps           FINAL / FROZEN
 implementation M3-S00 .. M3-S07           COMPLETED
 final acceptance                          ACCEPTED
 AS-IS consolidation                       COMPLETED
-consistency closure                       CANDIDATE READY FOR REVIEW
+consistency closure                       REVIEW CHANGES REQUIRED
 M3                                        NOT DELIVERED
 final delivery approval                   NOT GRANTED
 merge / tag / release / artifact publish  NOT AUTHORIZED
@@ -207,6 +202,6 @@ software implementation                   NOT AUTHORIZED
 
 ## Immediate next action
 
-Review the published M3 consistency-closure candidate and its exact evidence. Reviewer acceptance remains required before the consistency closure may become `COMPLETED` or a separate delivery decision may be authorized.
+Execute only the bounded `M3-CC-RF-01` post-publication evidence fix and return the exact results for reviewer closure.
 
-Do not mark consistency closure `COMPLETED`, do not mark M3 `DELIVERED`, and do not create a PR, merge, tag, release or publish artifacts. Reviewer acceptance remains a separate decision.
+Do not modify current architecture, production, tests, schema, migration, dependencies, lockfiles or frozen M3 authorities unless a newly failing bounded integrity check reveals a separate issue requiring reviewer classification. Delivery remains unauthorized.
