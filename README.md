@@ -8,9 +8,12 @@ If this README, the checked-out branch or a cycle's authoritative documents disa
 
 ## Current development cycle
 
-**NO ACTIVE CYCLE**
+**ACTIVE MILESTONE: `M4`**
 
-There is currently no active milestone or fix cycle. Software changes are not permitted until a new cycle is explicitly opened and authorized according to [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md).
+Canonical branch: `M4`  
+Documentation root: [`docs/milestones/M4/`](docs/milestones/M4/)
+
+M4 is in bootstrap/design-discovery. Its detailed phase, gates and blockers belong to `docs/milestones/M4/status.md` once the milestone documentation is initialized on branch `M4`. Software implementation remains forbidden until the milestone contract, architecture set, steps and status satisfy the project governance gates defined in [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md).
 
 When a software cycle is active:
 
