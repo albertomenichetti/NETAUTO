@@ -36,6 +36,7 @@ from tests.support.m3_evidence import (
     M3_OUTCOME_TO_ACCEPTANCE,
     M3_OUTCOMES,
 )
+from tests.support.m3_s07_acceptance import validate_repository_lifecycle
 
 ROOT = Path(__file__).parents[1]
 M3_ROOT = ROOT / "docs/milestones/M3"
@@ -208,28 +209,17 @@ def test_m3_contract_quality_gates_and_normative_state_are_closed() -> None:
     assert "open design points          0 / 8" in architecture_control
     assert "open architecture findings 0" in architecture_control
     assert "**Status:** FINAL / FROZEN" in steps
-    assert "blockers                 none" in status
-    assert "software implementation  AUTHORIZED — M3-S07 ONLY" in status
-    active_s07_states = (
+    assert validate_repository_lifecycle(ROOT) in {
         "READY",
         "IN PROGRESS",
         "CANDIDATE READY FOR REVIEW",
-    )
-    assert (
-        sum(
-            f"**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 {state}" in status
-            for state in active_s07_states
-        )
-        == 1
-    )
+        "REVIEW CHANGES REQUIRED",
+        "COMPLETED",
+    }
     assert "PARTIALLY REOPENED" not in architecture_control
     assert "open contract findings   0" in status
     assert "open architecture finding 0" in status
     assert "contract reopening       NOT REQUIRED" in status
-    active_prompts = {
-        path.name for path in (M3_ROOT / "wip").glob("M3-S*-codex-prompt.md")
-    }
-    assert active_prompts == {"M3-S07-codex-prompt.md"}
 
 
 def test_m3_ver_06_all_get_services_have_no_mutation_certification_dependencies() -> (

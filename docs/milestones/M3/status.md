@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — FINAL ACCEPTANCE REVIEW — M3-S07 REVIEW CHANGES REQUIRED
+**Milestone status:** ACTIVE — FINAL ACCEPTANCE REVIEW — M3-S07 IN PROGRESS
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S07 — REVIEW CHANGES REQUIRED
+active implementation    M3-S07 — REVIEW FIX IN PROGRESS
 software implementation  AUTHORIZED — M3-S07 REVIEW FIX ONLY
 blockers                 S07-RF-01 / S07-RF-02
 ```
 
-`M3-S00` through `M3-S06` are reviewer-owned `COMPLETED`. The first `M3-S07 — Full M3 acceptance and delivery-candidate gate` candidate was reviewed and is **not accepted**. Only bounded same-slice review fixes for `S07-RF-01` and `S07-RF-02` are authorized. M3 is not accepted or delivered.
+`M3-S00` through `M3-S06` are reviewer-owned `COMPLETED`. The first `M3-S07 — Full M3 acceptance and delivery-candidate gate` candidate was reviewed and is **not accepted**. The bounded same-slice review fixes for `S07-RF-01` and `S07-RF-02` are in progress. M3 is not accepted or delivered.
 
 ## Frozen governance gates
 
@@ -233,8 +233,8 @@ M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 M3-S06 execution/review                        DONE — COMPLETED
-explicit M3-S07 implementation authorization  DONE — REVIEW FIX ONLY
-M3-S07 final acceptance review                 REVIEW CHANGES REQUIRED
+explicit M3-S07 implementation authorization  DONE — REVIEW FIX IN PROGRESS
+M3-S07 final acceptance review                 REVIEW FIX IN PROGRESS
 S07-RF-01                                      OPEN
 S07-RF-02                                      OPEN
 final M3 acceptance                            BLOCKED BY S07 REVIEW

@@ -482,6 +482,8 @@ M3_EVIDENCE_TO_TARGETS = {
             "tests/test_m3_traceability.py::test_m3_route_cursor_and_cli_censuses_equal_live_authorities",
             "tests/test_m3_traceability.py::test_m3_evidence_targets_exist_and_are_collected",
             "tests/test_m3_traceability.py::test_m3_contract_quality_gates_and_normative_state_are_closed",
+            "tests/test_m3_s07_acceptance.py::test_m3_s07_lifecycle_accepts_exact_state_matrix",
+            "tests/test_m3_s07_acceptance.py::test_m3_s07_repository_follows_current_lifecycle",
         }
     ),
     "M3-VER-19": frozenset(
