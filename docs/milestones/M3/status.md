@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — CONSISTENCY CLOSURE — M3-S07 COMPLETED
+**Milestone status:** ACTIVE — CONSISTENCY CLOSURE CANDIDATE — M3-S07 COMPLETED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -30,14 +30,14 @@ active implementation    NONE
 software implementation  NOT AUTHORIZED
 final acceptance         ACCEPTED — M3-S07 COMPLETED
 AS-IS consolidation      COMPLETED — reviewer-owned
-consistency closure      READY / AUTHORIZED
+consistency closure      CANDIDATE READY FOR REVIEW
 final delivery approval  NOT GRANTED
 M3                       NOT DELIVERED
 blockers                 none
-review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0
+review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0; consistency closure 0
 ```
 
-All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`. The final acceptance gate is reviewer-owned `ACCEPTED`, and the accepted result has been consolidated into the current authoritative `docs/architecture/` corpus. The independent consistency-closure gate is now authorized as a post-consolidation audit/evidence gate under `docs/milestones/M3/consistency-closure.md`.
+All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`. The final acceptance gate is reviewer-owned `ACCEPTED`, and the accepted result has been consolidated into the current authoritative `docs/architecture/` corpus. The independent consistency-closure candidate is published for reviewer inspection under `docs/milestones/M3/consistency-closure.md`; all fifteen matrix cells pass and the finding registry is empty.
 
 This authorization does not reopen software implementation and does not authorize delivery, merge, tag, release or artifact publication.
 
@@ -125,15 +125,31 @@ production/test/schema/dependency delta 0
 full repository             1010 passed
 ```
 
+Consistency-closure candidate evidence:
+
+```text
+report                      docs/milestones/M3/consistency-closure-report.md
+AUDITED_ASIS_SHA            2f091f4ca021153280ed37fad7b4b2cc730195f9
+CC-01 .. CC-15              15 / 15 PASS
+open consistency findings  0
+current owner corrections  0
+broken current-owner links 0
+production/test/schema/dependency delta 0
+wheel                       170185 bytes / 428a2fe05a9905f3794dd15de65667d5506fa5bef2f0568d1ca1dd2b59fb0ba2
+non-PostgreSQL repository   726 passed / 284 deselected
+full repository            1010 passed
+known warning              1 Starlette/httpx deprecation
+```
+
 The current `docs/architecture/` corpus expresses the accepted result as autonomous present-tense AS-IS. It preserves all delivered mutation, schema, concurrency, Health, runtime and deployment guarantees while owning the current trusted-read, cursor, parent-filter and CLI Location behavior directly.
 
-## Consistency-closure authorization
+## Consistency-closure candidate
 
 ```text
 gate specification          docs/milestones/M3/consistency-closure.md
 specification commit        994414747ef3577e5a6f83bdb62bd2fc9146beff
 specification status        FINAL
-gate state                  READY / AUTHORIZED
+gate state                  CANDIDATE READY FOR REVIEW
 authorization basis         AS-IS consolidation COMPLETED
 purpose                     independently audit current owner coherence
 finite matrix               CC-01 .. CC-15
@@ -182,7 +198,7 @@ contract / architecture / steps           FINAL / FROZEN
 implementation M3-S00 .. M3-S07           COMPLETED
 final acceptance                          ACCEPTED
 AS-IS consolidation                       COMPLETED
-consistency closure                       READY / AUTHORIZED
+consistency closure                       CANDIDATE READY FOR REVIEW
 M3                                        NOT DELIVERED
 final delivery approval                   NOT GRANTED
 merge / tag / release / artifact publish  NOT AUTHORIZED
@@ -191,6 +207,6 @@ software implementation                   NOT AUTHORIZED
 
 ## Immediate next action
 
-Execute the independent M3 consistency-closure gate against the accepted current AS-IS corpus and publish only a `CANDIDATE READY FOR REVIEW` report/status if all fifteen matrix cells and repository gates pass.
+Review the published M3 consistency-closure candidate and its exact evidence. Reviewer acceptance remains required before the consistency closure may become `COMPLETED` or a separate delivery decision may be authorized.
 
 Do not mark consistency closure `COMPLETED`, do not mark M3 `DELIVERED`, and do not create a PR, merge, tag, release or publish artifacts. Reviewer acceptance remains a separate decision.
