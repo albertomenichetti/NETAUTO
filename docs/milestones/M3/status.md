@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S06 COMPLETED / M3-S07 PENDING
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 READY
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION AUTHORIZATION
+phase                    IMPLEMENTATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    NONE
-software implementation  NOT AUTHORIZED
-blockers                 none for M3-S07 authorization decision
+active implementation    M3-S07 — READY
+software implementation  AUTHORIZED — M3-S07 ONLY
+blockers                 none
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, `M3-S05`, and `M3-S06` are reviewer-owned `COMPLETED`. No later slice is authorized. Software implementation may resume only after this file explicitly authorizes the next exact slice.
+`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, `M3-S05`, and `M3-S06` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S07 — Full M3 acceptance and delivery-candidate gate`. No business behavior is planned in S07; the slice is limited to the frozen final-candidate verification/evidence gate.
 
 ## Frozen governance gates
 
@@ -197,7 +197,7 @@ candidate gates           PASS — 990 full-suite tests; 706 non-PostgreSQL test
 normative skip/xfail/rerun 0 / 0 / 0
 review findings           0
 reopen required           NO
-M3-S07                    NOT AUTHORIZED
+M3-S07                    READY / AUTHORIZED
 ```
 
 The reviewed S06 implementation adds permanent integration evidence only and introduces no production correction. The traceability registry exactly closes the frozen 8-outcome, 19-acceptance-criterion and 19-evidence-bundle sets, maps every bundle to architecture owner(s) and non-empty collected pytest targets, and exactly represents the 22 business GET routes, 12 cursor-bearing routes and 8 registered CLI `201 + Location` operations.
@@ -209,6 +209,25 @@ Integrated public evidence covers all 22 canonical GET success targets and the r
 `M3-VER-17` confirms no schema, Alembic, runtime dependency, lockfile or project-version drift. Live `compare_metadata == []`; the shipped graph remains one root/head at `0001_m2_kernel`; the authorized `pyproject.toml`, `uv.lock` and migration blob baselines are unchanged.
 
 All `M3-VER-01 .. M3-VER-19` have passing concrete evidence on the S06 candidate run. This closes S06 integration evidence but does not constitute final M3 acceptance or authorize delivery; final candidate acceptance remains the separate frozen `M3-S07` gate. The completed S06 execution aid has been removed from active `wip/`; Git retains its history.
+
+## M3-S07 implementation authorization
+
+```text
+authorized slice          M3-S07 — Full M3 acceptance and delivery-candidate gate
+slice state               READY
+human authorization       GRANTED
+predecessor               M3-S00 .. M3-S06 — reviewer-owned COMPLETED
+planned business behavior NONE
+stable evidence identities none new — re-execute M3-VER-01 .. M3-VER-19
+GET census                22 exact
+cursor census             12 exact
+CLI 201 census             8 exact
+required PostgreSQL       mandatory
+final reviewer decision   PENDING / reviewer-owned
+M3 delivery approval      NOT YET GRANTED
+```
+
+`READY` authorizes Codex to execute the frozen final candidate gate against one identified commit and publish candidate evidence for reviewer inspection. S07 must not introduce planned business behavior, silently change frozen semantics, or declare M3 delivered/accepted on its own. Reviewer-owned `COMPLETED` and final milestone delivery approval remain separate decisions.
 
 ## Scope impact
 
@@ -225,7 +244,7 @@ project-version change
 cursor-codec version change
 ```
 
-The accepted S06 candidate introduced none of those changes.
+S07 must re-prove these non-deltas on the final candidate rather than introduce them.
 
 ## Remaining gates
 
@@ -240,13 +259,13 @@ M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 M3-S06 execution/review                        DONE — COMPLETED
-explicit M3-S07 implementation authorization  PENDING
-M3-S07 execution/review                        NOT AUTHORIZED
+explicit M3-S07 implementation authorization  DONE — M3-S07 ONLY
+M3-S07 execution/review                        READY
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Make a separate explicit operational decision on whether to authorize `M3-S07 — Full M3 acceptance and delivery-candidate gate`.
+Perform the mandatory M3-S07 pre-flight, identify one delivery-candidate commit, execute the complete frozen final gate, publish one durable candidate evidence record plus candidate-ready acceptance summary, and return the result for reviewer inspection.
 
-Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
+Do not mark `M3-S07` `COMPLETED`, do not mark M3 `ACCEPTED`/`DELIVERED`, and do not create a PR unless separately instructed. The reviewer alone may accept the final candidate and advance milestone governance.
