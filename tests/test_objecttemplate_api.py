@@ -613,7 +613,7 @@ async def test_objecttemplate_defaults_collisions_and_parent_admission(
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_persisted_effective_schema_corruption_is_internal_failure(
+async def test_persisted_effective_schema_semantic_surprise_is_projected(
     objecttemplate_client: httpx.AsyncClient,
     migrated_database_engine: Engine,
 ) -> None:
@@ -675,9 +675,10 @@ async def test_persisted_effective_schema_corruption_is_internal_failure(
     response = await objecttemplate_client.get(
         f"/api/v1/core/object-templates/{child_id}/versions/1/effective-schema"
     )
-    assert response.status_code == 500
-    assert response.json() == {
-        "code": "internal_error",
-        "message": "The persisted ObjectTemplate effective schema is invalid.",
-        "details": {},
-    }
+    assert response.status_code == 200, response.text
+    properties = response.json()["properties"]
+    assert [item["name"] for item in properties] == ["collision", "collision"]
+    assert [item["declaring_template_id"] for item in properties] == [
+        parent_id,
+        child_id,
+    ]

@@ -76,6 +76,15 @@ def _selector_error(
     )
 
 
+def _invalid_parameter(name: str) -> CliError:
+    return CliError.create(
+        ErrorSource.LOCAL,
+        "cli_invalid_parameter",
+        "A command parameter is invalid.",
+        {"parameter": name},
+    )
+
+
 def _walk(
     value: object,
     pattern: tuple[str, ...],
@@ -103,7 +112,7 @@ def _targets(
     command: ParsedCommand,
     spec: CommandSpec,
     parameters: dict[str, JsonValue],
-) -> list[_Target]:
+) -> tuple[list[_Target], CliError | None]:
     targets: list[_Target] = []
     if spec.selector_kind is not None:
         targets.append(_Target(spec.selector_kind, command.selector, ()))
@@ -112,7 +121,13 @@ def _targets(
             continue
         value = parameters[parameter.name]
         if parameter.selector_kind is not None:
-            targets.append(_Target(parameter.selector_kind, value, (parameter.name,)))
+            if value is None:
+                if not parameter.nullable:
+                    return targets, _invalid_parameter(parameter.name)
+            else:
+                targets.append(
+                    _Target(parameter.selector_kind, value, (parameter.name,))
+                )
         for nested in parameter.nested_selectors:
             targets.extend(
                 _walk(
@@ -122,7 +137,7 @@ def _targets(
                     nested.kind,
                 )
             )
-    return targets
+    return targets, None
 
 
 def _replace(
@@ -251,7 +266,16 @@ async def resolve_selectors(
     first_exchange = transport.exchange_count
     cache: dict[tuple[SelectorKind, str], str] = {}
     identities: list[ResolvedIdentity] = []
-    for target in _targets(command, spec, parameters):
+    targets, target_error = _targets(command, spec, parameters)
+    if target_error is not None:
+        return ResolutionOutcome(
+            resolved_selector,
+            parameters,
+            transport.exchanges_since(first_exchange),
+            tuple(identities),
+            target_error,
+        )
+    for target in targets:
         if not isinstance(target.value, str):
             return ResolutionOutcome(
                 resolved_selector,

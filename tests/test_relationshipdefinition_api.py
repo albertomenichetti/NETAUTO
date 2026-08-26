@@ -446,7 +446,7 @@ async def test_definition_references_block_lineage_and_factual_rows_block_delete
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_corrupted_definition_aggregate_maps_to_internal_error(
+async def test_representable_definition_surprise_is_readable_but_mutation_rejects_it(
     relationshipdefinition_client: httpx.AsyncClient,
     migrated_database_engine: Engine,
 ) -> None:
@@ -458,11 +458,12 @@ async def test_corrupted_definition_aggregate_maps_to_internal_error(
     response = await relationshipdefinition_client.get(
         f"/api/v1/core/relationship-definitions/{definition_id}"
     )
-    assert response.status_code == 500
+    assert response.status_code == 200
     assert response.json() == {
-        "code": "internal_error",
-        "message": "A persisted RelationshipDefinition aggregate is invalid.",
-        "details": {},
+        "id": str(definition_id),
+        "symmetric": False,
+        "default_version": None,
+        "resolutions": [],
     }
     template_id = await _template(
         relationshipdefinition_client, "corrupt_certified_set_operand"
@@ -739,7 +740,7 @@ async def test_m2_s01_rdv_properties_versions_defaults_and_factual_pin(
 
 @pytest.mark.api
 @pytest.mark.postgresql
-async def test_uniform_default_pointer_corruption_fails_dt_ot_and_rd_reads(
+async def test_m3_default_pointer_read_boundary_is_resource_family_specific(
     relationshipdefinition_client: httpx.AsyncClient,
     migrated_database_engine: Engine,
 ) -> None:
@@ -788,15 +789,37 @@ async def test_uniform_default_pointer_corruption_fails_dt_ot_and_rd_reads(
             .values(status="DEPRECATED")
         )
 
-    requests = (
+    datatype_requests = (
         f"/api/v1/core/datatypes/{datatype_id}",
         "/api/v1/core/datatypes",
+    )
+    for path in datatype_requests:
+        response = await client.get(path)
+        assert response.status_code == 200, (path, response.text)
+        if path.endswith("/datatypes"):
+            assert response.json()["items"][0]["default_version"] == 1
+        else:
+            assert response.json()["default_version"] == 1
+
+    objecttemplate_requests = (
         f"/api/v1/core/object-templates/{template_id}",
         "/api/v1/core/object-templates",
+    )
+    for path in objecttemplate_requests:
+        response = await client.get(path)
+        assert response.status_code == 200, (path, response.text)
+        if path.endswith("/object-templates"):
+            assert response.json()["items"][0]["default_version"] == 1
+        else:
+            assert response.json()["default_version"] == 1
+
+    relationshipdefinition_requests = (
         f"/api/v1/core/relationship-definitions/{definition_id}",
         "/api/v1/core/relationship-definitions",
     )
-    for path in requests:
+    for path in relationshipdefinition_requests:
         response = await client.get(path)
-        assert response.status_code == 500, (path, response.text)
-        assert response.json()["code"] == "internal_error"
+        assert response.status_code == 200, (path, response.text)
+        payload = response.json()
+        value = payload["items"][0] if path.endswith("definitions") else payload
+        assert value["default_version"] == 1

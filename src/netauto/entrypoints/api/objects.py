@@ -94,7 +94,7 @@ def _relationship_state(
 
 def _event(value: LifecycleEvent) -> LifecycleEventDto:
     if isinstance(value, RelationshipLifecycleEvent):
-        if value.kind is EventKind.RELATIONSHIP_CREATED and value.after is not None:
+        if value.kind is EventKind.RELATIONSHIP_CREATED:
             return RelationshipCreatedLifecycleEventDto(
                 id=value.id,
                 occurred_at=value.occurred_at,
@@ -107,12 +107,12 @@ def _event(value: LifecycleEvent) -> LifecycleEventDto:
                 relationship_name=value.relationship_name,
                 kind="RELATIONSHIP_CREATED",
                 before=None,
-                after=_relationship_state(value.after),
+                after=_relationship_state(cast(RelationshipFactualState, value.after)),
             )
         if value.kind in {
             EventKind.RELATIONSHIP_DATA_CHANGE,
             EventKind.RELATIONSHIP_SCHEMA_CHANGE,
-        } and (value.before is not None and value.after is not None):
+        }:
             relationship_kind = cast(
                 Literal["RELATIONSHIP_DATA_CHANGE", "RELATIONSHIP_SCHEMA_CHANGE"],
                 value.kind.value,
@@ -128,10 +128,12 @@ def _event(value: LifecycleEvent) -> LifecycleEventDto:
                 relationship_definition_id=value.relationship_definition_id,
                 relationship_name=value.relationship_name,
                 kind=relationship_kind,
-                before=_relationship_state(value.before),
-                after=_relationship_state(value.after),
+                before=_relationship_state(
+                    cast(RelationshipFactualState, value.before)
+                ),
+                after=_relationship_state(cast(RelationshipFactualState, value.after)),
             )
-        if value.kind is EventKind.RELATIONSHIP_DELETED and value.before is not None:
+        if value.kind is EventKind.RELATIONSHIP_DELETED:
             return RelationshipDeletedLifecycleEventDto(
                 id=value.id,
                 occurred_at=value.occurred_at,
@@ -143,7 +145,9 @@ def _event(value: LifecycleEvent) -> LifecycleEventDto:
                 relationship_definition_id=value.relationship_definition_id,
                 relationship_name=value.relationship_name,
                 kind="RELATIONSHIP_DELETED",
-                before=_relationship_state(value.before),
+                before=_relationship_state(
+                    cast(RelationshipFactualState, value.before)
+                ),
                 after=None,
             )
         raise RuntimeError("unsupported Relationship lifecycle response state")
@@ -160,7 +164,7 @@ def _event(value: LifecycleEvent) -> LifecycleEventDto:
             slot_declaring_template_id=value.slot_declaring_template_id,
             slot_name=value.slot_name,
         )
-    if value.kind is EventKind.CREATED and value.after is not None:
+    if value.kind is EventKind.CREATED:
         return CreatedLifecycleEventDto(
             id=value.id,
             occurred_at=value.occurred_at,
@@ -168,13 +172,13 @@ def _event(value: LifecycleEvent) -> LifecycleEventDto:
             object_id=value.object_id,
             canonical_name=value.canonical_name,
             before=None,
-            after=_object(value.after),
+            after=_object(cast(Object, value.after)),
         )
     if value.kind in {
         EventKind.RENAME,
         EventKind.DATA_CHANGE,
         EventKind.SCHEMA_CHANGE,
-    } and (value.before is not None and value.after is not None):
+    }:
         changed_kind = cast(
             Literal["RENAME", "DATA_CHANGE", "SCHEMA_CHANGE"], value.kind.value
         )
@@ -184,17 +188,17 @@ def _event(value: LifecycleEvent) -> LifecycleEventDto:
             kind=changed_kind,
             object_id=value.object_id,
             canonical_name=value.canonical_name,
-            before=_object(value.before),
-            after=_object(value.after),
+            before=_object(cast(Object, value.before)),
+            after=_object(cast(Object, value.after)),
         )
-    if value.kind is EventKind.DELETED and value.before is not None:
+    if value.kind is EventKind.DELETED:
         return DeletedLifecycleEventDto(
             id=value.id,
             occurred_at=value.occurred_at,
             kind="DELETED",
             object_id=value.object_id,
             canonical_name=value.canonical_name,
-            before=_object(value.before),
+            before=_object(cast(Object, value.before)),
             after=None,
         )
     raise RuntimeError("unsupported intrinsic lifecycle response state")
@@ -477,17 +481,18 @@ async def list_object_lifecycle_events(
             "limit",
         ),
     )
-    return await _lifecycle_page(
-        request,
-        kind=kind,
-        object_id=None,
-        destination_object_id=destination_object_id,
-        relationship_id=relationship_id,
-        relationship_definition_id=relationship_definition_id,
-        relationship_name=relationship_name,
-        occurred_from=occurred_from,
-        occurred_to=occurred_to,
-        involving_object_id=object_id,
-        cursor=cursor,
-        limit=limit,
+    return _event_page(
+        await _service(request).list_object_events(
+            object_id,
+            kind=kind,
+            object_id=None,
+            destination_object_id=destination_object_id,
+            relationship_id=relationship_id,
+            relationship_definition_id=relationship_definition_id,
+            relationship_name=relationship_name,
+            occurred_from=occurred_from,
+            occurred_to=occurred_to,
+            cursor=cursor,
+            limit=limit,
+        )
     )

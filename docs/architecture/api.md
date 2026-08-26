@@ -418,8 +418,8 @@ GET /api/v1/core/object-templates/{template_id}/relationship-capabilities
 ```text
 GET /api/v1/core/objects
 GET /api/v1/core/objects/{object_id}
-GET /api/v1/core/objects/{object_id}/components
-GET /api/v1/core/objects/{object_id}/owner
+GET /api/v1/core/objects/{parent_object_id}/components
+GET /api/v1/core/objects/{child_object_id}/owner
 GET /api/v1/core/objects/{object_id}/relationships
 GET /api/v1/core/objects/{object_id}/lifecycle-events
 ```
@@ -444,6 +444,46 @@ GET /api/v1/core/relationships/{relationship_id}
 ```text
 GET /api/v1/core/lifecycle-events
 ```
+
+## Public GET responsibility and coherence
+
+Every one of the 22 public business GET/read routes owns:
+
+```text
+strict request carrier validation
+strict cursor validation where applicable
+path-target existence classification
+composition of persisted facts required by the public projection
+representational decoding required by the typed response
+```
+
+A GET does not re-run mutation-owned semantic certification merely because it is
+reading persisted state. Default publication, aggregate mutation validation,
+inheritance admission, runtime schema/DataType validation, ownership-slot
+admission, Relationship topology/schema/default certification and historical
+transition certification remain mutation responsibilities.
+
+A representable persisted semantic surprise remains readable. A mandatory
+carrier that cannot be decoded into its required public UUID, integer, string,
+closed discriminant or recursive JSON form fails through the bounded
+`500 internal_error` boundary. Reads do not repair state, invent defaults,
+silently omit required members or return partial projections.
+
+Each route obtains the complete business projection through exactly one
+authoritative business SQL statement in an ordinary read Unit of Work. Its
+response observes one PostgreSQL statement snapshot:
+
+```text
+writer commits before authoritative execute
+    -> complete AFTER projection
+
+writer commits after authoritative statement completes
+    -> complete BEFORE projection
+```
+
+No response may mix incompatible generations from that statement result.
+Separate requests/pages have no repeatable-membership guarantee and there is no
+public snapshot token.
 
 ## Canonical read projections
 
@@ -679,9 +719,17 @@ RELATIONSHIP_DELETED
 include object/destination identities and names plus `relationship_id`, `relationship_definition_id` and historical `relationship_name`; they do not expose source/target direction or Resolution IDs.
 
 Their `before`/`after` members are factual states containing exactly
-`relationship_definition_version + properties`. CREATED has only `after`,
-DELETED only `before`, DATA_CHANGE has equal versions and different properties,
-and SCHEMA_CHANGE has a strictly increasing version.
+`relationship_definition_version + properties`. Mutation writes produce CREATED
+with only `after`, DELETED with only `before`, DATA_CHANGE with equal versions and
+different properties, and SCHEMA_CHANGE with a strictly increasing version.
+
+Historical GETs select the discriminated family from the persisted event kind
+and decode the mandatory response carriers, including required UUID/string/
+integer fields and recursive `JsonValue` materialization. They do not replay
+transition admissibility, changedness, version increase or agreement with
+current live state. Representable historical semantic surprises remain readable;
+materially undecodable mandatory carriers fail through the bounded internal
+boundary.
 
 `occurred_at` is canonical UTC `Z` datetime; ordering semantics remain `(occurred_at, id)` rather than strict global commit chronology.
 
@@ -708,64 +756,70 @@ no generic sort/query DSL
 no automatic total_count
 ```
 
-A cursor is bound to route, canonical ordering and active filter set. It is not a domain identity, DB offset, transaction snapshot or CDC token. `limit` is not part of semantic query identity and may change between pages.
+A cursor is bound to the complete semantic query that produced it:
+
+```text
+query identity
+    = route
+    + every membership-affecting path target
+    + every membership-affecting query filter
+    + required semantic presence bits
+
+position
+    = complete canonical ordering tuple
+
+limit
+    = not semantic identity
+```
+
+It is not a domain identity, DB offset, transaction snapshot or CDC token. A
+changed limit remains valid. Any incompatible route, path target, filter,
+presence bit or position carrier returns `400 invalid_cursor`.
 
 Each page is snapshot-consistent for its own request. Cross-request repeatable membership is not promised.
 
-Canonical order/filter rules:
+The exact cursor-bearing route census and canonical identities are:
+
+| Public route | Codec route | Semantic identity filters | Complete position |
+|---|---|---|---|
+| `GET /api/v1/core/datatypes` | `datatypes` | `namespace`, `name` | `(namespace, name) ASC` |
+| `GET /api/v1/core/datatypes/{datatype_id}/versions` | `datatype_versions` | `datatype_id`, `status` | `(version) ASC` |
+| `GET /api/v1/core/object-templates` | `object_templates` | `namespace`, `name`, `abstract`, `parent_template_id`, internal `parent_filter_set` | `(namespace, name) ASC` |
+| `GET /api/v1/core/object-templates/{template_id}/versions` | `object_template_versions` | `template_id`, `status` | `(version) ASC` |
+| `GET /api/v1/core/object-templates/{template_id}/relationship-capabilities` | `relationship_capabilities` | `template_id`, `name` | `(resolution_id) ASC` |
+| `GET /api/v1/core/objects` | `objects` | `template_id`, `template_version`, `canonical_name` | `(id) ASC` |
+| `GET /api/v1/core/objects/{parent_object_id}/components` | `object_components` | `parent_object_id`, `slot_name` | `(child_object_id) ASC` |
+| `GET /api/v1/core/objects/{object_id}/relationships` | `object_relationships` | `object_id`, `relationship_definition_id`, `name` | `(relationship_id, destination_object_id, name) ASC` |
+| `GET /api/v1/core/objects/{object_id}/lifecycle-events` | `lifecycle_events` | lifecycle filters plus `involving_object_id=<path Object UUID>` | `(occurred_at, id) DESC` |
+| `GET /api/v1/core/relationship-definitions` | `relationship_definitions` | none | `(id) ASC` |
+| `GET /api/v1/core/relationship-definitions/{relationship_definition_id}/versions` | `relationship_definition_versions` | `definition_id`, `status` | `(version) ASC` |
+| `GET /api/v1/core/lifecycle-events` | `lifecycle_events` | all lifecycle filters plus `involving_object_id=None` | `(occurred_at, id) DESC` |
+
+The lifecycle filters are `kind`, `object_id`, `destination_object_id`,
+`relationship_id`, `relationship_definition_id`, `relationship_name`,
+`occurred_from` and `occurred_to`. The global and Object-scoped routes remain
+cursor-distinct through `involving_object_id` even though they share one codec
+route.
+
+ObjectTemplate lineage filtering has the exact public tri-state:
 
 ```text
-DataType lineages
-    order (namespace, name) ASC
-    filters namespace, name
+parent_template_id omitted
+    -> no parent predicate
 
-DataType versions
-    order version ASC
-    filter status
+parent_template_id=<UUID>
+    -> direct children of that stable parent
 
-ObjectTemplate lineages
-    order (namespace, name) ASC
-    filters namespace, name, abstract, parent_template_id
-
-ObjectTemplate versions
-    order version ASC
-    filter status
-
-relationship capabilities
-    order resolution_id ASC
-    filter name
-
-Objects
-    order id ASC
-    filters template_id, dependent template_version, exact canonical_name
-
-Object components
-    order child_object_id ASC
-    filter slot_name
-
-Object relationships
-    order (relationship_id, destination_object_id, name) ASC
-    filters relationship_definition_id, name
-
-RelationshipDefinitions
-    order id ASC
-
-RelationshipDefinition versions
-    order version ASC
-    filter status
-
-lifecycle events
-    order (occurred_at, id) DESC
-    global filters:
-        kind
-        object_id
-        destination_object_id
-        relationship_id
-        relationship_definition_id
-        relationship_name
-        occurred_from
-        occurred_to
+parent_template_id=null
+    -> stable roots only
 ```
+
+Only exact lowercase lexical `null` is the root sentinel. Empty, malformed,
+uppercase/unsupported sentinel and repeated values are `400 invalid_request`.
+Internally, omitted uses `parent_template_id=None, parent_filter_set=False`;
+root-only uses `None, True`; exact parent uses `str(UUID), True`.
+`parent_filter_set` is not public. These three states are mutually incompatible
+cursor identities.
 
 `template_version` without `template_id` is invalid because a version number is lineage-local.
 

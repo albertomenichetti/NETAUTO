@@ -1,6 +1,5 @@
 """Shared persistence authority for every durable lifecycle event family."""
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -8,7 +7,7 @@ from enum import StrEnum
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import null, or_, select, tuple_
+from sqlalchemy import null, or_, select, true, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -105,6 +104,12 @@ type LifecycleEvent = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class LifecyclePageProjection:
+    target_exists: bool
+    items: tuple[LifecycleEvent, ...]
+
+
 def object_snapshot(value: Object) -> dict[str, JsonValue]:
     return {
         "id": str(value.id),
@@ -115,44 +120,30 @@ def object_snapshot(value: Object) -> dict[str, JsonValue]:
     }
 
 
-_HISTORICAL_PROPERTY_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+def _decode_historical_json_value(raw: object) -> JsonValue:
+    if raw is None or isinstance(raw, (str, bool)):
+        return raw
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    if isinstance(raw, list):
+        return [_decode_historical_json_value(item) for item in cast(list[object], raw)]
+    if isinstance(raw, dict):
+        candidate = cast(dict[object, object], raw)
+        if not all(isinstance(key, str) for key in candidate):
+            raise RuntimeError("persisted lifecycle JSON object key is invalid")
+        return {
+            cast(str, key): _decode_historical_json_value(value)
+            for key, value in candidate.items()
+        }
+    raise RuntimeError("persisted lifecycle JSON carrier is invalid")
 
 
 def decode_historical_properties(raw: object) -> dict[str, JsonValue]:
-    """Decode the sole historical runtime-property carrier grammar."""
-    if not isinstance(raw, dict):
+    """Decode a historical public ``dict[str, JsonValue]`` carrier."""
+    decoded = _decode_historical_json_value(raw)
+    if not isinstance(decoded, dict):
         raise RuntimeError("persisted lifecycle properties are invalid")
-    candidate = cast(dict[object, object], raw)
-    if not all(
-        isinstance(name, str) and _HISTORICAL_PROPERTY_NAME.fullmatch(name)
-        for name in candidate
-    ):
-        raise RuntimeError("persisted lifecycle properties are invalid")
-    result: dict[str, JsonValue] = {}
-    for raw_name, value in candidate.items():
-        name = cast(str, raw_name)
-        if isinstance(value, (str, bool)) or (
-            isinstance(value, int) and not isinstance(value, bool)
-        ):
-            result[name] = value
-            continue
-        if not isinstance(value, list) or not value:
-            raise RuntimeError("persisted lifecycle property carrier is invalid")
-        items = cast(list[object], value)
-        kinds: set[type[object]] = set()
-        for item in items:
-            if isinstance(item, bool):
-                kinds.add(bool)
-            elif isinstance(item, int):
-                kinds.add(int)
-            elif isinstance(item, str):
-                kinds.add(str)
-            else:
-                raise RuntimeError("persisted lifecycle property carrier is invalid")
-        if len(kinds) != 1:
-            raise RuntimeError("persisted lifecycle property carrier is invalid")
-        result[name] = cast(list[JsonValue], items)
-    return result
+    return decoded
 
 
 def decode_relationship_factual_state(
@@ -163,10 +154,10 @@ def decode_relationship_factual_state(
     if not isinstance(raw, dict):
         raise RuntimeError("persisted Relationship factual state is invalid")
     value = cast(dict[object, object], raw)
-    if set(value) != {"relationship_definition_version", "properties"}:
+    if not {"relationship_definition_version", "properties"} <= set(value):
         raise RuntimeError("persisted Relationship factual state is invalid")
     version = value["relationship_definition_version"]
-    if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
+    if isinstance(version, bool) or not isinstance(version, int):
         raise RuntimeError("persisted Relationship factual state is invalid")
     return RelationshipFactualState(
         version, decode_historical_properties(value["properties"])
@@ -179,22 +170,20 @@ def decode_object_snapshot(raw: object) -> Object | None:
     if not isinstance(raw, dict):
         raise RuntimeError("persisted lifecycle snapshot has invalid shape")
     value = cast(dict[object, object], raw)
-    if set(value) != {
+    if not {
         "id",
         "canonical_name",
         "template_id",
         "template_version",
         "properties",
-    }:
+    } <= set(value):
         raise RuntimeError("persisted lifecycle snapshot has invalid shape")
     name = value["canonical_name"]
     version = value["template_version"]
     if (
         not isinstance(name, str)
-        or not 1 <= len(name) <= 255
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version <= 0
     ):
         raise RuntimeError("persisted lifecycle snapshot is invalid")
     raw_id = value["id"]
@@ -232,44 +221,10 @@ def decode_lifecycle_event(row: RowMapping) -> LifecycleEvent:
             or relationship_id is None
             or definition_id is None
             or relationship_name is None
-            or row["slot_declaring_template_id"] is not None
-            or row["slot_name"] is not None
         ):
             raise RuntimeError("persisted Relationship lifecycle event is incoherent")
         before = decode_relationship_factual_state(row["before_state"])
         after = decode_relationship_factual_state(row["after_state"])
-        if (
-            kind is EventKind.RELATIONSHIP_CREATED
-            and (before is not None or after is None)
-        ) or (
-            kind is EventKind.RELATIONSHIP_DELETED
-            and (before is None or after is not None)
-        ):
-            raise RuntimeError("persisted Relationship lifecycle event is incoherent")
-        if kind in {
-            EventKind.RELATIONSHIP_DATA_CHANGE,
-            EventKind.RELATIONSHIP_SCHEMA_CHANGE,
-        } and (before is None or after is None):
-            raise RuntimeError("persisted Relationship lifecycle event is incoherent")
-        if (
-            kind is EventKind.RELATIONSHIP_DATA_CHANGE
-            and before is not None
-            and after is not None
-            and (
-                before.relationship_definition_version
-                != after.relationship_definition_version
-                or before.properties == after.properties
-            )
-        ):
-            raise RuntimeError("persisted Relationship DATA_CHANGE is incoherent")
-        if (
-            kind is EventKind.RELATIONSHIP_SCHEMA_CHANGE
-            and before is not None
-            and after is not None
-            and after.relationship_definition_version
-            <= before.relationship_definition_version
-        ):
-            raise RuntimeError("persisted Relationship SCHEMA_CHANGE is incoherent")
         return RelationshipLifecycleEvent(
             id=cast(UUID, row["id"]),
             occurred_at=cast(datetime, row["occurred_at"]),
@@ -294,8 +249,6 @@ def decode_lifecycle_event(row: RowMapping) -> LifecycleEvent:
             or destination_name is None
             or declaring_id is None
             or slot_name is None
-            or row["before_state"] is not None
-            or row["after_state"] is not None
         ):
             raise RuntimeError("persisted ownership lifecycle event is incoherent")
         return OwnershipLifecycleEvent(
@@ -311,55 +264,14 @@ def decode_lifecycle_event(row: RowMapping) -> LifecycleEvent:
         )
     if kind not in INTRINSIC_KINDS:
         raise RuntimeError("unsupported persisted lifecycle event family")
-    before = decode_object_snapshot(row["before_state"])
-    after = decode_object_snapshot(row["after_state"])
-    object_id = cast(UUID, row["object_id"])
-    name = cast(str, row["canonical_name"])
-    if (
-        (kind is EventKind.CREATED and (before is not None or after is None))
-        or (kind is EventKind.DELETED and (before is None or after is not None))
-        or (
-            kind in {EventKind.RENAME, EventKind.DATA_CHANGE, EventKind.SCHEMA_CHANGE}
-            and (before is None or after is None)
-        )
-        or (before is not None and before.id != object_id)
-        or (after is not None and after.id != object_id)
-        or (after is not None and after.canonical_name != name)
-    ):
-        raise RuntimeError("persisted intrinsic lifecycle event is incoherent")
-    if kind is EventKind.RENAME and before is not None and after is not None:
-        if (
-            before.template_id != after.template_id
-            or before.template_version != after.template_version
-            or before.properties != after.properties
-        ):
-            raise RuntimeError("persisted RENAME event is incoherent")
-    if kind is EventKind.DATA_CHANGE and before is not None and after is not None:
-        if (
-            before.canonical_name != after.canonical_name
-            or before.template_id != after.template_id
-            or before.template_version != after.template_version
-            or before.properties == after.properties
-        ):
-            raise RuntimeError("persisted DATA_CHANGE event is incoherent")
-    if kind is EventKind.SCHEMA_CHANGE and before is not None and after is not None:
-        if (
-            before.canonical_name != after.canonical_name
-            or before.template_id != after.template_id
-            or after.template_version <= before.template_version
-        ):
-            raise RuntimeError("persisted SCHEMA_CHANGE event is incoherent")
-    if kind is EventKind.DELETED and before is not None:
-        if before.canonical_name != name:
-            raise RuntimeError("persisted DELETED event is incoherent")
     return IntrinsicLifecycleEvent(
         id=cast(UUID, row["id"]),
         occurred_at=cast(datetime, row["occurred_at"]),
         kind=kind,
-        object_id=object_id,
-        canonical_name=name,
-        before=before,
-        after=after,
+        object_id=cast(UUID, row["object_id"]),
+        canonical_name=cast(str, row["canonical_name"]),
+        before=decode_object_snapshot(row["before_state"]),
+        after=decode_object_snapshot(row["after_state"]),
     )
 
 
@@ -671,3 +583,95 @@ class LifecycleStore:
             .all()
         )
         return [decode_lifecycle_event(row) for row in rows]
+
+    async def list_events_for_object(
+        self,
+        *,
+        target_object_id: UUID,
+        kind: EventKind | None,
+        object_id: UUID | None,
+        destination_object_id: UUID | None,
+        relationship_id: UUID | None,
+        relationship_definition_id: UUID | None,
+        relationship_name: str | None,
+        occurred_from: datetime | None,
+        occurred_to: datetime | None,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> LifecyclePageProjection:
+        page_statement = select(object_lifecycle_events).where(
+            or_(
+                object_lifecycle_events.c.object_id == target_object_id,
+                object_lifecycle_events.c.destination_object_id == target_object_id,
+            )
+        )
+        if kind is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.kind == kind.value
+            )
+        if object_id is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.object_id == object_id
+            )
+        if destination_object_id is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.destination_object_id == destination_object_id
+            )
+        if relationship_id is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.relationship_id == relationship_id
+            )
+        if relationship_definition_id is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.relationship_definition_id
+                == relationship_definition_id
+            )
+        if relationship_name is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.relationship_name == relationship_name
+            )
+        if occurred_from is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.occurred_at >= occurred_from
+            )
+        if occurred_to is not None:
+            page_statement = page_statement.where(
+                object_lifecycle_events.c.occurred_at <= occurred_to
+            )
+        if after is not None:
+            page_statement = page_statement.where(
+                tuple_(
+                    object_lifecycle_events.c.occurred_at,
+                    object_lifecycle_events.c.id,
+                )
+                < after
+            )
+        page = (
+            page_statement.order_by(
+                object_lifecycle_events.c.occurred_at.desc(),
+                object_lifecycle_events.c.id.desc(),
+            )
+            .limit(limit)
+            .cte("object_lifecycle_page")
+        )
+        rows = (
+            (
+                await self.connection.execute(
+                    select(
+                        objects.c.id.label("target_id"),
+                        *(page.c[column.name] for column in object_lifecycle_events.c),
+                    )
+                    .select_from(objects.outerjoin(page, true()))
+                    .where(objects.c.id == target_object_id)
+                    .order_by(page.c.occurred_at.desc(), page.c.id.desc())
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if not rows:
+            return LifecyclePageProjection(False, ())
+        return LifecyclePageProjection(
+            True,
+            tuple(decode_lifecycle_event(row) for row in rows if row["id"] is not None),
+        )

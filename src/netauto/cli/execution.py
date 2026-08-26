@@ -49,6 +49,16 @@ def _request_plan(
             if parameter.name not in parameters:
                 continue
             value = parameters[parameter.name]
+            if value is None:
+                if parameter.location is ParameterLocation.PATH:
+                    raise ValueError("path_null_forbidden")
+                if not parameter.nullable:
+                    raise ValueError("parameter_null_forbidden")
+                if parameter.location is ParameterLocation.QUERY:
+                    query.append((parameter.name, "null"))
+                else:
+                    body_candidate[parameter.name] = None
+                continue
             if parameter.location is ParameterLocation.PATH:
                 path = path.replace("{" + parameter.name + "}", _wire_string(value))
             elif parameter.location is ParameterLocation.QUERY:

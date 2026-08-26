@@ -1209,19 +1209,18 @@ class ObjectTemplateService:
             return lineage
 
     async def get_lineage(self, template_id: UUID) -> ObjectTemplate:
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
             lineage = await store.get_lineage(template_id)
             if lineage is None:
                 raise _not_found(template_id)
-            await self._validate_default_pointers(store, (lineage,))
             return lineage
 
     async def get_version(
         self, template_id: UUID, version: int
     ) -> ObjectTemplateVersion:
-        async with self._uow_factory.coherent_read() as uow:
-            current = await ObjectTemplateStore(uow.connection).get_version(
+        async with self._uow_factory() as uow:
+            current = await ObjectTemplateStore(uow.connection).project_version(
                 template_id, version
             )
             if current is None:
@@ -1231,19 +1230,12 @@ class ObjectTemplateService:
     async def get_effective_schema(
         self, template_id: UUID, version: int
     ) -> EffectiveSchema:
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            current = await store.get_version(template_id, version)
-            if current is None:
+            projection = await store.project_effective_schema(template_id, version)
+            if projection is None:
                 raise _not_found(template_id, version)
-            try:
-                return await resolve_exact_effective_schema(store, current)
-            except ObjectTemplateValidationError as error:
-                raise _internal(
-                    "The persisted ObjectTemplate effective schema is invalid."
-                ) from error
-            except RuntimeError as error:
-                raise _internal(str(error)) from error
+            return projection
 
     async def list_lineages(
         self,
@@ -1277,7 +1269,7 @@ class ObjectTemplateService:
                     "The cursor is malformed or incompatible with this query.",
                 )
             after = cast(tuple[str, str], (key[0], key[1]))
-        async with self._uow_factory.coherent_read() as uow:
+        async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
             rows = list(
                 await store.list_lineages(
@@ -1290,7 +1282,6 @@ class ObjectTemplateService:
                     limit=limit + 1,
                 )
             )
-            await self._validate_default_pointers(store, tuple(rows))
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = (
@@ -1326,13 +1317,12 @@ class ObjectTemplateService:
             after = key[0]
         async with self._uow_factory() as uow:
             store = ObjectTemplateStore(uow.connection)
-            if await store.get_lineage(template_id) is None:
-                raise _not_found(template_id)
-            rows = list(
-                await store.list_versions(
-                    template_id, status=status, after=after, limit=limit + 1
-                )
+            projection = await store.list_versions(
+                template_id, status=status, after=after, limit=limit + 1
             )
+            if not projection.parent_exists:
+                raise _not_found(template_id)
+            rows = list(projection.items)
         more = len(rows) > limit
         items = rows[:limit]
         next_cursor = (

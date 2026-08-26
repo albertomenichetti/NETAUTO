@@ -984,8 +984,8 @@ async def test_persisted_intrinsic_event_corruption_maps_internal_error(
             objects.update().where(objects.c.id == object_id).values(properties={})
         )
     corrupt_object = await object_client.get(f"/api/v1/core/objects/{object_id}")
-    assert corrupt_object.status_code == 500
-    assert corrupt_object.json()["code"] == "internal_error"
+    assert corrupt_object.status_code == 200
+    assert corrupt_object.json()["properties"] == {}
     corrupt_delete = await object_client.delete(f"/api/v1/core/objects/{object_id}")
     assert corrupt_delete.status_code == 500
     assert corrupt_delete.json()["code"] == "internal_error"

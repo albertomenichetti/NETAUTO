@@ -154,9 +154,19 @@ carriers. Boolean is not integer. Structured values accept inline JSON or
 `@path/to/file.json`, read once as UTF-8. There is no stdin sentinel, YAML/TOML or
 custom nested DSL.
 
-Omission means the HTTP field is omitted. `parameter=null` is explicit JSON null
-only for a nullable registry field. Complete candidate arrays/maps remain complete
-caller intent; the CLI does not merge repeated values or reinterpret ordering.
+Omission means the HTTP field is omitted. `parameter=null` produces parsed
+`None` only for a nullable registry field; request planning then applies the
+parameter location:
+
+```text
+nullable QUERY None -> exact lexical query value null
+nullable BODY None  -> JSON null
+PATH None           -> invalid
+```
+
+The scalar serializer does not accept `None` generically. Complete candidate
+arrays/maps remain complete caller intent; the CLI does not merge repeated
+values or reinterpret ordering.
 
 ## Selector resolution
 
@@ -181,6 +191,34 @@ One command traverses selector-bearing fields in registry order, preserves array
 order for discovery, deduplicates identical `(kind,input)` pairs and resolves
 sequentially. Memoization and the execution ledger are fresh per command; mutable
 names are never carried into a later command.
+
+### ObjectTemplate parent selector tri-state
+
+The `object-template list` parameter `parent_template_id` is a nullable QUERY
+parameter with an ObjectTemplate selector. Its exact behavior is:
+
+```text
+omitted
+    -> no parent selector target
+    -> no parent query pair
+
+UUID
+    -> exact-ID precedence
+    -> canonical UUID query pair
+
+<namespace>.<name>
+    -> bounded ObjectTemplate discovery
+    -> resolved UUID query pair
+
+null
+    -> parsed None
+    -> zero selector-discovery GETs
+    -> lexical parent_template_id=null query pair
+```
+
+Explicit null is a terminal nullable-selector value and never enters selector
+lookup. The server owns the corresponding omitted/root/exact-parent filtering
+and cursor presence distinction. `parent_filter_set` is not a CLI parameter.
 
 ## Static operation registry
 
@@ -224,6 +262,54 @@ preserves its status/code/message/details. Invalid JSON, unexpected status/body,
 redirect or malformed server DTO is `cli_protocol_error`. HTTPX failures are one
 `cli_transport_error` attempt. Raw exception text and stack traces are not public
 CLI output.
+
+### Registered `201 Created` Location protocol
+
+The exact eight registered `201 Created` operations are DataType create and
+create-next, ObjectTemplate create and create-next, Object create,
+RelationshipDefinition create and create-next, and Relationship create. Each has
+one Location template interpreted by the closed NETAUTO grammar:
+
+```text
+{segment}
+{segment.segment...}
+segment = [a-z][a-z0-9_]*
+```
+
+For each token, exact `request_values` key presence wins. Otherwise the token is
+resolved by dot-separated traversal through the already validated response JSON
+object. Only `str` and `int` excluding `bool` can materialize a token. Replacement
+is literal; Python `str.format`, `format_map`, array indexing, attribute access,
+wildcards, conversions and format specifications are outside the grammar.
+
+The registered templates use one common mechanism:
+
+```text
+datatype create
+    /api/v1/core/datatypes/{datatype.id}
+datatype create-next
+    /api/v1/core/datatypes/{datatype_id}/versions/{version}
+object-template create
+    /api/v1/core/object-templates/{object_template.id}
+object-template create-next
+    /api/v1/core/object-templates/{template_id}/versions/{version}
+object create
+    /api/v1/core/objects/{id}
+relationship-definition create
+    /api/v1/core/relationship-definitions/{relationship_definition.id}
+relationship-definition create-next
+    /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}
+relationship create
+    /api/v1/core/relationships/{id}
+```
+
+A registered create succeeds only after the expected status and body validate,
+the actual response contains exactly one `Location`, the expected value is
+materializable, and actual equals expected exactly. Missing, repeated,
+mismatching or non-materializable Location state is `cli_protocol_error`. A
+canonical successful response does not become `cli_internal_error` solely from
+Location processing. No Location normalization or hidden post-mutation GET is
+performed.
 
 Every attempted exchange is recorded once, in order. An observed response is
 retained even when later tracing/cleanup fails; a pre-send failure records no
@@ -296,4 +382,6 @@ parser and examples, selector zero/one/many behavior, fresh ledger/memo state,
 transport policy, truthful exchange snapshots, process channels, PTY-visible
 Ctrl-C/Ctrl-D/Ctrl-R behavior, no persistent history, HTTP-only imports,
 FORMATTED enrichment bounds, installed-wheel operation and trusted/untrusted/
-hostname-mismatch HTTPS cases.
+hostname-mismatch HTTPS cases. It also proves the exact eight-operation 201
+Location census and grammar/protocol matrix, plus ObjectTemplate omission, UUID,
+human-selector and explicit-null behavior with zero discovery for null.

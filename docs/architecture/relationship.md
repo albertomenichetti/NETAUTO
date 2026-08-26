@@ -556,6 +556,45 @@ Raw RuntimeRelationshipResolution rows are persistence realization and are never
 
 Inheritance overlap must not create duplicate public semantic views.
 
+The read boundary trusts admitted persisted facts:
+
+- a RelationshipDefinition read projects its stable header and complete
+  Resolution set without re-running Definition equivalence, conflict, topology
+  or default-target certification;
+- an exact RelationshipDefinitionVersion read projects its ordered property
+  declarations without re-running property-history or DataType admission;
+- a factual Relationship read projects its exact pin, property object and
+  deduplicated `views[]` without reconstructing or validating the Definition,
+  endpoint-template, exact-version or DataType closure;
+- capability and Object-relative Relationship collections derive their public
+  membership and mandatory fields from persisted topology/runtime facts without
+  mutation-domain recertification.
+
+The factual Relationship root survives an empty materializable view set. A
+representable semantic surprise remains readable; a missing, ambiguous or
+unusable mandatory carrier fails the complete projection through the bounded
+internal-failure boundary. Reads do not select another version, remove unknown
+properties, reconstruct closure, invent defaults or return partial members.
+
+Each public Relationship/RelationshipDefinition projection uses one
+authoritative business statement and one PostgreSQL statement snapshot.
+
+## Historical lifecycle decoding
+
+Relationship lifecycle GETs select the public event family from the persisted
+discriminant and decode only the mandatory representational carriers. Required
+factual history consists of an integer
+`relationship_definition_version` (boolean excluded) and a recursive
+`dict[str, JsonValue]` properties carrier. UUID, string and other typed outer
+fields are materialized for the selected discriminated DTO.
+
+Historical reads do not re-certify transition changedness, equal or increasing
+versions, agreement with current live state, or current Relationship schema and
+topology. A representable historical semantic surprise remains readable; a
+materially undecodable mandatory historical carrier fails boundedly. Mutation
+paths continue to enforce the lifecycle event shapes and transition rules stated
+above.
+
 ## Modelling guideline
 
 A capability should be declared on the most general template space for which the semantics is correct for all descendants:
@@ -566,11 +605,6 @@ lowest necessary
 ```
 
 Do not duplicate specialized Definitions solely to narrow a compatibility space already represented correctly by lineage polymorphism.
-
-One represented corrupt aggregate fails as `internal_error`. Reads never select a
-different version, remove unknown properties, reconstruct closure or return a
-partial page. Multi-statement aggregate validation uses one coherent read
-snapshot.
 
 ## Evolution boundary
 

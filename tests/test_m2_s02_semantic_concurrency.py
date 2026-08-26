@@ -57,6 +57,7 @@ from netauto.persistence.metadata import (
 from netauto.persistence.relationships import (
     RelationshipDefinitionStore,
     RelationshipDefinitionVersionStore,
+    RuntimeRelationshipProjection,
     RuntimeRelationshipStore,
 )
 from netauto.persistence.uow import UnitOfWorkFactory
@@ -1110,16 +1111,17 @@ async def test_object_relationship_page_batches_only_represented_definitions(
             )
 
         assert {item.relationship_id for item in page.items} == relationship_ids
-        assert loaded_definition_sets == [represented_definition_ids]
+        assert loaded_definition_sets == []
         assert represented_definition_ids < all_definition_ids
-        assert parent_graph_calls == 1
+        assert parent_graph_calls == 0
         definition_statements = [
             statement
             for statement in statements
             if "from relationship_definitions" in statement
             and "relationship_resolutions" in statement
         ]
-        assert len(definition_statements) == 1
+        assert definition_statements == []
+        assert len(statements) == 1
 
 
 @pytest.mark.postgresql
@@ -2005,11 +2007,11 @@ async def test_relationship_snapshot_cut_commits_between_physical_reads(
         )
         cut = PhaseCut()
         if read_kind == "get":
-            original_get = RuntimeRelationshipStore.get
+            original_get = RuntimeRelationshipStore.project
 
             async def cut_get(
                 store: RuntimeRelationshipStore, relationship_id: UUID
-            ) -> Relationship | None:
+            ) -> RuntimeRelationshipProjection | None:
                 value = await original_get(store, relationship_id)
                 task = asyncio.current_task()
                 if (
@@ -2021,7 +2023,7 @@ async def test_relationship_snapshot_cut_commits_between_physical_reads(
                     await cut.release.wait()
                 return value
 
-            monkeypatch.setattr(RuntimeRelationshipStore, "get", cut_get)
+            monkeypatch.setattr(RuntimeRelationshipStore, "project", cut_get)
         else:
             original_page = RuntimeRelationshipStore.list_object_views
 

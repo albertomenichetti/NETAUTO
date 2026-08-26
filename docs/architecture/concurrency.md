@@ -29,9 +29,10 @@ one commit or complete rollback
 
 Mutation isolation is PostgreSQL `READ COMMITTED`. Correctness comes from the
 complete lock plan, database constraints and fresh post-wait derivation, not from
-an initial read snapshot. Multi-statement coherent public reads use
-`REPEATABLE READ READ ONLY`; a single authoritative projection statement may use
-its statement snapshot.
+an initial read snapshot. The canonical public business GET census uses one
+authoritative projection statement and its PostgreSQL statement snapshot.
+Multi-statement coherent reads outside that census use `REPEATABLE READ READ
+ONLY` where their owner requires one transaction snapshot.
 
 The transaction baseline has no generic `SERIALIZABLE` retry policy. SQLSTATE
 `40P01` and `40001` are never automatically retried.

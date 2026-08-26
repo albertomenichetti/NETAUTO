@@ -543,6 +543,55 @@ No ancestry closure or reverse-dependency materialization is authoritative.
 
 These denormalizations are architecture decisions. They must not be removed as cleanup without an explicit architecture change and re-evaluation of the guarantees they enable.
 
+## Public read projection boundary
+
+The canonical public business GET census contains exactly 22 routes. Each route
+obtains its complete business projection through:
+
+```text
+ordinary read Unit of Work
+    -> exactly one authoritative business SQL statement
+    -> one PostgreSQL statement snapshot
+    -> complete typed public projection
+```
+
+The authoritative statement includes all persisted context needed for mandatory
+public fields. Parent-rooted queries carry target-presence evidence so a missing
+path target remains distinct from an existing target with an empty collection or
+null optional projection. Aggregate pages select root/public-item identities
+before expanding child rows when joined-row pagination could truncate an item.
+Required contextual state that is absent or ambiguous is an internal projection
+failure and is never converted into silent filtering.
+
+Read projectors own relational selection, joins/recursion/aggregation, canonical
+ordering and keyset predicates, and scalar/JSON conversion required by the
+response. They do not invoke mutation admission or transition validation merely
+to re-certify persisted semantics. In particular, they do not revalidate
+defaults, aggregate domain state, inheritance, ownership-slot admission,
+Relationship topology/schema or lifecycle transitions solely because those
+facts are being read.
+
+Historical lifecycle JSON is decoded as the recursive public `JsonValue` carrier
+needed by the selected event DTO. Mandatory UUID/string/integer fields and
+family discriminants remain typed decoding boundaries. Representable semantic
+surprises remain readable; materially undecodable mandatory state fails the
+complete projection. No read repairs persisted state, invents a default,
+reconstructs mutation state or omits a required member.
+
+The statement snapshot provides one-request coherence:
+
+```text
+writer commit before authoritative execute
+    -> complete AFTER projection
+
+writer commit after authoritative statement completes
+    -> complete BEFORE projection
+```
+
+Separate requests/pages have no repeatable-snapshot or public snapshot-token
+guarantee. `coherent_read()` remains valid infrastructure for operations outside
+the canonical 22 public GETs; those GETs do not depend on it.
+
 ## Runtime/test database configuration
 
 Runtime and automated-test PostgreSQL connections are externally configurable and logically distinct.

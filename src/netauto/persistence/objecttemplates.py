@@ -5,13 +5,16 @@ from dataclasses import dataclass
 from typing import Literal, cast
 from uuid import UUID
 
-from sqlalchemy import and_, func, null, or_, select, tuple_, update
+from sqlalchemy import and_, func, null, or_, select, text, tuple_, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from netauto.domain.datatypes import VersionStatus
 from netauto.domain.objecttemplates import (
+    EffectiveComponent,
+    EffectiveProperty,
+    EffectiveSchema,
     LocalComponent,
     LocalProperty,
     ObjectTemplate,
@@ -68,6 +71,12 @@ class ObjectTemplateDeclarationDelta:
     component_deletes: tuple[str, ...]
     property_inserts: tuple[LocalProperty, ...]
     component_inserts: tuple[LocalComponent, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectTemplateVersionPageProjection:
+    parent_exists: bool
+    items: tuple[ObjectTemplateVersionSummary, ...]
 
 
 def declaration_delta(
@@ -377,6 +386,245 @@ class ObjectTemplateStore:
             header.parent_version,
             await self.get_properties(template_id, version),
             await self.get_components(template_id, version),
+        )
+
+    async def project_version(
+        self, template_id: UUID, version: int
+    ) -> ObjectTemplateVersion | None:
+        """Project an exact header and both independent child sets in one statement."""
+        statement = text(
+            """
+            WITH target AS (
+                SELECT
+                    template_id,
+                    version,
+                    revision,
+                    status,
+                    parent_template_id,
+                    parent_version
+                FROM object_template_versions
+                WHERE template_id = :template_id
+                  AND version = :version
+            ), projection AS (
+                SELECT
+                    0 AS row_kind,
+                    target.template_id,
+                    target.version,
+                    target.revision,
+                    target.status,
+                    target.parent_template_id,
+                    target.parent_version,
+                    NULL::text AS name,
+                    NULL::integer AS position,
+                    NULL::uuid AS datatype_id,
+                    NULL::integer AS datatype_version,
+                    NULL::text AS value_mode,
+                    NULL::boolean AS required,
+                    NULL::jsonb AS migration_default,
+                    NULL::uuid AS target_template_id
+                FROM target
+
+                UNION ALL
+
+                SELECT
+                    1 AS row_kind,
+                    target.template_id,
+                    target.version,
+                    target.revision,
+                    target.status,
+                    target.parent_template_id,
+                    target.parent_version,
+                    property.name,
+                    property.position,
+                    property.datatype_id,
+                    property.datatype_version,
+                    property.value_mode,
+                    property.required,
+                    property.migration_default,
+                    NULL::uuid AS target_template_id
+                FROM target
+                JOIN object_template_properties AS property
+                  ON property.template_id = target.template_id
+                 AND property.template_version = target.version
+
+                UNION ALL
+
+                SELECT
+                    2 AS row_kind,
+                    target.template_id,
+                    target.version,
+                    target.revision,
+                    target.status,
+                    target.parent_template_id,
+                    target.parent_version,
+                    component.name,
+                    component.position,
+                    NULL::uuid AS datatype_id,
+                    NULL::integer AS datatype_version,
+                    NULL::text AS value_mode,
+                    NULL::boolean AS required,
+                    NULL::jsonb AS migration_default,
+                    component.target_template_id
+                FROM target
+                JOIN object_template_components AS component
+                  ON component.template_id = target.template_id
+                 AND component.template_version = target.version
+            )
+            SELECT *
+            FROM projection
+            ORDER BY row_kind, position
+            """
+        )
+        rows = (
+            (
+                await self.connection.execute(
+                    statement, {"template_id": template_id, "version": version}
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if not rows:
+            return None
+        header = _header(rows[0])
+        return ObjectTemplateVersion(
+            template_id=header.template_id,
+            version=header.version,
+            revision=header.revision,
+            status=header.status,
+            parent_template_id=header.parent_template_id,
+            parent_version=header.parent_version,
+            properties=tuple(_property(row) for row in rows if row["row_kind"] == 1),
+            components=tuple(_component(row) for row in rows if row["row_kind"] == 2),
+        )
+
+    async def project_effective_schema(
+        self, template_id: UUID, version: int
+    ) -> EffectiveSchema | None:
+        """Project the persisted exact-pin chain and declarations in one statement."""
+        statement = text(
+            """
+            WITH RECURSIVE exact_chain AS (
+                SELECT
+                    exact.template_id,
+                    exact.version,
+                    exact.parent_template_id,
+                    exact.parent_version,
+                    0 AS depth,
+                    ARRAY[
+                        exact.template_id::text || ':' || exact.version::text
+                    ]::text[] AS visited_exact_nodes
+                FROM object_template_versions AS exact
+                WHERE exact.template_id = :template_id
+                  AND exact.version = :version
+
+                UNION ALL
+
+                SELECT
+                    parent.template_id,
+                    parent.version,
+                    parent.parent_template_id,
+                    parent.parent_version,
+                    child.depth + 1,
+                    child.visited_exact_nodes || ARRAY[
+                        parent.template_id::text || ':' || parent.version::text
+                    ]
+                FROM exact_chain AS child
+                JOIN object_template_versions AS parent
+                  ON parent.template_id = child.parent_template_id
+                 AND parent.version = child.parent_version
+                WHERE NOT (
+                    parent.template_id::text || ':' || parent.version::text
+                ) = ANY(child.visited_exact_nodes)
+            ), projection AS (
+                SELECT
+                    0 AS row_kind,
+                    exact_chain.depth,
+                    exact_chain.template_id AS declaring_template_id,
+                    NULL::text AS name,
+                    NULL::integer AS position,
+                    NULL::uuid AS datatype_id,
+                    NULL::integer AS datatype_version,
+                    NULL::text AS value_mode,
+                    NULL::boolean AS required,
+                    NULL::jsonb AS migration_default,
+                    NULL::uuid AS target_template_id
+                FROM exact_chain
+                WHERE exact_chain.depth = 0
+
+                UNION ALL
+
+                SELECT
+                    1 AS row_kind,
+                    exact_chain.depth,
+                    exact_chain.template_id AS declaring_template_id,
+                    property.name,
+                    property.position,
+                    property.datatype_id,
+                    property.datatype_version,
+                    property.value_mode,
+                    property.required,
+                    property.migration_default,
+                    NULL::uuid AS target_template_id
+                FROM exact_chain
+                JOIN object_template_properties AS property
+                  ON property.template_id = exact_chain.template_id
+                 AND property.template_version = exact_chain.version
+
+                UNION ALL
+
+                SELECT
+                    2 AS row_kind,
+                    exact_chain.depth,
+                    exact_chain.template_id AS declaring_template_id,
+                    component.name,
+                    component.position,
+                    NULL::uuid AS datatype_id,
+                    NULL::integer AS datatype_version,
+                    NULL::text AS value_mode,
+                    NULL::boolean AS required,
+                    NULL::jsonb AS migration_default,
+                    component.target_template_id
+                FROM exact_chain
+                JOIN object_template_components AS component
+                  ON component.template_id = exact_chain.template_id
+                 AND component.template_version = exact_chain.version
+            )
+            SELECT *
+            FROM projection
+            ORDER BY row_kind, depth DESC, position
+            """
+        )
+        rows = (
+            (
+                await self.connection.execute(
+                    statement, {"template_id": template_id, "version": version}
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if not rows:
+            return None
+        return EffectiveSchema(
+            template_id=template_id,
+            version=version,
+            properties=tuple(
+                EffectiveProperty(
+                    declaring_template_id=cast(UUID, row["declaring_template_id"]),
+                    declaration=_property(row),
+                )
+                for row in rows
+                if row["row_kind"] == 1
+            ),
+            components=tuple(
+                EffectiveComponent(
+                    declaring_template_id=cast(UUID, row["declaring_template_id"]),
+                    declaration=_component(row),
+                )
+                for row in rows
+                if row["row_kind"] == 2
+            ),
         )
 
     async def lock_lineage_no_key(self, template_id: UUID) -> bool:
@@ -744,23 +992,30 @@ class ObjectTemplateStore:
         status: VersionStatus | None,
         after: int | None,
         limit: int,
-    ) -> Sequence[ObjectTemplateVersionSummary]:
-        statement = select(object_template_versions).where(
-            object_template_versions.c.template_id == template_id
-        )
+    ) -> ObjectTemplateVersionPageProjection:
+        membership = object_template_versions.c.template_id == object_templates.c.id
         if status is not None:
-            statement = statement.where(
-                object_template_versions.c.status == status.value
+            membership = and_(
+                membership, object_template_versions.c.status == status.value
             )
         if after is not None:
-            statement = statement.where(object_template_versions.c.version > after)
-        rows = (
-            (
-                await self.connection.execute(
-                    statement.order_by(object_template_versions.c.version).limit(limit)
-                )
+            membership = and_(membership, object_template_versions.c.version > after)
+        statement = (
+            select(
+                object_templates.c.id.label("parent_id"),
+                *object_template_versions.c,
             )
-            .mappings()
-            .all()
+            .select_from(
+                object_templates.outerjoin(object_template_versions, membership)
+            )
+            .where(object_templates.c.id == template_id)
+            .order_by(object_template_versions.c.version)
+            .limit(limit)
         )
-        return [_summary(row) for row in rows]
+        rows = (await self.connection.execute(statement)).mappings().all()
+        if not rows:
+            return ObjectTemplateVersionPageProjection(False, ())
+        return ObjectTemplateVersionPageProjection(
+            True,
+            tuple(_summary(row) for row in rows if row["version"] is not None),
+        )

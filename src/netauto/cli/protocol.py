@@ -17,6 +17,8 @@ from netauto.cli.model import (
 )
 from netauto.transport.http.errors import PUBLIC_STATUS_BY_CODE, BusinessErrorDTO
 
+_LOCATION_TOKEN = re.compile(r"\{([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)\}")
+
 
 @dataclass(frozen=True, slots=True)
 class ProtocolOutcome:
@@ -41,31 +43,59 @@ def _json_content_type(response: httpx.Response) -> bool:
     return content_type.split(";", 1)[0].strip().lower() == "application/json"
 
 
-def _lookup(value: JsonValue, path: str) -> str | None:
+def location_template_tokens(template: str) -> tuple[str, ...] | None:
+    """Parse the closed Location-template DSL without Python format semantics."""
+
+    tokens: list[str] = []
+    cursor = 0
+    for match in _LOCATION_TOKEN.finditer(template):
+        literal = template[cursor : match.start()]
+        if "{" in literal or "}" in literal:
+            return None
+        tokens.append(match.group(1))
+        cursor = match.end()
+    if "{" in template[cursor:] or "}" in template[cursor:]:
+        return None
+    return tuple(tokens)
+
+
+def _lookup(value: JsonValue, path: str) -> JsonValue | None:
     current: JsonValue = value
     for segment in path.split("."):
         if not isinstance(current, dict) or segment not in current:
             return None
         current = current[segment]
-    return str(current) if isinstance(current, str | int) else None
+    return current
 
 
-def _expected_location(
+def _location_scalar(value: JsonValue) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def materialize_location(
     template: str,
     result: JsonValue,
     request_values: Mapping[str, JsonValue],
 ) -> str | None:
-    values: dict[str, str] = {}
-    for token in re.findall(r"\{([^{}]+)\}", template):
-        request_value = request_values.get(token)
-        if isinstance(request_value, str | int):
-            values[token] = str(request_value)
-            continue
-        result_value = _lookup(result, token)
-        if result_value is None:
+    """Materialize one valid registry template or return non-materializable."""
+
+    tokens = location_template_tokens(template)
+    if tokens is None:
+        return None
+    rendered = template
+    for token in dict.fromkeys(tokens):
+        value = (
+            request_values[token] if token in request_values else _lookup(result, token)
+        )
+        scalar = _location_scalar(value)
+        if scalar is None:
             return None
-        values[token] = str(result_value)
-    return template.format_map(values)
+        rendered = rendered.replace("{" + token + "}", scalar)
+    return rendered
 
 
 def interpret_response(
@@ -127,7 +157,7 @@ def interpret_response(
     result = trace_body
     if location_template is not None:
         locations = response.headers.get_list("location")
-        expected = _expected_location(location_template, result, request_values or {})
+        expected = materialize_location(location_template, result, request_values or {})
         if len(locations) != 1 or expected is None or locations[0] != expected:
             return _protocol_error(status)
     return ProtocolOutcome(result, None)

@@ -303,6 +303,52 @@ lifecycle-events
 
 Raw ownership rows and raw runtime Relationship-resolution rows are not public representations.
 
+These projections trust admitted persisted facts rather than re-running
+mutation-owned semantic certification:
+
+- intrinsic Object reads decode the persisted snapshot without resolving its
+  ObjectTemplate/DataType closure solely to prove the properties again;
+- component and owner reads use the parent's exact template chain only to
+  materialize the mandatory `slot_declaring_template_id`; they do not revalidate
+  ownership-slot admission;
+- Object-relative Relationship reads derive and deduplicate complete semantic
+  views from persisted factual/runtime state without re-certifying Relationship
+  topology or property-schema admission;
+- lifecycle reads decode the historical event discriminant and mandatory typed
+  carriers without replaying transition admissibility, changedness, version
+  increase or agreement with live state.
+
+An absent path Object remains distinct from an existing parent with an empty
+page and from an existing detached child whose owner projection is null. Missing
+or ambiguous mandatory contextual state fails the complete projection through
+the bounded internal-failure boundary; it is never silently filtered or
+converted to null. Representable persisted semantic surprises remain readable.
+
+Each public Object projection uses one authoritative business statement and one
+PostgreSQL statement snapshot. Separate requests or pages do not share a
+repeatable snapshot.
+
+### Historical intrinsic snapshot decoding
+
+An intrinsic historical Object snapshot materializes the required public fields:
+
+```text
+id                UUID parsed from a string carrier
+canonical_name    string carrier
+template_id       UUID parsed from a string carrier
+template_version  integer carrier, boolean excluded
+properties        dict[str, JsonValue]
+```
+
+`JsonValue` recursively permits JSON null, strings, booleans, integers, arrays
+and string-keyed objects. Historical decoding does not impose current runtime
+property-name grammar, non-null/non-empty/homogeneous property rules,
+canonical-name length, positive-version admission or current
+ObjectTemplate/DataType validation. Extra historical JSON fields that are not
+required by the public snapshot are ignored; missing or unusable required fields
+fail boundedly. Mutation-side lifecycle construction and validation remain
+strong and atomic.
+
 ## Concurrency ownership
 
 The Object row is the concurrency owner of complete intrinsic Object state.

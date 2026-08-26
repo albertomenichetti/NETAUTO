@@ -294,9 +294,9 @@ def _lineage_deleted_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     return cut
 
 
-def _version_header_read_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
+def _version_projection_read_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
     cut = PhaseCut()
-    original = ObjectTemplateStore.get_header
+    original = ObjectTemplateStore.project_version
 
     async def intercepted(
         store: ObjectTemplateStore, template_id: UUID, version: int
@@ -308,7 +308,7 @@ def _version_header_read_cut(monkeypatch: pytest.MonkeyPatch) -> PhaseCut:
             await cut.release.wait()
         return result
 
-    monkeypatch.setattr(ObjectTemplateStore, "get_header", intercepted)
+    monkeypatch.setattr(ObjectTemplateStore, "project_version", intercepted)
     return cut
 
 
@@ -962,7 +962,7 @@ async def test_composite_exact_read_never_mixes_candidate_generations(
                 PropertyCandidate("before", 1, datatype_id, 1, ValueMode.SCALAR, False),
             ),
         )
-        cut = _version_header_read_cut(monkeypatch)
+        cut = _version_projection_read_cut(monkeypatch)
         read_task = asyncio.create_task(
             _reader(actors).get_version(template_id, 1), name="T1"
         )

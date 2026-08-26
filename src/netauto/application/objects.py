@@ -1,6 +1,5 @@
 """M1 intrinsic Object state and lifecycle application capability."""
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -50,29 +49,17 @@ from netauto.persistence.locking import (
     run_semantic_uow_attempts,
 )
 from netauto.persistence.objects import (
+    ComponentProjection,
     ObjectDeleteReferenceError,
     ObjectStore,
     ObjectTemplateReferenceError,
+    OwnerProjection,
     OwnershipConflictError,
     OwnershipFact,
     OwnershipReferenceError,
 )
 from netauto.persistence.objecttemplates import ObjectTemplateStore
 from netauto.persistence.uow import UnitOfWorkFactory
-
-
-@dataclass(frozen=True, slots=True)
-class ComponentProjection:
-    slot_declaring_template_id: UUID
-    slot_name: str
-    child_object_id: UUID
-
-
-@dataclass(frozen=True, slots=True)
-class OwnerProjection:
-    parent_object_id: UUID
-    slot_declaring_template_id: UUID
-    slot_name: str
 
 
 def _not_found(object_id: UUID) -> ApplicationFailure:
@@ -401,9 +388,6 @@ class ObjectService:
             value = await ObjectStore(uow.connection).get(object_id)
             if value is None:
                 raise _not_found(object_id)
-            await self._validate_persisted_object(
-                ObjectTemplateStore(uow.connection), value
-            )
             return value
 
     async def delete(self, object_id: UUID) -> None:
@@ -834,7 +818,10 @@ class ObjectService:
         cursor: str | None,
         limit: int,
     ) -> Page[ComponentProjection]:
-        filters: dict[str, JsonValue] = {"slot_name": slot_name}
+        filters: dict[str, JsonValue] = {
+            "parent_object_id": str(parent_object_id),
+            "slot_name": slot_name,
+        }
         after: UUID | None = None
         if cursor is not None:
             key = decode_cursor(cursor, "object_components", filters)
@@ -852,34 +839,24 @@ class ObjectService:
                     "invalid_cursor",
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
-        async with self._uow_factory.coherent_read() as uow:
-            store = ObjectStore(uow.connection)
-            parent = await store.get(parent_object_id)
-            if parent is None:
-                raise _not_found(parent_object_id)
-            schema, _ = await self._schema_specs(
-                ObjectTemplateStore(uow.connection),
-                parent.template_id,
-                parent.template_version,
-            )
-            facts = list(
-                await store.list_components(
+        async with self._uow_factory() as uow:
+            try:
+                projection = await ObjectStore(
+                    uow.connection
+                ).list_component_projections(
                     parent_object_id,
                     slot_name=slot_name,
                     after=after,
                     limit=limit + 1,
                 )
-            )
-            projections: list[ComponentProjection] = []
-            for fact in facts:
-                slot = self._slot(schema, fact.slot_name)
-                if slot is None:
-                    raise _internal(
-                        "A persisted ownership edge has no current semantic slot."
-                    )
-                projections.append(self._component(slot, fact.child_object_id))
-        more = len(projections) > limit
-        items = projections[:limit]
+            except RuntimeError as error:
+                raise _internal(
+                    "A persisted ownership edge has no materializable slot context."
+                ) from error
+            if not projection.parent_exists:
+                raise _not_found(parent_object_id)
+        more = len(projection.items) > limit
+        items = list(projection.items[:limit])
         next_cursor = (
             encode_cursor(
                 "object_components", filters, [str(items[-1].child_object_id)]
@@ -890,29 +867,18 @@ class ObjectService:
         return Page(items, next_cursor)
 
     async def get_owner(self, child_object_id: UUID) -> OwnerProjection | None:
-        async with self._uow_factory.coherent_read() as uow:
-            store = ObjectStore(uow.connection)
-            if await store.get(child_object_id) is None:
-                raise _not_found(child_object_id)
-            fact = await store.get_ownership(child_object_id)
-            if fact is None:
-                return None
-            parent = await store.get(fact.parent_object_id)
-            if parent is None:
-                raise _internal("A persisted ownership parent is missing.")
-            schema, _ = await self._schema_specs(
-                ObjectTemplateStore(uow.connection),
-                parent.template_id,
-                parent.template_version,
-            )
-            slot = self._slot(schema, fact.slot_name)
-            if slot is None:
-                raise _internal(
-                    "A persisted ownership edge has no current semantic slot."
+        async with self._uow_factory() as uow:
+            try:
+                projection = await ObjectStore(uow.connection).get_owner_projection(
+                    child_object_id
                 )
-            return OwnerProjection(
-                fact.parent_object_id, slot.declaring_template_id, slot.name
-            )
+            except RuntimeError as error:
+                raise _internal(
+                    "A persisted ownership edge has no materializable slot context."
+                ) from error
+            if not projection.child_exists:
+                raise _not_found(child_object_id)
+            return projection.owner
 
     async def list_objects(
         self,
@@ -983,6 +949,20 @@ class ObjectService:
         cursor: str | None,
         limit: int,
     ) -> Page[LifecycleEvent]:
+        if involving_object_id is not None:
+            return await self.list_object_events(
+                involving_object_id,
+                kind=kind,
+                object_id=object_id,
+                destination_object_id=destination_object_id,
+                relationship_id=relationship_id,
+                relationship_definition_id=relationship_definition_id,
+                relationship_name=relationship_name,
+                occurred_from=occurred_from,
+                occurred_to=occurred_to,
+                cursor=cursor,
+                limit=limit,
+            )
         filters: dict[str, JsonValue] = {
             "kind": None if kind is None else kind.value,
             "object_id": None if object_id is None else str(object_id),
@@ -1004,9 +984,7 @@ class ObjectService:
             "occurred_to": (
                 None if occurred_to is None else _canonical_timestamp(occurred_to)
             ),
-            "involving_object_id": (
-                None if involving_object_id is None else str(involving_object_id)
-            ),
+            "involving_object_id": None,
         }
         after: tuple[datetime, UUID] | None = None
         if cursor is not None:
@@ -1033,11 +1011,7 @@ class ObjectService:
                     "invalid_cursor",
                     "The cursor is malformed or incompatible with this query.",
                 ) from error
-        async with self._uow_factory.coherent_read() as uow:
-            store = ObjectStore(uow.connection)
-            if involving_object_id is not None:
-                if await store.get(involving_object_id) is None:
-                    raise _not_found(involving_object_id)
+        async with self._uow_factory() as uow:
             try:
                 rows = list(
                     await LifecycleStore(uow.connection).list_events(
@@ -1049,7 +1023,7 @@ class ObjectService:
                         relationship_name=relationship_name,
                         occurred_from=occurred_from,
                         occurred_to=occurred_to,
-                        involving_object_id=involving_object_id,
+                        involving_object_id=None,
                         after=after,
                         limit=limit + 1,
                     )
@@ -1060,6 +1034,105 @@ class ObjectService:
                 ) from error
         more = len(rows) > limit
         items = rows[:limit]
+        next_cursor = (
+            encode_cursor(
+                "lifecycle_events",
+                filters,
+                [_canonical_timestamp(items[-1].occurred_at), str(items[-1].id)],
+            )
+            if more
+            else None
+        )
+        return Page(items, next_cursor)
+
+    async def list_object_events(
+        self,
+        target_object_id: UUID,
+        *,
+        kind: EventKind | None,
+        object_id: UUID | None,
+        destination_object_id: UUID | None,
+        relationship_id: UUID | None,
+        relationship_definition_id: UUID | None,
+        relationship_name: str | None,
+        occurred_from: datetime | None,
+        occurred_to: datetime | None,
+        cursor: str | None,
+        limit: int,
+    ) -> Page[LifecycleEvent]:
+        filters: dict[str, JsonValue] = {
+            "kind": None if kind is None else kind.value,
+            "object_id": None if object_id is None else str(object_id),
+            "destination_object_id": (
+                None if destination_object_id is None else str(destination_object_id)
+            ),
+            "relationship_id": (
+                None if relationship_id is None else str(relationship_id)
+            ),
+            "relationship_definition_id": (
+                None
+                if relationship_definition_id is None
+                else str(relationship_definition_id)
+            ),
+            "relationship_name": relationship_name,
+            "occurred_from": (
+                None if occurred_from is None else _canonical_timestamp(occurred_from)
+            ),
+            "occurred_to": (
+                None if occurred_to is None else _canonical_timestamp(occurred_to)
+            ),
+            "involving_object_id": str(target_object_id),
+        }
+        after: tuple[datetime, UUID] | None = None
+        if cursor is not None:
+            key = decode_cursor(cursor, "lifecycle_events", filters)
+            if len(key) != 2 or not all(isinstance(item, str) for item in key):
+                raise ApplicationFailure(
+                    FailureClass.INVALID_REQUEST,
+                    "invalid_cursor",
+                    "The cursor is malformed or incompatible with this query.",
+                )
+            first = key[0]
+            second = key[1]
+            if not isinstance(first, str) or not isinstance(second, str):
+                raise ApplicationFailure(
+                    FailureClass.INVALID_REQUEST,
+                    "invalid_cursor",
+                    "The cursor is malformed or incompatible with this query.",
+                )
+            try:
+                after = (_cursor_timestamp(first), UUID(second))
+            except ValueError as error:
+                raise ApplicationFailure(
+                    FailureClass.INVALID_REQUEST,
+                    "invalid_cursor",
+                    "The cursor is malformed or incompatible with this query.",
+                ) from error
+        async with self._uow_factory() as uow:
+            try:
+                projection = await LifecycleStore(
+                    uow.connection
+                ).list_events_for_object(
+                    target_object_id=target_object_id,
+                    kind=kind,
+                    object_id=object_id,
+                    destination_object_id=destination_object_id,
+                    relationship_id=relationship_id,
+                    relationship_definition_id=relationship_definition_id,
+                    relationship_name=relationship_name,
+                    occurred_from=occurred_from,
+                    occurred_to=occurred_to,
+                    after=after,
+                    limit=limit + 1,
+                )
+            except RuntimeError as error:
+                raise _internal(
+                    "The persisted lifecycle event state is invalid."
+                ) from error
+            if not projection.target_exists:
+                raise _not_found(target_object_id)
+        more = len(projection.items) > limit
+        items = list(projection.items[:limit])
         next_cursor = (
             encode_cursor(
                 "lifecycle_events",
