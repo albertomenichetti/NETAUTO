@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S06 CANDIDATE READY FOR REVIEW
+**Milestone status:** ACTIVE — IMPLEMENTATION AUTHORIZATION — M3-S06 COMPLETED / M3-S07 PENDING
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    IMPLEMENTATION
+phase                    IMPLEMENTATION AUTHORIZATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S06 — CANDIDATE READY FOR REVIEW
-software implementation  AUTHORIZED — M3-S06 ONLY
-blockers                 none
+active implementation    NONE
+software implementation  NOT AUTHORIZED
+blockers                 none for M3-S07 authorization decision
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, and `M3-S05` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure`. `M3-S07` remains dependency-blocked and not authorized.
+`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, `M3-S05`, and `M3-S06` are reviewer-owned `COMPLETED`. No later slice is authorized. Software implementation may resume only after this file explicitly authorizes the next exact slice.
 
 ## Frozen governance gates
 
@@ -174,35 +174,41 @@ review findings           0
 reopen required           NO
 ```
 
-S00-S05 execution aids were removed from active `wip/` after reviewer acceptance; Git history retains them.
-
-## M3-S06 implementation authorization
+### M3-S06
 
 ```text
-authorized slice          M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure
-slice state               CANDIDATE READY FOR REVIEW
-human authorization       GRANTED
-predecessor               M3-S05 — COMPLETED
-primary evidence          M3-VER-04 / 05 / 06 / 09 / 12 / 17 / 18 / 19
-required re-execution     M3-VER-01..03 / 07..08 / 10..11 / 13..16
-GET census                22 exact
-cursor census             12 exact
-CLI 201 census             8 exact
-production behavior       corrections only if frozen evidence exposes a defect
+slice                     M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure
+review outcome            COMPLETED
 implementation candidate  c13bf884b8196e256fe4e7cefd73d083660fa54e
+publication commit        0cba7219b2501952de761e4bb54fc2a76eb47e5c
 candidate evidence        docs/milestones/M3/evidence/M3-S06-candidate.md
+primary evidence          M3-VER-04 / 05 / 06 / 09 / 12 / 17 / 18 / 19 — PASS
+re-executed evidence      M3-VER-01..03 / 07..08 / 10..11 / 13..16 — PASS
+all evidence bundles      M3-VER-01 .. M3-VER-19 — PASS on the S06 candidate evidence run
+GET census                22 / 22 exact
+cursor census             12 / 12 exact
+CLI 201 census             8 / 8 exact
+business SQL statements   22 / 22 = exactly one on PostgreSQL 16.15
+snapshot evidence         PASS — deterministic BEFORE and AFTER committed generations
+traceability              PASS — 8 OUT / 19 AC / 19 VER, owner and non-empty collected-target closure
+non-drift                 PASS — compare_metadata []; one migration root/head; dependency/lock/version unchanged
+production corrections    NONE
 candidate gates           PASS — 990 full-suite tests; 706 non-PostgreSQL tests; Ruff/Pyright/build/locked sync/lock/collection PASS
-integrated censuses       GET 22/22; cursor 12/12; CLI 201 8/8; statements 22/22 exactly one
-snapshot evidence         PASS — RelationshipDefinition BEFORE and AFTER generations
-non-drift                 PASS — compare_metadata []; migration/dependency/lock/version unchanged
-review outcome            PENDING — reviewer-owned
+normative skip/xfail/rerun 0 / 0 / 0
+review findings           0
 reopen required           NO
 M3-S07                    NOT AUTHORIZED
 ```
 
-The S06 candidate is ready for reviewer inspection. Reviewer-owned `COMPLETED` remains a separate decision.
+The reviewed S06 implementation adds permanent integration evidence only and introduces no production correction. The traceability registry exactly closes the frozen 8-outcome, 19-acceptance-criterion and 19-evidence-bundle sets, maps every bundle to architecture owner(s) and non-empty collected pytest targets, and exactly represents the 22 business GET routes, 12 cursor-bearing routes and 8 registered CLI `201 + Location` operations.
 
-The candidate contains one machine-checkable M3 traceability owner with exact outcome/acceptance/evidence mappings plus exact 22-route GET, 12-route cursor and 8-operation CLI `201` censuses. The durable evidence record reports the integrated compatibility/failure, read-vs-mutation authority, cursor traversal, one-business-statement, deterministic snapshot and non-drift results.
+Integrated public evidence covers all 22 canonical GET success targets and the required request/path-target failure classes. All twelve cursor routes perform true multipage continuation with changed limit and reject incompatible route/filter/path identities and malformed keys. The real PostgreSQL observer measures exactly one authoritative business statement for each of the 22 canonical GET routes.
+
+`M3-VER-19` additionally has deterministic real-PostgreSQL BEFORE/AFTER evidence on a multi-fragment RelationshipDefinition projection. The AFTER cut pauses immediately before the production authoritative execute, commits the writer generation and then reads the complete AFTER generation. The BEFORE cut completes the production authoritative statement, commits the writer before application return, and retains the complete BEFORE generation. The harness changes no production SQL, isolation, locking or route selection and introduces no cross-request snapshot promise.
+
+`M3-VER-17` confirms no schema, Alembic, runtime dependency, lockfile or project-version drift. Live `compare_metadata == []`; the shipped graph remains one root/head at `0001_m2_kernel`; the authorized `pyproject.toml`, `uv.lock` and migration blob baselines are unchanged.
+
+All `M3-VER-01 .. M3-VER-19` have passing concrete evidence on the S06 candidate run. This closes S06 integration evidence but does not constitute final M3 acceptance or authorize delivery; final candidate acceptance remains the separate frozen `M3-S07` gate. The completed S06 execution aid has been removed from active `wip/`; Git retains its history.
 
 ## Scope impact
 
@@ -219,7 +225,7 @@ project-version change
 cursor-codec version change
 ```
 
-S06 must prove these non-deltas rather than introduce them.
+The accepted S06 candidate introduced none of those changes.
 
 ## Remaining gates
 
@@ -233,14 +239,14 @@ M3-S02 execution/review                        DONE — COMPLETED
 M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
-explicit M3-S06 implementation authorization  DONE — M3-S06 ONLY
-M3-S06 execution/review                        CANDIDATE READY FOR REVIEW
-M3-S07 execution/review                        BLOCKED BY DEPENDENCY / NOT AUTHORIZED
+M3-S06 execution/review                        DONE — COMPLETED
+explicit M3-S07 implementation authorization  PENDING
+M3-S07 execution/review                        NOT AUTHORIZED
 final M3 acceptance                            PENDING
 ```
 
 ## Immediate next action
 
-Review the published `M3-S06 — Integrated read/cursor/coherence/non-drift/traceability closure` candidate and its durable evidence record.
+Make a separate explicit operational decision on whether to authorize `M3-S07 — Full M3 acceptance and delivery-candidate gate`.
 
-Do not start M3-S07. The implementer produces a candidate and reports verified evidence; the reviewer alone may mark M3-S06 `COMPLETED` and authorize the next slice.
+Software implementation is **NOT AUTHORIZED** until this status file is deliberately transitioned to authorize that exact slice.
