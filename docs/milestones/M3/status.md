@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 READY
+**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 IN PROGRESS
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,12 +26,12 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S07 — READY
+active implementation    M3-S07 — IN PROGRESS
 software implementation  AUTHORIZED — M3-S07 ONLY
 blockers                 none
 ```
 
-`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, `M3-S05`, and `M3-S06` are reviewer-owned `COMPLETED`. Software implementation is authorized only for `M3-S07 — Full M3 acceptance and delivery-candidate gate`. No business behavior is planned in S07; the slice is limited to the frozen final-candidate verification/evidence gate.
+`M3-S00`, `M3-S01`, `M3-S02`, `M3-S03`, `M3-S04`, `M3-S05`, and `M3-S06` are reviewer-owned `COMPLETED`. Software implementation is in progress only for `M3-S07 — Full M3 acceptance and delivery-candidate gate`. No business behavior is planned in S07; the slice is limited to the frozen final-candidate verification/evidence gate.
 
 ## Frozen governance gates
 
@@ -197,7 +197,7 @@ candidate gates           PASS — 990 full-suite tests; 706 non-PostgreSQL test
 normative skip/xfail/rerun 0 / 0 / 0
 review findings           0
 reopen required           NO
-M3-S07                    READY / AUTHORIZED
+M3-S07                    IN PROGRESS / AUTHORIZED
 ```
 
 The reviewed S06 implementation adds permanent integration evidence only and introduces no production correction. The traceability registry exactly closes the frozen 8-outcome, 19-acceptance-criterion and 19-evidence-bundle sets, maps every bundle to architecture owner(s) and non-empty collected pytest targets, and exactly represents the 22 business GET routes, 12 cursor-bearing routes and 8 registered CLI `201 + Location` operations.
@@ -214,7 +214,7 @@ All `M3-VER-01 .. M3-VER-19` have passing concrete evidence on the S06 candidate
 
 ```text
 authorized slice          M3-S07 — Full M3 acceptance and delivery-candidate gate
-slice state               READY
+slice state               IN PROGRESS
 human authorization       GRANTED
 predecessor               M3-S00 .. M3-S06 — reviewer-owned COMPLETED
 planned business behavior NONE
@@ -260,7 +260,7 @@ M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 M3-S06 execution/review                        DONE — COMPLETED
 explicit M3-S07 implementation authorization  DONE — M3-S07 ONLY
-M3-S07 execution/review                        READY
+M3-S07 execution/review                        IN PROGRESS
 final M3 acceptance                            PENDING
 ```
 

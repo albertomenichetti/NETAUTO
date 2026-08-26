@@ -209,8 +209,16 @@ def test_m3_contract_quality_gates_and_normative_state_are_closed() -> None:
     assert "open architecture findings 0" in architecture_control
     assert "**Status:** FINAL / FROZEN" in steps
     assert "blockers                 none" in status
-    assert "software implementation  AUTHORIZED — M3-S06 ONLY" in status
-    assert "M3-S07" in status and "NOT AUTHORIZED" in status
+    assert "software implementation  AUTHORIZED — M3-S07 ONLY" in status
+    active_s07_states = (
+        "READY",
+        "IN PROGRESS",
+        "CANDIDATE READY FOR REVIEW",
+    )
+    assert sum(
+        f"**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 {state}" in status
+        for state in active_s07_states
+    ) == 1
     assert "PARTIALLY REOPENED" not in architecture_control
     assert "open contract findings   0" in status
     assert "open architecture finding 0" in status
@@ -218,7 +226,7 @@ def test_m3_contract_quality_gates_and_normative_state_are_closed() -> None:
     active_prompts = {
         path.name for path in (M3_ROOT / "wip").glob("M3-S*-codex-prompt.md")
     }
-    assert active_prompts == {"M3-S06-codex-prompt.md"}
+    assert active_prompts == {"M3-S07-codex-prompt.md"}
 
 
 def test_m3_ver_06_all_get_services_have_no_mutation_certification_dependencies() -> (
