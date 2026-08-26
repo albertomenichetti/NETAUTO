@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — CONSISTENCY CLOSURE REVIEW CHANGES REQUIRED — M3-S07 COMPLETED
+**Milestone status:** ACTIVE — CONSISTENCY CLOSURE CANDIDATE — M3-S07 COMPLETED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -30,14 +30,14 @@ active implementation    NONE
 software implementation  NOT AUTHORIZED
 final acceptance         ACCEPTED — M3-S07 COMPLETED
 AS-IS consolidation      COMPLETED — reviewer-owned
-consistency closure      REVIEW CHANGES REQUIRED
+consistency closure      CANDIDATE READY FOR REVIEW
 final delivery approval  NOT GRANTED
 M3                       NOT DELIVERED
-blockers                 M3-CC-RF-01
-review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0; consistency closure 1 OPEN
+blockers                 none
+review findings          S03 2/2 CLOSED; S07 2/2 CLOSED; consolidation 0; consistency closure 1 CANDIDATE-FIXED / REVIEWER CLOSURE PENDING
 ```
 
-All implementation slices `M3-S00 .. M3-S07` remain reviewer-owned `COMPLETED`. The final acceptance gate remains `ACCEPTED`, and the accepted AS-IS consolidation remains `COMPLETED`. The first M3 consistency-closure candidate was reviewed and is **not yet accepted** because one bounded post-publication evidence requirement is missing. No semantic, product, schema, dependency, current-owner or CC-01..CC-15 finding was discovered.
+All implementation slices `M3-S00 .. M3-S07` remain reviewer-owned `COMPLETED`. The final acceptance gate remains `ACCEPTED`, and the accepted AS-IS consolidation remains `COMPLETED`. The bounded evidence correction for `M3-CC-RF-01` is published as a candidate for reviewer closure. No semantic, product, schema, dependency, current-owner or CC-01..CC-15 finding was discovered.
 
 Software implementation remains closed. Delivery, merge, tag, release and artifact publication remain unauthorized.
 
@@ -66,7 +66,7 @@ open decomposition finding 0
 steps reopening          NOT REQUIRED
 ```
 
-No incompatible reopen is active. The current consistency-closure finding is evidence-only and does not reopen any semantic authority.
+No incompatible reopen is active. The candidate-fixed consistency-closure finding is evidence-only and does not reopen any semantic authority.
 
 ## Reviewer-owned implementation and post-acceptance gates
 
@@ -74,7 +74,7 @@ No incompatible reopen is active. The current consistency-closure finding is evi
 M3-S00 .. M3-S07         COMPLETED
 final acceptance         ACCEPTED
 AS-IS consolidation      COMPLETED
-consistency closure      REVIEW CHANGES REQUIRED
+consistency closure      CANDIDATE READY FOR REVIEW
 M3                       NOT DELIVERED
 software implementation  NOT AUTHORIZED
 ```
@@ -130,10 +130,10 @@ wheel invariant             PASS — 170185 bytes / 428a2fe05a9905f3794dd15de656
 non-PostgreSQL              726 passed / 284 deselected
 full repository             1010 passed
 review outcome              REVIEW CHANGES REQUIRED
-review findings             1 OPEN — M3-CC-RF-01
+review findings             1 — M3-CC-RF-01 CANDIDATE-FIXED / REVIEWER CLOSURE PENDING
 ```
 
-### M3-CC-RF-01 — post-publication remote-HEAD integrity/lifecycle evidence missing
+### M3-CC-RF-01 — CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
 
 The consistency-closure specification and execution prompt require, after the report/status publication is pushed:
 
@@ -143,7 +143,7 @@ verify clean working tree
 rerun bounded lifecycle/integrity checks on the exact remote HEAD
 ```
 
-The candidate handoff proves local/origin/remote equality and a clean working tree, and the reviewer independently verified that remote `M3` points exactly to `68943e222a612577dd66a36af4a6b7e82b3f1b35`. However, neither the candidate report, `status.md`, nor the handoff records the required bounded post-publication lifecycle/integrity rerun on that exact remote HEAD.
+The candidate handoff proved local/origin/remote equality and a clean working tree, and the reviewer independently verified that remote `M3` pointed exactly to `68943e222a612577dd66a36af4a6b7e82b3f1b35`. However, neither the candidate report, `status.md`, nor the handoff recorded the required bounded post-publication lifecycle/integrity rerun on that exact remote HEAD.
 
 This is an evidence gap only. The audited AS-IS SHA, CC matrix, full gate, current owners and publication commit are not rejected or invalidated.
 
@@ -163,6 +163,102 @@ Required correction:
 ```
 
 No new audited AS-IS candidate is required if the bounded checks pass without repository correction, because the missing evidence concerns the later publication commit rather than the audited semantic corpus.
+
+The bounded correction ran from the clean, synchronized reviewer-status HEAD:
+
+```text
+current pre-publication HEAD  10d3523468f5f1231a118de63aab2ed4acfbfd4a
+origin/M3                     10d3523468f5f1231a118de63aab2ed4acfbfd4a
+remote refs/heads/M3          10d3523468f5f1231a118de63aab2ed4acfbfd4a
+working tree                  clean
+AUDITED_ASIS_SHA              2f091f4ca021153280ed37fad7b4b2cc730195f9 — unchanged
+```
+
+Publication file-set audit command:
+
+```bash
+git diff --name-only 2f091f4ca021153280ed37fad7b4b2cc730195f9 68943e222a612577dd66a36af4a6b7e82b3f1b35
+```
+
+Exact result:
+
+```text
+docs/milestones/M3/consistency-closure-report.md
+docs/milestones/M3/status.md
+exit status 0
+```
+
+Semantic/executable diff audit command:
+
+```bash
+git diff --exit-code 2f091f4ca021153280ed37fad7b4b2cc730195f9 68943e222a612577dd66a36af4a6b7e82b3f1b35 -- docs/architecture src tests pyproject.toml uv.lock src/netauto/migrations
+```
+
+Exact result:
+
+```text
+empty diff
+exit status 0
+```
+
+Publication report/status marker audit command:
+
+```bash
+uv run python -c 'import re, subprocess; sha="68943e222a612577dd66a36af4a6b7e82b3f1b35"; show=lambda path: subprocess.run(["git", "show", f"{sha}:{path}"], check=True, capture_output=True, text=True).stdout; report=show("docs/milestones/M3/consistency-closure-report.md"); status=show("docs/milestones/M3/status.md"); rows=re.findall(r"^\| (CC-\d{2}) \|.*\| (PASS) \|$", report, re.M); expected=[(f"CC-{number:02d}", "PASS") for number in range(1, 16)]; checks=["**Status:** CANDIDATE READY FOR REVIEW" in report, "AUDITED_ASIS_SHA                         2f091f4ca021153280ed37fad7b4b2cc730195f9" in report, rows == expected, "open consistency findings                0" in report, "consistency closure      CANDIDATE READY FOR REVIEW" in status, "M3                       NOT DELIVERED" in status, "software implementation  NOT AUTHORIZED" in status]; assert all(checks), [index + 1 for index, passed in enumerate(checks) if not passed]; print("publication marker audit: PASS; checks=7/7; CC=15/15 PASS")'
+```
+
+Exact result:
+
+```text
+publication marker audit: PASS; checks=7/7; CC=15/15 PASS
+exit status 0
+```
+
+Current lifecycle/traceability regression command:
+
+```bash
+uv run pytest -q tests/test_m3_traceability.py tests/test_m3_s07_acceptance.py
+```
+
+Exact result:
+
+```text
+26 passed in 5.52s
+skip / xfail / rerun  0 / 0 / 0
+exit status           0
+```
+
+Pre-publication repository-state commands:
+
+```bash
+git status --short
+git rev-parse HEAD
+git rev-parse origin/M3
+git ls-remote origin refs/heads/M3
+```
+
+Exact result:
+
+```text
+git status --short  empty
+HEAD                10d3523468f5f1231a118de63aab2ed4acfbfd4a
+origin/M3           10d3523468f5f1231a118de63aab2ed4acfbfd4a
+remote M3           10d3523468f5f1231a118de63aab2ed4acfbfd4a
+exit status         0
+```
+
+Disposition:
+
+```text
+M3-CC-RF-01                         CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+original publication               68943e222a612577dd66a36af4a6b7e82b3f1b35
+publication file-set audit         PASS
+semantic/executable diff audit     PASS
+publication marker audit           PASS
+current lifecycle regression       PASS
+new substantive finding            none
+consistency-closure report changed no
+```
 
 ## Current durable architecture census
 
@@ -193,7 +289,7 @@ contract / architecture / steps           FINAL / FROZEN
 implementation M3-S00 .. M3-S07           COMPLETED
 final acceptance                          ACCEPTED
 AS-IS consolidation                       COMPLETED
-consistency closure                       REVIEW CHANGES REQUIRED
+consistency closure                       CANDIDATE READY FOR REVIEW
 M3                                        NOT DELIVERED
 final delivery approval                   NOT GRANTED
 merge / tag / release / artifact publish  NOT AUTHORIZED
@@ -202,6 +298,6 @@ software implementation                   NOT AUTHORIZED
 
 ## Immediate next action
 
-Execute only the bounded `M3-CC-RF-01` post-publication evidence fix and return the exact results for reviewer closure.
+Review the bounded `M3-CC-RF-01` evidence correction and decide whether to close the finding and accept the consistency closure.
 
 Do not modify current architecture, production, tests, schema, migration, dependencies, lockfiles or frozen M3 authorities unless a newly failing bounded integrity check reveals a separate issue requiring reviewer classification. Delivery remains unauthorized.
