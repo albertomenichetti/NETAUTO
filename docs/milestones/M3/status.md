@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — FINAL ACCEPTANCE ACCEPTED — M3-S07 COMPLETED
+**Milestone status:** ACTIVE — AS-IS CONSOLIDATION — M3-S07 COMPLETED
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -18,7 +18,7 @@ M3 starts from the delivered and merged M2 baseline. The root `README.md` identi
 ## Current phase
 
 ```text
-phase                    FINAL ACCEPTANCE ACCEPTED
+phase                    AS-IS CONSOLIDATION
 contract                 FINAL / FROZEN
 architecture set         FINAL / FROZEN
 architecture review      PASS
@@ -28,13 +28,14 @@ steps review             PASS
 steps approval           GRANTED
 active implementation    NONE
 software implementation  NOT AUTHORIZED
+documentation gate       AS-IS CONSOLIDATION — READY / AUTHORIZED
 blockers                 none
 review findings          S03 2/2 CLOSED; S07 2/2 CLOSED
 final acceptance         ACCEPTED — M3-S07 COMPLETED
 M3                       NOT DELIVERED
 ```
 
-All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`. The M3 final acceptance gate is accepted on the replacement S07 candidate. This does not by itself deliver, merge, tag, release, publish artifacts, or authorize AS-IS consolidation/delivery work.
+All implementation slices `M3-S00 .. M3-S07` are reviewer-owned `COMPLETED`, and the final acceptance gate is reviewer-owned `ACCEPTED`. The separate post-acceptance AS-IS consolidation gate is now authorized as documentation-only work under `docs/milestones/M3/as-is-consolidation.md`. This authorization does not reopen software implementation and does not authorize consistency closure, delivery, merge, tag, release or artifact publication.
 
 ## Frozen governance gates
 
@@ -169,7 +170,7 @@ new blocking findings           0
 open incompatible reopen        0
 ```
 
-`S07-RF-01` is closed by the permanent lifecycle-aware final-acceptance model and tests committed before replacement-candidate selection. The model explicitly supports reviewer-owned `COMPLETED`, requires accepted `acceptance.md` markers, `software implementation NOT AUTHORIZED`, accepted candidate evidence, no active M3 execution aid, and keeps M3 not delivered until a separate delivery transition.
+`S07-RF-01` is closed by the permanent lifecycle-aware final-acceptance model and tests committed before replacement-candidate selection. The model explicitly supports reviewer-owned `COMPLETED`, requires accepted `acceptance.md` markers, `software implementation NOT AUTHORIZED`, accepted candidate evidence, no active S07 execution aid, and keeps M3 not delivered until a separate delivery transition.
 
 `S07-RF-02` is closed by the committed registry-derived mapped-target runner. The exact invocation used on the replacement candidate is recorded in `docs/milestones/M3/evidence/M3-S07-candidate.md`; it derives from `M3_EVIDENCE_TO_TARGETS`, validates the immutable candidate and clean tree, parses JUnit, and fails closed on any missing/non-pass result.
 
@@ -216,22 +217,42 @@ cross-request snapshot contract
 runtime/deployment capability
 ```
 
+## Post-acceptance AS-IS consolidation authorization
+
+```text
+gate specification          docs/milestones/M3/as-is-consolidation.md
+specification status        FINAL
+gate state                  READY / AUTHORIZED
+human authorization         GRANTED by explicit post-S07 proceed decision
+authorization basis         final acceptance ACCEPTED / M3-S07 COMPLETED
+purpose                     consolidate accepted M3 state into current docs/architecture/
+target AS-IS corpus         exactly 15 existing files
+authorized repository delta docs/architecture/*.md + docs/milestones/M3/status.md
+software changes            NOT AUTHORIZED
+test/schema/dependency changes NOT AUTHORIZED
+consistency closure         NOT AUTHORIZED
+final delivery              NOT AUTHORIZED
+merge/tag/release/publish   NOT AUTHORIZED
+```
+
+The consolidation must derive current-state wording from the delivered AS-IS plus the frozen M3 owners and accepted final result. It may not introduce new semantics, copy milestone bookkeeping into current architecture, or use implementation/test behavior as a competing authority. A need to modify code, tests, schema, frozen M3 documents or project-wide technology is a STOP condition.
+
 ## Remaining governance
 
 ```text
 contract / architecture / steps           FINAL / FROZEN
 implementation M3-S00 .. M3-S07           COMPLETED
 final acceptance                          ACCEPTED
-M3                                        NOT DELIVERED
-AS-IS consolidation                       NOT AUTHORIZED / NOT STARTED
+AS-IS consolidation                       READY / AUTHORIZED
 consistency closure                       NOT AUTHORIZED / NOT STARTED
+M3                                        NOT DELIVERED
 final delivery approval                   NOT GRANTED
 merge / tag / release / artifact publish  NOT AUTHORIZED
 software implementation                   NOT AUTHORIZED
 ```
 
-The final acceptance gate does not itself make the milestone delivered. Any consolidation of current AS-IS architecture, dedicated consistency closure, delivery decision, merge, tag, release, or artifact publication is a separate governance action and requires explicit authorization.
-
 ## Immediate next action
 
-Make a separate governance decision on the post-acceptance path for M3 (for example AS-IS consolidation and consistency closure before delivery, following the project governance pattern if desired). Until explicitly authorized, no further software implementation or delivery action may begin.
+Execute the documentation-only M3 AS-IS consolidation gate under `docs/milestones/M3/as-is-consolidation.md`, produce one complete current-architecture candidate and return it for reviewer inspection.
+
+Do not start consistency closure or any delivery/merge/release action. The consolidator may mark only `AS-IS consolidation = CANDIDATE READY FOR REVIEW`; reviewer-owned `COMPLETED` remains a separate decision.
