@@ -8,13 +8,9 @@ If this README, the checked-out branch or a cycle's authoritative documents disa
 
 ## Current development cycle
 
-| Cycle | Type | Status | Documentation | Branch |
-|---|---|---|---|---|
-| `M3` | Milestone | `DELIVERED — MERGE PENDING` | [`docs/milestones/M3/`](docs/milestones/M3/) | `M3` |
+**NO ACTIVE CYCLE**
 
-M3 is formally delivered and remains listed here until the human-owned merge into `master` is executed. It is no longer an active software implementation cycle: further software changes require a new milestone or fix, or an explicit formal reopen.
-
-After merge, this README must be updated to record `M3` as `DELIVERED / MERGED` and, when no subsequent cycle exists, the repository must move to `NO ACTIVE CYCLE`.
+There is currently no active milestone or fix cycle. Software changes are not permitted until a new cycle is explicitly opened and authorized according to [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md).
 
 When a software cycle is active:
 
@@ -23,7 +19,7 @@ When a software cycle is active:
 
 A cycle's `status.md` owns its detailed phase, gates and blockers. Its `steps.md` owns the implementation decomposition. This README intentionally does not duplicate those details.
 
-With no active software cycle, software changes are not permitted. Explicitly authorized repository-governance or documentation maintenance follows the limited rules in [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md).
+Explicitly authorized repository-governance or documentation maintenance outside a software cycle follows the limited rules in [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md).
 
 ## Delivered cycles
 
@@ -31,7 +27,7 @@ With no active software cycle, software changes are not permitted. Explicitly au
 |---|---|---|---|---|
 | `M1` | Kernel data-modeling baseline: `DataType`, `ObjectTemplate`, `Object`, `Relationship` | `DELIVERED / MERGED` | [`docs/milestones/M1/`](docs/milestones/M1/) | `core_review` |
 | `M2` | Versioned Relationship schemas and factual state, durable migration baseline, centralized lock planning, Core Health, official CLI and installed Linux runtime | `DELIVERED / MERGED` | [`docs/milestones/M2/`](docs/milestones/M2/) | `master` |
-| `M3` | Trusted one-statement public reads, complete cursor query identity, ObjectTemplate root filtering and exact CLI create-response validation | `DELIVERED / NOT MERGED` | [`docs/milestones/M3/`](docs/milestones/M3/) | — |
+| `M3` | Trusted one-statement public reads, complete cursor query identity, ObjectTemplate root filtering and exact CLI create-response validation | `DELIVERED / MERGED` | [`docs/milestones/M3/`](docs/milestones/M3/) | `master` |
 
 M2 was merged into `master` by merge commit:
 
@@ -40,7 +36,18 @@ M2 was merged into `master` by merge commit:
 Merge pull request #2 from albertomenichetti/M2
 ```
 
-The delivered M3 source branch is pending its separate human-owned merge into `master`.
+M3 was merged into `master` by merge commit:
+
+```text
+74e5a5a1404dc6c00a639e39d9de31f3674d064d
+Merge pull request #6 from albertomenichetti/M3
+```
+
+The delivered M3 source head was:
+
+```text
+3111603e3b99276147ee54e869b70b0ea07d879d
+```
 
 The detailed delivery and merge states are recorded in the respective milestone `status.md` files. The complete delivered architecture is consolidated under [`docs/architecture/`](docs/architecture/).
 
@@ -48,7 +55,7 @@ The detailed delivery and merge states are recorded in the respective milestone 
 
 | Source | Responsibility |
 |---|---|
-| [`README.md`](README.md) | Operational entry point: current cycle, delivery/merge state, document repositories and branches. |
+| [`README.md`](README.md) | Operational entry point: active-cycle state, delivered/merged cycles, document repositories and branches. |
 | [`AGENTS.md`](AGENTS.md) | Operating contract for coding agents; governs how agents work, not what the system means. |
 | [`docs/general/linee_guida_progetto.md`](docs/general/linee_guida_progetto.md) | Governance for milestone and fix cycles, documentation roles, freeze/reopen, review, final gates and closure. |
 | [`docs/architecture/README.md`](docs/architecture/README.md) | Entry point and authority map for the current delivered AS-IS. |
