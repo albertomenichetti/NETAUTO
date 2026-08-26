@@ -249,19 +249,84 @@ cache HIT for (template_id, version)
 
 A cache hit does not prove current existence. The current distinction PUBLISHED vs DEPRECATED is not needed merely to interpret the immutable effective-schema payload.
 
+## Runtime-oriented immutable ObjectTemplate cache
+
+The main expected payoff of ObjectTemplate denormalization/cache is reducing repeated model-plane work for frequent `Object` operations.
+
+The immutable ObjectTemplate cache should therefore not be treated merely as a copy of persistence rows or of the public exact-version DTO. Its preferred shape is the representation most directly consumable by runtime Object validation.
+
+Conceptually:
+
+```text
+ImmutableObjectTemplateVersionCache[(template_id, version)]
+    exact parent identity
+    effective property lookup/runtime specs
+        name
+        declaring_template_id
+        datatype_id
+        datatype_version
+        value_mode
+        required
+        migration_default
+        linked/compiled DataType validator representation
+    effective component lookup
+        name
+        declaring_template_id
+        target_template_id
+```
+
+The PostgreSQL effective-schema materialization makes a cache miss / cold load cheap. Worker-local cache compilation then combines exact ObjectTemplate effective declarations with immutable DataType semantics so that hot `Object` validation can avoid:
+
+- exact ancestry traversal;
+- loading local declarations of ancestors;
+- repeated effective-schema merging;
+- repeated DataType semantic-payload reads;
+- repeated construction of runtime property specifications / validator structures.
+
+The goal is that a cache hit can supply semantic/runtime knowledge for frequent operations such as `Object.CREATE`, `Object.DATA_CHANGE`, `Object.SCHEMA_CHANGE` and ownership slot validation, while PostgreSQL remains authority for whatever current existence/admission predicate each operation still requires.
+
+A cache hit never proves current resource existence. PUBLISHED -> DEPRECATED does not invalidate the cached semantic/runtime payload.
+
+Working principle:
+
+> Immutable ObjectTemplateVersions should be cached in the form closest to data-plane validation needs; PostgreSQL materialization optimizes cold load, while worker-local compiled cache optimizes the hot Object path.
+
 ## CREATE cache fill
 
 After successful CREATE, the new lineage can opportunistically populate the stable ObjectTemplate cache because all stable fields are already available.
 
 The initial exact version is DRAFT v1 and must not populate the immutable exact-version cache.
 
+## CREATE local-declaration DML finding
+
+The current persistence implementation performs one INSERT for every local property and every local component, producing approximately:
+
+```text
+2 + P + C
+```
+
+DML statements for lineage, exact version, `P` properties and `C` components.
+
+The multi-table writes are structural, but the linear number of statements is not. A candidate M4 direction is bulk/multi-row insert per declaration table:
+
+```text
+1 INSERT lineage
+1 INSERT exact version
+1 bulk INSERT properties   if P > 0
+1 bulk INSERT components   if C > 0
+```
+
+If stable ancestry closure is adopted, non-root CREATE can materialize the new descendant's entire stable ancestor set in one additional INSERT ... SELECT statement rather than one statement per depth level.
+
+Do not over-optimize a rare model-plane mutation into one complex mega-statement merely to minimize statement count. Preserve PostgreSQL FK authority and verify that bulk DML still provides acceptable diagnostics for failing component/DataType references.
+
 ## Open items
 
 - physical schema and constraints for stable closure materialization;
 - whether stable closure contains self rows (`depth=0`) or strict ancestors only;
 - exact publication DML needed to build immutable effective projections;
-- whether effective-schema cache entry also stores compiled runtime property/slot lookup structures;
+- precise runtime cache entry shape and links to compiled DataType validators;
 - cache capacity/eviction policy;
 - whether exact-version ancestry materialization is needed by any operation after the full operation audit;
-- bulk DML optimization for local declaration inserts (`2 + P + C` AS-IS statements);
+- bulk DML failure classification/diagnostic quality;
 - all lock simplification and concurrency realization questions remain deferred to the second/global phase.
