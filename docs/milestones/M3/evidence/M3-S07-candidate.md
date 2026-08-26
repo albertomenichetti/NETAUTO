@@ -1,26 +1,46 @@
-# M3-S07 Candidate Evidence
+# M3-S07 Replacement Candidate Evidence
 
-This record contains implementer-owned execution evidence for the exact M3-S07 delivery candidate. It does not complete M3-S07, accept or deliver M3, or grant final delivery approval.
+This record contains implementer-owned execution evidence for the replacement M3-S07 delivery candidate. It replaces the rejected first candidate's final-gate claims; the first reviewer decision and findings remain durable in `docs/milestones/M3/status.md` and Git history. This record does not complete M3-S07, accept or deliver M3, or grant final delivery approval.
 
 ## Candidate identity and publication state
 
 ```text
-cycle / slice                 M3 / M3-S07
-branch                        M3
-authorization baseline        16b761802369ff85b71aa966bfcfaeaac55b4ccf
-prompt-publication baseline   3c3471a36939f2ee8dbe5bdf55c692204abca506
-tested delivery candidate     1f018a771227087a5c629e644d77c06879585003
-candidate parent              e040f1ec327986423c402a1189c9a07245cc9ac0
-evidence-publication HEAD     containing docs-only publication commit;
-                              exact SHA resolved and verified in handoff
-publication model             direct commit and push to M3; no PR
-project version               0.2.0
-reviewer decision             PENDING / reviewer-owned
+cycle / slice                   M3 / M3-S07
+branch                          M3
+authorization baseline          16b761802369ff85b71aa966bfcfaeaac55b4ccf
+original prompt baseline        3c3471a36939f2ee8dbe5bdf55c692204abca506
+review-fix prompt baseline      4da1c49cc398b461610209a105197cee30514193
+rejected first candidate        1f018a771227087a5c629e644d77c06879585003
+rejected first publication      5af225375a1f27414be5455199f0ae84991b379b
+replacement tested candidate    58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+replacement candidate parent    4da1c49cc398b461610209a105197cee30514193
+evidence-publication HEAD       containing docs-only publication commit;
+                                exact SHA resolved and verified in handoff
+publication model               direct commit and push to M3; no PR
+project version                 0.2.0
+reviewer decision               PENDING / reviewer-owned
+final-gate working tree         clean at replacement tested candidate
+local M3 at gate capture        58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+origin/M3 at gate capture       4da1c49cc398b461610209a105197cee30514193
+remote M3 at gate capture       4da1c49cc398b461610209a105197cee30514193
+publication synchronization     pending docs-only commit and push
+PR                              not created
 ```
 
-Candidate preparation changed only `docs/milestones/M3/status.md` and the S07 lifecycle assertions in `tests/test_m3_traceability.py`. The precursor `e040f1ec327986423c402a1189c9a07245cc9ac0` was abandoned when the first Ruff format check found a wrapping-only issue. The formatter correction was committed as the replacement candidate above, and the entire final gate was restarted from its first command. No result from the abandoned run is used as final evidence.
+The replacement candidate changed only S07 operational status and permanent test/support evidence. It adds no production correction. The candidate was clean before the complete gate began, remained unmodified throughout the gate, and was still clean when artifact, non-drift and scope evidence were captured.
 
-At final-gate capture, the working tree was clean at the tested candidate. Local `M3` was at the candidate while `origin/M3` and the remote `M3` ref remained at the prompt-publication baseline, so evidence publication was pending. The containing publication commit is necessarily later than the evidence it records; exact local/origin/remote equality and the clean final tree are verified after push and reported in the handoff.
+At final-gate capture, local `M3` was at the replacement candidate while `origin/M3` and the remote M3 ref remained at the review-fix prompt baseline. The containing evidence-publication commit is necessarily later than the tested candidate; exact local/origin/remote equality and the clean final tree are verified after push and reported in the handoff.
+
+## Reviewer-finding candidate dispositions
+
+```text
+S07-RF-01  CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+S07-RF-02  CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+```
+
+`S07-RF-01` is addressed by `tests/support/m3_s07_acceptance.py`, permanent synthetic lifecycle tests in `tests/test_m3_s07_acceptance.py`, the live repository-state assertion, and their `M3-VER-18` mapping. The state-dependent model covers initial READY/IN PROGRESS, review-fix IN PROGRESS, REVIEW CHANGES REQUIRED, CANDIDATE READY FOR REVIEW, and reviewer-owned COMPLETED. COMPLETED requires `ACCEPTED`, S07 completion, software implementation not authorized, no active M3 execution aid, M3 not delivered, and a separate final delivery/consolidation transition.
+
+`S07-RF-02` is addressed by the committed `run-mapped-bundles` CLI. It derives the sorted union directly from all nineteen non-empty `M3_EVIDENCE_TO_TARGETS` sets, checks the immutable candidate SHA and clean tree before and after execution, parses JUnit parametrized nodes, and fails on missing, failure, error, skip, xfail, xpass or rerun evidence.
 
 ## Runtime and toolchain
 
@@ -33,11 +53,11 @@ Ruff        0.16.3
 Pyright     1.1.411
 ```
 
-`TEST_DATABASE_URL` was available throughout the final gate. Alembic's runtime CLI intentionally reads `NETAUTO_DATABASE_URL`, so the disposable test URL was mapped to that setting for direct Alembic commands without printing or recording the URL.
+`TEST_DATABASE_URL` was available throughout the complete gate. Alembic's runtime CLI reads `NETAUTO_DATABASE_URL`, so the same disposable test URL was mapped to that setting for direct Alembic commands without printing or recording it.
 
 ## Exact final censuses
 
-The machine-checkable registries in `tests/support/m3_evidence.py` and their live-equality assertions passed exactly:
+The machine-checkable registries in `tests/support/m3_evidence.py`, the lifecycle/final-gate helper, and all live-equality assertions passed exactly:
 
 ```text
 M3 outcomes                         8 / 8
@@ -49,13 +69,42 @@ contract quality gates              8 / 8
 canonical business GET routes      22 / 22
 cursor-bearing routes              12 / 12
 CLI 201 + Location operations       8 / 8
+mapped concrete targets            45 / 45
+expanded mapped pytest cases       72 / 72 PASS
+mapped missing/non-pass             0 / 0
 ```
 
-The registry-derived target union contained 43 concrete pytest targets. Pytest expanded them to 65 cases. The JUnit verifier found all 43 requested targets, with zero missing and zero failed, errored, skipped, xfailed or rerun targets.
+## Literal registry-derived mapped-target command
+
+The following is the exact executable command used on the clean replacement candidate:
+
+```bash
+/usr/bin/time -f 'duration_seconds_wrapper=%e' uv run python -m tests.support.m3_s07_acceptance run-mapped-bundles --candidate-sha 58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+```
+
+The committed helper's bounded JSON result was:
+
+```text
+candidate SHA        58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+bundle states        M3-VER-01 .. M3-VER-19 = PASS
+bundles              19
+mapped targets       45
+concrete cases       72
+passed               72
+missing targets      0
+failed / errors      0 / 0
+skip / xfail / xpass 0 / 0 / 0
+rerun                0
+warnings             0
+pytest exit status   0
+helper exit status   0
+pytest duration      24.738s
+wrapper duration     24.91s
+```
 
 ## M3-VER-01..19 disposition
 
-Every row below was re-executed on the tested delivery candidate by the registry-derived mapped-target gate. The complete accepted M3 module gate and full repository gate independently re-executed the same permanent evidence.
+Every bundle was re-executed on the replacement candidate by the literal registry-derived command above. The expanded accepted-M3 command and full repository suite independently re-executed the permanent evidence.
 
 | Bundle | Disposition | Concrete re-executed evidence |
 |---|---|---|
@@ -76,14 +125,14 @@ Every row below was re-executed on the tested delivery candidate by the registry
 | `M3-VER-15` | PASS | CLI omission / selector / explicit-null tri-state and bounded discovery |
 | `M3-VER-16` | PASS | Parent-filter cursor identity and limit compatibility |
 | `M3-VER-17` | PASS | Schema, migration, dependency, lockfile and version non-drift |
-| `M3-VER-18` | PASS | Exact identifier/owner/target registries, live censuses, CQGs and active governance state |
+| `M3-VER-18` | PASS | Exact registries, live censuses, CQGs, current lifecycle and future reviewer-COMPLETED lifecycle |
 | `M3-VER-19` | PASS | 22/22 one-business-statement census and deterministic T3 BEFORE/AFTER cuts |
 
-Disposition: `19 / 19 PASS`. This is implementer candidate evidence, not reviewer acceptance.
+Disposition: `19 / 19 PASS`. This is implementer candidate evidence; reviewer acceptance remains pending.
 
 ## Integrated read, cursor and snapshot evidence
 
-The accepted M3 evidence-module command passed `99 / 99`. It revalidated canonical success and frozen failure behavior for all 22 GET routes, true multipage continuation for all 12 cursor routes, the complete eight-operation CLI Location matrix, the read-versus-mutation authority boundary, the lifecycle trusted-decoder boundary and the ObjectTemplate HTTP/CLI parent tri-state.
+The expanded accepted-M3 evidence-module command passed `119 / 119`. It revalidated canonical success and frozen failure behavior for all 22 GET routes, true multipage continuation for all 12 cursor routes, the complete eight-operation CLI Location matrix, the read-versus-mutation authority boundary, the lifecycle trusted-decoder boundary, the ObjectTemplate HTTP/CLI parent tri-state, and the corrected final-acceptance lifecycle/helper evidence.
 
 The real-PostgreSQL observer was cleared immediately before each canonical successful GET. Every route executed exactly one production `SELECT`/`WITH` business statement:
 
@@ -133,18 +182,18 @@ uv.lock                       0aa980926fda5f42ee3a7d3cedc64f9fcf8c2d23
 0001_m2_durable_kernel.py     27fc85e0b4411332fce87c406b6216b35db6eb20
 ```
 
-Artifacts produced from the clean tested candidate:
+Artifacts produced from the clean replacement candidate:
 
 | Artifact | Bytes | SHA-256 |
 |---|---:|---|
 | `dist/netauto-0.2.0-py3-none-any.whl` | 170185 | `428a2fe05a9905f3794dd15de65667d5506fa5bef2f0568d1ca1dd2b59fb0ba2` |
-| `dist/netauto-0.2.0.tar.gz` | 1048412 | `308c0a8bf643faf01ee5fc3376df3565946208f37a3826a4f6756e5bee152a04` |
+| `dist/netauto-0.2.0.tar.gz` | 1061100 | `60e927a6cfd562880a75e39313c3edfaca203606941df75cf6af06ca94b30644` |
 
 No artifact was published and no release or tag was created.
 
 ## Concurrency evidence
 
-The material real-PostgreSQL concurrency command passed `190 / 190` in `119.23s` and reported:
+The material real-PostgreSQL concurrency command passed `190 / 190` in `118.25s` and reported:
 
 ```text
 canonical semantic-worker outcomes       312
@@ -156,83 +205,78 @@ negative-control outcomes                  3
 negative-control SQLSTATEs                 40001 twice / 40P01 once
 ```
 
-The negative-control observations are intentionally separate and prove that forbidden SQLSTATEs fail immediately and are not normalized. The independent permanent M2/current-AS-IS registry checks passed the exact authoritative `83` scenario IDs; the worker-outcome count above is not that registry census.
+The negative-control observations remain intentionally separate and prove that forbidden SQLSTATEs fail immediately and are not normalized. The independent permanent M2/current-AS-IS registry checks passed the exact authoritative `83` scenario IDs; the worker-outcome count above is not that registry census.
 
 The complete repository run independently reported 314 canonical outcomes, 80 represented worker scenario IDs, `COMMITTED 215 / NO_UOW 6 / ROLLED_BACK 93`, supported-path `40P01 = 0`, unexpected `40001 = 0`, and the same three separate negative-control outcomes.
 
 ## Verification ledger
 
 ```text
-uv lock --check
-    PASS — 46 packages resolved; 0.02s
+/usr/bin/time -f 'duration_seconds=%e' uv lock --check
+    PASS — 46 packages resolved; 0.03s
 
-uv sync --locked
-    PASS — 44 packages checked; 0.04s
+/usr/bin/time -f 'duration_seconds=%e' uv sync --locked
+    PASS — 44 packages checked; 0.03s
 
-uv build
-    PASS — wheel and sdist built; 1.72s
+/usr/bin/time -f 'duration_seconds=%e' uv build
+    PASS — wheel and sdist built; 1.85s
 
-uv run ruff format --check .
-    PASS — 294 files already formatted; 0.06s
+/usr/bin/time -f 'duration_seconds=%e' uv run ruff format --check .
+    PASS — 299 files already formatted; 0.06s
 
-uv run ruff check .
-    PASS; 0.05s
+/usr/bin/time -f 'duration_seconds=%e' uv run ruff check .
+    PASS; 0.06s
 
-uv run pyright
-    PASS — 0 errors, 0 warnings, 0 informations; 25.16s
+/usr/bin/time -f 'duration_seconds=%e' uv run pyright
+    PASS — 0 errors, 0 warnings, 0 informations; 25.36s
 
-uv run pytest --collect-only -q
-    PASS — 990 tests collected in 1.95s; 1 reviewed warning
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest --collect-only -q
+    PASS — 1010 tests collected in 1.90s; wrapper 3.74s; 1 reviewed warning
 
-uv run python - <<'PY'
-    [assert clean candidate; derive the sorted union from
-     M3_EVIDENCE_TO_TARGETS; execute pytest with JUnit; require every mapped
-     exact/parametrized case to have no failure/error/skip/xfail/rerun]
-PY
-    PASS — 19 bundles; 43 mapped targets; 65 passed in 22.88s;
-    JUnit missing/non-pass = 0 / 0
+/usr/bin/time -f 'duration_seconds_wrapper=%e' uv run python -m tests.support.m3_s07_acceptance run-mapped-bundles --candidate-sha 58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+    PASS — 19 bundles; 45 mapped targets; 72 passed in 24.738s;
+    missing/failure/error/skip/xfail/xpass/rerun = 0; helper and pytest exit 0
 
-uv run pytest -q tests/test_m3_s00_cli_location.py tests/test_m3_s01_parent_tristate.py tests/test_m3_s02_datatype_reads.py tests/test_m3_s03_objecttemplate_reads.py tests/test_m3_s04_object_reads.py tests/test_m3_s05_relationship_reads.py tests/test_m3_traceability.py tests/test_m3_s06_integration.py
-    PASS — 99 passed in 27.60s
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest -q tests/test_m3_s00_cli_location.py tests/test_m3_s01_parent_tristate.py tests/test_m3_s02_datatype_reads.py tests/test_m3_s03_objecttemplate_reads.py tests/test_m3_s04_object_reads.py tests/test_m3_s05_relationship_reads.py tests/test_m3_traceability.py tests/test_m3_s06_integration.py tests/test_m3_s07_acceptance.py
+    PASS — 119 passed in 27.04s; wrapper 28.96s
 
-uv run pytest -q tests/test_migrations.py tests/test_schema_metadata.py
-    PASS — 5 passed in 2.11s; compare_metadata == []
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest -q tests/test_migrations.py tests/test_schema_metadata.py
+    PASS — 5 passed in 2.09s; wrapper 3.52s; compare_metadata == []
 
-NETAUTO_DATABASE_URL="$TEST_DATABASE_URL" uv run alembic upgrade head
-NETAUTO_DATABASE_URL="$TEST_DATABASE_URL" uv run alembic current
-NETAUTO_DATABASE_URL="$TEST_DATABASE_URL" uv run alembic check
-    PASS — current 0001_m2_kernel (head); no new upgrade operations
+/usr/bin/time -f 'duration_seconds=%e' env NETAUTO_DATABASE_URL="$TEST_DATABASE_URL" uv run alembic upgrade head
+/usr/bin/time -f 'duration_seconds=%e' env NETAUTO_DATABASE_URL="$TEST_DATABASE_URL" uv run alembic current
+/usr/bin/time -f 'duration_seconds=%e' env NETAUTO_DATABASE_URL="$TEST_DATABASE_URL" uv run alembic check
+    PASS — current 0001_m2_kernel (head); no new upgrade operations;
+    1.21s / 0.95s / 1.10s
 
-uv run pytest -q tests/test_datatype_concurrency.py tests/test_datatype_semantic_concurrency.py tests/test_objecttemplate_semantic_concurrency.py tests/test_object_semantic_concurrency.py tests/test_relationshipdefinition_semantic_concurrency.py tests/test_relationship_semantic_concurrency.py tests/test_m2_s01_semantic_concurrency.py tests/test_m2_s02_semantic_concurrency.py tests/test_m2_s03_semantic_concurrency.py
-    PASS — 190 passed in 119.23s
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest -q tests/test_datatype_concurrency.py tests/test_datatype_semantic_concurrency.py tests/test_objecttemplate_semantic_concurrency.py tests/test_object_semantic_concurrency.py tests/test_relationshipdefinition_semantic_concurrency.py tests/test_relationship_semantic_concurrency.py tests/test_m2_s01_semantic_concurrency.py tests/test_m2_s02_semantic_concurrency.py tests/test_m2_s03_semantic_concurrency.py
+    PASS — 190 passed in 118.25s; wrapper 121.12s
 
-uv run pytest -q tests/test_m2_traceability.py::test_s03_scenario_registry_targets_and_recipes_are_exact tests/test_m2_s09_acceptance.py::test_s09_final_gate_registries_are_exact_derived_and_collected
-    PASS — 2 passed in 6.91s; authoritative registry = 83 IDs
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest -q tests/test_m2_traceability.py::test_s03_scenario_registry_targets_and_recipes_are_exact tests/test_m2_s09_acceptance.py::test_s09_final_gate_registries_are_exact_derived_and_collected
+    PASS — 2 passed in 6.84s; wrapper 8.15s; authoritative registry = 83 IDs
 
-uv run pytest -q -m "not postgresql"
-    PASS — 706 passed, 284 deselected, 1 warning in 92.88s
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest -q -m "not postgresql"
+    PASS — 726 passed, 284 deselected, 1 warning in 92.67s; wrapper 95.08s
 
-uv run pytest -q
-    PASS — 990 passed, 1 warning in 300.36s
+/usr/bin/time -f 'duration_seconds=%e' uv run pytest -q
+    PASS — 1010 passed, 1 warning in 299.57s; wrapper 303.39s
 ```
-
-The disposable test database was empty after fixture cleanup when an informational direct Alembic probe first ran; `current` was therefore blank and `check` reported that the target was not up to date. No repository file changed. The designated test database was explicitly upgraded to the one frozen head and the recorded `current`/`check` commands then passed. The mandatory migration/schema pytest gate had already passed and the final full suite subsequently passed.
 
 Final normative pytest disposition:
 
 ```text
-passed                 990
-skipped                  0
-xfail / xpass             0 / 0
-automatic reruns          0
-warnings                  1 — previously reviewed StarletteDeprecationWarning
+passed                 1010
+skipped                   0
+xfail / xpass              0 / 0
+automatic reruns           0
+warnings                   1 — previously reviewed StarletteDeprecationWarning
 ```
 
 The warning comes from FastAPI's `TestClient` import and recommends `httpx2`; no warning was hidden or normalized.
 
 ## Final diff and scope review
 
-The final review used delivered M2 merge baseline `748d02a2c54d432617f8f46b639379188f560bc4`, prompt-publication baseline `3c3471a36939f2ee8dbe5bdf55c692204abca506`, and the tested candidate.
+The final review used delivered M2 merge baseline `748d02a2c54d432617f8f46b639379188f560bc4`, original S07 authorization `16b761802369ff85b71aa966bfcfaeaac55b4ccf`, review-fix prompt baseline `4da1c49cc398b461610209a105197cee30514193`, and replacement candidate `58c2789f2433fbaf1a79a9f870970f7bdc2e73b1`.
 
 The M3 production diff remains limited to the five frozen observable deltas:
 
@@ -244,35 +288,37 @@ parent_template_id adds lowercase null root-only state in HTTP/CLI
 CLI Location materializer supports nested response JSON paths
 ```
 
-The live OpenAPI GET set, application business GET set and frozen registry are exactly equal at 22. No route decorator was added from the M2 baseline. The cursor codec module and version did not change. Schema, migration, metadata, dependency, lockfile and project version did not change. Mutation regressions and the full suite passed, and the CLI evidence observed no hidden post-mutation enrichment GET.
+The live OpenAPI GET set, application business GET set and frozen registry remain exactly equal at 22. No route decorator was added from the M2 baseline. The cursor codec module and version did not change. Schema, migration, metadata, dependency, lockfile and project version did not change. Mutation regressions and the full suite passed, and the CLI evidence observed no hidden post-mutation enrichment GET.
 
-The S07-only semantic diff from the prompt baseline is empty: no `src/`, schema, migration, dependency or lock file changed. S07 added no production correction. Its pre-candidate changes are limited to operational status and lifecycle-aware traceability assertions.
+The S07 review-fix diff from `4da1c49cc398b461610209a105197cee30514193` contains no `src/`, schema, migration, dependency or lock file. It is limited to S07 status, permanent test/support lifecycle/helper code, and truthful M3-VER-18 target enrichment. S07 made no production correction.
 
 ```text
-new public route/resource               none
-new response field                      none
-new filter/order behavior               none beyond frozen parent null delta
-offset/total-count/query DSL             none
-schema/migration/dependency drift        none
-new cursor format                        none
-mutation semantic weakening             none
-cross-request snapshot guarantee         none
-hidden CLI enrichment GET                none
-unrelated runtime/deployment capability  none
-blocking M3 findings                     0
-open incompatible reopen                 0
-open blockers                            0
+new public route/resource                none
+new response field                       none
+new filter/order behavior                none beyond frozen parent null delta
+offset/total-count/query DSL              none
+schema/migration/dependency drift         none
+new cursor format                         none
+mutation semantic weakening              none
+cross-request snapshot guarantee          none
+hidden CLI enrichment GET                 none
+unrelated runtime/deployment capability   none
+blocking M3 product findings              0
+open incompatible reopen                  0
+execution blockers                        0
 ```
 
 ## Ownership boundary
 
 ```text
-reviewer decision             PENDING / reviewer-owned
-M3-S07                        not COMPLETED
-M3                            not ACCEPTED or DELIVERED
-final delivery approval       not granted
-PR                            not created
+S07-RF-01                   candidate-fixed / reviewer closure pending
+S07-RF-02                   candidate-fixed / reviewer closure pending
+reviewer decision           PENDING / reviewer-owned
+M3-S07                      not COMPLETED
+M3                          not ACCEPTED / not DELIVERED
+final delivery approval     not granted
+PR                          not created
 merge / rebase / tag / release not performed
 ```
 
-The candidate is ready for reviewer inspection only.
+The replacement candidate is ready for reviewer inspection only.

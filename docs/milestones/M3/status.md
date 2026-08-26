@@ -1,6 +1,6 @@
 # M3 — Milestone Status
 
-**Milestone status:** ACTIVE — FINAL ACCEPTANCE REVIEW — M3-S07 IN PROGRESS
+**Milestone status:** ACTIVE — FINAL ACCEPTANCE REVIEW — M3-S07 CANDIDATE READY FOR REVIEW
 
 **Authority:** OPERATIONAL CYCLE STATUS
 
@@ -26,12 +26,13 @@ architecture approval    GRANTED
 implementation steps     FINAL / FROZEN
 steps review             PASS
 steps approval           GRANTED
-active implementation    M3-S07 — REVIEW FIX IN PROGRESS
-software implementation  AUTHORIZED — M3-S07 REVIEW FIX ONLY
-blockers                 S07-RF-01 / S07-RF-02
+active implementation    M3-S07 — CANDIDATE READY FOR REVIEW
+software implementation  AUTHORIZED — M3-S07 ONLY
+blockers                 none — reviewer inspection pending
+review findings          2 / 2 CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
 ```
 
-`M3-S00` through `M3-S06` are reviewer-owned `COMPLETED`. The first `M3-S07 — Full M3 acceptance and delivery-candidate gate` candidate was reviewed and is **not accepted**. The bounded same-slice review fixes for `S07-RF-01` and `S07-RF-02` are in progress. M3 is not accepted or delivered.
+`M3-S00` through `M3-S06` are reviewer-owned `COMPLETED`. The first `M3-S07 — Full M3 acceptance and delivery-candidate gate` candidate was reviewed and rejected. Both bounded same-slice findings are candidate-fixed on the replacement SHA after a complete final-gate restart, and reviewer closure remains pending. M3 is not accepted or delivered.
 
 ## Frozen governance gates
 
@@ -160,6 +161,16 @@ A pure helper/unit lifecycle model plus one repository-state assertion is accept
 
 Because this correction changes permanent test/evidence code, the first tested SHA is rejected as the final candidate. A new immutable candidate SHA and complete S07 final-gate rerun are mandatory.
 
+Replacement candidate disposition:
+
+```text
+candidate implementation  58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+lifecycle helper           tests/support/m3_s07_acceptance.py
+permanent lifecycle tests  tests/test_m3_s07_acceptance.py
+M3-VER-18 mapping          lifecycle matrix + repository-state targets added
+S07-RF-01                  CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+```
+
 ### S07-RF-02 — mapped-target final-gate command is not recorded exactly
 
 The frozen S07 prompt requires `docs/milestones/M3/evidence/M3-S07-candidate.md` to record exact verification commands. The first publication records the registry-derived `43` target / `65` case gate as:
@@ -185,18 +196,27 @@ record exact exit/result/census for the replacement candidate
 
 Since RF-01 already requires a replacement candidate and complete rerun, RF-02 must be closed in the replacement candidate evidence publication from that new run.
 
+Replacement candidate disposition:
+
+```text
+committed helper  tests/support/m3_s07_acceptance.py
+literal command  uv run python -m tests.support.m3_s07_acceptance run-mapped-bundles --candidate-sha 58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+result           19 bundles / 45 mapped targets / 72 concrete cases / exit 0
+S07-RF-02        CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+```
+
 ## S07 review-fix authorization
 
 ```text
-authorized work           S07-RF-01 / S07-RF-02 only
+authorized work           S07-RF-01 / S07-RF-02 candidate prepared
 production changes        NOT AUTHORIZED unless a newly failing frozen gate exposes a separate defect
 new business behavior     NOT AUTHORIZED
 new M3-VER identity       NOT AUTHORIZED
 schema/migration changes  NOT AUTHORIZED
 dependency/lock changes   NOT AUTHORIZED
 project-version change    NOT AUTHORIZED
-new candidate SHA         REQUIRED
-complete S07 final rerun  REQUIRED
+new candidate SHA         58c2789f2433fbaf1a79a9f870970f7bdc2e73b1
+complete S07 final rerun  PASS
 reviewer acceptance       PENDING
 final M3 delivery         NOT AUTHORIZED
 ```
@@ -233,16 +253,16 @@ M3-S03 execution/review                        DONE — COMPLETED
 M3-S04 execution/review                        DONE — COMPLETED
 M3-S05 execution/review                        DONE — COMPLETED
 M3-S06 execution/review                        DONE — COMPLETED
-explicit M3-S07 implementation authorization  DONE — REVIEW FIX IN PROGRESS
-M3-S07 final acceptance review                 REVIEW FIX IN PROGRESS
-S07-RF-01                                      OPEN
-S07-RF-02                                      OPEN
-final M3 acceptance                            BLOCKED BY S07 REVIEW
+explicit M3-S07 implementation authorization  DONE — CANDIDATE READY FOR REVIEW
+M3-S07 final acceptance review                 CANDIDATE READY FOR REVIEW
+S07-RF-01                                      CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+S07-RF-02                                      CANDIDATE-FIXED — REVIEWER CLOSURE PENDING
+final M3 acceptance                            PENDING REVIEWER DECISION
 final M3 delivery/consolidation                NOT AUTHORIZED
 ```
 
 ## Immediate next action
 
-Execute the bounded `M3-S07` review fix, select a replacement immutable candidate, restart the complete frozen S07 final gate from the first command, publish corrected candidate evidence and return it for reviewer inspection.
+Review the replacement immutable candidate and its corrected final-gate evidence. The reviewer alone may close `S07-RF-01` and `S07-RF-02` and accept or reject M3-S07.
 
 Do not mark `M3-S07` `COMPLETED`, do not mark M3 `ACCEPTED` or `DELIVERED`, and do not start delivery/consolidation work. The reviewer alone may close the findings and accept the replacement final candidate.
