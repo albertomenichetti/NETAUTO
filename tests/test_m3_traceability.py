@@ -215,10 +215,13 @@ def test_m3_contract_quality_gates_and_normative_state_are_closed() -> None:
         "IN PROGRESS",
         "CANDIDATE READY FOR REVIEW",
     )
-    assert sum(
-        f"**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 {state}" in status
-        for state in active_s07_states
-    ) == 1
+    assert (
+        sum(
+            f"**Milestone status:** ACTIVE — IMPLEMENTATION — M3-S07 {state}" in status
+            for state in active_s07_states
+        )
+        == 1
+    )
     assert "PARTIALLY REOPENED" not in architecture_control
     assert "open contract findings   0" in status
     assert "open architecture finding 0" in status
