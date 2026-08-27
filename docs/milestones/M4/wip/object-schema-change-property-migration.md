@@ -297,6 +297,106 @@ migration_default fills absence only
 migration_default never overwrites existing incompatible information
 ```
 
+## REQUIRED -> OPTIONAL
+
+A continuous semantic property may change from required in SOURCE to optional in TARGET:
+
+```text
+SOURCE required = true
+TARGET required = false
+```
+
+A valid SOURCE Object necessarily contains the property value. Making the property optional in TARGET relaxes the presence requirement; it does not authorize discarding information that already exists.
+
+Frozen rule:
+
+```text
+required -> optional
+    -> preserve existing SOURCE value
+    -> apply any other TARGET migration/validation rules for the same semantic property
+    -> never drop merely because TARGET permits absence
+    -> no migration_default
+```
+
+Example:
+
+```text
+SOURCE
+    location required
+
+TARGET
+    location optional
+```
+
+```json
+before = {
+  "hostname": "srv01",
+  "location": "rome"
+}
+```
+
+migrates, assuming all other TARGET semantics remain satisfied, to:
+
+```json
+after = {
+  "hostname": "srv01",
+  "location": "rome"
+}
+```
+
+If another simultaneous TARGET delta changes how the continuous semantic property is represented, that rule is also applied. For example:
+
+```text
+SOURCE
+    required SCALAR
+
+TARGET
+    optional LIST
+```
+
+preserves the information through the allowed widening:
+
+```text
+"rome" -> ["rome"]
+```
+
+Likewise, if the TARGET exact DataTypeVersion changes, the existing value must satisfy the TARGET contract after any allowed shape transformation. If it does not, schema migration fails.
+
+The migration must not interpret optional TARGET cardinality as permission to repair incompatibility by dropping a present source value:
+
+```text
+existing value incompatible with TARGET
+    -> migration failure
+    -> NOT automatic absence
+```
+
+There is no migration default in TARGET because optional declarations do not carry one.
+
+### UoW placement
+
+The semantic plan for `REQUIRED -> OPTIONAL` is immutable and reusable, but the concrete SOURCE value is read from fresh protected Object state during the schema-change UoW together with the rest of the migration.
+
+Unlike `OPTIONAL -> REQUIRED`, there is no normal present/absent branch to choose for valid SOURCE state: SOURCE requiredness guarantees presence. The UoW consumes that fresh value, applies any simultaneous TARGET migration rules and validates the resulting TARGET representation.
+
+Therefore:
+
+```text
+outside UoW / cacheable
+    immutable REQUIRED_TO_OPTIONAL preservation rule
+    compiled TARGET transformation/validation semantics as applicable
+
+inside protected schema-change UoW
+    read fresh current value
+    preserve/transform it
+    validate it against TARGET
+```
+
+The information-preservation invariant is:
+
+```text
+TARGET allowing absence does not authorize loss of existing SOURCE information
+```
+
 ## Same name without semantic continuity
 
 If SOURCE and TARGET expose the same effective property name under different semantic keys, the value is never carried forward merely because the JSON key text is equal.
@@ -378,7 +478,7 @@ ObjectTemplateMigrationPlanCache[
 ]
 ```
 
-Some plan operations are fully deterministic without current Object state (`ADD`, `REMOVE` semantic action). Others, such as `OPTIONAL_TO_REQUIRED`, carry an immutable conditional rule whose concrete branch is selected only from fresh protected per-Object state inside the schema-change UoW.
+Some plan operations are fully deterministic without current Object state (`ADD`, `REMOVE` semantic action). Others carry immutable rules that are applied to fresh protected per-Object state inside the schema-change UoW.
 
 ## Frozen in this increment
 
@@ -407,6 +507,14 @@ OPTIONAL -> REQUIRED
     presence/absence branch
         -> decided only from fresh protected Object state inside schema-change UoW
 
+REQUIRED -> OPTIONAL
+    -> preserve existing SOURCE information
+    -> apply simultaneous TARGET transformation/validation rules
+    -> never drop merely because TARGET permits absence
+    -> incompatibility causes migration failure
+    -> no migration_default
+    -> concrete value consumed from fresh protected Object state in UoW
+
 removed property
     -> no archive/extras/default/remediation behavior
 
@@ -420,7 +528,6 @@ target-state construction
 Still to define incrementally:
 
 ```text
-required -> optional
 SCALAR -> LIST
 exact DataTypeVersion change
 combined deltas on one continuous semantic property
