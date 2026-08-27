@@ -1,0 +1,226 @@
+# M4 WIP — Object SCHEMA_CHANGE short mutation UoW
+
+Status: PARTIAL FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+
+This note records the route-local mutation-UoW decisions frozen incrementally for:
+
+```http
+POST /api/v1/core/objects/{object_id}/schema
+```
+
+The expensive migration work is prepared outside the mutation UoW from one coherent Object aggregate snapshot `S` and an immutable `MigrationPlan(source,target)`. The short UoW exists to prevent stale prepared success, hold final mutable admission authorities through commit, persist the already-prepared target Object state and write the required lifecycle transition atomically.
+
+## Prepared input
+
+A successful preparation produces a compact candidate conceptually equivalent to:
+
+```text
+PreparedSchemaChange
+    object_id
+    template_id
+    source_version
+    target_version
+    expected_object_fingerprint
+    target_properties
+    lifecycle_before
+    lifecycle_after
+```
+
+`target_properties` has already been fully migrated, validated and canonicalized outside the UoW.
+
+Ownership/component analysis also happens outside the UoW. Under the normal M4 schema-evolution contract, an admitted Object schema change never mutates `object_components`:
+
+```text
+ADD slot
+    -> new slot starts empty
+
+REMOVE slot
+    -> blocking current edge => preparation failure
+    -> otherwise no ownership DML
+
+continuous target widening
+    -> existing edges remain valid by construction
+
+position-only change
+    -> ownership facts unchanged
+
+semantic-identity replacement
+    -> blocking old-slot edge => preparation failure
+    -> otherwise new semantic slot starts empty
+```
+
+Therefore a prepared success contains no `edges_to_keep`, `edges_to_delete`, `edges_to_rebind` or target ownership state to persist.
+
+## Conservative failure / strong success asymmetry
+
+The optimistic-preparation protocol deliberately treats negative and positive decisions differently:
+
+```text
+prepared failure
+    -> may return immediately from the preparatory snapshot
+    -> no lock/fingerprint recheck required
+    -> conservative stale false failure is acceptable
+
+prepared success
+    -> MUST NOT commit unless the protected current aggregate still matches
+       the exact aggregate generation used for preparation
+```
+
+The priority is strong prevention of false success. A stale failure cannot make persisted state incoherent; a stale success can.
+
+## Required UoW serialization points
+
+### Exact TARGET ObjectTemplateVersion
+
+The exact target ObjectTemplateVersion is a lifecycle-sensitive new binding admission.
+
+The UoW must hold the exact target row in a mode equivalent to:
+
+```text
+TARGET ObjectTemplateVersion @ FOR SHARE
+```
+
+and recheck:
+
+```text
+same template_id
+exact target_version
+target status == PUBLISHED
+```
+
+while protected.
+
+This hold must remain through commit. It rendezvous with target deprecation/lifecycle mutation and prevents this schema-change transaction from successfully creating a new Object binding to a target that stops being `PUBLISHED` before the mutation commits.
+
+The SOURCE exact OTV is an already-existing historical binding and may be `PUBLISHED` or `DEPRECATED`; it is not a new admission and does not require a new PUBLISHED hold merely because the Object is migrating away from it.
+
+### Parent Object concurrency owner
+
+The parent Object row is the concurrency owner for this mutation and must be held in a mode equivalent to:
+
+```text
+Object @ FOR NO KEY UPDATE
+```
+
+This lock serializes `SCHEMA_CHANGE` with intrinsic Object mutation and, critically, with ownership mutation of the same parent.
+
+It is the rendezvous point with at least:
+
+```text
+SCHEMA_CHANGE
+DATA_CHANGE
+RENAME
+ATTACH
+DETACH
+```
+
+`DELETE` uses a stronger Object lock and therefore also serializes.
+
+The parent-Object lock is not only about `template_version`/`properties`. It is required so that outgoing ownership facts represented in the preparatory aggregate fingerprint cannot change between the protected fingerprint recheck and commit.
+
+## ATTACH / DETACH serialization guarantee
+
+The intended serial outcomes are:
+
+```text
+ATTACH commits first
+    -> SCHEMA_CHANGE protected fingerprint differs from preparation when
+       the new edge changed the aggregate
+    -> prepared success cannot commit stale
+    -> rollback + bounded restart
+    -> retry observes/preserves-or-rejects the new edge
+
+SCHEMA_CHANGE commits first
+    -> concurrent ATTACH waits on the parent Object
+    -> after wake-up ATTACH must re-evaluate the parent's current exact schema
+       and validate the requested slot against the post-migration binding
+
+DETACH commits first
+    -> it may remove a blocker before a later fresh schema-change preparation
+
+SCHEMA_CHANGE commits first
+    -> concurrent DETACH waits and then operates against the post-migration
+       parent state according to DETACH's own fresh-state contract
+```
+
+Therefore `SCHEMA_CHANGE`, `ATTACH` and `DETACH` must rendezvous on the same parent-Object concurrency owner.
+
+## Lock ordering
+
+The mutation must respect the global target-before-current-owner ordering used by the kernel concurrency model:
+
+```text
+1. exact TARGET ObjectTemplateVersion admission hold
+2. parent Object concurrency-owner lock
+```
+
+The exact physical lock plan will be reconciled globally during the M4 concurrency/physical-design closure. Route-local semantics require the target lifecycle authority to be protected before Object DML and the Object owner to remain protected through commit.
+
+Whether a stable ObjectTemplate-header row lock is still necessary in the M4 TO-BE realization is intentionally not frozen here. This route does not use mutable default/header policy during explicit target-version migration; any header hold must be justified later by reference-lifetime/delete-lineage mechanics rather than inherited blindly from the AS-IS lock registry.
+
+## Protected fingerprint check
+
+After acquiring the parent Object concurrency-owner lock, the transaction recomputes or reads the authoritative current aggregate fingerprint `F(S')` covering the agreed whole-Object aggregate state.
+
+```text
+F(S') != expected_object_fingerprint
+    -> prepared success is stale
+    -> no Object or lifecycle DML
+    -> rollback
+    -> bounded restart from fresh preparation
+
+F(S') == expected_object_fingerprint
+    -> prepared candidate is still based on the current aggregate generation
+    -> no expensive property migration or component compatibility analysis is repeated
+```
+
+The whole-aggregate fingerprint is deliberately conservative. A concurrent change that did not actually alter the semantic migration result may still cause a retry; this is accepted in exchange for a simple strong success guard.
+
+## UoW shape frozen so far
+
+Conceptually:
+
+```text
+BEGIN
+
+1. acquire/protect exact TARGET OTV
+       require status == PUBLISHED
+       hold through commit
+
+2. acquire parent Object @ NO KEY UPDATE
+       serializes intrinsic + parent ownership mutations
+
+3. recompute authoritative aggregate fingerprint F(S')
+
+4. if F(S') != prepared F(S)
+       -> ROLLBACK
+       -> bounded retry from preparation
+
+5. if F(S') == prepared F(S)
+       -> use already-prepared target_properties / lifecycle snapshots
+       -> no property migration re-execution
+       -> no component/child revalidation
+       -> no object_components DML
+
+6. UPDATE Object current exact binding + canonical properties
+
+7. INSERT SCHEMA_CHANGE lifecycle transition
+
+8. COMMIT
+```
+
+The remaining route-local work is to close:
+
+```text
+- exact final SQL/statement decomposition for target admission, fingerprint check,
+  Object update and lifecycle insert;
+- whether target admission and/or fingerprint check can be fused safely with
+  another statement without weakening lock ordering or diagnostics;
+- no-op / same-or-lower target-version classification and exact public failures;
+- bounded retry boundary and exhaustion mapping;
+- lifecycle event payload details under the prepared-candidate model;
+- warm/cold DB/cache cost;
+- final physical index/EXPLAIN handoff;
+- global confirmation of whether the AS-IS OT header lifetime hold is still
+  required in the M4 TO-BE physical lock plan.
+```
