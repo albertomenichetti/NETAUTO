@@ -10,9 +10,7 @@ This note records the exact reason why the Object ATTACH rule:
 requested child must currently have no owner
 ```
 
-is **necessary but not sufficient** to guarantee ownership acyclicity.
-
-The note also records the batch-safe cycle predicate agreed for M4 discovery.
+is **necessary but not sufficient** to guarantee ownership acyclicity, and freezes the refined batch-level predicate used by the M4 TO-BE candidate.
 
 ## Ownership direction
 
@@ -30,80 +28,93 @@ A
     └── P
 ```
 
-which means:
+means:
 
 ```text
 A -> B
 B -> P
 ```
 
-The relational single-owner invariant is enforced by the current ownership fact having one row at most per child:
+The single-owner invariant is represented relationally by:
 
 ```text
 object_components.child_object_id PRIMARY KEY
 ```
 
-Therefore an Object can have at most one direct owner.
+so every Object can have at most one direct owner.
 
 ## Why an ownerless child can still create a cycle
 
-Suppose the current ownership graph is:
+Suppose:
 
 ```text
 A -> B -> P
 ```
 
-`A` currently has no owner:
+`A` is ownerless:
 
 ```text
 owner(A) = NULL
 ```
 
-so it satisfies the ordinary ATTACH precondition that a requested child must be ownerless.
-
-Now request:
-
-```text
-parent = P
-child  = A
-```
-
-The new edge would be:
+but ATTACH:
 
 ```text
 P -> A
 ```
 
-and the resulting graph becomes:
+would produce:
 
 ```text
 A -> B -> P -> A
 ```
 
-which is a cycle.
-
 Therefore:
 
 ```text
-child currently has no owner
+OWNERLESS CHILD != CYCLE-SAFE CHILD
 ```
 
-only proves that adding a new owner does not violate the single-owner invariant. It does **not** prove that the child is not already an ancestor of the requested parent.
+Ownerlessness protects the single-owner invariant. It does not by itself prove that the child is not already an ancestor of the requested parent.
 
-## Necessary cycle predicate
+## Key simplification under single-owner + ownerless certification
 
-For an ATTACH edge:
+For one requested edge:
 
 ```text
 P -> C
 ```
 
-the edge is cycle-safe only if `C` is not already in the owner/ancestor chain of `P`.
+assume `C` is certified ownerless in the same protected graph state used for cycle admission.
 
-Conceptually:
+Because every Object has at most one owner, the ancestors of `P` form one linear owner chain ending in exactly one root:
 
 ```text
-C not in owner_chain(P)
+P -> owner(P) -> owner(owner(P)) -> ... -> root(P)
+```
+
+Any ancestor of `P` other than `root(P)` necessarily has an owner.
+
+Therefore an ownerless `C` can already be an ancestor of `P` **only if**:
+
+```text
+C == root(P)
+```
+
+This reduces the cycle predicate.
+
+Instead of checking:
+
+```text
+C not in complete owner_chain(P)
+```
+
+we may check, in the same protected graph state:
+
+```text
+C is ownerless
+AND
+C != root(P)
 ```
 
 For a batch:
@@ -113,87 +124,126 @@ parent = P
 children = {C1, C2, ..., Cn}
 ```
 
-all requested edges are cycle-safe iff:
+the final predicate is:
 
 ```text
-owner_chain(P) INTERSECT requested_child_ids = empty
+ALL requested children are ownerless
+AND
+root(P) NOT IN requested_child_ids
 ```
 
-The separate `parent != child` invariant remains a direct/self-cycle check and may also be enforced relationally.
+The separate `parent != child` invariant remains independently protected, including by the relational CHECK candidate.
 
-## Why one traversal is sufficient for a batch
+## Why one root lookup is sufficient for the whole batch
 
-Because every Object can have at most one owner, walking from an Object toward its owners does not branch.
+The batch has one parent `P`.
 
-Starting from `P`, the graph shape is at most:
+The root of `P` is common to all requested edges:
 
 ```text
-P -> owner(P) -> owner(owner(P)) -> ... -> root
+P -> C1
+P -> C2
+...
+P -> Cn
 ```
 
-when read in the upward/owner direction.
+Therefore M4 does not need one traversal per child.
 
-It is therefore a single linear chain, not a tree traversal.
-
-For a batch of `N` children attached to the same parent, M4 does **not** need `N` independent graph traversals.
-
-It needs:
+It needs only:
 
 ```text
-1 traversal of owner_chain(P)
+1 fresh ownerless check for the whole child set
 +
-1 set-membership comparison against all requested child ids
+1 owner-chain traversal from P to root(P)
++
+1 membership test root(P) IN requested_child_ids
 ```
 
-This is the batch-level amortization property.
+The number of recursive traversals is independent of batch size.
 
-## Candidate PostgreSQL shape
+## Protected PostgreSQL statement shape
 
-The current candidate is one recursive query after ownership graph write arbitration has been acquired.
+The preferred direction is one PostgreSQL statement after ownership graph edge-add arbitration has been acquired.
 
-Conceptually:
+Conceptually it should derive at least:
+
+```text
+has_owned_requested_child
+root_object_id
+```
+
+For example, structurally:
 
 ```sql
-WITH RECURSIVE owner_chain AS (
-    SELECT parent_object_id
-    FROM object_components
-    WHERE child_object_id = :parent_object_id
+WITH RECURSIVE
+requested(child_id) AS (
+    SELECT unnest(:requested_child_ids)
+),
+owner_chain(object_id) AS (
+    SELECT :parent_object_id
 
     UNION ALL
 
     SELECT oc.parent_object_id
     FROM object_components oc
     JOIN owner_chain chain
-      ON oc.child_object_id = chain.parent_object_id
+      ON oc.child_object_id = chain.object_id
+),
+root AS (
+    SELECT chain.object_id
+    FROM owner_chain chain
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM object_components oc
+        WHERE oc.child_object_id = chain.object_id
+    )
 )
-SELECT parent_object_id
-FROM owner_chain
-WHERE parent_object_id = ANY(:requested_child_ids)
-LIMIT 1;
+SELECT
+    EXISTS (
+        SELECT 1
+        FROM object_components oc
+        JOIN requested r
+          ON r.child_id = oc.child_object_id
+    ) AS has_owned_requested_child,
+    (SELECT object_id FROM root) AS root_object_id;
 ```
 
-The query need not materialize the entire chain in the application. It may answer only whether at least one requested child is already an ancestor of the parent.
+Exact SQL is not normative here. The frozen semantic requirement is that ownerlessness and root discovery are evaluated from one protected current graph state.
 
-Outcome:
+Admission outcome:
 
 ```text
-row returned
-    -> at least one requested edge would create a cycle
-    -> fail the whole atomic batch
+has_owned_requested_child == true
+    -> FAIL whole batch
 
-no row returned
-    -> current graph contains no cycle blocker for any requested child
+root_object_id IN requested_child_ids
+    -> FAIL whole batch: cycle
+
+otherwise
+    -> graph predicate satisfied
 ```
 
-Exact SQL remains an implementation detail subject to later verification and query-plan review; the semantic predicate above is the frozen requirement.
+## No root denormalization in M4
+
+M4 deliberately does **not** introduce a mutable materialization such as:
+
+```text
+object_id -> root_object_id
+```
+
+A root lookup therefore remains a recursive owner-chain read bounded by tree depth.
+
+The reason is write amplification. ATTACH or DETACH of a subtree root would change the root of every Object in that subtree, turning a small edge mutation into potentially `O(size of subtree)` derived-state maintenance.
+
+For the ATTACH consumer currently under review, one recursive read is preferred over that mutable denormalization burden.
 
 ## Why graph-write arbitration is still required
 
-A correct traversal against one snapshot is not sufficient by itself if concurrent ATTACH operations may add ownership edges while the predicate is being certified.
+The ownerless/root predicate is only valid if competing edge additions cannot change the graph between certification and commit.
 
-Two independently valid ATTACH candidates can jointly create a cycle.
+Two ATTACH operations that are independently valid against stale snapshots can jointly create a cycle.
 
-Therefore edge-add operations require a common ownership graph write arbitration boundary, currently represented by the candidate/current:
+Therefore ATTACH edge additions require a common graph-write arbitration boundary, currently represented by:
 
 ```text
 OWNERSHIP_GRAPH_WRITE_GATE
@@ -202,20 +252,18 @@ OWNERSHIP_GRAPH_WRITE_GATE
 The intended order is:
 
 ```text
-acquire ownership graph write gate
--> read fresh cycle predicate
--> if safe, persist requested ownership edges
+acquire graph-write gate
+-> read fresh ownerless + root predicate
+-> if safe, persist requested edges
 -> commit
 -> release gate
 ```
 
-No competing ATTACH edge-add can change the graph between cycle certification and commit.
-
-DETACH only removes an edge and cannot create a cycle. A concurrent DETACH may make an ATTACH that was conservatively rejected become valid later; that is an acceptable false failure and a caller retry can observe the newer state.
+A concurrent DETACH removes edges and cannot create a cycle. It may make a conservatively rejected ATTACH become valid later; that false failure is acceptable and a caller retry can observe the newer state.
 
 ## Relationship with relational constraints
 
-The responsibilities remain distinct:
+Responsibilities remain distinct:
 
 ```text
 PRIMARY KEY(child_object_id)
@@ -223,37 +271,26 @@ PRIMARY KEY(child_object_id)
 
 FK parent_object_id -> objects.id
 FK child_object_id  -> objects.id
-    -> referenced Object lifetime/existence arbitration
+    -> referenced Object existence/lifetime arbitration
 
 CHECK parent_object_id != child_object_id
     -> direct self-cycle prevention
 
-owner-chain cycle predicate + graph-write arbitration
-    -> general DAG acyclicity
+fresh ownerless + root(P) predicate
++ graph-write arbitration
+    -> general cycle prevention
 ```
 
-No single PK/FK/CHECK above can express the general transitive no-cycle invariant.
+No ordinary PK/FK/CHECK expresses the transitive no-cycle invariant by itself.
 
 ## Frozen takeaway
 
-The important rule to retain is:
+For an atomic ATTACH batch to parent `P`, cycle admission is:
 
 ```text
-OWNERLESS CHILD != CYCLE-SAFE CHILD
+1. every requested child is ownerless in the protected current graph
+2. find root(P) by one owner-chain traversal
+3. require root(P) not in requested_child_ids
 ```
 
-For `P -> C`, ATTACH requires both:
-
-```text
-C has no current owner
-AND
-C is not already an ancestor of P
-```
-
-For a batch with one parent, the second rule is checked once as:
-
-```text
-owner_chain(P) INTERSECT requested_child_ids = empty
-```
-
-under graph-edge-add arbitration.
+This is sufficient under the single-owner invariant and requires only one recursive traversal for the whole batch.
