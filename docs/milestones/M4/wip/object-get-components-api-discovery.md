@@ -4,7 +4,7 @@ Status: WIP / NON-NORMATIVE
 
 ## Scope
 
-This note records the current M4 brainstorming around the public shape of `GET /objects/{id}` and the role of `GET /objects/{id}/components` after the proposed enrichment of `object_components` with stable slot semantic identity.
+This note records the current M4 brainstorming around the public shape of `GET /objects/{id}`, the role of component-slot navigation, and the interaction with the proposed enrichment of `object_components` with stable slot semantic identity.
 
 This is discovery only. It does not freeze the public contract.
 
@@ -79,6 +79,8 @@ GET eth0 separately
     -> required to inspect eth0 itself
 ```
 
+The parent Object's current owner is intentionally not injected into this representation. If `eth0` is attached to `server-1.interfaces`, that fact originates from the parent Object's component slot, not from the `Interface` ObjectTemplate contract. Reverse ownership therefore remains a separate navigation concern.
+
 ## Empty effective slots
 
 A strong candidate is to include effective component slots even when currently empty:
@@ -133,30 +135,45 @@ Object root
 
 without model-plane recertification.
 
-## Role of GET /objects/{id}/components
+## Specialized component-slot endpoint
 
-If Object GET contains all first-level components, `/objects/{id}/components` becomes intentionally a subset of the Object representation. That is acceptable only if it has a concrete specialized role.
-
-The current endpoint has two capabilities the complete Object GET would not necessarily provide:
+Once `GET /objects/{id}` exposes all direct children, the old generic endpoint:
 
 ```text
-slot_name filtering
-cursor/limit pagination
-```
-
-The current candidate role is therefore:
-
-```text
-GET /objects/{id}
-    -> normal complete first-level Object view
-
 GET /objects/{id}/components
-    -> specialized paged/filterable access to the same direct children
 ```
 
-The component endpoint should not expose a different, poorer representation of the same child.
+would mostly repeat a subset of the Object response. Its only concrete extra value is selective access to one potentially large slot with pagination.
 
-Current candidate child representation in both surfaces:
+The current strong candidate is therefore to replace the generic optional-filter shape with an explicit slot resource:
+
+```text
+GET /objects/{id}/components/{slot_name}
+    ?cursor=...
+    &limit=...
+```
+
+Example:
+
+```text
+GET /objects/server-1/components/interfaces?limit=100
+```
+
+Candidate response:
+
+```json
+{
+  "items": [
+    {"id": "...", "canonical_name": "eth0"},
+    {"id": "...", "canonical_name": "eth1"}
+  ],
+  "next_cursor": null
+}
+```
+
+The endpoint therefore becomes a paged view of exactly one slot already visible inside `GET /objects/{id}`. It must not expose a second poorer child representation.
+
+Candidate child representation in both surfaces:
 
 ```json
 {
@@ -165,7 +182,52 @@ Current candidate child representation in both surfaces:
 }
 ```
 
-If `/components` is called without `slot_name`, it may additionally need enough slot information to distinguish rows belonging to different slots, for example `slot_name`. Whether `slot_declaring_template_id` remains a public wire field is OPEN: it is required internally for semantic identity but may not be necessary for an ordinary consumer.
+`slot_declaring_template_id` remains required internally for semantic identity but is not currently justified as a normal public child field.
+
+## Slot existence semantics
+
+The explicit slot path enables a useful distinction:
+
+```text
+slot exists and has no children
+    -> 200 {"items": [], "next_cursor": null}
+
+slot does not exist in this Object's exact effective schema
+    -> explicit error / not-found style outcome for the requested slot
+```
+
+Returning an empty list for a nonexistent slot would hide the difference between an empty valid slot and an invalid slot name.
+
+The precise public error code/status remains OPEN for later API-contract design.
+
+## Reverse owner endpoint remains distinct
+
+`GET /objects/{child}/owner` is not equivalent to the parent component projection.
+
+Concrete example:
+
+```text
+server-1.interfaces -> eth0
+```
+
+`GET /objects/server-1` naturally exposes `eth0` under `interfaces` because that slot belongs to `server-1`'s exact template contract.
+
+`GET /objects/eth0` should not automatically expose `server-1` as part of the Object representation because the fact that another Object contains `eth0` does not originate from `eth0`'s own template.
+
+Therefore:
+
+```text
+GET /objects/{id}
+    -> properties and component slots defined by that Object's exact template
+
+GET /objects/{id}/components/{slot_name}
+    -> paged access to one of those slots
+
+GET /objects/{id}/owner
+    -> reverse lookup: which parent currently contains this Object, if any
+```
+
+The owner endpoint therefore remains conceptually useful even if generic `/components` is replaced by the explicit slot endpoint.
 
 ## Abstract architectural reading
 
@@ -173,15 +235,18 @@ The concrete proposal corresponds to treating public Object GET as a complete fi
 
 The ownership graph remains non-recursive at this surface: direct composition is included, transitive graph expansion is not.
 
-The specialized `/components` collection remains justified only as a navigation/query surface for filtering and pagination over large direct-child sets, not as a second semantic representation of ownership.
+The specialized component-slot endpoint is justified as a bounded navigation/query surface for one large direct-child set, not as a second semantic representation of ownership.
+
+Reverse owner navigation remains separate because it is an incoming reference defined by another Object's component slot rather than a member declared by the child's own ObjectTemplate.
 
 ## Open decisions
 
 - whether complete first-level components become mandatory in `ObjectDto`;
 - whether every effective empty slot is included as `[]`;
 - exact ordering of component-slot keys and children;
-- whether `/components` remains in the public API after Object GET enrichment;
-- if retained, exact `/components` item shape and whether `slot_declaring_template_id` is public;
+- exact public route/status semantics for a nonexistent requested slot;
+- whether `slot_declaring_template_id` disappears from the public component-slot response entirely;
 - performance/size guardrails, if any, for Objects with very large direct child sets;
 - whether Object mutation responses (`CREATE`, `RENAME`, `DATA_CHANGE`, `SCHEMA_CHANGE`) use the same enriched Object representation or retain a mutation-specific lighter shape;
-- interaction with lifecycle snapshots, whose current historical `ObjectDto` shape contains only root Object fields.
+- interaction with lifecycle snapshots, whose current historical `ObjectDto` shape contains only root Object fields;
+- whether the existing generic `GET /objects/{id}/components` route is removed or retained only for compatibility during transition.
