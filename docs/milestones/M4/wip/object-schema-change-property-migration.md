@@ -12,6 +12,31 @@ PropertySemanticKey = (declaring_template_id, property_name)
 
 Name equality alone never establishes continuity.
 
+The execution model used by the property rules in this note is the optimistic-preparation pattern frozen separately for Object mutations:
+
+```text
+outside mutation UoW
+    read one Object aggregate snapshot S
+    compute its deterministic concurrency fingerprint F(S)
+    apply immutable MigrationPlan(source,target) to S
+    build, validate and canonicalize the complete TARGET candidate C
+
+inside short mutation UoW
+    protect the Object concurrency owner
+    recompute the authoritative current fingerprint F(S')
+
+    F(S') != F(S)
+        -> discard C
+        -> rollback
+        -> bounded restart from a fresh snapshot
+
+    F(S') == F(S)
+        -> C is still derived from the current Object generation
+        -> no property migration/revalidation is repeated merely because the UoW has started
+```
+
+Therefore references below to a current SOURCE value mean the value read from the preparatory aggregate snapshot `S`. Correctness is established at commit time by the protected fingerprint comparison rather than by rebuilding the candidate under lock.
+
 ## ADD optional property
 
 A property whose semantic key is absent from SOURCE and present as optional in TARGET is classified as an immutable plan operation:
@@ -28,7 +53,7 @@ Runtime effect:
 resulting Object property state -> key absent
 ```
 
-No placeholder is materialized. In particular, Object sparse JSONB semantics forbid inventing either JSON null or an artificial empty/default value for a newly added optional property.
+No placeholder is materialized. Object sparse JSONB semantics forbid inventing either JSON null or an artificial empty/default value for a newly added optional property.
 
 Example:
 
@@ -55,7 +80,7 @@ after = {
 }
 ```
 
-No per-Object decision is required for this delta class.
+No per-Object branch decision is required for this delta class.
 
 ## ADD required property
 
@@ -102,9 +127,9 @@ after = {
 }
 ```
 
-The `migration_default` belongs to an exact immutable TARGET ObjectTemplateVersion and was already parsed, canonicalized and certified against its exact target DataTypeVersion/value mode as part of model publication. Object migration must therefore consume the already canonical target default; it must not re-certify that model-plane declaration for every Object.
+The `migration_default` belongs to an exact immutable TARGET ObjectTemplateVersion and was already parsed, canonicalized and certified against its exact target DataTypeVersion/value mode as part of model publication. Object migration consumes the already canonical target default; it does not re-certify that model-plane declaration for every Object.
 
-No per-Object decision is required for this delta class.
+No per-Object branch decision is required for this delta class.
 
 ## REMOVE property
 
@@ -127,12 +152,9 @@ The removal rule is independent of SOURCE requiredness.
 
 ### SOURCE optional
 
-If the optional SOURCE value is present, it is dropped. If it is already absent in the sparse runtime state, there is nothing to remove.
-
 ```text
-optional SOURCE property
-    value present -> drop
-    value absent  -> no runtime action
+value present -> drop
+value absent  -> no runtime action
 ```
 
 ### SOURCE required
@@ -172,7 +194,7 @@ after = {
 }
 ```
 
-The plan decision itself is deterministic from SOURCE/TARGET immutable semantics; current Object state only determines whether an optional removed JSON key happens to be present when the plan is applied.
+The plan decision is deterministic from SOURCE/TARGET immutable semantics. The preparatory snapshot only determines whether an optional removed JSON key happens to be present while constructing the candidate.
 
 ## OPTIONAL -> REQUIRED
 
@@ -183,27 +205,25 @@ SOURCE required = false
 TARGET required = true
 ```
 
-The immutable MigrationPlan can precompute the rule and carry the canonical TARGET `migration_default`, but it cannot choose the concrete branch for one Object because that depends on whether the current sparse SOURCE state contains a value.
-
-Conceptual plan operation:
+The immutable MigrationPlan carries the conditional rule and the canonical TARGET `migration_default`:
 
 ```text
 OPTIONAL_TO_REQUIRED
     semantic_key
     target_name
     canonical_target_migration_default
-    target value-mode / exact-DTV validation rule as applicable
+    target transformation/validation semantics as applicable
 ```
 
-### Current value present
+### SOURCE snapshot value present
 
-If the protected current Object state contains the continuous semantic property's value, existing information is preserved.
+If preparatory snapshot `S` contains the continuous semantic property's value, existing information is preserved.
 
 ```text
-current value present
-    -> preserve existing source information
-    -> apply any other TARGET migration/validation rules for this same continuous property
-    -> never replace it with migration_default merely because the TARGET is required
+value present
+    -> preserve existing SOURCE information
+    -> apply any other TARGET migration/validation rules for this same semantic property
+    -> never replace it with migration_default merely because TARGET is required
 ```
 
 Example:
@@ -224,7 +244,7 @@ before = {
 }
 ```
 
-migrates, assuming the existing value is admissible under all other TARGET semantics, to:
+migrates, assuming all other TARGET semantics are satisfied, to:
 
 ```json
 after = {
@@ -233,14 +253,14 @@ after = {
 }
 ```
 
-If the existing value is incompatible with another simultaneous TARGET change such as a narrower exact DataTypeVersion, the schema change fails. The migration default is not a remediation fallback for incompatible existing information.
+If the existing value is incompatible with another simultaneous TARGET change such as a narrower exact DataTypeVersion, schema migration fails. The migration default is not a remediation fallback for incompatible existing information.
 
-### Current value absent
+### SOURCE snapshot value absent
 
-If the protected current sparse Object state does not contain the property, TARGET requiredness needs a value and the canonical TARGET `migration_default` is used.
+If preparatory snapshot `S` does not contain the property, TARGET requiredness needs a value and the canonical TARGET `migration_default` is used.
 
 ```text
-current value absent
+value absent
     -> TARGET migration_default
 ```
 
@@ -261,36 +281,23 @@ after = {
 }
 ```
 
-### UoW placement
+### Optimistic-preparation placement
 
-The `OPTIONAL -> REQUIRED` branch decision is explicitly a mutation-UoW responsibility.
+The concrete present/absent branch is selected **outside** the mutation UoW from preparatory snapshot `S`, and the complete TARGET candidate is finalized there.
 
-Outside the Object lock, the immutable MigrationPlan may know:
-
-```text
-if value present -> preserve
-if value absent  -> use canonical TARGET migration_default
-```
-
-but it must not decide which condition is true from an earlier unlocked Object snapshot.
-
-The actual presence/absence test is performed only after the schema-change UoW has obtained the fresh protected current Object state. This guarantees that a concurrent property mutation cannot change presence between decision and commit.
-
-Therefore:
+Correctness does not rely on that unlocked observation remaining current indefinitely. The short mutation UoW protects the Object concurrency owner and compares the authoritative current fingerprint with `F(S)`:
 
 ```text
-outside UoW / cacheable
-    immutable OPTIONAL_TO_REQUIRED rule
-    canonical TARGET migration_default
-    compiled TARGET validation semantics
+fingerprint unchanged
+    -> the previously selected branch and complete candidate remain valid
 
-inside protected schema-change UoW
-    read fresh current properties
-    determine present vs absent
-    preserve or default accordingly
+fingerprint changed
+    -> candidate discarded
+    -> rollback
+    -> bounded restart from a fresh Object snapshot
 ```
 
-The general information-preservation invariant remains:
+The information-preservation invariant remains:
 
 ```text
 migration_default fills absence only
@@ -372,29 +379,149 @@ existing value incompatible with TARGET
 
 There is no migration default in TARGET because optional declarations do not carry one.
 
-### UoW placement
-
-The semantic plan for `REQUIRED -> OPTIONAL` is immutable and reusable, but the concrete SOURCE value is read from fresh protected Object state during the schema-change UoW together with the rest of the migration.
-
-Unlike `OPTIONAL -> REQUIRED`, there is no normal present/absent branch to choose for valid SOURCE state: SOURCE requiredness guarantees presence. The UoW consumes that fresh value, applies any simultaneous TARGET migration rules and validates the resulting TARGET representation.
-
-Therefore:
-
-```text
-outside UoW / cacheable
-    immutable REQUIRED_TO_OPTIONAL preservation rule
-    compiled TARGET transformation/validation semantics as applicable
-
-inside protected schema-change UoW
-    read fresh current value
-    preserve/transform it
-    validate it against TARGET
-```
+The concrete value transformation and validation are performed outside the UoW while constructing the complete TARGET candidate from snapshot `S`. The UoW later accepts that candidate only if the protected aggregate fingerprint still matches `F(S)`.
 
 The information-preservation invariant is:
 
 ```text
 TARGET allowing absence does not authorize loss of existing SOURCE information
+```
+
+## SCALAR -> LIST
+
+A continuous semantic property may widen from SCALAR in SOURCE to LIST in TARGET:
+
+```text
+SOURCE value_mode = SCALAR
+TARGET value_mode = LIST
+```
+
+This is the current normal monotonic value-mode evolution. `LIST -> SCALAR` is outside the normal contract.
+
+Conceptual immutable plan operation:
+
+```text
+SCALAR_TO_LIST
+    semantic_key
+    target_name
+    compiled TARGET exact-DTV validation/canonicalization semantics
+```
+
+### SOURCE snapshot value present
+
+Existing scalar information is preserved as a singleton ordered list:
+
+```text
+x -> [x]
+```
+
+Example:
+
+```json
+before = {
+  "hostname": "srv01",
+  "tag": "core"
+}
+```
+
+migrates to:
+
+```json
+after = {
+  "hostname": "srv01",
+  "tag": ["core"]
+}
+```
+
+The singleton representation is then validated/canonicalized under the complete TARGET semantics. The widening operation alone does not prove target-value validity.
+
+If the exact DataTypeVersion also changes:
+
+```text
+SOURCE
+    SCALAR + DTV v2
+
+TARGET
+    LIST + DTV v4
+```
+
+candidate preparation performs:
+
+```text
+x
+-> [x]
+-> validate every element under TARGET DTV v4
+-> canonicalize TARGET list representation
+```
+
+If the existing SOURCE value cannot be represented under the TARGET contract, migration fails. It is never silently dropped and never replaced with a migration default merely because a default exists.
+
+### SOURCE snapshot value absent
+
+For an optional SOURCE SCALAR property that is absent:
+
+```text
+optional SCALAR -> optional LIST
+    absent -> absent
+```
+
+If TARGET requiredness changes independently:
+
+```text
+optional SCALAR -> required LIST
+```
+
+then the already-frozen requiredness rule applies:
+
+```text
+SOURCE value present
+    -> x -> [x] -> TARGET validation/canonicalization
+
+SOURCE value absent
+    -> canonical TARGET migration_default
+       which is already a non-empty valid TARGET LIST
+```
+
+For `required SCALAR -> required LIST`, valid SOURCE state guarantees one existing scalar value and therefore:
+
+```text
+x -> [x]
+```
+
+before TARGET validation/canonicalization.
+
+### Optimistic-preparation placement
+
+The scalar-to-list transformation, any simultaneous target-DTV validation and canonicalization, and the construction of the complete TARGET candidate all happen **outside** the mutation UoW from preparatory snapshot `S`.
+
+Inside the short UoW:
+
+```text
+protect Object concurrency owner
+recompute authoritative current fingerprint
+
+fingerprint != F(S)
+    -> discard prepared candidate
+    -> rollback + bounded restart
+
+fingerprint == F(S)
+    -> prepared singleton-list transformation is still based on the current Object generation
+    -> do not repeat SCALAR -> LIST conversion or target validation merely because the UoW started
+```
+
+Frozen information-preservation rule:
+
+```text
+existing SCALAR information
+    -> singleton LIST containing that information
+    -> TARGET validation/canonicalization
+
+absence
+    -> remains absence unless TARGET requiredness independently requires migration_default
+
+TARGET incompatibility
+    -> migration failure
+    -> never silent drop/default replacement
 ```
 
 ## Same name without semantic continuity
@@ -454,12 +581,12 @@ This rule prevents accidental preservation across semantic-identity replacement.
 
 ## Target-state construction rule
 
-The migration must not be implemented conceptually as an unsafe sequence of JSON-key edits where textual name collisions can accidentally transfer values across semantic identities.
+The migration is not modeled as an unsafe sequence of JSON-key edits where textual name collisions can accidentally transfer values across semantic identities.
 
-The target property state is derived from TARGET semantic properties. For each TARGET semantic key, the migration plan decides whether the target state must:
+The target property state is derived from TARGET semantic properties. For each TARGET semantic key, the MigrationPlan and preparatory SOURCE snapshot determine whether the target candidate must:
 
 ```text
-preserve a value from the continuous SOURCE semantic property
+preserve/transform a value from the continuous SOURCE semantic property
 use the canonical TARGET migration_default
 remain absent
 ```
@@ -468,9 +595,9 @@ SOURCE-only semantic properties are not selected into the target state.
 
 This target-oriented construction rule makes semantic identity authoritative even when a removed SOURCE property and an added TARGET property use the same JSON field name.
 
-## MigrationPlan consequence
+## MigrationPlan and optimistic-preparation consequence
 
-These delta classes are derived from immutable SOURCE/TARGET effective schemas and can therefore be compiled into the reusable migration plan:
+All SOURCE/TARGET schema knowledge used by these rules is immutable and can therefore be compiled into the reusable migration plan:
 
 ```text
 ObjectTemplateMigrationPlanCache[
@@ -478,7 +605,9 @@ ObjectTemplateMigrationPlanCache[
 ]
 ```
 
-Some plan operations are fully deterministic without current Object state (`ADD`, `REMOVE` semantic action). Others carry immutable rules that are applied to fresh protected per-Object state inside the schema-change UoW.
+The plan itself is Object-independent. One Object's complete candidate is produced by applying that immutable plan to preparatory aggregate snapshot `S` outside the UoW.
+
+The short mutation UoW does not rebuild that candidate. It only accepts it if the protected Object aggregate still matches the concurrency fingerprint associated with `S`, in addition to any final mutable admission predicates owned by the schema-change command.
 
 ## Frozen in this increment
 
@@ -496,16 +625,13 @@ REMOVE required
     -> value dropped
 
 OPTIONAL -> REQUIRED
-    current value present
+    source snapshot value present
         -> preserve existing information
-        -> validate/migrate under other TARGET deltas
+        -> apply simultaneous TARGET transformations/validation
         -> never fallback to migration_default if incompatible
 
-    current value absent
+    source snapshot value absent
         -> canonical TARGET migration_default
-
-    presence/absence branch
-        -> decided only from fresh protected Object state inside schema-change UoW
 
 REQUIRED -> OPTIONAL
     -> preserve existing SOURCE information
@@ -513,7 +639,23 @@ REQUIRED -> OPTIONAL
     -> never drop merely because TARGET permits absence
     -> incompatibility causes migration failure
     -> no migration_default
-    -> concrete value consumed from fresh protected Object state in UoW
+
+SCALAR -> LIST
+    source value present
+        -> x becomes singleton [x]
+        -> validate/canonicalize against TARGET semantics
+
+    source optional value absent
+        -> remains absent unless TARGET requiredness independently supplies migration_default
+
+    target incompatibility
+        -> migration failure
+        -> no silent drop/default replacement
+
+optimistic preparation
+    -> concrete Object property branches/transforms/validation occur outside UoW on snapshot S
+    -> UoW accepts prepared candidate only if protected fingerprint still equals F(S)
+    -> fingerprint mismatch discards candidate and causes bounded restart
 
 removed property
     -> no archive/extras/default/remediation behavior
@@ -528,7 +670,6 @@ target-state construction
 Still to define incrementally:
 
 ```text
-SCALAR -> LIST
 exact DataTypeVersion change
 combined deltas on one continuous semantic property
 ```
