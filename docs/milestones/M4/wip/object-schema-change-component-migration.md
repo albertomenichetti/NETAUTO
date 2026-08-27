@@ -293,6 +293,41 @@ The target exact schema becomes the new ordering authority after migration. Any 
 
 This position-only rule applies to a slot continuous under the same declaring lineage. A child lineage cannot locally override/redeclare an inherited effective slot merely to change its inherited position, because normal ObjectTemplate inheritance does not permit hiding/override of inherited members.
 
+## Effective-schema-only classification
+
+`Object.SCHEMA_CHANGE` does not classify component deltas by where the change originated in the ObjectTemplate declaration graph.
+
+The migration planner consumes only:
+
+```text
+SOURCE exact effective schema
+vs
+TARGET exact effective schema
+```
+
+It does not carry a separate runtime category such as:
+
+```text
+local delta
+inherited delta
+parent-pin delta
+ancestor-provenance delta
+```
+
+A difference that arose because TARGET pins a different exact parent version is indistinguishable at runtime from the same effective difference produced locally. Once the two exact effective schemas are available, provenance is irrelevant.
+
+The component portion of the immutable MigrationPlan therefore classifies only the resulting effective-slot differences:
+
+```text
+ADD
+REMOVE
+same SlotSemanticKey + target widening
+same SlotSemanticKey + position change
+semantic-identity replacement
+```
+
+No Object migration traversal of the parent chain is required to discover why the effective schema changed. Effective-schema construction/materialization is a model-plane concern; runtime migration consumes its resolved result.
+
 ## Frozen in this increment
 
 ```text
@@ -339,11 +374,15 @@ POSITION-ONLY CHANGE
         -> schema ordering/presentation metadata only
         -> preserve ownership facts unchanged
         -> no runtime compatibility revalidation or ownership DML
+
+EFFECTIVE-SCHEMA-ONLY CLASSIFICATION
+    -> compare SOURCE effective schema vs TARGET effective schema only
+    -> declaration/inheritance provenance is irrelevant
+    -> no separate inheritance-driven runtime delta category
 ```
 
 Still to define incrementally:
 
 ```text
-inheritance-driven component deltas
 complete ownership portion of PreparedSchemaChange / UoW realization
 ```
