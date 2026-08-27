@@ -157,6 +157,99 @@ The widening guarantee comes from model-plane certification of the immutable SOU
 
 The target remains a stable ObjectTemplate lineage; no child exact version participates in this compatibility rule.
 
+## Semantic-identity replacement
+
+If SOURCE and TARGET expose the same effective slot name under different `SlotSemanticKey` values, name equality does not create continuity.
+
+Example:
+
+```text
+SOURCE
+    (Device, interfaces) -> NetworkInterface
+
+TARGET
+    (Server, interfaces) -> NetworkInterface
+```
+
+is classified as:
+
+```text
+REMOVE (Device, interfaces)
+ADD    (Server, interfaces)
+```
+
+not as migration of one continuous slot.
+
+This remains true even when the old and new slots have exactly the same target lineage and every current child would be compatible with the new slot. Compatibility does not transfer ownership semantic identity.
+
+Persisted ownership facts carry the declaring-lineage identity explicitly:
+
+```text
+object_components
+    child_object_id
+    parent_object_id
+    slot_declaring_template_id
+    slot_name
+```
+
+Therefore an edge through:
+
+```text
+(Device, interfaces)
+```
+
+must never be silently reinterpreted as an edge through:
+
+```text
+(Server, interfaces)
+```
+
+Frozen runtime rule:
+
+```text
+old SlotSemanticKey has zero current outgoing edges
+    -> replacement is admissible for this Object
+    -> old slot disappears
+    -> new slot starts semantically empty
+    -> object_components unchanged
+
+old SlotSemanticKey has one or more current outgoing edges
+    -> SCHEMA_CHANGE fails
+    -> no implicit rebinding
+    -> no implicit detach + reattach
+```
+
+Example:
+
+```text
+SOURCE
+    (Device, interfaces) -> NetworkInterface
+
+runtime
+    server-1 owns eth0 through (Device, interfaces)
+
+TARGET
+    (Server, interfaces) -> NetworkInterface
+```
+
+Even though `eth0` would also satisfy the new slot target, migration fails until the caller explicitly removes the old ownership fact. If desired, a later explicit ATTACH after schema migration may create a new ownership fact through `(Server, interfaces)`.
+
+The governing invariant is:
+
+```text
+child compatibility with a new slot
+    !=
+continuity of the old ownership fact
+```
+
+and more generally:
+
+```text
+name equality never transfers runtime state across semantic identities
+```
+
+As with REMOVE SLOT, a blocker observed in the preparatory snapshot may produce an immediate conservative failure. A prepared success based on observing no edge through the removed semantic key must still pass the protected aggregate-fingerprint check before commit.
+
 ## Frozen in this increment
 
 ```text
@@ -185,12 +278,23 @@ TARGET WIDENING toward ancestor
     -> all SOURCE-compatible current children remain TARGET-compatible by construction
     -> preserve all edges unchanged
     -> no per-child runtime compatibility revalidation
+
+SEMANTIC-IDENTITY REPLACEMENT
+    same effective name + different SlotSemanticKey
+        -> REMOVE old semantic slot + ADD new semantic slot
+
+    old semantic slot has zero edges
+        -> admissible
+        -> new semantic slot starts empty
+
+    old semantic slot has >= 1 edge
+        -> fail
+        -> no implicit rebinding/detach+reattach
 ```
 
 Still to define incrementally:
 
 ```text
-semantic-identity replacement through remove/add under different declaring lineage
 position-only changes
 inheritance-driven component deltas
 complete ownership portion of PreparedSchemaChange / UoW realization
