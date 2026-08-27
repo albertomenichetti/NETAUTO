@@ -1,8 +1,8 @@
 # M4 TO-BE API — Object schema binding
 
-Status: PARTIAL ROUTE-LOCAL FREEZE / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: GET ROUTE-LOCAL CLOSED / POST PARTIAL ROUTE-LOCAL FREEZE / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This file records the caller-facing contract frozen for the Object-relative schema surface during the M4 top-down TO-BE sweep. Execution path, cache use, concurrency and persistence realization for schema mutation remain to be closed before marking the mutation route locally complete.
+This file records the caller-facing contract frozen for the Object-relative schema surface during the M4 top-down TO-BE sweep. The GET read path is route-locally closed. Execution path, cache use, concurrency and persistence realization for schema mutation remain to be closed before marking the POST mutation route locally complete.
 
 ## Resource concept
 
@@ -77,6 +77,92 @@ GET /api/v1/core/object-templates/{template_id}/versions/{version}/effective-sch
 
 which remains the detailed model-plane schema surface.
 
+### GET TO-BE read path
+
+The read must return the Object's current exact binding plus the stable template name in one coherent database statement.
+
+Preferred simple SQL shape:
+
+```sql
+SELECT
+    o.template_id,
+    ot.name AS template_name,
+    o.template_version AS version
+FROM objects o
+JOIN object_templates ot
+  ON ot.id = o.template_id
+WHERE o.id = :object_id;
+```
+
+The frozen requirement is not the textual join order but the physical access path:
+
+```text
+objects PK lookup by object_id
+    -> at most one Object row
+    -> obtain template_id/template_version
+
+object_templates PK lookup by template_id
+    -> at most one ObjectTemplate row
+    -> obtain stable name
+```
+
+PostgreSQL may reorder/push predicates during planning. The simple join form is acceptable only while physical verification proves the intended bounded path rather than broad join work followed by filtering.
+
+Architecture-wide physical review must verify this with `EXPLAIN (ANALYZE, BUFFERS)` or equivalent evidence. Expected plan shape is conceptually:
+
+```text
+Index/PK lookup objects(id = :object_id)
+    -> one row
+Nested Loop / equivalent
+    -> Index/PK lookup object_templates(id = objects.template_id)
+```
+
+If evidence does not show this bounded access path, the production query shape or physical design must be changed; the route does not normatively depend on blind planner trust.
+
+### GET cache/denormalization decision
+
+No cache is used for this route.
+
+Although `ObjectTemplate.name` is stable and cacheable, PostgreSQL must already be consulted for current Object existence and current mutable exact binding. A PK-to-PK join adds no extra round-trip and is simpler than splitting the result across DB plus cache lookup/fill.
+
+No denormalized template name is copied into `objects`.
+
+### GET concurrency/coherence
+
+One SQL statement gives one coherent database snapshot of:
+
+```text
+Object existence
+current template_id/template_version
+matching stable template name
+```
+
+No lock is required.
+
+A concurrent schema mutation is observed either before or after its commit; the GET does not expose an intermediate binding.
+
+Missing Object:
+
+```text
+0 rows -> 404
+```
+
+### GET cost target
+
+```text
+1 PostgreSQL statement
+    objects PK lookup
+    object_templates PK lookup
+
+0 cache lookups
+0 locks
+0 model-plane semantic reconstruction
+0 denormalization
+0 lifecycle work
+```
+
+`GET /objects/{id}/schema` is therefore ROUTE-LOCAL CLOSED, subject only to the architecture-wide physical-plan/index verification shared by the final M4 relational review.
+
 ## POST change Object schema binding
 
 The former public route name `/schema-change` is replaced by the resource-oriented schema route:
@@ -149,9 +235,9 @@ GET /object-templates/{T}/versions/{V}/effective-schema
 
 This separation avoids copying complete effective schema into an Object-relative read while still giving callers a direct way to discover the schema governing one Object.
 
-## Partial route-local freeze
+## Route-local state
 
-Frozen so far:
+Frozen for the shared Object schema surface:
 
 - Object-relative schema resource path is `/api/v1/core/objects/{object_id}/schema`;
 - `GET` returns exactly `template_id`, `template_name`, `version`;
@@ -161,6 +247,17 @@ Frozen so far:
 - schema mutation changes version only within the Object's existing template lineage;
 - successful `POST` returns `204 No Content`;
 - ObjectTemplate effective-schema API remains the detailed model-plane schema surface.
+
+GET route-local closure additionally freezes:
+
+- one coherent PostgreSQL statement;
+- no cache;
+- no locks;
+- no denormalized template name on Object;
+- required physical path `Object PK -> ObjectTemplate PK`;
+- simple JOIN is acceptable only if physical-plan evidence proves that bounded path;
+- `0 rows -> 404`;
+- architecture-wide `EXPLAIN (ANALYZE, BUFFERS)` verification handoff.
 
 Still to close for POST schema mutation:
 
@@ -176,12 +273,4 @@ lifecycle SCHEMA_CHANGE persistence
 no-op target-version semantics
 TO-BE warm/cold cost
 physical index review handoff
-```
-
-Still to close for GET schema binding:
-
-```text
-minimal read path / query count
-cache benefit, if any
-TO-BE cost
 ```
