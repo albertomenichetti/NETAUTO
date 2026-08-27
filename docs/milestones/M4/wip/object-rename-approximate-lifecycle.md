@@ -4,7 +4,7 @@ Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Scope
 
-This note freezes a deliberate semantic simplification for the M4 TO-BE `Object.RENAME` path.
+This note records the deliberate lifecycle-precision relaxation for the M4 TO-BE `Object.RENAME` path.
 
 Public candidate:
 
@@ -24,15 +24,15 @@ Success:
 204 No Content
 ```
 
+The route-local authority is `to-be-api-object-rename.md`; this note isolates the lifecycle rationale.
+
 ## Decision
 
 `canonical_name` is treated as low-criticality mutable human/search metadata rather than a correctness-bearing structural field.
 
 Therefore `RENAME` does not pay for a protected exact-before snapshot merely to make the lifecycle payload perfectly reflect concurrent intrinsic Object mutations.
 
-The command may perform an unlocked preliminary read of the complete intrinsic Object snapshot for lifecycle construction, then execute the actual mutation separately.
-
-Conceptually:
+The command performs an unlocked preliminary read of the complete intrinsic Object snapshot for lifecycle construction, then executes the actual mutation separately.
 
 ```text
 Q1 unlocked preliminary Object read
@@ -41,10 +41,16 @@ Q1 unlocked preliminary Object read
 build approximate lifecycle_before = S
 build approximate lifecycle_after  = S with canonical_name replaced
 
-Q2 mutation UoW
-    -> UPDATE objects SET canonical_name = :new_name WHERE id = :object_id
-    -> INSERT RENAME lifecycle event using the prepared before/after snapshots
-    -> atomically commit mutation + event
+BEGIN mutation UoW
+
+Q2 UPDATE objects
+   SET canonical_name = :new_name
+   WHERE id = :object_id
+
+Q3 INSERT RENAME lifecycle event
+   using prepared before/after snapshots
+
+COMMIT
 ```
 
 The update is intentionally unconditional with respect to the current name.
@@ -58,7 +64,7 @@ The update is intentionally unconditional with respect to the current name.
     -> same-name and different-name requests are not distinguished
 ```
 
-A same-name request therefore follows the normal mutation path and may emit a `RENAME` lifecycle event whose before/after names are equal.
+A same-name request therefore follows the normal mutation path and may emit a `RENAME` event whose before/after names are equal.
 
 ## Accepted race semantics
 
@@ -76,9 +82,9 @@ another RENAME
 canonical_name
 ```
 
-so it does not overwrite concurrent `properties`, `template_version`, ownership or Relationship state.
+so it does not intentionally overwrite concurrent `properties`, `template_version`, ownership or Relationship state.
 
-The current `objects` row remains authoritative and correct.
+The current `objects` row remains authoritative and correctness-bearing.
 
 However, the RENAME lifecycle `before_state` / `after_state` prepared from Q1 may be stale with respect to concurrently changed intrinsic fields. This is explicitly accepted for this operation.
 
@@ -97,7 +103,7 @@ concurrent SCHEMA_CHANGE commits:
 RENAME commits:
     canonical_name = server-2
 
-RENAME lifecycle may still record:
+RENAME lifecycle may record:
     before  = server-1 / v4 / P1
     after   = server-2 / v4 / P1
 
@@ -107,11 +113,7 @@ while the committed current Object is:
 
 This is an approximate historical observation for `RENAME`, not a false current-state success.
 
-## Why this is acceptable
-
-The design intentionally prioritizes the cost of a lightweight metadata mutation over exact historical reconstruction for this specific event kind.
-
-The accepted asymmetry is:
+## Accepted asymmetry
 
 ```text
 current Object correctness
@@ -123,25 +125,28 @@ RENAME lifecycle exactness under concurrent unrelated intrinsic mutations
 
 No corresponding relaxation is implied for correctness-bearing operations such as `DATA_CHANGE`, `SCHEMA_CHANGE`, ownership mutations, factual Relationship mutations or DELETE.
 
+Mutation/event commit atomicity is not relaxed: Q2 and Q3 remain in the same mutation UoW and commit or rollback together.
+
 ## Concurrency implication
 
 No explicit Object row lock is required solely to obtain an exact lifecycle before-state for RENAME.
 
 The `UPDATE` itself provides normal PostgreSQL row-update serialization for `canonical_name`.
 
-The global concurrency phase must reconcile this operation-specific relaxed lifecycle guarantee with the broader lifecycle documentation, which currently describes intrinsic before/after snapshots more strongly.
-
-That existing stronger wording is intentionally superseded for RENAME by this M4 candidate if the decision is promoted into normative architecture.
+The global concurrency phase must preserve current-state correctness while recognizing that RENAME's historical before/after snapshots are intentionally approximate.
 
 ## Cost implication
 
-Normal successful TO-BE RENAME can remain bounded to:
+Normal successful TO-BE RENAME is bounded to:
 
 ```text
 1 unlocked Object read
-1 mutation statement (preferably UPDATE + lifecycle INSERT fused)
+1 Object UPDATE
+1 lifecycle INSERT
 ```
 
-plus transaction control.
+excluding transaction-control commands.
+
+The mutation UoW itself contains exactly two write statements: the Object UPDATE and lifecycle INSERT.
 
 No ObjectTemplate/DataType semantic reads, cache fills, ancestry, ownership reads or Relationship reads are required.
