@@ -106,6 +106,74 @@ The `migration_default` belongs to an exact immutable TARGET ObjectTemplateVersi
 
 No per-Object decision is required for this delta class.
 
+## REMOVE property
+
+A property whose semantic key is present in SOURCE and absent from TARGET is classified as an immutable plan operation:
+
+```text
+REMOVE
+    semantic_key
+    source_name
+```
+
+Runtime effect:
+
+```text
+TARGET Object property state
+    -> property does not exist
+```
+
+The removal rule is independent of SOURCE requiredness.
+
+### SOURCE optional
+
+If the optional SOURCE value is present, it is dropped. If it is already absent in the sparse runtime state, there is nothing to remove.
+
+```text
+optional SOURCE property
+    value present -> drop
+    value absent  -> no runtime action
+```
+
+### SOURCE required
+
+A valid SOURCE Object has the required value present. The value is dropped because requiredness constrains state only while that semantic property belongs to the governing schema.
+
+```text
+required SOURCE property
+    -> drop
+```
+
+No archive, extras bucket, migration default or side-channel preservation is produced for removed properties.
+
+Example:
+
+```text
+SOURCE effective schema
+    hostname required
+    description optional
+
+TARGET effective schema
+    hostname required
+```
+
+```json
+before = {
+  "hostname": "srv01",
+  "description": "core server"
+}
+```
+
+migrates to:
+
+```json
+after = {
+  "hostname": "srv01"
+}
+```
+
+The plan decision itself is deterministic from SOURCE/TARGET immutable semantics; current Object state only determines whether an optional removed JSON key happens to be present when the plan is applied.
+
 ## Same name without semantic continuity
 
 If SOURCE and TARGET expose the same effective property name under different semantic keys, the value is never carried forward merely because the JSON key text is equal.
@@ -141,11 +209,45 @@ new TARGET property required
     -> TARGET migration_default is used
 ```
 
+For example, if SOURCE contains:
+
+```json
+{
+  "hostname": "srv01"
+}
+```
+
+but TARGET replaces `(Device, hostname)` with required `(Server, hostname)` whose migration default is `"unknown"`, the result is:
+
+```json
+{
+  "hostname": "unknown"
+}
+```
+
+not `"srv01"`.
+
 This rule prevents accidental preservation across semantic-identity replacement.
+
+## Target-state construction rule
+
+The migration must not be implemented conceptually as an unsafe sequence of JSON-key edits where textual name collisions can accidentally transfer values across semantic identities.
+
+The target property state is derived from TARGET semantic properties. For each TARGET semantic key, the migration plan decides whether the target state must:
+
+```text
+preserve a value from the continuous SOURCE semantic property
+use the canonical TARGET migration_default
+remain absent
+```
+
+SOURCE-only semantic properties are not selected into the target state.
+
+This target-oriented construction rule makes semantic identity authoritative even when a removed SOURCE property and an added TARGET property use the same JSON field name.
 
 ## MigrationPlan consequence
 
-These delta classes are completely deterministic from immutable SOURCE/TARGET effective schemas and can therefore be compiled once into the reusable migration plan:
+These delta classes are deterministic from immutable SOURCE/TARGET effective schemas and can therefore be compiled once into the reusable migration plan:
 
 ```text
 ObjectTemplateMigrationPlanCache[
@@ -153,7 +255,7 @@ ObjectTemplateMigrationPlanCache[
 ]
 ```
 
-For the classes frozen in this note, the plan needs no current Object property state to decide the action. Current state is only needed later when applying the full plan atomically to a specific Object.
+For the classes frozen in this note, the plan does not need current Object property state to decide the semantic action. Current state is needed later only to apply the complete plan atomically to a specific Object.
 
 ## Frozen in this increment
 
@@ -164,14 +266,25 @@ ADD optional
 ADD required
     -> resulting value = canonical TARGET migration_default
 
+REMOVE optional
+    -> present value dropped; absent remains absent
+
+REMOVE required
+    -> value dropped
+
+removed property
+    -> no archive/extras/default/remediation behavior
+
 same name but different PropertySemanticKey
     -> no carry-forward by name coincidence
+
+target-state construction
+    -> build from TARGET semantic properties, not naive JSON-key mutation order
 ```
 
 Still to define incrementally:
 
 ```text
-REMOVE property
 optional -> required
 required -> optional
 SCALAR -> LIST
