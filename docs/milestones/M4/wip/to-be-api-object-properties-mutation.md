@@ -1,8 +1,8 @@
 # M4 TO-BE API — Object properties mutation
 
-Status: PARTIAL ROUTE-LOCAL FREEZE / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: ROUTE-LOCAL CLOSED / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This file records the caller-facing contract and the execution decisions already frozen for the Object property-mutation route during the M4 top-down TO-BE sweep. Final mutation-statement/index closure remains to be completed before marking the route locally complete.
+This file records the frozen caller-facing contract and TO-BE execution model for the Object property-mutation route during the M4 top-down sweep. Physical SQL/index design remains an explicit handoff to the subsequent architecture phase and does not reopen the semantic/data-path decisions recorded here.
 
 ## Signature
 
@@ -54,8 +54,6 @@ PropertyOperation
         property: string
 ```
 
-## Operation semantics
-
 Frozen request-shape rules:
 
 ```text
@@ -76,28 +74,32 @@ array order
     has no semantic mutation-order meaning
 ```
 
-The command is applied as one semantic candidate over the Object's complete current property state; it is not a sequential patch script whose array order changes the result.
+The request is one semantic operation set, not an ordered patch script.
 
-## Interaction with sparse property semantics
+## Sparse property semantics
 
-The Object runtime property map remains sparse canonical JSONB.
+Object runtime properties remain sparse canonical JSONB.
 
-Therefore:
+Consequences:
 
 ```text
 REMOVE optional property
-    -> resulting canonical key absent
+    -> resulting key absent
 
 SET optional LIST = []
-    -> canonicalizes to key absent
-
-REMOVE required property
-    -> request is structurally valid
-    -> resulting candidate fails semantic validation because required state is missing
+    -> prepared semantic effect is key absence
 
 SET runtime JSON null
-    -> invalid according to Object runtime-value semantics
+    -> invalid
+
+REMOVE required property
+    -> semantic validation failure
+
+SET required LIST = []
+    -> semantic validation failure
 ```
+
+Because exact ObjectTemplate semantics are known during operation preparation, `REMOVE` of a required property is rejected before the mutation UoW; current property values are not needed to determine that invalidity.
 
 ## Success response
 
@@ -109,11 +111,13 @@ Successful execution returns:
 
 Response body: none.
 
-The mutation endpoint acknowledges command success. The canonical current Object representation remains the responsibility of:
+The canonical current Object representation remains the responsibility of:
 
 ```http
 GET /api/v1/core/objects/{object_id}
 ```
+
+A semantic no-op also returns `204 No Content` and emits no fake lifecycle transition.
 
 ## Explicit non-effects
 
@@ -128,26 +132,31 @@ components / ownership
 Relationships
 ```
 
-Only the Object runtime property state is in scope.
+Only Object runtime property state is in scope.
 
 # TO-BE execution model
 
-The execution path is derived from what the operation needs rather than from the current implementation shape.
+The route has three deliberately separate stages:
 
 ```text
 STEP 1 — current Object existence + exact binding
     PostgreSQL
 
-STEP 2 — operation semantic preparation
-    worker-local READY cache
+STEP 2 — operation preparation
+    worker-local READY semantic cache
 
 STEP 3 — short mutation Unit of Work
-    PostgreSQL
+    PostgreSQL + application merge
 ```
 
-## STEP 1 — resolve current exact ObjectTemplate binding, but do not load current properties
+## STEP 1 — minimal Object binding lookup
 
-Before semantic preparation, the command needs to know which exact ObjectTemplateVersion governs the target Object.
+Before semantic preparation the command needs only:
+
+```text
+Object exists
+current exact ObjectTemplate binding
+```
 
 Required output:
 
@@ -158,13 +167,7 @@ ObjectBinding
     template_version
 ```
 
-This step also proves that the target Object currently exists.
-
-Important negative requirement:
-
-> The command does not need the Object's current `properties` before semantic preparation.
-
-The intended minimal lookup is conceptually:
+Conceptual persistence shape:
 
 ```sql
 SELECT template_id, template_version
@@ -172,144 +175,149 @@ FROM objects
 WHERE id = :object_id;
 ```
 
-The exact SQL remains subject to implementation review, but STEP 1 must remain a minimal PK-rooted lookup and must not load the current JSONB property state.
+Important negative requirement:
 
-No `PUBLISHED` check is required for the Object's current exact binding: an existing Object may legitimately remain pinned to a `DEPRECATED` ObjectTemplateVersion.
+> STEP 1 does not load current `properties`.
 
-## STEP 2 — validate/canonicalize requested operations from READY exact-version cache
+An existing Object may remain pinned to a `DEPRECATED` exact ObjectTemplateVersion. Property mutation is not a new model-plane binding admission and therefore does not require current `PUBLISHED` status or current default resolution.
 
-The selected exact ObjectTemplateVersion uses the same validation-ready cache capability established for `Object.CREATE`.
+STEP 1 must be a cheap primary-key lookup. Exact physical indexing is deferred to the architecture-wide index review.
 
-The cache supplies complete immutable/stable property semantics and exact DataTypeVersion validation knowledge for `(template_id, template_version)`.
+## STEP 2 — prepare operations only from READY cache semantics
 
-The operation-preparation rule is:
+The exact binding obtained in STEP 1 selects the same validation-ready ObjectTemplate capability established for `Object.CREATE`.
 
-```text
-ensure exact OTV validation facet READY
-    -> validate requested property names/operation shapes
-    -> validate/canonicalize SET values
-    -> normalize sparse-state consequences where determinable
-```
+Strong rule:
 
-No current Object property read is required during this step.
+> Property mutation never traverses ObjectTemplate/DataType persistence ad hoc for validation. Missing or partial semantic knowledge is first brought to READY cache state; operation preparation starts only from READY cache semantics.
 
-Examples:
+The cache supplies the exact immutable/stable knowledge required to validate the requested operations, including effective properties, exact DataTypeVersion semantics and compiled validators.
+
+Preparation rules:
 
 ```text
-SET optional LIST tags = []
-    -> prepared semantic effect is key absence
+SET
+    property must exist
+    validate SCALAR/LIST shape
+    validate exact DTV contract
+    canonicalize value
 
-SET hostname = "srv02"
-    -> prepared canonical SET value
+    optional LIST = []
+        -> prepared REMOVE
 
-REMOVE unknown property
-    -> semantic validation failure before mutation UoW
+    required LIST = []
+        -> error
+
+REMOVE
+    property must exist
+    required
+        -> error
+    optional
+        -> prepared REMOVE
 ```
 
-A missing or partial cache is completed first. Validation does not fall back to ad-hoc direct ObjectTemplate/DataType traversal.
-
-STEP 2 produces a prepared mutation tied to the exact binding used for validation:
+Example:
 
 ```text
-PreparedPropertyMutation
-    prepared_for = (template_id, template_version)
-    canonical SET effects
-    REMOVE effects
+input
+    SET hostname = "srv02"
+    REMOVE description
+
+prepared mutation for (Server,4)
+    SET hostname = canonical("srv02")
+    REMOVE description
 ```
 
-No Object row lock is held while cache lookup, cold fill, compilation or operation validation occurs.
+No current Object property read and no Object row lock occurs during this stage.
 
-## STEP 3 — current properties are read only inside the short mutation UoW
+### Why full Object revalidation is unnecessary
 
-The complete current Object property state becomes necessary only when the command is ready to perform the actual mutation.
-
-Inside the mutation UoW, the command obtains one protected fresh Object generation containing at least:
+If:
 
 ```text
-id
-canonical_name
-template_id
-template_version
-properties
+1. persisted current properties were previously admitted under exact binding (T,V),
+2. the exact binding remains unchanged,
+3. every requested operation is prepared and validated against the exact immutable semantics of (T,V),
 ```
 
-Conceptually:
+then untouched persisted properties remain valid by construction and only the requested semantic effects need to be applied.
+
+The hot path therefore does not re-certify the complete Object or untouched values.
+
+## STEP 3 — short protected mutation UoW
+
+Only after operations are prepared does the command enter its true mutation UoW.
+
+The first statement obtains a fresh protected Object generation, conceptually:
 
 ```sql
-SELECT id, canonical_name, template_id, template_version, properties
+SELECT
+    id,
+    canonical_name,
+    template_id,
+    template_version,
+    properties
 FROM objects
 WHERE id = :object_id
 FOR NO KEY UPDATE;
 ```
 
-The exact production statement remains subject to implementation review; the frozen requirement is a fresh protected current Object generation that serializes intrinsic Object mutation.
-
-## Binding-stability rule against concurrent SCHEMA_CHANGE
-
-The first check after protecting the current Object is:
+The protected state supplies:
 
 ```text
-protected current binding
-    ==
-PreparedPropertyMutation.prepared_for
+fresh exact binding
+fresh complete sparse properties
+canonical_name required by intrinsic lifecycle snapshots
 ```
 
-If equal, the prepared operations may be applied to the fresh current properties.
+### Binding-stability rule
 
-If not equal, no mutation is applied in that UoW.
+The exact binding in the protected Object must equal the binding whose READY cache semantics prepared the operation set.
 
-Example:
+```text
+protected binding == prepared binding
+    -> proceed
+
+protected binding != prepared binding
+    -> perform no mutation
+    -> end/rollback current UoW
+    -> bounded restart from STEP 1
+```
+
+A restart may require loading the newly observed exact binding into cache, but no cache fill is ever performed while holding the Object row lock.
+
+Representative race:
 
 ```text
 STEP 1
     Object -> Server v4
 
 STEP 2
-    prepare operations using READY Server v4 validation cache
+    prepare against Server v4 cache
 
 concurrent SCHEMA_CHANGE
     Object -> Server v5
-    commits
 
 STEP 3
-    protected current Object says Server v5
+    protected Object says Server v5
+    -> no mutation
+    -> release lock/UoW
+    -> restart on v5
 ```
 
-The Server-v4-prepared mutation must not be applied under Server v5 semantics.
+The restart policy is bounded. Exhaustion is an internal/concurrency failure, not permission to apply operations prepared under stale schema semantics.
 
-The command releases/rolls back the short UoW and performs a bounded restart:
+### Fresh-state derivation
+
+With unchanged binding:
 
 ```text
-STEP 1
-    observe current Server v5 binding
+before = fresh protected properties
 
-STEP 2
-    ensure Server v5 validation facet READY
-    prepare operations again under v5 semantics
-
-STEP 3
-    retry against a fresh protected Object generation
+after = apply PreparedOperations(before)
 ```
 
-Crucial rule:
-
-> Cache fill or semantic recompilation is never performed while holding the Object row lock.
-
-Retries are bounded. Exhaustion is an internal/concurrency failure rather than an unbounded wait loop.
-
-## Candidate derivation from the protected fresh state
-
-Once binding equality is confirmed:
-
-```text
-before = complete current sparse properties
-
-after = before
-        + prepared canonical SET effects
-        - prepared REMOVE effects
-```
-
-Untouched properties are preserved exactly from the protected current generation.
+Untouched keys are preserved exactly.
 
 Example:
 
@@ -321,14 +329,14 @@ before = {
 }
 ```
 
-with:
+Prepared effects:
 
 ```text
 SET hostname = srv02
 REMOVE location
 ```
 
-produces:
+Result:
 
 ```json
 after = {
@@ -337,19 +345,22 @@ after = {
 }
 ```
 
-Persisted untouched values were already admitted under the same exact immutable schema binding. The operation does not reconstruct ObjectTemplate/DataType semantics from persistence or re-certify every untouched value merely because one property changes.
+No full ObjectTemplate/DataType validation pass is performed under the lock.
 
-The resulting complete candidate must satisfy the exact schema requirements relevant to the operation. In particular, removing a required property is rejected when the complete `after` state is derived.
+### No-op semantics
 
-## No-op semantics
-
-The protected current state is also the authority for changedness.
+If:
 
 ```text
-after.properties == before.properties
-    -> successful 204 No Content
-    -> no UPDATE
-    -> no DATA_CHANGE lifecycle event
+after == before
+```
+
+then:
+
+```text
+return 204
+no UPDATE
+no DATA_CHANGE lifecycle event
 ```
 
 Examples include:
@@ -357,150 +368,227 @@ Examples include:
 ```text
 SET hostname to its already-current canonical value
 REMOVE an already-absent optional property
-SET optional LIST to [] when the canonical current state is already absent
+SET optional LIST to [] when the property is already absent
 ```
 
-No fake lifecycle transition is emitted for a semantic no-op.
+### Real mutation
 
-## Concurrency outcomes
-
-### Property mutation × property mutation
-
-Both operations protect the same Object row in STEP 3.
-
-The waiter reads the fresh committed properties after acquiring protection and derives its `before -> after` transition from that state. This prevents lost JSONB updates and keeps lifecycle snapshots serially explainable.
-
-### Property mutation × SCHEMA_CHANGE
-
-```text
-property mutation wins STEP 3 first
-    -> commits under the current exact binding
-    -> later SCHEMA_CHANGE migrates that committed state
-
-SCHEMA_CHANGE wins first
-    -> property mutation observes a changed binding in STEP 3
-    -> bounded restart prepares against the new exact binding
-```
-
-No stale-schema prepared mutation commits against a newer ObjectTemplateVersion.
-
-### Property mutation × RENAME
-
-Intrinsic Object mutations serialize on the current Object generation. Lifecycle snapshots therefore observe one serially coherent canonical name/state combination.
-
-### Property mutation × DELETE
-
-```text
-property mutation protects/commits first
-    -> DELETE follows the committed mutation
-
-DELETE wins first
-    -> later property mutation observes Object absence and returns the normal not-found outcome
-```
-
-No mutation resurrects a deleted Object.
-
-## Lifecycle persistence
-
-For a real change, the same short mutation UoW persists:
-
-```text
-UPDATE objects.properties
-+
-DATA_CHANGE lifecycle event with coherent before/after Object snapshots
-```
-
-and commits them atomically.
-
-Conceptually:
+For a real change the UoW is conceptually:
 
 ```text
 BEGIN
 
-protect/read fresh current Object
-verify prepared binding still matches
-apply prepared operations
-validate complete resulting candidate
+S1
+    SELECT protected complete Object
+    FOR NO KEY UPDATE
+    verify exact binding unchanged
+    derive before -> after in application
 
-if no-op
-    success without UPDATE/event
-else
-    UPDATE objects.properties
-    INSERT DATA_CHANGE lifecycle event
+S2
+    UPDATE objects.properties = after
+
+S3
+    INSERT intrinsic DATA_CHANGE lifecycle event
+        before snapshot
+        after snapshot
 
 COMMIT
 ```
 
-If lifecycle persistence fails, the Object property update rolls back too.
+Object update and lifecycle event are atomic. If lifecycle persistence fails, the Object update rolls back.
 
-## Cost direction
+## Concurrency guarantees
 
-Warm-cache normal path:
+### Property mutation × property mutation
+
+Both operations protect the same Object row during STEP 3.
+
+The waiter receives a fresh current generation and applies its already-prepared semantic effects to that fresh state. This prevents lost JSONB updates and produces a serially explainable `before -> after` lifecycle sequence.
+
+### Property mutation × SCHEMA_CHANGE
+
+```text
+property mutation final lock first
+    -> it commits against the current exact binding
+    -> SCHEMA_CHANGE subsequently migrates that committed state
+
+SCHEMA_CHANGE first
+    -> property mutation sees binding mismatch
+    -> releases the UoW and restarts against the new exact binding
+```
+
+No cache fill is performed while waiting on or holding the Object lock.
+
+### Property mutation × RENAME
+
+The operations serialize on the Object row where required by the mutation realization. The DATA_CHANGE lifecycle snapshot obtains one coherent protected `canonical_name` together with the property state used for before/after.
+
+### Property mutation × DELETE
+
+```text
+property mutation protects Object first
+    -> mutation commits before a later delete
+
+delete wins first
+    -> property mutation observes Object absence and returns the normal not-found outcome
+```
+
+No mutation may resurrect a deleted Object.
+
+## Cache behavior
+
+Warm exact binding:
 
 ```text
 STEP 1
-    one minimal Object PK lookup returning exact binding only
+    PK Object binding lookup
 
 STEP 2
     READY cache hit
     CPU-only operation validation/canonicalization
 
 STEP 3
-    one protected fresh Object-row read
-    application merge/no-op detection
-    UPDATE + lifecycle INSERT only for a real change
+    short mutation UoW
+```
+
+Cold/partial exact binding:
+
+```text
+STEP 1
+    same PK binding lookup
+
+STEP 2
+    complete READY cache using the shared efficient ObjectTemplate exact-version loader
+    no Object lock held
+    prepare operations
+
+STEP 3
+    identical short mutation UoW
+```
+
+This route depends on the same cross-domain ObjectTemplate capability already tracked by M4: an efficient bounded/bulk load must be formally defined and normalized when the ObjectTemplate TO-BE architecture is reviewed.
+
+## Cost target
+
+Warm real change:
+
+```text
+STEP 1
+    S1  PK lookup -> exact binding
+
+STEP 2
+    cache hit + CPU
+
+STEP 3
+    S2  protected complete Object read
+    S3  UPDATE complete properties JSONB
+    S4  DATA_CHANGE lifecycle INSERT
     COMMIT
 ```
 
-Cold/partial cache path adds only the reusable semantic-cache fill before STEP 3. The mutation UoW is identical once the cache is READY.
+Target: **4 simple PostgreSQL statements** on the warm real-change path.
+
+Warm semantic no-op:
+
+```text
+S1  initial binding lookup
+S2  protected complete Object read
+```
+
+Target: **2 PostgreSQL statements**, no UPDATE and no lifecycle INSERT.
+
+Cold cache adds the bounded semantic-cache load outside the mutation UoW; the final mutation path is unchanged.
+
+A binding-mismatch race adds a bounded restart and repeats STEP 1/2 for the newly observed exact binding.
+
+## Data structures touched
+
+Authoritative data-plane state:
+
+```text
+objects
+    STEP 1 exact binding
+    STEP 3 protected current state + property UPDATE
+
+object_lifecycle_events
+    DATA_CHANGE event for real changes only
+```
+
+Immutable semantic dependencies:
+
+```text
+worker-local ObjectTemplate validation facet
+worker-local exact DTV semantics/validators
+ObjectTemplate effective-property materialization used by cold fill
+```
+
+This route does not read or mutate:
+
+```text
+object_components
+relationships
+runtime_relationship_resolutions
+ObjectTemplate current default
+ObjectTemplate current lifecycle status
+```
+
+## Relational/schema implications
+
+No new Object relational column or denormalization is required by this route.
+
+The agreed Object shape remains:
+
+```text
+objects
+    id
+    canonical_name
+    template_id
+    template_version
+    properties JSONB
+```
+
+Complete-property JSONB replacement remains the authoritative mutation model.
 
 ## Physical index review handoff
 
-Physical indexing remains for the subsequent architecture-wide review.
+Physical indexing is intentionally not frozen route-locally.
 
-This route specifically requires review/proof that:
+The subsequent architecture phase must validate the complete workload and confirm that at least these accesses are efficient:
 
 ```text
-STEP 1 Object-id -> exact binding lookup is optimal through Object PK access
-STEP 3 protected Object-id lookup is optimal through Object PK access
-JSONB property UPDATE/search-index costs remain acceptable with future M5 indexing
+STEP 1 objects PK -> template_id/template_version
+STEP 3 objects PK protected read
+Object update by PK
+lifecycle write/index maintenance
+future M5 JSONB GIN/search workload
 ```
 
-No route-local extra index is introduced merely for this operation without checking the whole Object/M5 workload.
+The index review may change physical definitions but must not change the frozen data path or authority split.
 
-## Partial route-local freeze
+## Route-local closure
 
-Frozen so far:
+Frozen for this route:
 
 - `POST /api/v1/core/objects/{object_id}/properties`;
-- no query parameters;
-- non-empty `operations` array;
-- discriminated `SET` and `REMOVE` operations;
-- at most one operation per property per request;
-- operation-array order has no semantic meaning;
-- sparse canonical property-state consequences;
-- `204 No Content` on success;
-- GET remains the representation surface;
-- STEP 1 requires only Object existence + exact OTV binding, not current properties;
-- existing Objects do not require current exact OTV `PUBLISHED` admission for property mutation;
-- exact property/DataType semantics are consumed from a complete READY cache;
-- current properties are loaded only inside the short mutation UoW;
-- no Object row lock is held during cache fill/operation validation;
-- prepared operations are tied to the exact binding used for preparation;
-- STEP 3 must compare the protected current binding with the prepared binding;
-- binding mismatch caused by concurrent SCHEMA_CHANGE triggers a bounded restart with no mutation under the stale binding;
-- untouched properties are preserved from the fresh protected current state;
-- concurrent property mutations serialize on the Object row and derive from fresh committed state;
-- semantic no-op returns `204` without UPDATE or lifecycle event;
-- real change persists Object properties and lifecycle before/after atomically;
-- cache fill is never performed while holding the Object row lock;
-- physical index definitions remain deferred to architecture-wide review.
-
-Still to close before marking the route `ROUTE-LOCAL CLOSED`:
-
-```text
-exact production mutation SQL/statement count where architecture-significant
-final bounded-retry policy classification
-final warm/cold statement-count target
-confirm no additional cross-route blocker emerges from SCHEMA_CHANGE/DELETE review
-```
+- non-empty unordered semantic SET/REMOVE operation set;
+- at most one operation per property;
+- sparse canonical property semantics;
+- `204 No Content` on success, including semantic no-op;
+- STEP 1 reads only Object existence + exact binding;
+- no pre-mutation current-property read;
+- STEP 2 consumes only complete READY exact-version cache semantics;
+- required REMOVE and invalid SET cases are rejected during preparation;
+- missing/partial semantic cache is completed before validation;
+- no Object row lock is held during cache fill or operation preparation;
+- STEP 3 reads one fresh protected complete Object generation;
+- binding mismatch causes no mutation and a bounded restart;
+- unchanged binding allows direct application of prepared effects without full Object revalidation;
+- untouched properties are preserved from fresh protected state;
+- semantic no-op performs no UPDATE and emits no lifecycle event;
+- real mutation performs complete JSONB UPDATE + DATA_CHANGE lifecycle atomically;
+- concurrent property mutations cannot lose updates;
+- SCHEMA_CHANGE either follows the property change or causes the property command to restart on the new binding;
+- warm real-change target is 4 simple DB statements; warm no-op target is 2;
+- no new Object relational column is required;
+- physical indexes remain subject to architecture-wide workload review;
+- efficient ObjectTemplate exact-version semantic loading remains an explicit ObjectTemplate architecture dependency to define/norm later.
