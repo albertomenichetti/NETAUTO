@@ -34,7 +34,118 @@ The logical aggregate is first converted into one deterministic canonical byte r
 canonical_encode(S) -> bytes
 ```
 
-The exact canonical encoding rules are a separate follow-up freeze. They must guarantee that equal logical aggregate state produces equal bytes and that ordering/serialization implementation details do not introduce accidental differences.
+Equal logical aggregate state must produce equal bytes and ordering/serialization implementation details must not introduce accidental differences.
+
+## Canonical logical representation reuse
+
+The fingerprint does not invent a second representation for the intrinsic Object state.
+
+For the intrinsic portion, it reuses the same logical/canonical representation already used by the Object GET/public Object representation:
+
+```text
+id
+canonical_name
+object_template
+    id
+    version
+properties
+```
+
+Conceptually:
+
+```json
+{
+  "id": "<object-id>",
+  "canonical_name": "server-1",
+  "object_template": {
+    "id": "<template-id>",
+    "version": 4
+  },
+  "properties": {
+    "hostname": "srv01"
+  }
+}
+```
+
+The same canonical Object/property codec must therefore be reused rather than defining an independent fingerprint-only primitive representation.
+
+The fingerprint representation is nevertheless **not identical to the enriched public GET response** because public `components` are a read projection rather than the authoritative ownership facts needed by the concurrency aggregate.
+
+Public Object GET may contain, for example:
+
+```json
+"components": {
+  "interfaces": [
+    {
+      "id": "<child-id>",
+      "canonical_name": "eth0"
+    }
+  ],
+  "disks": []
+}
+```
+
+Those values must not be fingerprinted as-is because:
+
+```text
+child canonical_name
+    -> belongs to the child Object aggregate
+    -> child RENAME must not change the parent fingerprint
+
+empty effective slots
+    -> come from model-plane effective-schema enrichment
+    -> are not current runtime ownership facts
+
+slot_declaring_template_id
+    -> is required by runtime ownership semantic identity
+    -> is not exposed by the public GET component summary
+```
+
+Therefore the canonical fingerprint representation extends the reused intrinsic Object representation with an internal authoritative ownership collection:
+
+```json
+{
+  "id": "<object-id>",
+  "canonical_name": "server-1",
+  "object_template": {
+    "id": "<template-id>",
+    "version": 4
+  },
+  "properties": {
+    "hostname": "srv01"
+  },
+  "ownership": [
+    {
+      "child_object_id": "<child-id>",
+      "slot_declaring_template_id": "<declaring-template-id>",
+      "slot_name": "interfaces"
+    }
+  ]
+}
+```
+
+`ownership` is an internal fingerprint/concurrency representation, not a new public API DTO.
+
+The outgoing ownership list is deterministically ordered by:
+
+```text
+(slot_declaring_template_id, slot_name, child_object_id)
+```
+
+before serialization and hashing.
+
+Frozen representation boundary:
+
+```text
+intrinsic Object
+    -> reuse Object canonical representation
+
+public GET components
+    -> EXCLUDED from fingerprint
+
+internal outgoing ownership facts
+    -> INCLUDED using semantic ownership identity
+```
 
 ## Frozen digest algorithm
 
@@ -149,8 +260,18 @@ A future benchmark-driven implementation may revisit where hashing occurs, but c
 fingerprint source
     = canonical logical Object aggregate representation
 
-canonical representation
-    = deterministic byte sequence; exact encoding rules follow separately
+intrinsic Object representation
+    = reuse the same Object canonical representation used by GET
+
+public GET components
+    = excluded from fingerprint
+
+outgoing ownership representation
+    = internal authoritative rows with
+      child_object_id + slot_declaring_template_id + slot_name
+
+ownership ordering
+    = (slot_declaring_template_id, slot_name, child_object_id)
 
 hash algorithm
     = SHA-256
