@@ -176,6 +176,71 @@ F(S') == expected_object_fingerprint
 
 The whole-aggregate fingerprint is deliberately conservative. A concurrent change that did not actually alter the semantic migration result may still cause a retry; this is accepted in exchange for a simple strong success guard.
 
+## Post-lock statement-snapshot boundary
+
+The parent Object lock acquisition and the protected aggregate fingerprint read are intentionally **separate PostgreSQL statements** under `READ COMMITTED`.
+
+The reason is that a statement that begins before waiting for the Object lock retains its own statement snapshot. If `SCHEMA_CHANGE` attempted to lock the parent and inspect all fingerprint state in that same statement, a concurrent `ATTACH` or `DETACH` could commit while `SCHEMA_CHANGE` is waiting, yet the waiting statement could continue to observe the pre-wait snapshot for non-locked ownership rows.
+
+The required pattern is therefore:
+
+```text
+Q1
+    acquire/protect exact TARGET OTV @ SHARE
+    require status == PUBLISHED
+
+Q2
+    acquire parent Object @ NO KEY UPDATE
+    wait if another parent mutation owns the row
+
+Q2 completes
+    -> Object concurrency owner is now held
+
+Q3 — NEW PostgreSQL statement
+    -> new READ COMMITTED statement snapshot
+    -> read/recompute the authoritative whole-Object aggregate fingerprint
+       including outgoing ownership facts
+```
+
+Example race:
+
+```text
+T2 ATTACH
+    holds parent Object @ NKU
+    inserts edge eth0
+
+T1 SCHEMA_CHANGE
+    Q2 attempts parent Object @ NKU
+    -> waits
+
+T2 commits
+
+T1 Q2 acquires the Object lock
+
+T1 Q3 begins as a new statement
+    -> its READ COMMITTED snapshot sees T2's committed eth0 edge
+    -> fingerprint differs from the preparatory fingerprint
+    -> prepared success cannot commit
+```
+
+This statement boundary is part of the strong false-success guarantee. It is not merely a query-shape preference.
+
+Frozen rule:
+
+```text
+Object lock acquired
+    !=
+protected fingerprint already fresh
+
+Object lock acquisition statement completes
+    -> start a new statement
+    -> obtain fresh protected aggregate fingerprint
+```
+
+Once Q3 observes a matching fingerprint, the held parent Object lock prevents `DATA_CHANGE`, `SCHEMA_CHANGE`, `RENAME`, `ATTACH`, `DETACH` and `DELETE` from changing the aggregate generation before this transaction commits.
+
+Therefore after a successful protected fingerprint match the mutation does not need to reread current properties or ownership facts again before persistence.
+
 ## UoW shape frozen so far
 
 Conceptually:
@@ -183,39 +248,42 @@ Conceptually:
 ```text
 BEGIN
 
-1. acquire/protect exact TARGET OTV
+Q1. acquire/protect exact TARGET OTV
        require status == PUBLISHED
        hold through commit
 
-2. acquire parent Object @ NO KEY UPDATE
+Q2. acquire parent Object @ NO KEY UPDATE
        serializes intrinsic + parent ownership mutations
+       wait if necessary
 
-3. recompute authoritative aggregate fingerprint F(S')
+Q3. NEW statement after Q2 completed
+       recompute authoritative aggregate fingerprint F(S')
+       from a fresh READ COMMITTED statement snapshot
 
-4. if F(S') != prepared F(S)
+    if F(S') != prepared F(S)
        -> ROLLBACK
        -> bounded retry from preparation
 
-5. if F(S') == prepared F(S)
+    if F(S') == prepared F(S)
        -> use already-prepared target_properties / lifecycle snapshots
        -> no property migration re-execution
        -> no component/child revalidation
        -> no object_components DML
 
-6. UPDATE Object current exact binding + canonical properties
+Q4. UPDATE Object current exact binding + canonical properties
 
-7. INSERT SCHEMA_CHANGE lifecycle transition
+Q5. INSERT SCHEMA_CHANGE lifecycle transition
 
-8. COMMIT
+COMMIT
 ```
 
 The remaining route-local work is to close:
 
 ```text
-- exact final SQL/statement decomposition for target admission, fingerprint check,
+- exact final SQL shape for target admission, fingerprint computation,
   Object update and lifecycle insert;
-- whether target admission and/or fingerprint check can be fused safely with
-  another statement without weakening lock ordering or diagnostics;
+- whether Q4 Object UPDATE and Q5 lifecycle INSERT should remain separate or be
+  fused without changing atomic semantics;
 - no-op / same-or-lower target-version classification and exact public failures;
 - bounded retry boundary and exhaustion mapping;
 - lifecycle event payload details under the prepared-candidate model;
