@@ -139,6 +139,78 @@ Lifecycle remains edge-oriented rather than request-oriented. A batch HTTP reque
 
 Exact lifecycle payload and write realization remain to be reconciled during the route-local data-path/concurrency pass.
 
+## Preliminary parent and slot resolution
+
+The first authoritative data-plane read obtains only the current parent Object binding needed to identify the exact governing ObjectTemplateVersion:
+
+```text
+parent object
+    -> id
+    -> template_id
+    -> template_version
+```
+
+Parent current existence remains PostgreSQL authority.
+
+The requested effective slot is then resolved cache-first from immutable exact ObjectTemplate knowledge:
+
+```text
+ImmutableObjectTemplateCache[(parent.template_id, parent.template_version)]
+    facet = component_schema
+```
+
+### Cache HIT
+
+The READY `component_schema` facet resolves `slot_name` entirely in memory and yields the semantic information needed by ATTACH, including:
+
+```text
+slot_name
+slot_declaring_template_id
+target_template_id
+```
+
+No PostgreSQL semantic query is issued on this warm path.
+
+### Cache MISS / partial entry
+
+A missing or non-READY `component_schema` facet does not create an alternate semantic path. The command loads only the missing immutable effective-component knowledge for the exact parent OTV, canonicalizes/compiles it, marks the facet READY, and resumes the same cache-hit resolution path.
+
+Conceptually:
+
+```text
+component_schema MISS
+    -> bounded load of exact immutable effective components
+    -> compile/canonicalize
+    -> component_schema READY
+    -> resolve slot_name from cache
+```
+
+The full ObjectTemplate validation facet is not required: ATTACH does not need effective properties, DataType semantics or property validators merely to resolve a component slot.
+
+The parent Object may currently be pinned to a `DEPRECATED` exact OTV. That exact schema remains immutable and continues to govern the existing Object, so no current OTV lifecycle-status admission query is required for slot resolution.
+
+## Child batch semantic direction
+
+The request is not restricted to one child ObjectTemplate lineage. Different child lineages may coexist in the same batch provided each stable `template_id` is compatible with the resolved slot `target_template_id`.
+
+For example, a slot targeting `NetworkInterface` may accept in one batch Objects whose stable lineages are `EthernetInterface`, `WirelessInterface` and `BondInterface`, if each is a descendant/compatible lineage.
+
+The child read and compatibility check must therefore be bulk-oriented rather than N+1:
+
+```text
+bulk read requested child Objects
+    -> verify every requested id exists
+    -> reject parent==child
+    -> collect DISTINCT child.template_id values
+
+for each distinct child.template_id
+    -> verify stable-lineage compatibility with slot.target_template_id
+```
+
+The exact child `template_version` is irrelevant to slot compatibility.
+
+Compatibility checks should consume stable ObjectTemplate ancestry cache knowledge. Missing ancestry facts should be filled in bounded bulk rather than through one query per child or per distinct lineage.
+
 ## Relation to reads and DETACH
 
 The route aligns with the already-agreed slot-specific component collection read:
@@ -162,12 +234,17 @@ Frozen here:
 - success `204 No Content`;
 - atomic batch semantics;
 - identical-edge convergence direction;
-- one parent/slot coordination context per batch rather than per child request.
+- one parent/slot coordination context per batch rather than per child request;
+- parent exact OTV component-slot resolution is cache-first;
+- only the `component_schema` facet is required for ATTACH slot resolution;
+- cache miss fills the immutable facet and resumes the same READY path;
+- heterogeneous child stable lineages are allowed in one batch;
+- child compatibility is evaluated against the slot target using stable-lineage ancestry, not exact child versions.
 
 Still to close:
 
-- exact validation/preparation sequence;
-- warm/cold cache path;
+- exact bulk child/current-owner read shape;
+- warm/cold ancestry-cache fill path;
 - current-owner arbitration;
 - cycle detection and concurrency realization;
 - exact statement count;
