@@ -241,6 +241,80 @@ Once Q3 observes a matching fingerprint, the held parent Object lock prevents `D
 
 Therefore after a successful protected fingerprint match the mutation does not need to reread current properties or ownership facts again before persistence.
 
+## Fused final Object + lifecycle write
+
+After a successful protected fingerprint match, the Object transition and its `SCHEMA_CHANGE` lifecycle append are executed as **one PostgreSQL business statement** inside the already-open transaction.
+
+The transaction itself is sufficient for atomicity, so a fused statement is not required for correctness. It is nevertheless preferred here because the write dependency is simple and the fusion removes one database round-trip while the target/Object locks are being held.
+
+Conceptual SQL shape:
+
+```sql
+WITH mutated AS (
+    UPDATE objects
+    SET
+        template_version = :target_version,
+        properties = :target_properties
+    WHERE id = :object_id
+      AND template_id = :template_id
+      AND template_version = :source_version
+    RETURNING id
+)
+INSERT INTO object_lifecycle_events (
+    kind,
+    object_id,
+    canonical_name,
+    before_state,
+    after_state
+)
+SELECT
+    'SCHEMA_CHANGE',
+    :object_id,
+    :canonical_name,
+    :before_state,
+    :after_state
+FROM mutated
+RETURNING id;
+```
+
+The exact final column list follows the lifecycle persistence contract; the SQL above freezes the dependency shape rather than every textual detail.
+
+The `UPDATE` retains defensive source predicates:
+
+```text
+id == prepared object_id
+template_id == prepared template_id
+template_version == prepared source_version
+```
+
+A successful protected fingerprint match should already imply these predicates. They remain in the write as cheap defense-in-depth and as a local assertion that the prepared transition is being applied to the intended source binding.
+
+The lifecycle insert is driven from the `mutated` CTE. Therefore:
+
+```text
+Object UPDATE affects one row
+    -> exactly one SCHEMA_CHANGE lifecycle row is inserted
+
+Object UPDATE affects zero rows
+    -> no lifecycle row is inserted by this statement
+    -> internal invariant/stale-protection failure
+    -> rollback
+```
+
+The route never produces an event without its owning Object transition.
+
+The prepared `lifecycle_before` and `lifecycle_after` values are consumed directly after the fingerprint match; no second migration or historical-state reconstruction occurs in the write statement.
+
+Frozen final-write rule:
+
+```text
+protected fingerprint match
+    -> one fused Object UPDATE + lifecycle INSERT business statement
+    -> no object_components DML
+    -> no property migration/revalidation
+    -> no extra read between fingerprint acceptance and write
+```
+
 ## UoW shape frozen so far
 
 Conceptually:
@@ -270,20 +344,34 @@ Q3. NEW statement after Q2 completed
        -> no component/child revalidation
        -> no object_components DML
 
-Q4. UPDATE Object current exact binding + canonical properties
+Q4. one fused business statement
+       WITH mutated AS (
+           UPDATE Object exact binding + canonical properties
+           using defensive expected-source predicates
+       )
+       INSERT SCHEMA_CHANGE lifecycle FROM mutated
 
-Q5. INSERT SCHEMA_CHANGE lifecycle transition
+       zero mutated rows
+           -> no event
+           -> internal invariant/stale-protection failure
+           -> rollback
 
 COMMIT
+```
+
+Successful protected mutation cost inside the write UoW is therefore four PostgreSQL business statements before commit:
+
+```text
+Q1 target exact-version admission hold
+Q2 Object concurrency-owner lock
+Q3 fresh aggregate fingerprint
+Q4 fused Object transition + lifecycle append
 ```
 
 The remaining route-local work is to close:
 
 ```text
-- exact final SQL shape for target admission, fingerprint computation,
-  Object update and lifecycle insert;
-- whether Q4 Object UPDATE and Q5 lifecycle INSERT should remain separate or be
-  fused without changing atomic semantics;
+- exact final SQL shape for target admission and fingerprint computation;
 - no-op / same-or-lower target-version classification and exact public failures;
 - bounded retry boundary and exhaustion mapping;
 - lifecycle event payload details under the prepared-candidate model;
