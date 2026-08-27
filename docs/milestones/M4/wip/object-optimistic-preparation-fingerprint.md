@@ -4,54 +4,122 @@ Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
 
 This note records an agreed concurrency/execution pattern for expensive Object mutations, discovered while designing `Object.SCHEMA_CHANGE`.
 
-The goal is to move expensive candidate construction and semantic validation outside the mutation Unit of Work while preserving the existing complete-Object-state concurrency guarantee.
+The goal is to move expensive candidate construction and semantic validation outside the mutation Unit of Work while preserving the complete-Object-state concurrency guarantee.
+
+## Core safety priority
+
+The protocol is intentionally asymmetric:
+
+```text
+false SUCCESS
+    -> forbidden strongly
+    -> a mutation must never commit from stale aggregate state
+
+false FAILURE
+    -> acceptable conservatively
+    -> a failure may be returned from a coherent earlier committed snapshot
+       even if a concurrent mutation later removes the blocker
+```
+
+The primary correctness objective is therefore:
+
+> protect successful state transitions strongly; do not pay extra locking/recheck cost merely to eliminate statistically rare conservative failures that cannot make the persisted data model inconsistent.
+
+A caller may retry after a conservative failure and be admitted against the newer state.
 
 ## Core pattern
 
-An expensive Object mutation may proceed in two phases:
+An expensive Object mutation may first prepare optimistically:
 
 ```text
 PREPARE OPTIMISTICALLY
     read one coherent current aggregate snapshot S
     compute a deterministic fingerprint F(S)
     perform expensive semantic work outside locks
-    produce complete candidate C derived from S
+```
 
+Preparation may produce either a semantic failure or a complete candidate.
+
+### Prepared semantic failure
+
+If snapshot `S` itself proves that the requested mutation is currently inadmissible:
+
+```text
+prepare(S) -> FAILURE
+```
+
+the command may return that failure immediately.
+
+It does not have to acquire the Object lock or recheck `F(S)` solely to determine whether a concurrent mutation removed the blocker after `S` was read.
+
+Example:
+
+```text
+T1 SCHEMA_CHANGE reads S
+    removed component slot still has child eth0
+    -> migration blocked
+
+T2 DETACH eth0 commits
+
+T1 may still return the already-derived failure
+```
+
+This is an approved conservative stale failure. It never commits invalid state.
+
+### Prepared successful candidate
+
+If preparation derives a candidate that could mutate persisted state:
+
+```text
+prepare(S) -> candidate C
+```
+
+then success must be protected strongly:
+
+```text
 COMMIT PESSIMISTICALLY
     enter short mutation UoW
     acquire the Object concurrency-owner lock
     re-read/recompute current aggregate fingerprint F(S')
 
     if F(S') != F(S)
+        -> C must not commit
         -> rollback
-        -> bounded restart from preparation
+        -> bounded restart from fresh preparation
 
     if F(S') == F(S)
-        -> prepared candidate is still based on the current aggregate generation
+        -> C is still based on the current aggregate generation
         -> perform final mutable admission checks
         -> persist candidate + required lifecycle state atomically
 ```
 
-The protocol is deliberately conservative. A change to aggregate state that did not actually affect the prepared semantic candidate may still invalidate the fingerprint and cause a restart.
+Thus:
 
-That false-positive restart is accepted in exchange for a simpler, safer and more reusable concurrency protocol.
+```text
+stale prepared success
+    -> forbidden
+
+stale prepared failure
+    -> acceptable
+```
 
 ## Why conservative whole-aggregate fingerprinting is preferred
 
 The fingerprint does not need to be mutation-specific.
 
-For example, `Object.SCHEMA_CHANGE` may not semantically depend on `canonical_name`, but a concurrent rename may still change the aggregate fingerprint and force a restart.
+For example, `Object.SCHEMA_CHANGE` may not semantically depend on `canonical_name`, but a concurrent rename may still change the aggregate fingerprint and force a restart of a prepared successful candidate.
 
 ```text
-SCHEMA_CHANGE prepares from snapshot S
+SCHEMA_CHANGE prepares candidate C from S
 RENAME commits
 protected fingerprint differs
+    -> C cannot commit
     -> SCHEMA_CHANGE restarts
 ```
 
-This is intentionally acceptable.
+This false-positive restart is intentionally acceptable.
 
-The expected rate of such false restarts is considered much less important than keeping the concurrency rule easy to understand, verify and reuse.
+The expected rate of such restarts is considered much less important than keeping the concurrency rule easy to understand, verify and reuse.
 
 The M4 direction is therefore:
 
@@ -96,7 +164,7 @@ lifecycle history
 
 Those values belong to other aggregates/read models or are not mutation-owned current Object state.
 
-The exact final aggregate fingerprint scope must be reconciled with the final M4 Object ownership/concurrency model, but the conservative principle is frozen.
+The exact final aggregate fingerprint scope must be reconciled with the final M4 Object ownership/concurrency model, but the conservative whole-aggregate principle is frozen.
 
 ## SCHEMA_CHANGE consequence
 
@@ -117,21 +185,22 @@ apply plan to S
     target canonicalization
     target property-state construction
     ownership compatibility analysis
-
-produce complete PreparedSchemaChange candidate
 ```
 
-Inside the UoW:
+If this analysis proves the migration invalid on `S`, the command may fail immediately without entering the commit UoW.
+
+If it produces a complete `PreparedSchemaChange` candidate, only then is the protected success path needed:
 
 ```text
 lock Object concurrency owner
 recompute/read current aggregate fingerprint F(S')
 
 mismatch
+    -> prepared candidate cannot commit
     -> rollback + bounded restart
 
 match
-    -> no expensive migration recomputation is required
+    -> no expensive migration recomputation required
     -> perform final target-PUBLISHED admission/protection
     -> persist exact target binding + target properties
     -> persist lifecycle event(s)
@@ -142,25 +211,25 @@ The same principle may later be evaluated for other expensive Object mutations.
 
 ## Relationship to semantic concurrency contract
 
-The current semantic concurrency contract requires complete Object transitions to be serially explainable and candidates not to commit from stale Object state.
+A committed Object transition must be explainable from current protected state.
 
-This protocol realizes that requirement by ensuring:
+For a successful prepared candidate the protocol establishes:
 
 ```text
-prepared candidate C was derived from snapshot S
+candidate C was derived from snapshot S
 +
 protected current snapshot S' is equivalent to S
 +
 Object concurrency-owner lock prevents later Object-generation change before commit
 ```
 
-Therefore the candidate may commit without being fully rederived under lock.
+Therefore `C` may commit without being fully rederived under lock.
 
-If the snapshots differ, the candidate is discarded and preparation restarts from fresh state.
+A semantic failure has no equivalent freshness obligation because it performs no state transition. Returning a failure that was true on coherent committed snapshot `S` cannot violate persisted invariants even if later concurrent work would have made a retry succeed.
 
 ## Fingerprint vs exact snapshot equality
 
-The semantic requirement is equivalence of the protected current aggregate generation with the aggregate generation used for preparation.
+The semantic requirement for successful commits is equivalence of the protected current aggregate generation with the aggregate generation used for preparation.
 
 The implementation may realize this with a fingerprint/hash, but M4 does not yet freeze a concrete hash algorithm.
 
@@ -170,7 +239,7 @@ Required fingerprint properties:
 deterministic
 stable across irrelevant serialization/order differences
 cheap to compute
-collision risk / equivalence quality appropriate for concurrency safety
+collision risk / equivalence quality appropriate for strong commit safety
 same logical aggregate state -> same fingerprint
 changed logical aggregate state -> practically guaranteed different fingerprint
 ```
@@ -181,7 +250,7 @@ Implementation candidates may include database-side or application-side hashing/
 
 Because optimistic preparation already needs the aggregate snapshot, the first fingerprint can usually be computed with little incremental I/O cost.
 
-The more important hot-path question is the protected recheck inside the UoW.
+The more important hot-path question is the protected recheck for a prepared candidate inside the UoW.
 
 A desirable physical direction is:
 
@@ -193,11 +262,13 @@ return only the compact fingerprint when practical
 
 rather than transferring/reconstructing expensive aggregate state solely to check freshness.
 
+Prepared failures avoid this protected fingerprint cost entirely when no state transition is attempted.
+
 The exact PostgreSQL query shape, canonical encoding and hash/fingerprint function require benchmark/evidence before freeze.
 
 ## Bounded retry
 
-Fingerprint mismatch is an approved internal optimistic-restart condition.
+Fingerprint mismatch on the successful-candidate path is an approved internal optimistic-restart condition.
 
 Retries must be bounded.
 
@@ -212,21 +283,54 @@ mismatch
 
 The exact retry count/backoff policy belongs to the later concurrency/implementation closure.
 
+A prepared semantic failure is not an internal fingerprint retry condition. It may be returned directly to the caller; a later caller retry is a new command attempt against newer state.
+
 ## Frozen discovery decision
 
 M4 adopts the following design direction for expensive Object mutation preparation:
 
 ```text
-1. read coherent whole-aggregate source snapshot outside the mutation UoW
-2. compute deterministic aggregate fingerprint
-3. perform expensive candidate construction/validation outside locks
-4. enter short UoW and lock Object concurrency owner
-5. recompute protected current aggregate fingerprint
-6. fingerprint mismatch -> rollback + bounded restart
-7. fingerprint match -> use prepared candidate without full recomputation
-8. perform remaining current mutable admissions and atomic persistence
+1. read coherent whole-aggregate source snapshot S outside the mutation UoW
+2. compute deterministic aggregate fingerprint F(S)
+3. perform expensive semantic analysis/candidate construction outside locks
+
+4a. if analysis(S) proves FAILURE
+        -> failure may be returned immediately
+        -> no lock/fingerprint recheck required merely to detect blocker disappearance
+        -> conservative false failure is acceptable
+
+4b. if analysis(S) produces successful candidate C
+        -> enter short UoW
+        -> lock Object concurrency owner
+        -> recompute protected current fingerprint F(S')
+
+5. F(S') != F(S)
+        -> C must not commit
+        -> rollback + bounded restart
+
+6. F(S') == F(S)
+        -> use prepared C without full recomputation
+        -> perform remaining current mutable admissions
+        -> persist state + lifecycle atomically
 ```
 
-False-positive restarts caused by changes irrelevant to one specific mutation are acceptable by design.
+Additional frozen priorities:
 
-The priority is protocol simplicity, correctness and efficient fingerprint computation, not minimizing every possible restart through mutation-specific fingerprint scopes.
+```text
+false success protection
+    -> STRONG
+
+false failure elimination
+    -> not a correctness requirement
+    -> statistically rare conservative failures are acceptable
+
+whole-aggregate false-positive restart
+    -> acceptable
+
+priority
+    -> data-model consistency
+    -> protocol simplicity
+    -> short lock-held UoW
+    -> efficient fingerprint computation
+    -> only then reduction of rare false failures/restarts
+```
