@@ -116,6 +116,45 @@ F(S2') != F(S2)
 
 There is no third attempt.
 
+## Public retry-exhaustion mapping
+
+Exhaustion of the two-attempt budget is a current-state concurrency conflict, not a semantic-invalid-request outcome and not an internal server failure.
+
+The public mapping is:
+
+```text
+HTTP 409 STATE_CONFLICT
+code = schema_change_blocked
+```
+
+No new public error code is introduced solely for optimistic retry exhaustion.
+
+The response details must make the cause distinguishable from a value/attachment migration blocker while preserving the same top-level code. Conceptually:
+
+```json
+{
+  "code": "schema_change_blocked",
+  "message": "The Object changed concurrently while the schema migration was being prepared.",
+  "details": {
+    "object_id": "<uuid>",
+    "target_version": 8,
+    "blocker_type": "concurrent_object_change"
+  }
+}
+```
+
+The caller may choose to issue a new request. The server does not perform a third internal attempt.
+
+This mapping reflects the semantics already chosen for the route:
+
+```text
+same requested semantic migration
++
+continuing mutable Object contention
+-> meaningful command currently blocked
+-> STATE_CONFLICT / 409
+```
+
 ## Why two attempts
 
 The policy deliberately favors a short, bounded request over indefinite optimistic spinning.
@@ -165,10 +204,10 @@ attempt 1 mismatch
 
 attempt 2 mismatch
     -> rollback
-    -> return failure to caller
+    -> HTTP 409 STATE_CONFLICT
+    -> code schema_change_blocked
+    -> blocker_type concurrent_object_change
 
 all other failures
     -> no automatic retry
 ```
-
-The exact public error code/details for retry exhaustion are still to be frozen as part of the same route-local API failure closure.
