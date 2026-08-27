@@ -154,6 +154,28 @@ The minimal carrier rule is intentionally operation-specific. It must communicat
 
 `Prefer: return=representation` may remain a possible future API capability if consumers later demonstrate a concrete need for an optional create-and-return flow. It is not part of the current M4 candidate and does not need to be implemented now.
 
+### Object CREATE concrete conclusion
+
+For the current Object API, the canonical created-resource URI already carries the UUID allocated by the server:
+
+```text
+POST /api/v1/core/objects
+
+-> 201 Created
+-> Location: /api/v1/core/objects/{new_object_id}
+-> empty response body
+```
+
+No additional generated value is required by the caller to address the new Object. Returning `ObjectDto`, or even a redundant `{ "id": ... }` body, would therefore duplicate information already communicated by `Location` and would couple Object CREATE to the cost and future richness of Object GET.
+
+Current M4 candidate for Object CREATE is consequently:
+
+```text
+201 Created + Location only
+```
+
+with no response body by default.
+
 ## Why this matters for M4 optimization
 
 This separation lets a mutation pay only for the data required to admit and execute that mutation.
