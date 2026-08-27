@@ -174,6 +174,129 @@ after = {
 
 The plan decision itself is deterministic from SOURCE/TARGET immutable semantics; current Object state only determines whether an optional removed JSON key happens to be present when the plan is applied.
 
+## OPTIONAL -> REQUIRED
+
+A continuous semantic property may change from optional in SOURCE to required in TARGET:
+
+```text
+SOURCE required = false
+TARGET required = true
+```
+
+The immutable MigrationPlan can precompute the rule and carry the canonical TARGET `migration_default`, but it cannot choose the concrete branch for one Object because that depends on whether the current sparse SOURCE state contains a value.
+
+Conceptual plan operation:
+
+```text
+OPTIONAL_TO_REQUIRED
+    semantic_key
+    target_name
+    canonical_target_migration_default
+    target value-mode / exact-DTV validation rule as applicable
+```
+
+### Current value present
+
+If the protected current Object state contains the continuous semantic property's value, existing information is preserved.
+
+```text
+current value present
+    -> preserve existing source information
+    -> apply any other TARGET migration/validation rules for this same continuous property
+    -> never replace it with migration_default merely because the TARGET is required
+```
+
+Example:
+
+```text
+SOURCE
+    location optional
+
+TARGET
+    location required
+    migration_default = "unknown"
+```
+
+```json
+before = {
+  "hostname": "srv01",
+  "location": "rome"
+}
+```
+
+migrates, assuming the existing value is admissible under all other TARGET semantics, to:
+
+```json
+after = {
+  "hostname": "srv01",
+  "location": "rome"
+}
+```
+
+If the existing value is incompatible with another simultaneous TARGET change such as a narrower exact DataTypeVersion, the schema change fails. The migration default is not a remediation fallback for incompatible existing information.
+
+### Current value absent
+
+If the protected current sparse Object state does not contain the property, TARGET requiredness needs a value and the canonical TARGET `migration_default` is used.
+
+```text
+current value absent
+    -> TARGET migration_default
+```
+
+Example:
+
+```json
+before = {
+  "hostname": "srv01"
+}
+```
+
+migrates to:
+
+```json
+after = {
+  "hostname": "srv01",
+  "location": "unknown"
+}
+```
+
+### UoW placement
+
+The `OPTIONAL -> REQUIRED` branch decision is explicitly a mutation-UoW responsibility.
+
+Outside the Object lock, the immutable MigrationPlan may know:
+
+```text
+if value present -> preserve
+if value absent  -> use canonical TARGET migration_default
+```
+
+but it must not decide which condition is true from an earlier unlocked Object snapshot.
+
+The actual presence/absence test is performed only after the schema-change UoW has obtained the fresh protected current Object state. This guarantees that a concurrent property mutation cannot change presence between decision and commit.
+
+Therefore:
+
+```text
+outside UoW / cacheable
+    immutable OPTIONAL_TO_REQUIRED rule
+    canonical TARGET migration_default
+    compiled TARGET validation semantics
+
+inside protected schema-change UoW
+    read fresh current properties
+    determine present vs absent
+    preserve or default accordingly
+```
+
+The general information-preservation invariant remains:
+
+```text
+migration_default fills absence only
+migration_default never overwrites existing incompatible information
+```
+
 ## Same name without semantic continuity
 
 If SOURCE and TARGET expose the same effective property name under different semantic keys, the value is never carried forward merely because the JSON key text is equal.
@@ -247,7 +370,7 @@ This target-oriented construction rule makes semantic identity authoritative eve
 
 ## MigrationPlan consequence
 
-These delta classes are deterministic from immutable SOURCE/TARGET effective schemas and can therefore be compiled once into the reusable migration plan:
+These delta classes are derived from immutable SOURCE/TARGET effective schemas and can therefore be compiled into the reusable migration plan:
 
 ```text
 ObjectTemplateMigrationPlanCache[
@@ -255,7 +378,7 @@ ObjectTemplateMigrationPlanCache[
 ]
 ```
 
-For the classes frozen in this note, the plan does not need current Object property state to decide the semantic action. Current state is needed later only to apply the complete plan atomically to a specific Object.
+Some plan operations are fully deterministic without current Object state (`ADD`, `REMOVE` semantic action). Others, such as `OPTIONAL_TO_REQUIRED`, carry an immutable conditional rule whose concrete branch is selected only from fresh protected per-Object state inside the schema-change UoW.
 
 ## Frozen in this increment
 
@@ -272,6 +395,18 @@ REMOVE optional
 REMOVE required
     -> value dropped
 
+OPTIONAL -> REQUIRED
+    current value present
+        -> preserve existing information
+        -> validate/migrate under other TARGET deltas
+        -> never fallback to migration_default if incompatible
+
+    current value absent
+        -> canonical TARGET migration_default
+
+    presence/absence branch
+        -> decided only from fresh protected Object state inside schema-change UoW
+
 removed property
     -> no archive/extras/default/remediation behavior
 
@@ -285,7 +420,6 @@ target-state construction
 Still to define incrementally:
 
 ```text
-optional -> required
 required -> optional
 SCALAR -> LIST
 exact DataTypeVersion change
