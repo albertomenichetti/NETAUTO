@@ -165,15 +165,122 @@ required stable ancestry READY
 
 The compiled plan is immutable for that exact source/target pair because both exact schemas and all exact DataTypeVersion semantics are immutable.
 
-## Frozen boundary
+## Missing semantic inputs — cache fill, not alternate execution
 
-This note intentionally stops before defining the cold-load strategy when one or more required pieces are absent.
+If one or more required semantic inputs are absent from the worker cache, the command reads the missing immutable knowledge from PostgreSQL in order to populate the corresponding cache entries.
 
-The next discovery step is:
+The cold path does **not** introduce a second migration-planning execution model.
+
+Frozen rule:
+
+```text
+cache MISS
+    -> load missing immutable semantic knowledge
+    -> canonicalize/compile it as required
+    -> populate cache entry/facet as READY
+    -> resume the same path used by cache HIT
+```
+
+The migration planner therefore consumes cached READY semantic structures regardless of whether they were already present before the request or were filled during the current request.
+
+The route must not use temporary DB-returned structures directly as a separate one-off semantic source while leaving the relevant cache miss unresolved.
+
+Conceptually:
 
 ```text
 MigrationPlan MISS
-+
-one or more semantic inputs missing
-    -> define the minimum bounded cold-fill sequence
+    -> inspect required semantic inputs
+
+SOURCE closure MISS
+    -> load SOURCE exact effective closure
+    -> populate SOURCE closure cache
+
+TARGET closure MISS
+    -> load TARGET exact effective closure
+    -> populate TARGET closure cache
+
+one or more exact DTV MISS
+    -> load missing exact DTV semantics
+    -> populate exact DTV cache
+
+required ancestry MISS
+    -> load missing stable ancestry knowledge
+    -> populate ancestry cache
+
+all required semantic inputs READY
+    -> compile MigrationPlan in memory
+    -> populate MigrationPlanCache[(T, source, target)]
+    -> continue
 ```
+
+## Load only what is missing
+
+A cold fill must not reload immutable semantic entries that are already READY in the worker cache solely because another required input is missing.
+
+Example:
+
+```text
+SOURCE closure      HIT
+TARGET closure      MISS
+DTV A               HIT
+DTV B               MISS
+DTV C               HIT
+ancestry            HIT
+```
+
+Required DB semantic load is limited to:
+
+```text
+TARGET closure
+DTV B
+```
+
+After the fill:
+
+```text
+TARGET closure      READY
+DTV B               READY
+
+-> all MigrationPlan inputs READY
+-> compile plan
+```
+
+## Bulk-fill rule
+
+Multiple missing entries of the same semantic class must be loaded through a bounded bulk operation rather than one PostgreSQL round-trip per entry.
+
+In particular:
+
+```text
+N missing exact DataTypeVersions
+    -> bounded bulk DTV fill
+    -> NOT N independent DTV queries
+```
+
+The same principle applies wherever multiple homogeneous immutable entries are required by one plan compilation.
+
+This freezes the anti-N+1 requirement while leaving the exact SQL/query grouping to the later ObjectTemplate/DataType cache-loader design.
+
+## Unified execution-model invariant
+
+The intended execution model is therefore:
+
+```text
+MigrationPlanCache HIT
+    -> consume plan
+
+MigrationPlanCache MISS
+    -> ensure all immutable inputs READY
+       using existing cache entries plus bounded fills
+    -> compile plan
+    -> cache plan
+    -> consume plan
+```
+
+There is no semantic distinction between a pre-existing cache hit and an entry made READY during the current request.
+
+## Remaining cold-fill question
+
+This note does not yet freeze how many PostgreSQL statements are required to make all missing SOURCE/TARGET closure, exact DTV and ancestry inputs READY.
+
+The next discovery step is to determine the minimum bounded cold-fill statement sequence and then derive the complete warm/cold cost for `Object.SCHEMA_CHANGE`.
