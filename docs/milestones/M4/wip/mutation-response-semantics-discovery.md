@@ -105,17 +105,54 @@ POST collection
 
 A response body is not automatically required merely to repeat the newly created representation.
 
-Possible creation-specific minimal carriers remain OPEN where the server allocates an identity that is operationally useful to the caller, for example:
+### Standards and best-practice check
+
+The candidate is compatible with HTTP semantics rather than being a project-local workaround:
+
+- RFC 9110 defines `201 Created` for successful creation and allows the newly created resource to be identified through `Location`;
+- RFC 7240 defines `Prefer: return=minimal` and `Prefer: return=representation`, confirming that returning the complete created representation is an API choice rather than an HTTP requirement;
+- common API guidance that returns the complete created resource is primarily an ergonomics choice to avoid an immediate GET and surface server-generated fields.
+
+Therefore M4 does not need to treat full post-create representation as the default merely because some API style guides prefer it.
+
+### Agreed candidate rule for CREATE
+
+The current brainstorming agreement is:
 
 ```text
-Object CREATE
-    -> Location identifies new Object id
+if Location completely communicates the newly allocated resource identity
+    -> 201 Created
+    -> Location
+    -> no duplicated complete-resource body by default
 
-create-next exact version
-    -> newly allocated version number may need an explicit minimal carrier
+if the operation allocates additional values the caller concretely needs
+and those values are not naturally communicated by Location
+    -> return only the minimal generated carrier required by that operation
+    -> do not return the complete resource merely for convenience
 ```
 
-Whether `Location` alone is sufficient for each create operation, or whether some operations need a minimal created-identity body, must be decided per operation.
+Concrete examples:
+
+```text
+POST /objects
+    -> 201 Created
+    -> Location: /api/v1/core/objects/{new_object_id}
+    -> Location already communicates the allocated Object id
+
+ObjectTemplate/DataType/RelationshipDefinition lineage CREATE
+    -> same candidate if the canonical Location fully identifies the created lineage
+
+create-next exact version
+    -> newly allocated version number may justify a minimal result carrier
+       if the operation is not naturally modeled as creation at a canonical URI
+
+factual Relationship CREATE
+    -> evaluate whether Location fully communicates the allocated Relationship id
+```
+
+The minimal carrier rule is intentionally operation-specific. It must communicate something the caller otherwise does not know; it must not become a back door for reintroducing full mutation DTO responses.
+
+`Prefer: return=representation` may remain a possible future API capability if consumers later demonstrate a concrete need for an optional create-and-return flow. It is not part of the current M4 candidate and does not need to be implemented now.
 
 ## Why this matters for M4 optimization
 
@@ -155,13 +192,13 @@ A successful mutation still writes the lifecycle event required by the domain co
 
 - exact operation matrix for `204 No Content` across every non-creating mutation family;
 - whether idempotent no-op mutations return the same success status as a state-changing execution;
-- CREATE response rules per resource family;
-- whether `Location` alone is sufficient for Object/DataType/ObjectTemplate/RelationshipDefinition CREATE;
-- minimal carrier, if any, for operations that allocate a new exact version number;
-- whether factual Relationship CREATE uses `201 + Location` only or needs a minimal created identity carrier;
+- per-create verification that canonical `Location` fully communicates the server-allocated identity;
+- exact minimal carrier, if any, for operations that allocate a new exact version number or another non-Location result;
 - compatibility/migration strategy for clients currently expecting mutation DTO bodies;
 - whether any mutation has a concrete consumer need strong enough to justify returning data despite the default no-content rule.
 
 ## Candidate first-phase conclusion
 
-Use `204 No Content` as the default successful response for mutations of existing resources, keep `GET` as the authority for the resulting public representation, and treat creation as a separate `201 Created + Location` design problem with minimal additional carriers only where concretely necessary.
+Use `204 No Content` as the default successful response for mutations of existing resources and keep `GET` as the authority for the resulting public representation.
+
+For creation, use `201 Created + Location` as the default when the canonical Location completely identifies the new resource. Add a response body only when the operation produces a concrete server-generated value that the caller needs and that is not already naturally communicated by Location; such a body should be minimal rather than a duplicated complete resource representation.
