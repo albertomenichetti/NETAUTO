@@ -250,6 +250,49 @@ name equality never transfers runtime state across semantic identities
 
 As with REMOVE SLOT, a blocker observed in the preparatory snapshot may produce an immediate conservative failure. A prepared success based on observing no edge through the removed semantic key must still pass the protected aggregate-fingerprint check before commit.
 
+## Position-only change
+
+`position` belongs to one exact component declaration as explicit ordering/presentation state. It is not part of `SlotSemanticKey` and it is not persisted on an ownership edge.
+
+A new DRAFT ObjectTemplateVersion may therefore preserve the same local semantic slots while revising only their positions before publication.
+
+Example:
+
+```text
+SOURCE Server v4
+    disks       position = 1
+    interfaces  position = 2
+
+TARGET Server v5
+    interfaces  position = 1
+    disks       position = 2
+```
+
+The semantic identities remain unchanged:
+
+```text
+(Server, disks)
+(Server, interfaces)
+```
+
+and Object migration therefore treats this as metadata evolution, not REMOVE+ADD.
+
+Frozen runtime consequence:
+
+```text
+POSITION-ONLY CHANGE
+    -> preserve every current ownership edge unchanged
+    -> no compatibility revalidation
+    -> no detach/reattach
+    -> no object_components mutation
+```
+
+The target exact schema becomes the new ordering authority after migration. Any read projection that orders component slots from the exact schema may therefore expose the new order, but the ownership facts themselves remain identical.
+
+`ObjectTemplate.REVISE` is a complete replacement of the local declaration candidate, so a persistence implementation may physically delete/reinsert declaration rows. That DML shape has no semantic meaning for runtime migration. SOURCE/TARGET comparison is based on semantic identity and declaration state, not on how the model-plane rows happened to be rewritten.
+
+This position-only rule applies to a slot continuous under the same declaring lineage. A child lineage cannot locally override/redeclare an inherited effective slot merely to change its inherited position, because normal ObjectTemplate inheritance does not permit hiding/override of inherited members.
+
 ## Frozen in this increment
 
 ```text
@@ -290,12 +333,17 @@ SEMANTIC-IDENTITY REPLACEMENT
     old semantic slot has >= 1 edge
         -> fail
         -> no implicit rebinding/detach+reattach
+
+POSITION-ONLY CHANGE
+    same SlotSemanticKey
+        -> schema ordering/presentation metadata only
+        -> preserve ownership facts unchanged
+        -> no runtime compatibility revalidation or ownership DML
 ```
 
 Still to define incrementally:
 
 ```text
-position-only changes
 inheritance-driven component deltas
 complete ownership portion of PreparedSchemaChange / UoW realization
 ```
