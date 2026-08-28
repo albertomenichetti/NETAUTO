@@ -4,9 +4,16 @@ Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Scope
 
-This note freezes the M4 public HTTP command-route shape for Object ownership ATTACH and DETACH.
+This note freezes the current M4 public HTTP command-route shape for Object ownership ATTACH and DETACH.
 
-It supersedes only the previously frozen ATTACH route path. The already-closed ATTACH route-local semantic, concurrency, persistence, lifecycle, cost, and failure decisions remain unchanged unless explicitly superseded elsewhere.
+It remains a WIP discovery checkpoint, not architecture authority. Route-local candidate details are consolidated in:
+
+```text
+docs/milestones/M4/wip/to-be-api-object-attach-batch.md
+docs/milestones/M4/wip/to-be-api-object-detach-batch.md
+```
+
+Both consolidations remain subject to architecture-phase revalidation.
 
 ## Command-surface principle
 
@@ -43,7 +50,11 @@ This route replaces the earlier M4 WIP path:
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
 ```
 
-No other closed ATTACH semantics are changed by this route correction.
+The current ATTACH route-local discovery candidate is consolidated in:
+
+```text
+to-be-api-object-attach-batch.md
+```
 
 ## DETACH
 
@@ -77,7 +88,13 @@ one parent Object
 + one explicit ownership command
 ```
 
-Exact DETACH mutation semantics, convergence/idempotency, validation order, concurrency, Unit of Work, lifecycle realization, cost, failure mapping, and relational implications remain to be reviewed route-locally.
+The current DETACH route-local discovery candidate — including strict/non-convergent semantics, validation, candidate data path, lifecycle realization, failure mapping, cost profile and architecture handoffs — is consolidated in:
+
+```text
+to-be-api-object-detach-batch.md
+```
+
+That consolidation supersedes older DETACH route-local WIP directions where explicitly stated, while remaining fully non-normative until architecture-phase revalidation.
 
 ## Why not DELETE with a body
 
@@ -93,11 +110,20 @@ Using an explicit `/detach` command avoids overloading DELETE request-body seman
 
 A future true "detach all children from this slot" capability, if ever required, is a separate semantic operation and is not introduced by M4 here.
 
-## Frozen pair
+## Current WIP pair
 
 ```text
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/detach
 ```
 
-Both receive a non-empty `child_object_ids` batch body shape and return `204 No Content` on success.
+Both receive a non-empty `child_object_ids` batch body shape and return `204 No Content` on candidate success.
+
+Current route-local consolidation owners:
+
+```text
+ATTACH -> to-be-api-object-attach-batch.md
+DETACH -> to-be-api-object-detach-batch.md
+```
+
+All material in this file and the referenced route-local closures remains WIP and must be deliberately revalidated/adopted during the M4 architecture phase before implementation.
