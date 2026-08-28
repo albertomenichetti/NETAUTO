@@ -1,53 +1,71 @@
 # M4 WIP — Object ATTACH write arbitration
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: RECONCILED DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Scope
 
-This note freezes the current-owner and relational-arbitration direction for the M4 TO-BE batch ATTACH operation:
+This note records the final ownership-arbitration split for the M4 TO-BE batch ATTACH operation.
 
-```http
-POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
-```
+The complete route authority is `to-be-api-object-attach-batch.md`.
 
-with a non-empty list of `child_object_ids`.
+## No preliminary owner read
 
-## No current-owner preliminary read
+ATTACH does not read current ownership during unlocked preparation.
 
-ATTACH does not pre-read `object_components` merely to classify whether each requested child is already owned.
-
-The preparatory child bulk read is limited to current Object facts needed for semantic admission, primarily:
+The preparatory child bulk read is limited to:
 
 ```text
 child.id
 child.template_id
-child.canonical_name   # lifecycle/display metadata if required
+child.canonical_name
 ```
 
-Current ownership is intentionally left to the final relational write arbitration.
+This avoids stale mutable owner observations outside the protected graph state.
+
+## Protected Q3 ownerlessness admission
+
+Current ownerlessness is nevertheless checked before persistence, but only inside Q3 after `OWNERSHIP_GRAPH_WRITE_GATE` and parent stabilization have been acquired.
+
+One protected statement returns:
+
+```text
+has_owned_requested_child
+root_is_requested
+```
+
+Therefore:
+
+```text
+any requested child currently owned
+    -> 409 ownership_conflict
+
+otherwise root(parent) requested
+    -> 409 ownership_cycle
+
+otherwise
+    -> proceed to bulk INSERT
+```
+
+This Q3 read is required for graph admission and public conflict/cycle distinction; it is not a diagnostic-only query.
 
 ## Existing ownership semantics
 
-The earlier candidate "identical edge converges successfully" is superseded.
-
-The frozen M4 direction is deliberately stricter and simpler:
+M4 supersedes identical-edge convergence.
 
 ```text
-requested child has no current owner
-    -> eligible for insertion
+requested child currently ownerless
+    -> may proceed to Q4
 
-requested child already has ANY current owner
-    -> INSERT conflicts
-    -> entire ATTACH batch fails/rolls back
+requested child has ANY current owner
+    -> ownership_conflict
+    -> whole batch fails
 ```
 
-This includes the case where the existing edge is exactly identical to the requested parent/semantic slot.
+This includes an existing edge that is exactly identical to the requested parent and semantic slot.
 
-Therefore ATTACH is not idempotent with respect to an already-persisted edge.
+## Q4 relational authority
 
-## PostgreSQL authority
-
-Candidate ownership table remains one-owner shaped:
+Candidate ownership table remains:
 
 ```text
 object_components
@@ -57,104 +75,62 @@ object_components
     slot_name                    NOT NULL
 ```
 
-The relational model directly owns the important final arbitration:
+Q4 is one bulk INSERT with no `ON CONFLICT`.
+
+Relational responsibilities:
 
 ```text
 PK(child_object_id)
-    -> at most one current owner
-    -> any already-owned requested child causes write conflict
+    -> final at-most-one-owner authority
+    -> closes residual ownership races at the actual write
 
 FK(parent_object_id -> objects.id)
-    -> parent lifetime protection at write time
-
 FK(child_object_id -> objects.id)
-    -> child lifetime protection at write time
+    -> final parent/child lifetime authority
 
 CHECK(parent_object_id <> child_object_id)
-    -> no self edge
+    -> self-edge backstop
 ```
 
-A bulk ATTACH can therefore attempt all requested edge INSERTs inside one transaction. Any relational failure causes rollback of the whole atomic batch.
+Any constraint failure aborts the statement and rolls back the whole atomic batch.
 
-No application-side second owner SELECT is required merely to re-prove these relational invariants.
+Q3 and Q4 therefore have complementary responsibilities rather than duplicating authority:
+
+```text
+Q3
+    -> fresh protected mutable graph admission
+    -> owner-conflict classification
+    -> transitive cycle certification
+
+Q4 constraints
+    -> final persisted single-owner/lifetime/direct-integrity arbitration
+```
 
 ## Parent lock purpose
 
-An explicit parent Object concurrency lock is still required, but not primarily for parent lifetime. Parent lifetime is already protected by the FK when the edge is written.
+The parent Object is locked `FOR NO KEY UPDATE` after the graph gate.
 
-The parent lock protects the semantic relationship between:
+This is primarily semantic stabilization, not lifetime protection. It prevents parent SCHEMA_CHANGE from changing the exact governing schema after preparation has resolved the requested slot.
 
-```text
-parent.template_id / parent.template_version
-+
-resolved effective slot
-+
-new outgoing ownership edges
-```
+Q2 rereads and compares the exact `(template_id, template_version)` binding. Mismatch fails conservatively with `concurrent_object_change`; there is no in-lock slot re-resolution.
 
-Preparation resolves `slot_name` against the parent's exact current OTV, usually from the immutable `component_schema` cache facet.
-
-Without parent stabilization, the following race would be possible:
-
-```text
-prepare against parent exact OTV V1
-resolve slot S on V1
-
-concurrent SCHEMA_CHANGE commits V1 -> V2
-where S is removed/replaced/incompatible
-
-ATTACH inserts edge prepared for V1
-```
-
-All PK/FK constraints could still succeed while the committed ownership edge is semantically invalid under V2.
-
-Therefore ATTACH and parent SCHEMA_CHANGE must rendezvous on the parent Object concurrency owner.
-
-## Preparation vs protected mutation
-
-Current direction:
+## Final sequence
 
 ```text
 PREPARATION, unlocked
-    1. read parent current exact binding
-    2. resolve requested slot cache-first from exact component_schema
-    3. bulk-read all requested child Objects
-    4. validate parent != child in application as cheap early rejection
-    5. verify every child stable lineage is compatible with slot target
-       using StableObjectTemplateAncestryCache
+    1. read parent exact binding + canonical_name
+    2. resolve slot cache-first
+    3. bulk-read child Object facts only
+    4. reject self-reference
+    5. resolve stable-lineage compatibility through ancestry cache
 
 MUTATION UoW
-    6. lock/stabilize parent Object
-    7. ensure parent binding still matches the exact binding used for preparation
-    8. perform ownership-cycle protection/check under the final M4 protocol
-    9. bulk INSERT all requested object_components edges
-       - any PK/FK/CHECK/error -> rollback complete batch
-    10. insert ATTACH lifecycle rows for the inserted edges
+    6. acquire graph edge-add gate
+    7. lock parent / verify prepared binding
+    8. Q3 ownerlessness + root-only cycle admission
+    9. Q4 bulk INSERT object_components
+    10. Q5 bulk INSERT ATTACH_TO lifecycle rows
     11. commit once
 ```
 
-The exact parent lock statement/mode and exact cycle-add gate realization remain to be frozen during the continuing route-local concurrency pass.
-
-## False-success / false-failure posture
-
-The design continues the M4 priority:
-
-```text
-false success
-    -> prevent strongly
-
-conservative false failure
-    -> acceptable where it cannot create incoherent state
-```
-
-Using relational write arbitration avoids false success from stale preliminary owner observations. If a requested child is already owned when the INSERT is arbitrated, the batch fails atomically.
-
-## Implications
-
-- no current-owner cache;
-- no owner pre-read;
-- no owner re-read;
-- no special identical-edge convergence path;
-- no N application-level ownership classifications;
-- one atomic bulk-write attempt for the batch;
-- PK/FK/CHECK constraints are first-class concurrency/safety authorities rather than merely backup validation.
+No application-side owner pre-read/re-read exists outside the protected Q3 statement, and no diagnostic-only DB read is allowed after an error.
