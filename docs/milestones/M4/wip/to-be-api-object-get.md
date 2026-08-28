@@ -1,10 +1,38 @@
 # M4 TO-BE API — Object GET
 
-Status: ROUTE-LOCAL CLOSED / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: PUBLIC CONTRACT RETAINED / DATA PATH REOPENED / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This file records the agreed TO-BE design for the single route `GET /api/v1/core/objects/{object_id}`.
+## Reopen notice — per-Object component-slot materialization
 
-The route is closed for the current M4 top-down sweep across:
+The public Object representation in this file remains the current discovery checkpoint.
+
+The previous route-local closure of the following technical areas is **reopened** by [`object-component-slots-data-plane-materialization.md`](object-component-slots-data-plane-materialization.md):
+
+```text
+persistence structures
+data path
+component-schema cache dependency
+warm/cold cost
+multi-statement coherent-read realization
+denormalization conclusion
+relational/index implications
+```
+
+In particular, the earlier claims:
+
+```text
+GET Object warm = 2 PostgreSQL statements + component-schema cache
+GET Object cold = 3 PostgreSQL statements + cache fill
+no additional Object-specific denormalization is required
+```
+
+are retained below only as the superseded checkpoint that triggered further discovery. They must not be used as the current candidate without revalidating against the new per-Object `object_component_slots` materialization.
+
+The active candidate now being explored is one PostgreSQL statement over current Object + materialized current slots + ownership edges + child names, with no normal GET component-schema cache dependency.
+
+This file originally recorded the agreed TO-BE design for the single route `GET /api/v1/core/objects/{object_id}`.
+
+The route had been considered closed for the current M4 top-down sweep across:
 
 - public signature;
 - success wire model;
@@ -16,9 +44,7 @@ The route is closed for the current M4 top-down sweep across:
 - cache behavior and fill policy;
 - relational-schema implications.
 
-This route-local closure does not constitute the global M4 normative freeze and does not authorize implementation by itself.
-
-The only intentionally deferred physical-design item is the final index review, which must be performed in the following architecture phase before implementation.
+That technical closure is now partially reopened as described above. No WIP closure constitutes the global M4 normative freeze or authorizes implementation by itself.
 
 ## Signature
 
@@ -171,6 +197,10 @@ Reverse owner and factual Relationship navigation remain separate public concern
 JSON object key order has no contractual meaning, including the order of keys inside `components`.
 
 Children inside a slot are returned in deterministic ascending `child_object_id` order. Array position has no domain meaning beyond deterministic projection.
+
+## Superseded technical checkpoint below
+
+Everything from this point through the former route-local closure records the previous cache-based technical candidate. It is kept as discovery evidence, not as the current data-path candidate. See the reopen notice and `object-component-slots-data-plane-materialization.md` before relying on it.
 
 ## Persistence structures touched
 
@@ -623,11 +653,11 @@ Q3
 
 The review must consider all competing Object/ownership operations before deciding whether existing indexes are replaced, extended or retained. The goal is to avoid route-local duplicate indexes that would unnecessarily increase ATTACH/DETACH write cost.
 
-This index review is the only explicit deferred physical-design item for this route closure.
+This index review was the only explicit deferred physical-design item for the superseded cache-based route closure.
 
-## Route-local closure
+## Superseded route-local closure
 
-For the current M4 top-down sweep, `GET /api/v1/core/objects/{object_id}` is closed with the following TO-BE design:
+The following block records the former cache-based technical closure and is no longer the current candidate:
 
 ```text
 PUBLIC
@@ -672,7 +702,4 @@ CONCURRENCY
 SCHEMA DEPENDENCIES
     object_components.slot_declaring_template_id
     exact effective-component materialization
-
-ONLY DEFERRED ITEM
-    global physical index review in the following architecture phase
 ```
