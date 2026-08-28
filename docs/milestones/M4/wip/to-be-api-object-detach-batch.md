@@ -1,12 +1,12 @@
 # M4 WIP — TO-BE Object DETACH batch discovery closure
 
-Status: ROUTE-LOCAL CLOSED DISCOVERY INPUT / M4 WIP / ALWAYS NON-NORMATIVE
+Status: PUBLIC/SEMANTIC CONTRACT RETAINED / EXECUTION PATH REOPENED / M4 WIP / ALWAYS NON-NORMATIVE
 
-## Scope
+## Revalidation notice
 
-This note is the current route-local consolidation point for the M4 Object DETACH discovery.
+This consolidation is reopened by [`object-component-slots-data-plane-materialization.md`](object-component-slots-data-plane-materialization.md).
 
-It does not create architecture authority. Per project governance, every conclusion in this file remains subject to dependency-driven architecture-phase revalidation before implementation.
+The public batch DETACH semantics remain the current checkpoint. The previous parent-stabilization/LockPlan statement and the resulting `3 PostgreSQL statements + COMMIT` success cost are no longer the preferred candidate if ownership edges reference current materialized slot rows and that FK becomes the SCHEMA_CHANGE arbitration point.
 
 ## Public signature
 
@@ -31,9 +31,9 @@ Success:
 204 No Content
 ```
 
-The route is one-parent / one-slot / N-children and remains symmetric with the candidate ATTACH command surface.
+The route remains one-parent / one-slot / N-children and symmetric with ATTACH.
 
-## Static validation
+## Static validation retained
 
 Before opening the mutation Unit of Work:
 
@@ -51,7 +51,7 @@ parent_object_id included in child_object_ids
 
 These failures require zero PostgreSQL statements.
 
-## Candidate mutation semantics
+## Mutation semantics retained
 
 DETACH is strict, non-convergent and atomic.
 
@@ -72,9 +72,9 @@ any requested child exists but requested exact edge is absent/different
     -> remove nothing committed
 ```
 
-An already-absent exact edge is not a successful no-op in this M4 candidate.
+An already-absent exact edge is not a successful no-op.
 
-`ownership_conflict` intentionally covers existing-child current-state mismatches without extra diagnostic reads:
+`ownership_conflict` continues to cover current-state mismatches without diagnostic-only reads:
 
 ```text
 child ownerless
@@ -82,11 +82,17 @@ child owned by another parent
 child owned by same parent under another slot
 ```
 
-## Candidate persistence dependency
+## Current persistence candidate
 
-The current preferred M4 ownership row is:
+Current cross-operation candidate:
 
 ```text
+object_component_slots
+    object_id
+    slot_declaring_template_id
+    slot_name
+    target_template_id
+
 object_components
     child_object_id              PK
     parent_object_id             NOT NULL
@@ -94,27 +100,26 @@ object_components
     slot_name                    NOT NULL
 ```
 
-The stable semantic slot identity is materialized as:
+with:
 
 ```text
-SlotSemanticKey = (slot_declaring_template_id, slot_name)
+FK object_components semantic slot
+    -> object_component_slots current semantic slot
 ```
 
-`slot_declaring_template_id` is resolved and persisted at ATTACH admission time. It is not supplied by the DETACH caller.
+The deleted ownership row remains the factual source of the exact semantic slot identity used by lifecycle history.
 
-The direct FK choice for `slot_declaring_template_id` remains a persistence/architecture handoff and is not closed by this route note.
+## Schema-agnostic DETACH admission retained
 
-## Schema-agnostic DETACH admission
+DETACH still does not need to reconstruct or recertify ObjectTemplate schema merely to remove an already-admitted edge.
 
-Given the materialized ownership fact, DETACH does not need to reconstruct or re-certify the parent ObjectTemplate schema merely to remove an already-admitted current edge.
-
-Normal DETACH data-path work excludes:
+Normal DETACH excludes:
 
 ```text
 ObjectTemplate effective-schema reconstruction
 component_schema lookup
 ObjectTemplate ancestry loading
-slot declaration re-resolution from slot_name
+slot declaration re-resolution
 target_template_id lookup
 child lineage compatibility validation
 cycle validation
@@ -122,7 +127,29 @@ OWNERSHIP_GRAPH_WRITE_GATE
 immutable-model cache lookup
 ```
 
-The deleted `object_components` row is the source for `slot_declaring_template_id` used by lifecycle history.
+## Reopened parent stabilization
+
+The earlier candidate used:
+
+```text
+Q1 parent Object stabilization / LockPlan parent @ NKU
+```
+
+primarily as a generic rendezvous with parent SCHEMA_CHANGE.
+
+With edge->current-slot FK arbitration, the relevant SCHEMA_CHANGE race becomes narrower:
+
+```text
+DETACH removes last edge first
+    -> slot REMOVE/replacement may proceed
+
+SCHEMA_CHANGE attempts slot REMOVE/replacement while edge still exists
+    -> referenced slot transition is blocked at FK boundary
+```
+
+Removing an edge cannot create a schema or graph violation. Therefore a dedicated parent Object stabilization statement is no longer the preferred route-local candidate solely for SCHEMA_CHANGE sequencing.
+
+Global architecture must still prove DETACH x SCHEMA_CHANGE and DELETE interleavings before implementation.
 
 ## Current candidate Unit of Work
 
@@ -132,15 +159,13 @@ static validation
 
 BEGIN
 
-Q1  parent stabilization
-    current candidate: centralized LockPlan entry for parent Object
-
-Q2  one fresh set-based PostgreSQL statement
+Q1  one fresh set-based PostgreSQL statement
+    -> prove parent existence
     -> classify requested child existence
     -> bulk DELETE exact parent+slot+child ownership rows
     -> RETURNING persisted edge identity and lifecycle display material
 
-Q3  one bulk INSERT DETACH_FROM
+Q2  one bulk INSERT DETACH_FROM
     -> no RETURNING
 
 COMMIT
@@ -148,27 +173,7 @@ COMMIT
 204 No Content
 ```
 
-### Q1 candidate
-
-Current route-local candidate reuses the delivered parent concurrency-owner model:
-
-```text
-LockPlan
-    gate = none
-    parent Object @ NKU
-```
-
-No PostgreSQL preparation is required before this plan because the parent identity is already known from the route.
-
-A missing planned parent maps to:
-
-```text
-404 resource_not_found
-```
-
-This is a discovery candidate, not a statement that architecture must preserve the exact AS-IS lock realization unchanged.
-
-### Q2 candidate
+### Q1 logical result
 
 Input:
 
@@ -181,6 +186,7 @@ requested child_object_ids[N]
 Logical result:
 
 ```text
+parent_exists
 parent_canonical_name
 missing_child_ids[]
 
@@ -192,53 +198,43 @@ deleted_edges[]:
     slot_name
 ```
 
-The DELETE matches the public requested edge through:
+The statement must preserve these outcomes without a preliminary parent lock/read:
 
 ```text
-parent_object_id
-slot_name
-child_object_id
-```
+parent absent
+    -> rollback
+    -> 404 resource_not_found
 
-and obtains `slot_declaring_template_id` from the row actually deleted.
-
-Admission uses only required execution output:
-
-```text
-missing_child_ids not empty
-    -> ROLLBACK
+parent present + missing child ids
+    -> rollback
     -> 422 referenced_resource_not_found
 
-missing_child_ids empty
-AND deleted edge count < requested count
-    -> ROLLBACK
+all children exist + deleted edge count < requested count
+    -> rollback
     -> 409 ownership_conflict
 
 deleted edge count == requested count
-    -> continue to Q3
+    -> continue
 ```
 
-Q2 deliberately prefers DELETE-first certification plus rollback over a separate pre-certification SELECT followed by DELETE. This avoids a success-path round trip and duplicate ownership-fact access.
+DELETE-first certification plus rollback remains preferred over a separate ownership precheck.
 
-### Q3 candidate
+## Lifecycle retained
 
-For each Q2 deleted edge, insert one lifecycle row:
+For each deleted edge, insert one `DETACH_FROM` lifecycle row using:
 
 ```text
-kind                       = DETACH_FROM
-object_id                  = child_object_id
-canonical_name             = child_canonical_name
-destination_object_id      = parent_object_id
-destination_canonical_name = parent_canonical_name
-slot_declaring_template_id = slot_declaring_template_id
-slot_name                  = slot_name
+child_object_id
+child canonical_name
+parent_object_id
+parent canonical_name
+slot_declaring_template_id
+slot_name
 ```
 
-Q3 performs one bulk INSERT and does not reread Object, ownership or model-plane state.
+The lifecycle write remains one bulk statement in the same transaction. No reread of ObjectTemplate or ownership state is required.
 
-No `RETURNING` is required because the route returns `204` and no later step consumes generated lifecycle row identities or timestamps.
-
-Q2 and Q3 remain in the same semantic transaction. Q3 failure restores all Q2 deletions through rollback.
+Canonical names remain best-effort historical display metadata.
 
 ## Candidate failure precedence
 
@@ -249,142 +245,60 @@ Q2 and Q3 remain in the same semantic transaction. Q3 failure restores all Q2 de
 2. self-reference known from request
    -> 422 semantic_validation_failed / self_reference
 
-3. parent path target absent at Q1
+3. parent path target absent in Q1
    -> 404 resource_not_found
 
-4. one or more requested child Objects absent at Q2
+4. one or more requested child Objects absent in Q1
    -> 422 referenced_resource_not_found
 
 5. all requested child Objects exist but exact requested edge set is incomplete
    -> 409 ownership_conflict
 
-6. Q3 persistence failure
+6. lifecycle/persistence failure
    -> rollback + normal known persistence-failure classification
 ```
 
 No PostgreSQL statement may be executed solely to improve failure diagnostics.
 
-## Lifecycle display-name policy
-
-Parent and child canonical names in ownership lifecycle rows are historical display metadata, not ownership semantic identity.
-
-The candidate does not add a child lock or extra reread solely to make these labels fresher. Q2 captures the names already needed for Q3.
-
-## Candidate cost profile
+## Revalidated candidate cost
 
 Excluding BEGIN/COMMIT:
 
 ```text
 success
-    Q1 parent stabilization
-    Q2 set-based classification + DELETE + RETURNING
-    Q3 bulk lifecycle INSERT
-    -> 3 PostgreSQL statements
+    Q1 set-based parent/child classification + DELETE + RETURNING
+    Q2 bulk lifecycle INSERT
+    -> 2 PostgreSQL statements
 
-failure detected by Q2
-    Q1 + Q2
-    -> 2 PostgreSQL statements + rollback
+failure detected by Q1
+    -> 1 PostgreSQL statement + rollback
 
 static failure
     -> 0 PostgreSQL statements
 ```
 
-There is no cache warm/cold distinction.
+There is still no cache warm/cold distinction and round-trip count does not grow with batch cardinality.
 
-Candidate round-trip count does not grow with child batch cardinality; row volume grows with N.
+Further fusion of DELETE + lifecycle is a separate discovery question and is not assumed here.
 
-These are WIP candidate costs, not normative architecture budgets.
+## Current route-local state
 
-## Supersession map
+Retained:
 
-The following WIPs remain useful historical discovery evidence but their route-local direction is superseded by this current consolidation:
+- explicit `/detach` public route;
+- strict + atomic + non-convergent semantics;
+- semantic edge identity persisted on ownership row;
+- no normal model-plane/cache work;
+- DELETE-first set-based certification;
+- one bulk lifecycle insert;
+- no diagnostic-only DB reads.
 
-```text
-object-detach-discovery.md
-    -> initial exploration; current closure is this file
-
-object-detach-schema-agnostic.md
-    -> semantic finding retained; superseded by the later reconciled schema-agnostic candidate
-
-object-detach-no-parent-lock.md
-    -> superseded
-
-object-detach-parent-share-lock.md
-    -> superseded
-
-object-detach-two-statement-uow.md
-    -> superseded statement split/count
-
-object-detach-q1-parent-and-delete.md
-    -> superseded Q1 responsibility/numbering
-
-object-detach-q1-failure-mapping.md
-    -> old Q1 carrier superseded; child-missing vs ownership-conflict taxonomy retained
-```
-
-Current supporting WIPs for this consolidation are:
+Reopened/superseded:
 
 ```text
-object-ownership-command-routes.md
-object-detach-static-validation.md
-object-detach-batch-non-convergent-semantics.md
-object-components-physical-schema-discovery.md
-object-detach-schema-agnostic-with-parent-lockplan.md
-object-detach-lockplan-entry.md
-object-detach-q2-set-based-delete.md
-object-detach-lifecycle-bulk.md
+parent stabilization / LockPlan parent @ NKU
+3-statement success cost
+generic parent-lock sequencing with SCHEMA_CHANGE
 ```
 
-All remain non-normative WIP inputs.
-
-## Architecture handoff
-
-Before implementation, the architecture phase must revalidate and compose this candidate globally, including at least:
-
-```text
-public API/failure contract propagation
-strict non-convergent DETACH semantic delta
-final object_components relational schema and migration
-slot_declaring_template_id FK decision
-final transaction boundary
-final LockPlan/concurrency realization
-DETACH x ATTACH ownership-fact sequencing
-DETACH x DETACH sequencing
-DETACH x parent SCHEMA_CHANGE
-DETACH x parent/child DELETE reference lifetime
-supported-path deadlock absence
-lifecycle atomicity and snapshot semantics
-verification-registry updates
-physical index/EXPLAIN evidence
-```
-
-The architecture phase may adopt, modify, supersede or discard any realization choice recorded here while preserving or explicitly redefining the required semantic guarantees.
-
-## Current discovery takeaway
-
-```text
-signature:
-    POST /objects/{parent}/components/{slot}/detach
-    { child_object_ids: [...] }
-    -> 204
-
-semantics:
-    strict + atomic + non-convergent
-
-runtime authority:
-    current materialized object_components facts
-
-model-plane work:
-    none on normal DETACH path
-
-candidate UoW:
-    Q1 parent stabilization
-    Q2 set-based classify + exact-edge bulk DELETE + RETURNING
-    Q3 bulk DETACH_FROM INSERT without RETURNING
-
-candidate success cost:
-    3 PostgreSQL statements + COMMIT
-
-architecture closure:
-    explicitly deferred to the future M4 architecture phase
-```
+Architecture handoff now explicitly includes the final `object_component_slots` FK design and DETACH x SCHEMA_CHANGE relational-locking proof.
