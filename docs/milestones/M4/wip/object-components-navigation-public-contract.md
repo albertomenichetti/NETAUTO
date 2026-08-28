@@ -1,12 +1,33 @@
 # M4 WIP — Object component-slot navigation public contract
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / ALWAYS NON-NORMATIVE
+Status: PUBLIC CONTRACT FROZEN DISCOVERY INPUT / DATA PATH CHECKPOINT ADDED / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Scope
 
 This note records the accepted route-local public-surface direction for Object direct-component navigation during the M4 top-down sweep.
 
-It freezes only the current discovery checkpoint. Full data path, pagination cursor encoding, physical indexes and global read-coherence realization remain subject to later route-local and architecture closure.
+The public contract remains a local discovery checkpoint only.
+
+The current data-path candidate is now recorded separately in:
+
+```text
+object-components-navigation-data-path.md
+```
+
+and uses the per-Object current-slot materialization from:
+
+```text
+object-component-slots-data-plane-materialization.md
+```
+
+Current remaining route-local open points are:
+
+```text
+pagination cursor identity/encoding and invalid-cursor semantics
+final physical indexes / EXPLAIN evidence
+```
+
+The previous generic global read-coherence question is narrowed by the new one-statement data path: all mutable route response facts are intended to come from one PostgreSQL statement snapshot.
 
 ## Candidate route
 
@@ -112,13 +133,11 @@ parent Object does not exist
     -> resource_type = object
 ```
 
-The normal path-resource not-found contract applies.
-
 ### Effective slot exists but is empty
 
 ```text
 parent exists
-+ requested slot exists in the parent's current exact effective schema
++ requested slot exists in the parent's current effective slot materialization
 + zero current attached children
     -> 200 OK
     -> {"items": [], "next_cursor": null}
@@ -128,7 +147,7 @@ An empty valid slot is successful collection navigation, never a not-found resul
 
 ### Requested effective slot absent
 
-A syntactically valid `slot_name` that is not present in the existing parent's current exact effective ObjectTemplate schema identifies no nested component-slot resource:
+A syntactically valid `slot_name` that is not present in the existing parent's current effective slot set identifies no nested component-slot resource:
 
 ```text
 parent exists
@@ -147,7 +166,7 @@ Candidate bounded detail:
 }
 ```
 
-This is intentionally distinct from mutation-side `ownership_slot_unavailable` semantics. For GET, the caller is addressing a nested resource that does not exist; it is not attempting an ownership mutation whose admission conflicts with the parent's current schema.
+This remains intentionally distinct from mutation-side `ownership_slot_unavailable` semantics.
 
 A malformed `slot_name` transport carrier is rejected by normal request validation before semantic lookup and does not become a semantic slot-not-found result.
 
@@ -178,20 +197,21 @@ The component-slot navigation endpoint exists for bounded selective access/pagin
 
 The public surfaces answer different questions and are intentionally not duplicates.
 
-ObjectTemplate / exact ObjectTemplateVersion is the schema authority:
+ObjectTemplate / exact ObjectTemplateVersion remains the semantic schema authority:
 
 ```text
 which component slots are defined?
 which lineage declares the slot?
 what target ObjectTemplate lineage is allowed?
-what is the slot's exact model-plane contract/position?
+what is the slot's exact model-plane contract?
 ```
 
-Object GET is the runtime instance projection:
+The new `object_component_slots` relation is only the transactionally maintained current runtime derivative of that contract for a particular Object.
+
+Object GET answers:
 
 ```text
-which effective slots does this particular Object expose
-under its current exact ObjectTemplateVersion?
+which effective slots does this particular Object expose now?
 which child Objects are attached to each slot now?
 ```
 
@@ -199,13 +219,40 @@ Therefore:
 
 ```text
 ObjectTemplate
-    = component-slot definition / contract
+    = semantic component-slot definition / contract authority
+
+object_component_slots
+    = current per-Object derived data-plane materialization
 
 Object
     = effective runtime slot set + current membership
 ```
 
-Object GET intentionally exposes empty effective slots but does not duplicate model-plane details such as `target_template_id`, `slot_declaring_template_id`, declaration position or other ObjectTemplate metadata. Consumers needing those schema details use the ObjectTemplate APIs.
+Object GET intentionally does not expose model-plane details such as `target_template_id` or `slot_declaring_template_id` merely because they are materialized internally.
+
+## Current data-path checkpoint
+
+Current candidate from `object-components-navigation-data-path.md`:
+
+```text
+one PostgreSQL statement
+
+objects parent PK lookup
+LEFT JOIN requested object_component_slots row by (object_id, slot_name)
+LEFT/LATERAL bounded object_components page
+JOIN child objects for current canonical_name
+```
+
+Normal runtime path:
+
+```text
+0 component-schema cache lookups
+0 ObjectTemplate effective-schema reads
+0 recursive traversal
+0 explicit locks
+```
+
+All mutable response facts come from one statement snapshot.
 
 ## Supersession
 
@@ -248,7 +295,12 @@ parent exists + slot exists + empty
 parent exists + slot exists + children
     -> 200 page
 
-ObjectTemplate = slot definition/contract authority
-Object GET      = all effective runtime slots, including empty []
-slot navigation = paginated current membership of one slot
+current data-path candidate
+    -> 1 PostgreSQL statement
+    -> current materialized slot row
+    -> bounded membership page
+    -> no component-schema cache/model-plane lookup
+
+next open micro-point
+    -> cursor identity/encoding/semantics
 ```
