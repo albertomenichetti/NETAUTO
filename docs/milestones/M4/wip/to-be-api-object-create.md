@@ -1,8 +1,34 @@
 # M4 TO-BE API — Object CREATE
 
-Status: ROUTE-LOCAL CLOSED / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: PUBLIC CONTRACT RETAINED / SLOT-PERSISTENCE PATH REOPENED / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This file records the frozen route-local TO-BE contract and execution model for `POST /api/v1/core/objects`.
+## Reopen notice — per-Object component-slot materialization
+
+The public CREATE contract and property-validation direction in this file remain the current discovery checkpoint.
+
+The persistence/execution conclusion that empty component slots are not materialized is **reopened** by [`object-component-slots-data-plane-materialization.md`](object-component-slots-data-plane-materialization.md).
+
+The active candidate now being explored is:
+
+```text
+final exact PUBLISHED OTV admission/protection
++ INSERT Object
++ materialize every exact effective component slot into object_component_slots
+```
+
+preferably in the same final-admission/Object business statement via a bounded `INSERT ... SELECT` from certified immutable `object_template_effective_components`.
+
+Therefore the old statements below that:
+
+```text
+object_components is untouched
+empty component slots are not materialized
+STEP 3 writes only Object + lifecycle
+```
+
+must be read as the superseded checkpoint for the slot-persistence question. `object_components` may still remain untouched by CREATE while new `object_component_slots` rows are created.
+
+This file originally recorded the frozen route-local TO-BE contract and execution model for `POST /api/v1/core/objects`.
 
 ## Public contract
 
@@ -317,7 +343,7 @@ new Object -> exact OTV binding
 
 This realizes the existing new-binding-admission (`BA`) concurrency rule.
 
-Preferred statement direction:
+Superseded preferred statement direction for the Object-only persistence portion:
 
 ```sql
 WITH admitted AS (
@@ -345,21 +371,15 @@ FROM admitted
 RETURNING id;
 ```
 
-The production SQL remains subject to implementation verification, but the frozen data-path decision is:
-
-```text
-final PUBLISHED admission
-+ exact OTV protection through commit
-+ Object INSERT
-```
-
-in one short mutation step where practical.
+The current revalidation extends this final business statement to materialize `object_component_slots` from the admitted exact effective-component rows while preserving the same semantic admission rule.
 
 `FOR SHARE`, or an equivalent mechanism with the same conflict behavior, is needed because lifecycle/status updates of the exact OTV must not pass while the new binding is committing.
 
 ### Lifecycle event
 
-The same transaction then performs one simple `CREATED` lifecycle insert:
+The same transaction then performs one simple `CREATED` lifecycle insert.
+
+The candidate statement split remains:
 
 ```text
 BEGIN
@@ -368,6 +388,7 @@ S1
     final PUBLISHED admission
     + exact OTV protection
     + INSERT Object
+    + candidate INSERT all object_component_slots
 
 S2
     INSERT CREATED lifecycle event
@@ -375,9 +396,7 @@ S2
 COMMIT
 ```
 
-Object state and the required creation event are atomic by transaction semantics. If lifecycle persistence fails, the Object insert rolls back too.
-
-There is no benefit in making lifecycle persistence part of one oversized SQL statement.
+Object state, materialized current slot contract and the required creation event must be atomic by transaction semantics. If slot or lifecycle persistence fails, the Object insert rolls back too.
 
 ## Concurrency behavior
 
@@ -408,7 +427,7 @@ Race where CREATE final admission wins first:
 
 ```text
 CREATE STEP 3 protects PUBLISHED (T,V)
-CREATE inserts Object + CREATED event
+CREATE inserts Object + current slot materialization + CREATED event
 DEPRECATE(T,V) waits
 CREATE commits
 DEPRECATE may then continue
@@ -416,9 +435,9 @@ DEPRECATE may then continue
 
 A concurrent default change after STEP 1 does not retarget the resolved exact binding.
 
-## Cost target
+## Cost target — partially reopened
 
-Warm worker:
+Warm worker statement count may remain:
 
 ```text
 STEP 1
@@ -429,32 +448,23 @@ STEP 2
     CPU-only direct-creation check + validation/canonicalization
 
 STEP 3
-    1 final-admission + Object INSERT statement
+    1 final-admission + Object INSERT + slot materialization statement
     1 lifecycle INSERT
     COMMIT
 ```
 
-No inheritance traversal, effective-schema reconstruction, exact DataType reads or validator recompilation belongs on the warm path.
-
-Cold worker:
+Additional row work is approximately:
 
 ```text
-STEP 1
-    same minimal PostgreSQL lookup
-
-STEP 2
-    cache missing/partial
-    bounded bulk immutable load target
-    cache fill/compile
-    validation from READY cache
-
-STEP 3
-    identical short mutation UoW
++ one exact-effective-component range read inside S1
++ S object_component_slots INSERT rows
 ```
 
-Warm and cold paths converge before mutation.
+where `S` is the new Object effective slot count.
 
-## Data structures touched
+Cold property-validation behavior remains as previously described; component slot materialization should consume the certified DB materialization directly rather than require a new worker cache dependency solely for CREATE persistence.
+
+## Data structures touched — reopened
 
 Current/mutation authority:
 
@@ -469,11 +479,14 @@ object_template_versions
 objects
     new Object row
 
+object_component_slots
+    candidate complete current effective slot materialization for new Object
+
 object_lifecycle_events
     CREATED event
 ```
 
-Immutable semantic cold-load/cache dependencies:
+Immutable semantic cold-load/cache dependencies for property validation remain:
 
 ```text
 stable ObjectTemplate semantic facts needed by CREATE
@@ -482,11 +495,17 @@ exact DataType semantic projection/cache
 worker-local ObjectTemplate validation facet
 ```
 
-`object_components` is not touched by CREATE. Empty component slots are not materialized as runtime edge rows.
+Slot persistence additionally consumes certified immutable:
 
-## Relational/schema implications
+```text
+object_template_effective_components
+```
 
-No additional Object column is required beyond:
+`object_components` remains untouched by CREATE because no ownership edge exists initially.
+
+## Relational/schema implications — reopened
+
+No additional column on `objects` is currently required beyond:
 
 ```text
 objects
@@ -497,64 +516,53 @@ objects
     properties JSONB
 ```
 
-CREATE relies on the M4 effective-property materialization/cache design so a cold load does not rebuild inheritance recursively.
+The new cross-operation candidate instead introduces owned derived `object_component_slots` rows.
 
-The persisted Object always stores the exact binding selected in STEP 1 and finally admitted in STEP 3.
+CREATE must establish atomically:
+
+```text
+Object exact binding
++
+complete current slot materialization for that binding
+```
 
 ## Physical index review handoff
 
-Physical indexes are deliberately not frozen route-locally.
+Physical indexes remain deliberately unfrozen route-locally.
 
-The next architecture phase must review the whole workload and prove appropriate indexing for at least:
+The architecture-wide review must now include the new CREATE access/write paths:
 
 ```text
 STEP 1 explicit exact-version binding/status lookup
 STEP 1 implicit current-default resolution
 STEP 3 exact-version final PUBLISHED admission
+STEP 3 exact effective-component range read for slot materialization
+object_component_slots insert/index maintenance
 Object exact-version FK/support structures
 future M5 JSONB search workload
 ```
 
-Special emphasis: STEP 1 is paid by every successful warm CREATE and therefore its explicit and implicit forms must be as fast as practical.
+## Current route-local state
 
-The index review may change physical indexes but not this frozen authority split:
-
-```text
-PostgreSQL
-    mutable binding/default resolution
-    current/final PUBLISHED admission
-
-worker-local cache
-    stable/immutable ObjectTemplate + exact DTV semantic validation knowledge
-
-application
-    direct-creation eligibility check
-    property validation/canonicalization
-
-short mutation UoW
-    final admission + Object persistence + lifecycle persistence
-```
-
-## Route-local closure
-
-Frozen for Object.CREATE:
+Retained:
 
 - HTTP signature, request shape and `201 + Location` response;
 - server-generated id;
 - exact/default ObjectTemplate selector semantics;
 - optional non-unique `canonical_name` with UUID fallback;
 - sparse canonical JSONB property state;
-- absent optional values are omitted; runtime JSON null is invalid;
-- migration defaults are not CREATE defaults;
-- STEP 1 always uses PostgreSQL for exact binding resolution and current `PUBLISHED` admission;
-- STEP 1 is deliberately minimal and receives later physical-index review;
-- STEP 2 always validates from complete READY cache state;
-- stable direct-creation/abstract semantics belong to the validation-ready cache rather than the mandatory mutable-state lookup;
-- missing/partial cache is completed before validation;
-- cold fill is outside the mutation UoW and must use bounded/bulk immutable loading;
-- no model-plane lock is held during fill/compile/validation;
-- STEP 3 re-admits/protects the exact OTV as `PUBLISHED` through commit;
-- preferred STEP-3 shape combines final admission and Object INSERT;
-- CREATED lifecycle persistence is a second simple statement in the same atomic UoW;
-- `object_components` is untouched;
-- physical index definitions are deferred to the architecture-wide workload review.
+- STEP 1 mutable binding/PUBLISHED authority;
+- STEP 2 READY-cache property validation;
+- STEP 3 final exact PUBLISHED admission/protection;
+- CREATED lifecycle atomicity.
+
+Reopened:
+
+```text
+final persistence shape
+empty-slot materialization
+STEP-3 row work
+CREATE relational dependencies and physical indexes
+```
+
+Current candidate source: `object-component-slots-data-plane-materialization.md`.
