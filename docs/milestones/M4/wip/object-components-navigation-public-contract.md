@@ -125,7 +125,50 @@ GET /objects/{id}
     -> empty valid slots represented as []
 ```
 
-The component-slot navigation endpoint exists for bounded selective access/pagination of one slot, not to compensate for missing component state in Object GET.
+A caller can therefore distinguish directly from the Object representation:
+
+```text
+"disks": []
+    -> disks is a valid effective slot and is currently empty
+
+slot key absent
+    -> the slot is not part of this Object's current exact effective schema
+```
+
+The component-slot navigation endpoint exists for bounded selective access/pagination of one slot, not to compensate for missing component-slot state in Object GET.
+
+## Authority split: ObjectTemplate vs Object instance
+
+The public surfaces answer different questions and are intentionally not duplicates.
+
+ObjectTemplate / exact ObjectTemplateVersion is the schema authority:
+
+```text
+which component slots are defined?
+which lineage declares the slot?
+what target ObjectTemplate lineage is allowed?
+what is the slot's exact model-plane contract/position?
+```
+
+Object GET is the runtime instance projection:
+
+```text
+which effective slots does this particular Object expose
+under its current exact ObjectTemplateVersion?
+which child Objects are attached to each slot now?
+```
+
+Therefore:
+
+```text
+ObjectTemplate
+    = component-slot definition / contract
+
+Object
+    = effective runtime slot set + current membership
+```
+
+Object GET intentionally exposes empty effective slots but does not duplicate model-plane details such as `target_template_id`, `slot_declaring_template_id`, declaration position or other ObjectTemplate metadata. Consumers needing those schema details use the ObjectTemplate APIs.
 
 ## Supersession
 
@@ -153,4 +196,8 @@ cursor/limit in query
 no public generic cross-slot /components collection
 same {id, canonical_name} child representation as Object GET
 empty valid slot != nonexistent slot
+
+ObjectTemplate = slot definition/contract authority
+Object GET      = all effective runtime slots, including empty []
+slot navigation = paginated current membership of one slot
 ```
