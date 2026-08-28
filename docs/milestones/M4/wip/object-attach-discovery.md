@@ -1,12 +1,20 @@
-# M4 — Object.ATTACH discovery
+# M4 — Object.ATTACH initial discovery
 
-**Status:** WIP / NON-NORMATIVE
+**Status:** SUPERSEDED BY ROUTE-LOCAL CLOSURE / NON-NORMATIVE
 
-## Scope
+## Purpose of this note
 
-First-phase discovery for factual Object ownership ATTACH. Lock/concurrency redesign remains deferred to the global concurrency phase.
+This file preserves the first-phase ATTACH discovery that identified the missing semantic slot identity in `object_components`.
 
-## Current structural issue
+Its execution/idempotency candidates are superseded by the reconciled route-local authority:
+
+```text
+docs/milestones/M4/wip/to-be-api-object-attach-batch.md
+```
+
+Do not use this note as the current ATTACH execution contract.
+
+## Structural finding retained
 
 Current `object_components` persists only:
 
@@ -22,85 +30,45 @@ while slot semantic identity is:
 (slot_declaring_template_id, slot_name)
 ```
 
-The runtime edge therefore loses part of the semantic identity resolved at admission time.
-
-## Candidate current ownership fact
+The candidate resulting ownership fact therefore remains:
 
 ```text
 object_components
     child_object_id              PK
-    parent_object_id
-    slot_declaring_template_id
-    slot_name
+    parent_object_id             NOT NULL
+    slot_declaring_template_id   NOT NULL
+    slot_name                    NOT NULL
 ```
 
-Do **not** persist `slot_declaring_template_version`: the current edge is interpreted against the parent Object's current exact effective schema, and the semantic slot identity must survive Object schema evolution without rewriting the edge.
+Do **not** persist `slot_declaring_template_version`: the semantic slot identity is stable-lineage based and the current edge is interpreted against the parent Object's current exact effective schema.
 
-Candidate FK:
+A candidate referential relationship remains:
 
 ```text
-slot_declaring_template_id -> object_templates.id ON DELETE RESTRICT
+slot_declaring_template_id -> object_templates.id
 ```
 
-Do not FK the edge to a specific exact component declaration/version. Current slot-contract validity is an admission rule against the parent's current exact effective schema.
+with exact referential actions deferred to the global relational-schema phase.
 
-## ATTACH data path candidate
+## Superseded execution candidates
+
+The original single-child-shaped path and same-edge idempotence discussion are no longer current.
+
+M4 route-local closure now freezes:
 
 ```text
-load current parent Object
-    -> template_id/template_version/canonical_name
-
-load_compiled_object_template(parent.template_id, parent.template_version)
-    -> resolve requested slot_name
-    -> declaring_template_id/name/target_template_id
-
-load current child Object
-    -> template_id/canonical_name
-
-validate parent != child
-validate child stable lineage compatible with slot.target_template_id
-inspect current child ownership
-check current ownership graph cycle
-
-INSERT object_components(
-    child_object_id,
-    parent_object_id,
-    slot_declaring_template_id,
-    slot_name
-)
-
-INSERT ATTACH lifecycle event with the same semantic slot identity
+POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
+body = {"child_object_ids": [...]}
 ```
 
-At cache warm state, effective-slot resolution comes from the immutable compiled ObjectTemplate cache, and child lineage compatibility may use stable ObjectTemplate ancestry knowledge. PostgreSQL remains authoritative for current parent/child existence, current owner and current ownership graph cycle state.
+with atomic batch semantics.
 
-## Idempotence
+An already-owned requested child causes `ownership_conflict`, including an already-current identical edge. There is no same-edge convergence path.
 
-Same-edge convergence should compare the complete semantic edge identity:
+Current owner is not read during unlocked child preparation. Ownerlessness and cycle admission are certified by protected Q3 under the ownership graph edge-add gate, then Q4 bulk INSERT relies on relational constraints as final persistence authorities.
 
-```text
-current.parent_object_id == requested parent
-AND current.slot_declaring_template_id == resolved declaring template
-AND current.slot_name == resolved slot name
-```
+## Retained architecture principle
 
-Name equality alone is not semantic slot equality.
+PostgreSQL remains direct authority for current ownership facts and persistence integrity, while immutable/stable ObjectTemplate knowledge is resolved through worker-local cache structures.
 
-## Persistence responsibilities
-
-PostgreSQL remains the direct authority for:
-
-- one-owner uniqueness via `child_object_id` PK;
-- parent/child existence via FKs;
-- no self edge via CHECK;
-- current edge persistence;
-- final race arbitration.
-
-The mutation plane resolves and validates the model semantics once, then persists the resolved semantic edge.
-
-## Explicit non-decisions
-
-- lock/gate redesign;
-- exact cycle-check concurrency realization;
-- exact indexes and migration DDL;
-- final lifecycle metadata concurrency shape.
+The full current route semantics, concurrency sequence, error mapping and statement costs live only in the route-local closure file cited above.
