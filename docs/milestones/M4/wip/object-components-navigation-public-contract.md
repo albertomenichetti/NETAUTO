@@ -6,7 +6,7 @@ Status: FROZEN DISCOVERY INPUT / M4 WIP / ALWAYS NON-NORMATIVE
 
 This note records the accepted route-local public-surface direction for Object direct-component navigation during the M4 top-down sweep.
 
-It freezes only the current discovery checkpoint. Full data path, exact failure code for a nonexistent slot, pagination cursor encoding, physical indexes and global read-coherence realization remain subject to later route-local and architecture closure.
+It freezes only the current discovery checkpoint. Full data path, pagination cursor encoding, physical indexes and global read-coherence realization remain subject to later route-local and architecture closure.
 
 ## Candidate route
 
@@ -100,19 +100,56 @@ It must not create a second poorer or differently shaped public child representa
 
 `slot_declaring_template_id` remains internal semantic identity material and is not justified as a normal public child field.
 
-## Slot existence distinction
+## Slot existence and not-found semantics
 
-The route must preserve the semantic distinction between:
+The route preserves three distinct public outcomes.
+
+### Parent Object absent
 
 ```text
-parent exists + slot exists + zero current children
-    -> successful empty page
-
-parent exists + requested slot does not exist in the parent's current exact effective schema
-    -> explicit slot-not-found style failure
+parent Object does not exist
+    -> 404 resource_not_found
+    -> resource_type = object
 ```
 
-The exact HTTP status/code for the second case remains open for the next route-local micro-decision.
+The normal path-resource not-found contract applies.
+
+### Effective slot exists but is empty
+
+```text
+parent exists
++ requested slot exists in the parent's current exact effective schema
++ zero current attached children
+    -> 200 OK
+    -> {"items": [], "next_cursor": null}
+```
+
+An empty valid slot is successful collection navigation, never a not-found result.
+
+### Requested effective slot absent
+
+A syntactically valid `slot_name` that is not present in the existing parent's current exact effective ObjectTemplate schema identifies no nested component-slot resource:
+
+```text
+parent exists
++ requested effective slot absent
+    -> 404 resource_not_found
+    -> resource_type = object_component_slot
+```
+
+Candidate bounded detail:
+
+```json
+{
+  "resource_type": "object_component_slot",
+  "parent_object_id": "<uuid>",
+  "slot_name": "interfaces"
+}
+```
+
+This is intentionally distinct from mutation-side `ownership_slot_unavailable` semantics. For GET, the caller is addressing a nested resource that does not exist; it is not attempting an ownership mutation whose admission conflicts with the parent's current schema.
+
+A malformed `slot_name` transport carrier is rejected by normal request validation before semantic lookup and does not become a semantic slot-not-found result.
 
 ## Relationship to Object GET
 
@@ -195,7 +232,21 @@ slot_name in path
 cursor/limit in query
 no public generic cross-slot /components collection
 same {id, canonical_name} child representation as Object GET
-empty valid slot != nonexistent slot
+
+malformed slot carrier
+    -> normal 400 invalid_request boundary
+
+parent absent
+    -> 404 resource_not_found / object
+
+parent exists + slot absent
+    -> 404 resource_not_found / object_component_slot
+
+parent exists + slot exists + empty
+    -> 200 empty page
+
+parent exists + slot exists + children
+    -> 200 page
 
 ObjectTemplate = slot definition/contract authority
 Object GET      = all effective runtime slots, including empty []
