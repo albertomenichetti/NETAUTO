@@ -1,155 +1,104 @@
 # M4 WIP — Object ATTACH Q3 graph admission
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: RECONCILED DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Scope
 
-This note freezes Q3 of the TO-BE batch `Object.ATTACH` mutation UoW.
+This note freezes the final Q3 semantics for batch `Object.ATTACH`.
 
-Public candidate:
+Q1 has acquired `OWNERSHIP_GRAPH_WRITE_GATE`. Q2 has locked the parent Object and verified that its current exact binding still equals the binding used during preparation.
 
-```http
-POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
-```
+## Q3 predicate
 
-with a non-empty `child_object_ids` batch.
-
-Q1 has already acquired the ownership graph edge-add advisory gate and Q2 has already locked the parent Object and verified that its current `(template_id, template_version)` still matches the binding used during preparation to resolve the requested slot.
-
-## Q3 purpose
-
-Q3 certifies the mutable ownership-graph predicates required before inserting any requested edge.
-
-Under the single-owner invariant:
+Q3 evaluates the mutable ownership predicates in one PostgreSQL statement/snapshot:
 
 ```text
-object_components.child_object_id PRIMARY KEY
-```
-
-a requested child can be attached only if it currently has no owner.
-
-In addition, ownerless alone is not sufficient for acyclicity. Given one parent `P`, once every requested child is certified ownerless, the only requested child that could already be an ancestor of `P` is the current root of `P`'s ownership tree.
-
-Therefore the frozen batch predicate is:
-
-```text
-all requested children are currently ownerless
+all requested children currently ownerless
 AND
-root(parent) is not among requested child ids
+root(parent) not among requested child ids
 ```
 
-## One protected statement
+The root is derived by recursively following the single-owner chain upward. No mutable root materialization is introduced.
 
-Q3 evaluates both conditions in one PostgreSQL statement/snapshot while the ownership graph edge-add gate is already held.
+Under the single-owner invariant, once all requested children are ownerless, any requested child that is already an ancestor of the parent must be exactly the current root; an intermediate ancestor necessarily has an owner.
 
-Conceptually:
+## Final result shape
 
-```sql
-WITH RECURSIVE
-requested(child_id) AS (
-    SELECT unnest(:child_ids::uuid[])
-),
-
-owner_chain(object_id) AS (
-    SELECT :parent_object_id
-
-    UNION ALL
-
-    SELECT oc.parent_object_id
-    FROM owner_chain chain
-    JOIN object_components oc
-      ON oc.child_object_id = chain.object_id
-),
-
-root AS (
-    SELECT chain.object_id
-    FROM owner_chain chain
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM object_components oc
-        WHERE oc.child_object_id = chain.object_id
-    )
-)
-
-SELECT
-    NOT EXISTS (
-        SELECT 1
-        FROM requested r
-        JOIN object_components oc
-          ON oc.child_object_id = r.child_id
-    )
-    AND NOT EXISTS (
-        SELECT 1
-        FROM requested r
-        JOIN root
-          ON root.object_id = r.child_id
-    ) AS admissible;
-```
-
-Exact SQL shape remains subject to implementation/query-plan verification; the semantic predicate and one-statement snapshot are the frozen requirements.
-
-## Outcome
+The earlier opaque result:
 
 ```text
-admissible = false
-    -> no ownership DML
-    -> fail / rollback whole atomic batch
+admissible = true | false
+```
 
-admissible = true
+is superseded because it cannot distinguish public ownership-conflict and cycle diagnostics without another query.
+
+Q3 still remains **one statement**, but returns two logical facts:
+
+```text
+has_owned_requested_child
+root_is_requested
+```
+
+Application precedence:
+
+```text
+has_owned_requested_child = true
+    -> 409 ownership_conflict
+
+otherwise root_is_requested = true
+    -> 409 ownership_cycle
+
+otherwise
     -> graph admission succeeds
-    -> proceed directly to bulk edge INSERT
+    -> continue to Q4
 ```
 
-The application does not need the full owner chain or root value as a public/domain result; Q3 may return only the boolean admission outcome.
+An already-current identical edge is included in `has_owned_requested_child=true`; M4 ATTACH does not converge idempotently on an existing edge.
 
-## Why root-only is sufficient here
+## One protected snapshot
 
-For a general candidate edge `P -> C`, ownerless alone is not cycle-safe. Example:
-
-```text
-A -> B -> P
-owner(A) = NULL
-P -> A would create A -> B -> P -> A
-```
-
-However, once Q3 proves every requested child ownerless in the same protected snapshot, any requested child that is already an ancestor of `P` cannot be an intermediate ancestor, because an intermediate ancestor has an owner. It must be the unique root of `P`'s current tree.
-
-Thus:
+Conceptually, one recursive statement contains:
 
 ```text
-all requested C are ownerless
+requested child set
 +
-root(P) not in requested C
+EXISTS ownership row for requested children
++
+owner chain rooted at parent
++
+root derivation
++
+root membership test against requested set
 ```
 
-is equivalent to the full required cycle predicate for this batch shape.
+The exact SQL is an implementation detail subject to later query-plan verification. The frozen requirements are one statement, one protected snapshot, and the two-result classification above.
+
+The application never receives or materializes the whole owner chain.
 
 ## Concurrency boundary
 
-The ownership graph edge-add advisory gate is acquired before Q3 and remains held through edge insertion and commit.
+The graph edge-add gate remains held from before Q3 through Q4/Q5 and commit. No competing ATTACH can add ownership structure between certification and persistence.
 
-Therefore no competing ATTACH can add an edge between certification and commit.
+DETACH may remove edges concurrently. Edge removal cannot create a cycle; it can at most make a failed ATTACH conservative relative to a later graph state.
 
-A concurrent DETACH can only remove ownership edges. It may make a previously rejected batch become valid later, which is an acceptable conservative false failure, but it cannot turn a Q3-positive candidate into a newly cyclic graph.
-
-The parent Object row remains locked through the same UoW so a concurrent parent `SCHEMA_CHANGE` cannot invalidate the already-resolved slot before commit.
+The parent Object lock remains held so parent SCHEMA_CHANGE cannot invalidate the already-resolved slot before commit.
 
 ## Relational authority split
 
-Q3 owns the transitive graph admission predicate.
+Q3 provides fresh mutable graph admission and distinguishes conflict/cycle outcomes.
 
-PostgreSQL constraints remain final authority for direct persistence invariants during the following bulk INSERT:
+Q4 constraints remain final persistence authorities:
 
 ```text
 PK(child_object_id)
-    -> single current owner
+    -> at most one current owner, including residual races
 
 FK parent_object_id -> objects.id
-FK child_object_id -> objects.id
+FK child_object_id  -> objects.id
     -> referenced Object lifetime
 
-CHECK parent_object_id != child_object_id
-    -> direct self-edge prevention
+CHECK parent_object_id <> child_object_id
+    -> self-edge backstop
 ```
 
-Q3 does not duplicate those relational constraints; it adds the transitive no-cycle certification that ordinary PK/FK/CHECK constraints cannot express.
+No diagnostic-only reread is permitted after a failure.
