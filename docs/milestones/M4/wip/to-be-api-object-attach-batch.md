@@ -1,15 +1,27 @@
 # M4 WIP — TO-BE Object ATTACH batch contract
 
-Status: ROUTE-LOCAL CLOSED DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: PUBLIC/SEMANTIC CONTRACT RETAINED / EXECUTION PATH REOPENED / M4 WIP / NON-NORMATIVE GLOBALLY
 
-## Scope
+## Revalidation notice
 
-This note records the reconciled caller-facing and route-local execution contract for Object ownership ATTACH.
+This consolidation has been reopened by [`object-component-slots-data-plane-materialization.md`](object-component-slots-data-plane-materialization.md).
+
+The earlier execution candidate depended on:
+
+```text
+parent exact template pin
+component-schema cache resolution
+parent FOR NO KEY UPDATE + exact-binding recheck
+```
+
+Those dependencies are no longer the preferred current candidate if every Object materializes its current effective slot contract in `object_component_slots` and ownership edges reference that slot row relationally.
+
+A separate continuous-revalidation pass also found that this file still contained the superseded route without the explicit `/attach` command segment. The owning command-route WIP `object-ownership-command-routes.md` had already superseded that shape. This file is corrected here to match the current public checkpoint.
 
 ## Public signature
 
 ```http
-POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
+POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
 ```
 
 Request body:
@@ -24,7 +36,7 @@ Request body:
 }
 ```
 
-Frozen request rules:
+Current request rules retained:
 
 - `child_object_ids` is non-empty;
 - duplicate ids in the same request are invalid;
@@ -38,53 +50,73 @@ Success:
 204 No Content
 ```
 
-`POST` adds membership only. It never replaces a slot collection and never performs implicit DETACH.
+ATTACH adds membership only. It never replaces a slot collection and never performs implicit DETACH.
 
-## Same-edge semantics
-
-M4 deliberately supersedes the previous idempotent ATTACH convergence rule.
+## Same-edge semantics retained
 
 Any requested child that already has a current owner causes the entire batch to fail, including the exact same current parent/slot edge.
 
 There is no `ON CONFLICT` convergence path and no partial success.
 
-## Parent preparation and slot resolution
+## Reopened parent/slot preparation
 
-Preparation begins with one PostgreSQL read of the parent Object:
+### Superseded checkpoint
+
+The previous candidate did:
 
 ```text
-id
-template_id
-template_version
-canonical_name
+read parent Object
+    -> template_id/template_version
+
+component-schema cache
+    -> resolve slot_name
+    -> slot_declaring_template_id
+    -> target_template_id
 ```
 
-The path parent remains PostgreSQL-authoritative for current existence.
+and later re-locked/re-read the parent binding in the UoW.
 
-The slot is then resolved cache-first from:
+That path remains historical discovery evidence only.
 
-```text
-ImmutableObjectTemplateCache[(template_id, template_version)]
-facet = component_schema
-```
+### Current materialized-slot candidate
 
-READY hit:
+One current data-plane statement should instead obtain:
 
 ```text
-slot_name
+parent Object existence
+parent canonical_name
+requested slot existence
 slot_declaring_template_id
 target_template_id
 ```
 
-with no semantic DB query.
+from:
 
-On MISS, load only the missing exact immutable effective-component knowledge, compile/canonicalize it, mark the facet READY, and resume the same lookup path.
+```text
+objects parent
+LEFT JOIN object_component_slots
+    ON object_id = parent.id
+   AND slot_name = requested slot
+```
 
-The full validation facet, effective properties and DataType validators are not needed by ATTACH.
+The statement must preserve the distinction:
 
-A parent pinned to a DEPRECATED exact OTV remains governed by that immutable exact schema; ATTACH does not perform a current lifecycle-status admission query for the parent OTV.
+```text
+parent absent
+    -> 404 resource_not_found
 
-## Child batch preparation
+parent present + slot absent
+    -> 409 ownership_slot_unavailable
+
+parent present + slot present
+    -> current ATTACH contract available directly
+```
+
+No exact parent template pin or component-schema cache lookup is needed merely to resolve the current slot contract.
+
+A parent pinned to a DEPRECATED exact OTV remains governed by its current materialized slot contract; ATTACH still does not require a current lifecycle-status admission query for the parent OTV.
+
+## Child batch preparation retained
 
 One bulk Object read loads all requested children:
 
@@ -96,21 +128,72 @@ canonical_name
 
 No current-owner join is performed.
 
-All ids must exist. Exact child `template_version` is irrelevant for component compatibility because compatibility is stable-lineage based.
+All ids must exist. Exact child `template_version` remains irrelevant for component compatibility because compatibility is stable-lineage based.
 
-The batch may contain heterogeneous child template lineages.
+Collect DISTINCT `child.template_id` values and resolve compatibility against current `slot.target_template_id` through stable ancestry knowledge.
 
-Collect DISTINCT `child.template_id` values and resolve compatibility against `slot.target_template_id` through stable ancestry knowledge.
-
-Ancestry cache semantics are:
+Ancestry cache direction remains useful:
 
 ```text
 cache[source][target] -> TRUE | FALSE | MISS
 ```
 
-A READY source contains its complete sparse ancestor set, including self. Absence in a READY source is therefore authoritative FALSE. MISS loads all ancestry rows for the missing source lineages in bounded bulk, then marks those sources READY.
+A READY source contains its complete sparse ancestor set, including self. MISS loads missing source-lineage ancestry in bounded bulk.
 
-## Unit of Work
+## Reopened ATTACH x SCHEMA_CHANGE arbitration
+
+The prior parent `FOR NO KEY UPDATE` step existed primarily to ensure that the parent exact binding did not change after the slot had been resolved from exact-schema cache.
+
+With the current materialization candidate, ownership rows reference current slot identity:
+
+```text
+FK (
+    parent_object_id,
+    slot_declaring_template_id,
+    slot_name
+)
+-> object_component_slots (
+    object_id,
+    slot_declaring_template_id,
+    slot_name
+)
+```
+
+This creates a narrower arbitration boundary.
+
+### REMOVE slot race
+
+```text
+SCHEMA_CHANGE removes slot first
+    -> old slot row no longer exists
+    -> ATTACH edge INSERT cannot satisfy FK
+
+ATTACH edge commits first
+    -> slot row becomes referenced
+    -> SCHEMA_CHANGE cannot remove it while edge exists
+```
+
+### Semantic replacement race
+
+`slot_declaring_template_id` participates in the referenced key. A replacement of `(old declaring lineage, slot_name)` with `(new declaring lineage, slot_name)` therefore cannot silently reinterpret already-attached edges.
+
+### Target widening race
+
+Normal slot target evolution is widening toward an ancestor lineage.
+
+```text
+ATTACH validates child against old narrower target
+SCHEMA_CHANGE widens target_template_id
+ATTACH commits afterward
+```
+
+is semantically safe because every child admitted by the old target remains admitted by the wider target.
+
+A parent `template_version` change is therefore no longer by itself a reason to reject ATTACH.
+
+The previous `concurrent_object_change` outcome that existed solely because the complete parent binding changed is reopened and is not part of the preferred current candidate unless later architecture finds another required use for it.
+
+## Current candidate Unit of Work
 
 After preparation:
 
@@ -119,30 +202,28 @@ BEGIN
 
 Q1  acquire OWNERSHIP_GRAPH_WRITE_GATE
 
-Q2  SELECT parent Object FOR NO KEY UPDATE
-    -> reread id, template_id, template_version
-    -> parent must still exist
-    -> binding must equal the prepared exact binding
-
-Q3  one protected graph-admission statement
+Q2  one protected graph-admission statement
     -> compute whether any requested child is currently owned
-    -> find root(parent) by following the single-owner chain upward
+    -> find root(parent) through the single-owner chain
     -> compute whether root(parent) is among requested child ids
 
-Q4  one bulk INSERT into object_components
+Q3  one bulk INSERT into object_components
+    -> edge must reference the current materialized semantic slot
 
-Q5  one bulk INSERT of lifecycle ATTACH_TO events
+Q4  one bulk INSERT of ATTACH_TO lifecycle events
 
 COMMIT
 ```
 
-If Q2 sees a different exact parent binding, the attempt fails conservatively with `concurrent_object_change`. The slot is not re-resolved inside the UoW.
+The former parent exact-binding stabilization statement is removed from this current candidate.
 
-## Cycle admission
+Global architecture must still prove the PostgreSQL locking/FK behavior for ATTACH x SCHEMA_CHANGE before implementation.
+
+## Cycle admission retained
 
 Single-owner ownership implies that any requested child that is both ownerless and already an ancestor of the parent must be exactly the current root of the parent's ownership tree.
 
-Therefore the frozen cycle predicate is:
+Protected graph predicate remains:
 
 ```text
 all requested children ownerless
@@ -152,14 +233,14 @@ root(parent) not in requested_child_ids
 
 under the graph edge-add gate.
 
-Q3 returns two logical facts, not one opaque boolean:
+Q2 returns two logical facts:
 
 ```text
 has_owned_requested_child
 root_is_requested
 ```
 
-Precedence:
+Precedence retained:
 
 ```text
 has_owned_requested_child = true
@@ -172,54 +253,48 @@ otherwise
     -> graph admission succeeds
 ```
 
-No materialized `object_id -> root_object_id` structure is introduced. Root lookup remains one recursive owner-chain read, proportional to tree depth. This avoids ATTACH/DETACH write amplification over entire subtrees.
+No persisted `object_id -> root_object_id` candidate is introduced by this revalidation.
 
-Concurrent ATTACH edge additions are serialized by the gate. DETACH does not need the gate because edge removal cannot create a cycle; a concurrent DETACH may only make an attempt conservatively fail, not produce a false-success cycle.
-
-## Persistence arbitration
+## Persistence arbitration — reopened and strengthened
 
 `object_components.child_object_id` remains the final one-owner authority.
 
-Q4 is intentionally simple:
-
-```text
-one multi-row INSERT
-no ON CONFLICT
-no per-child insert loop
-```
-
-Any PK/FK/CHECK failure aborts the statement and therefore the whole transaction.
-
-Relational responsibilities:
+Current candidate relational responsibilities:
 
 ```text
 PK(child_object_id)
     -> at most one current owner
 
-FK parent_object_id -> objects.id
-FK child_object_id  -> objects.id
-    -> referenced Object lifetime/existence authority
+FK child_object_id -> objects.id
+    -> child lifetime authority
+
+FK edge semantic slot -> object_component_slots
+    -> parent existence through owned current slot
+    -> current slot existence
+    -> semantic slot identity
 
 CHECK parent_object_id <> child_object_id
     -> self-edge backstop
 
 graph admission + graph-write gate
-    -> general DAG acyclicity
+    -> DAG acyclicity
 ```
 
-No current-owner precheck query exists outside Q3.
+Whether the direct `parent_object_id -> objects.id` FK remains in addition to the slot FK is reopened as a possible redundant constraint.
 
-## Lifecycle
+Q3 remains one bulk INSERT with no `ON CONFLICT` and no per-child insert loop.
 
-A successful batch writes one ATTACH_TO lifecycle row per inserted ownership edge, in one bulk statement Q5.
+## Lifecycle retained
 
-Q4 and Q5 are atomic: either all requested edges and all required lifecycle rows commit, or none do.
+A successful batch writes one ATTACH_TO lifecycle row per inserted ownership edge, in one bulk statement.
 
-Parent and child `canonical_name` fields carried in lifecycle metadata are best-effort historical display values read during normal preparation. No extra locks or rereads are performed solely to make those names fresher.
+Edge and lifecycle writes remain atomic in one transaction.
 
-## Error precedence
+Parent/child canonical names remain best-effort historical display metadata obtained from normal preparation; no extra reread is added solely for freshness.
 
-Error precedence is the real execution/admission order; the route does not run a second diagnostic workflow.
+## Error precedence — partially reopened
+
+Retained candidate precedence:
 
 ```text
 1. invalid wire/static request
@@ -231,89 +306,87 @@ Error precedence is the real execution/admission order; the route does not run a
 3. parent appears in child_object_ids
    -> 422 semantic_validation_failed / self_reference
 
-4. slot unavailable in prepared current parent schema
+4. slot unavailable in current materialized parent contract
    -> 409 ownership_slot_unavailable
 
-5. one or more child operands absent in the bulk read
+5. one or more child operands absent
    -> 422 referenced_resource_not_found
 
-6. one or more present children lineage-incompatible with the slot target
+6. one or more present children lineage-incompatible with slot target
    -> 422 semantic_validation_failed
 
-7. Q2 detects changed parent binding
-   -> 409 concurrent_object_change
-
-8. Q3 detects an owned requested child
+7. protected graph admission finds an owned requested child
    -> 409 ownership_conflict
 
-9. otherwise Q3 detects root(parent) requested
+8. otherwise root(parent) is requested
    -> 409 ownership_cycle
 
-10. Q4 residual integrity failure caused by a race
-    -> translate from the known violated constraint class
+9. residual constraint race at edge INSERT
+   -> translate from the known violated constraint class
 ```
 
-The route stops at the first failed gate. It does not continue only to discover additional diagnostic problems.
+The former separate parent-binding-change / `concurrent_object_change` step is reopened and removed from the preferred sequence.
 
-No PostgreSQL statement may be issued solely to improve error details. Diagnostic data must come from normal execution state or classification of the known violated constraint.
+A final failure mapping is still required for the race where the slot disappears/replaces after unlocked preparation but before edge INSERT. No diagnostic-only query may be added solely to improve that classification.
 
-A child deleted after preparation but before Q4 is therefore resolved by the child FK at Q4; the route does not reread children just to identify the exact deleted id.
-
-## Statement cost
+## Revalidated candidate statement cost
 
 Warm successful path, excluding BEGIN/COMMIT:
 
 ```text
-1 parent preparation read
+1 parent + current slot read
 1 bulk child read
-0 component_schema DB reads on cache HIT
+0 component-schema cache/DB work
 0 ancestry DB reads on cache HIT
 1 graph gate acquisition
-1 parent FOR NO KEY UPDATE / binding verification
-1 graph admission statement
+1 protected graph admission statement
 1 bulk object_components INSERT
 1 bulk lifecycle INSERT
 
-= 7 PostgreSQL statements + COMMIT
+= 6 PostgreSQL statements + COMMIT
 ```
 
-Full-cold successful path adds:
+Full-cold path adds only:
 
 ```text
-+1 component_schema fill
 +1 ancestry bulk fill
 ```
 
-therefore:
+therefore current candidate:
 
 ```text
-full-cold = 9 PostgreSQL statements + COMMIT
+warm      = 6 PostgreSQL statements + COMMIT
+full-cold = 7 PostgreSQL statements + COMMIT
 ```
 
-The number of round trips is constant with respect to requested child count. Batch size affects rows processed and payload size, while cycle-read cost depends on parent owner-chain depth.
+These counts remain WIP estimates. Further fusion of graph admission and edge INSERT is a separate discovery question and is not assumed here.
 
-## Route-local closure and handoffs
+## Current route-local state
 
-Closed here:
+Retained:
 
-- batch-by-slot public shape;
+- explicit `/attach` public command route;
+- batch-by-slot body and `204` success;
 - atomic add-only semantics;
-- same-edge is conflict, not convergence;
-- cache-first exact slot resolution;
+- same-edge conflict rather than convergence;
 - heterogeneous child stable lineages;
-- no owner precheck read;
-- ancestry cache direction;
-- graph gate and parent stabilization;
-- root-only cycle predicate under ownerless certification;
-- bulk persistence and lifecycle writes;
-- lifecycle display-name freshness policy;
-- warm/full-cold statement counts;
-- public failure classes/precedence;
+- bulk child read;
+- stable ancestry cache direction;
+- no owner precheck outside protected graph admission;
+- graph gate + root-only cycle predicate;
+- bulk edge/lifecycle writes;
 - no diagnostic-only DB queries.
 
-Deferred/global handoffs:
+Reopened/superseded:
 
-- normative M4 API/object/concurrency documentation reconciliation;
-- exact final relational DDL and referential actions;
-- physical index choice and EXPLAIN evidence;
-- global schema-closure document required at milestone closure.
+```text
+component-schema cache slot resolution
+component-schema cold fill
+parent exact-binding preparation as slot authority
+parent FOR NO KEY UPDATE / binding recheck
+concurrent_object_change caused only by binding change
+7/9 statement cost profile
+parent direct-FK necessity
+```
+
+Architecture handoff now includes the complete `object_component_slots` DDL and ATTACH x SCHEMA_CHANGE relational-locking proof.
