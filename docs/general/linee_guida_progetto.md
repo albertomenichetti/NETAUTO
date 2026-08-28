@@ -119,17 +119,136 @@ F1-1-S03
 
 Nei documenti interni allo stesso ciclo è ammessa la forma locale `Snn` quando il contesto è inequivocabile. Nei prompt, commit, report e riferimenti cross-document si preferisce sempre la forma completa.
 
-### Execution aid e `wip/`
+### Execution aid, discovery e `wip/`
 
-Le directory `wip/` contengono prompt, review-fix, appunti e materiale temporaneo.
+Le directory `wip/` contengono prompt, review-fix, appunti, finding di discovery, candidate TO-BE e altro materiale temporaneo di lavoro.
 
 ```text
 wip/
-    = execution aid attivi e non normativi
+    = working space sempre non normativo
 
 Git history
-    = memoria degli aid eseguiti o superseded
+    = memoria degli aid eseguiti, dei checkpoint e del materiale superseded
 ```
+
+#### Stato sempre non normativo
+
+Qualunque contenuto sotto `wip/` resta **sempre** soggetto a rivalidazione finché non viene deliberatamente adottato e propagato nelle authority previste dal ciclo.
+
+Non diventa normativo per effetto di:
+
+- quantità o profondità dell'analisi svolta;
+- commit o persistenza in Git history;
+- consenso ottenuto durante la discovery;
+- uso come input da parte di altri WIP;
+- wording locale come `FROZEN`, `CLOSED`, `RECONCILED` o `FROZEN DISCOVERY INPUT`.
+
+Quando usato in `wip/`, un wording di freeze/closure indica soltanto un **checkpoint locale di lavoro**: il punto viene considerato sufficientemente stabile per proseguire l'esplorazione senza riaprire continuamente la stessa discussione. Non costituisce architecture freeze, implementation authority o esenzione dalla futura rivalidazione.
+
+Principio sintetico:
+
+```text
+discovery freeze
+    = local working checkpoint
+
+architecture freeze
+    = TO-BE implementation authority
+```
+
+Nessun WIP è promoted-by-default.
+
+#### Milestone discovery: AS-IS come baseline, non come freeze del meccanismo
+
+Durante una milestone di evoluzione, la discovery parte sempre dagli owner AS-IS rilevanti e deve distinguere esplicitamente:
+
+```text
+current semantic guarantee / invariant
+current technical realization
+candidate WIP delta
+```
+
+Le garanzie e invarianti correntemente consegnati sono la baseline di correttezza. Un loro cambiamento intenzionale deve emergere come delta semantico esplicito e, prima dell'implementation, essere chiuso normativamente dal contract/architecture set applicabile.
+
+La **realization tecnica AS-IS non è invece automaticamente vincolante** per una milestone evolutiva. La discovery può metterla in discussione, semplificarla o sostituirla quando cerca un TO-BE migliore, purché non presenti il candidate come authority e renda visibili le garanzie che la futura architecture dovrà preservare o modificare esplicitamente.
+
+La discovery può quindi rivalidare, quando rilevante:
+
+- public signature e operation surface;
+- semantica, no-op, conflict e failure behavior come candidate delta;
+- data path e dati realmente necessari;
+- persistence shape, materializzazioni e denormalizzazioni;
+- cache di informazione stabile/immutabile;
+- query strategy, bulk/set-based access e riduzione degli N+1;
+- collocazione del lavoro fra model-plane e data-plane;
+- transaction duration, arbitration, locking e altri meccanismi tecnici;
+- qualunque altra realization AS-IS che il ciclo intenda ottimizzare o far evolvere.
+
+Direzioni di ottimizzazione ammesse in discovery includono, senza costituire una prescrizione automatica:
+
+```text
+frequent work        -> rare/certification work
+data-plane derivation -> model-plane materialization
+repeated immutable read -> worker-local cache
+repeated derivation  -> persisted/materialized fact
+N+1 access           -> bounded bulk/set-based access
+long pessimistic work -> shorter protocol con garanzie equivalenti
+```
+
+Questa libertà di redesign appartiene alle milestone. Un fix resta invece vincolato ai defect frozen e non può usare `wip/` per introdurre implicitamente una nuova capability o una modifica intenzionale di prodotto.
+
+#### Candidate data path, costi e architecture handoff
+
+Un WIP può descrivere in dettaglio un candidate data path, una candidate UoW o un costo stimato per poter confrontare alternative e individuare hot path.
+
+Un valore come:
+
+```text
+candidate warm path = N PostgreSQL statements
+```
+
+esprime il costo del candidate attualmente esplorato. Non costituisce un budget normativo di transazionalità/locking finché la decisione non viene rivalidata e adottata nell'architecture set.
+
+Quando un candidate diverge da un meccanismo AS-IS, la discovery non deve respingerlo soltanto per tale divergenza e non deve necessariamente chiudere route-localmente l'intero modello globale di concurrency, transactionality o verification. Deve però registrare un **architecture handoff** sufficiente a non perdere il problema, includendo quando applicabile:
+
+```text
+guarantee / invariant coinvolta
+semantic predicate o race rilevante
+AS-IS mechanism che il candidate mette in discussione
+candidate mechanism o data-path assumption
+cross-operation / cross-layer dependencies da rivalidare
+verification obligation da chiudere in architecture
+```
+
+La closure globale viene anticipata durante discovery solo quando è necessaria per rispondere correttamente alla domanda esplorativa corrente. In tutti gli altri casi appartiene alla fase architecture, prima di qualunque implementation.
+
+#### Promozione deliberata ad architecture
+
+La costruzione dell'architecture set non è un copy/paste dei WIP e non eredita automaticamente i loro checkpoint.
+
+Ogni candidate/finding WIP rilevante deve essere deliberatamente:
+
+```text
+adopted
+modified
+superseded
+or discarded
+```
+
+attraverso una rivalidazione dependency-driven rispetto a contract, AS-IS, altri candidate, conseguenze cross-cutting e verification richiesta.
+
+La sequenza corretta è:
+
+```text
+WIP discovery findings
+    -> architecture-phase revalidation
+    -> cross-document / cross-operation composition
+    -> explicit normative decisions
+    -> consistency sweep
+    -> ARCHITECTURE SET FROZEN
+    -> implementation authority
+```
+
+Prima dell'implementation, `wip/` non è mai un'authority indipendente: l'implementer usa l'AS-IS corrente più il delta normativo congelato del ciclo.
 
 Quando un prompt viene sostituito o la relativa slice viene accettata, l'aid concluso viene rimosso dal working tree. Non viene conservato in `wip/` soltanto come memoria storica.
 
@@ -266,6 +385,8 @@ Invariant
 ```
 
 Constraint, FK, UNIQUE, CAS, row lock, advisory gate e isolation level sono strumenti per garantire un'invariante; non definiscono da soli la semantica.
+
+Durante una milestone di redesign, il `Chosen mechanism` AS-IS può essere rivalidato e sostituito. La fase architecture deve però ricostruire completamente la catena sopra per il TO-BE prima che l'implementation sia autorizzata.
 
 ### Architettura vs decomposizione implementativa
 
