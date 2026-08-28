@@ -1,6 +1,6 @@
 # M4 WIP — Object component-slot navigation public contract
 
-Status: PUBLIC CONTRACT FROZEN DISCOVERY INPUT / DATA PATH CHECKPOINT ADDED / M4 WIP / ALWAYS NON-NORMATIVE
+Status: PUBLIC CONTRACT FROZEN DISCOVERY INPUT / DATA PATH + CURSOR CHECKPOINTS ADDED / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Scope
 
@@ -8,26 +8,31 @@ This note records the accepted route-local public-surface direction for Object d
 
 The public contract remains a local discovery checkpoint only.
 
-The current data-path candidate is now recorded separately in:
+The current data-path candidate is recorded separately in:
 
 ```text
 object-components-navigation-data-path.md
 ```
 
-and uses the per-Object current-slot materialization from:
+The current cursor candidate is recorded separately in:
+
+```text
+object-components-navigation-cursor.md
+```
+
+Both use the per-Object current-slot materialization from:
 
 ```text
 object-component-slots-data-plane-materialization.md
 ```
 
-Current remaining route-local open points are:
+Current remaining route-local open point is:
 
 ```text
-pagination cursor identity/encoding and invalid-cursor semantics
 final physical indexes / EXPLAIN evidence
 ```
 
-The previous generic global read-coherence question is narrowed by the new one-statement data path: all mutable route response facts are intended to come from one PostgreSQL statement snapshot.
+The previous generic global read-coherence question is narrowed by the new one-statement data path: all mutable route response facts and current semantic-slot cursor validation are intended to come from one PostgreSQL statement snapshot.
 
 ## Candidate route
 
@@ -100,6 +105,61 @@ limit
 No additional filter is introduced by this checkpoint.
 
 A future filter such as child `canonical_name` may be considered only if a concrete consumer requirement emerges; it is not part of the current M4 candidate.
+
+## Candidate cursor contract
+
+The route retains opaque keyset pagination but binds the token to the exact current semantic slot collection.
+
+Candidate identity:
+
+```text
+codec route
+    object_component_slot_children
+
+semantic query identity
+    parent_object_id
+    slot_name
+    slot_declaring_template_id
+
+position
+    child_object_id ASC
+
+limit
+    not semantic identity
+```
+
+`slot_declaring_template_id` remains internal opaque cursor material, not a public path/query parameter or response field.
+
+It is required because the same public `(parent_object_id, slot_name)` path can resolve after `SCHEMA_CHANGE` to a different semantic slot declaration. A cursor issued for the previous declaring lineage must not continue against the replacement collection.
+
+The current candidate reuses the existing versioned canonical-JSON + URL-safe-Base64 cursor envelope with a new codec route identity; no global envelope-version bump is justified by this local route change.
+
+Static malformed/incompatible cursor carriers remain:
+
+```text
+400 invalid_cursor
+```
+
+Current-state precedence is:
+
+```text
+parent absent
+    -> 404 resource_not_found / object
+
+parent exists + current slot absent
+    -> 404 resource_not_found / object_component_slot
+
+parent exists + current slot present
++ cursor slot_declaring_template_id differs from current slot
+    -> 400 invalid_cursor
+
+matching semantic slot identity
+    -> normal keyset continuation
+```
+
+Target widening, ATTACH/DETACH, child RENAME, or parent schema-version movement that preserves the same semantic slot identity do not invalidate the cursor merely because membership/display state changed. Cross-request repeatable membership remains intentionally unpromised.
+
+Detailed encoding, cost and verification cases are owned by `object-components-navigation-cursor.md`.
 
 ## Candidate response role
 
@@ -252,7 +312,17 @@ Normal runtime path:
 0 explicit locks
 ```
 
-All mutable response facts come from one statement snapshot.
+All mutable response facts and current semantic-slot cursor compatibility come from one statement snapshot.
+
+Cursor generation adds:
+
+```text
+0 PostgreSQL statements
+0 model-plane reads
+0 cache lookups
+```
+
+and only small application serialization/transport work.
 
 ## Supersession
 
@@ -264,7 +334,7 @@ GET /objects/{parent_object_id}/components?slot_name=...
 
 where `slot_name` is optional and omission means cross-slot listing.
 
-It retains the useful AS-IS pagination concepts `cursor` and `limit` but scopes them to one semantic slot collection.
+It retains the useful AS-IS pagination concepts `cursor` and `limit` but scopes them to one semantic slot collection and uses a distinct codec route identity so AS-IS component cursors are not silently reinterpreted.
 
 ## Frozen discovery takeaway
 
@@ -283,11 +353,18 @@ same {id, canonical_name} child representation as Object GET
 malformed slot carrier
     -> normal 400 invalid_request boundary
 
+malformed/static incompatible cursor
+    -> 400 invalid_cursor
+
 parent absent
     -> 404 resource_not_found / object
 
 parent exists + slot absent
     -> 404 resource_not_found / object_component_slot
+
+parent exists + slot exists
++ cursor semantic slot differs
+    -> 400 invalid_cursor
 
 parent exists + slot exists + empty
     -> 200 empty page
@@ -295,12 +372,26 @@ parent exists + slot exists + empty
 parent exists + slot exists + children
     -> 200 page
 
+cursor identity
+    -> parent_object_id
+    -> slot_name
+    -> slot_declaring_template_id
+cursor position
+    -> child_object_id ASC
+limit
+    -> not identity
+
 current data-path candidate
     -> 1 PostgreSQL statement
     -> current materialized slot row
     -> bounded membership page
     -> no component-schema cache/model-plane lookup
 
+cursor runtime delta
+    -> +0 DB statements
+    -> +0 model-plane reads
+    -> +0 cache lookups
+
 next open micro-point
-    -> cursor identity/encoding/semantics
+    -> final physical indexes / EXPLAIN evidence
 ```
