@@ -196,6 +196,168 @@ long pessimistic work -> shorter protocol con garanzie equivalenti
 
 Questa libertà di redesign appartiene alle milestone. Un fix resta invece vincolato ai defect frozen e non può usare `wip/` per introdurre implicitamente una nuova capability o una modifica intenzionale di prodotto.
 
+#### Discovery convergente e rivalidazione continua
+
+La fase esplorativa/preliminare di una milestone è un processo **iterativo di convergenza verso il TO-BE**, non una sequenza monotona di decisioni route-local che diventano progressivamente intoccabili.
+
+Fino all'`ARCHITECTURE SET = FROZEN` restano continuamente rivalidabili, quando emerge nuova evidence o una nuova conseguenza:
+
+```text
+realization tecnica AS-IS
+candidate WIP già scelti
+persistence shape
+materializzazioni / denormalizzazioni
+cache boundary
+data path
+query shape
+costi stimati
+transaction / locking / arbitration assumptions
+operation-local closure già registrate in wip/
+```
+
+La rivalidazione non è limitata alla fase architecture finale. Deve avvenire **durante tutta la discovery**, anche retroattivamente.
+
+Principio obbligatorio:
+
+```text
+nuovo finding downstream
+    -> rivalida gli assunti upstream che quel finding può rendere subottimali,
+       ridondanti, incoerenti o non più necessari
+```
+
+Un checkpoint locale non è una barriera alla riapertura. Serve soltanto a evitare discussioni circolari **in assenza di nuova evidence**. Quando compare nuova evidence rilevante, la riapertura del checkpoint interessato è comportamento corretto e atteso.
+
+Il ciclo operativo della discovery è quindi:
+
+```text
+1. identificare la domanda corrente
+2. identificare AS-IS, candidate e assunti da cui dipende
+3. sfidare esplicitamente tali assunti e i confini tecnici correnti
+4. confrontare alternative sufficientemente diverse
+5. scegliere un candidate/checkpoint locale per poter proseguire
+6. propagare le conseguenze note ai WIP dipendenti
+7. avanzare al punto successivo
+8. quando emerge nuova evidence, tornare ai punti upstream impattati
+9. aggiornare/supersedere i candidate e ricalcolare le conseguenze
+10. continuare finché il corpus converge abbastanza da entrare nella fase architecture
+```
+
+Trigger obbligatori di rivalidazione retroattiva includono almeno:
+
+- un nuovo requisito semantico o una nuova distinzione pubblica che richiede dati non previsti dal candidate corrente;
+- la scoperta di un nuovo consumer della stessa informazione o struttura;
+- una nuova persistence shape, materializzazione, denormalizzazione o cache che può eliminare lavoro già accettato altrove;
+- un finding che rende una query, un cache lookup, un traversal, un lock o un round-trip precedente potenzialmente ridondante;
+- nuove informazioni sulla frequenza relativa delle operazioni, cardinalità o fan-out che possono cambiare il trade-off;
+- una nuova race, invariant o constraint opportunity che sposta l'arbitration fra application e database;
+- una decisione downstream che contraddice, indebolisce o rende inutilmente costoso un WIP upstream;
+- un beneficio cross-operation che rende insufficiente una valutazione puramente route-local.
+
+Quando scatta uno di questi trigger, la discovery deve:
+
+```text
+identify affected upstream assumptions/WIP
+    -> reopen, modify or supersede them explicitly
+    -> propagate the new candidate to dependent WIP
+    -> recompute affected data paths and cost profiles
+    -> reconcile contradictions before relying again on those WIP
+```
+
+Non è ammesso preservare una precedente `ROUTE-LOCAL CLOSED`, `FROZEN DISCOVERY INPUT` o altra closure WIP soltanto per evitare churn documentale o perché il punto era stato approvato in una discussione precedente.
+
+La discovery deve privilegiare la qualità della convergenza rispetto alla stabilità artificiale dei checkpoint.
+
+#### Challenge obbligatorio dei hot path e dei confini di materializzazione
+
+Prima di considerare sufficientemente chiusa, anche solo localmente, una operazione frequente del data-plane, la discovery deve rivalidare **non soltanto la query sul persistence shape corrente, ma il persistence/materialization boundary stesso**.
+
+Quando l'operazione deriva, ricostruisce, risolve o rilegge informazione stabile o relativamente lenta a cambiare, devono essere confrontate esplicitamente, quando semanticamente applicabili, almeno queste famiglie di alternative:
+
+```text
+derive on read
+worker-local cache
+shared model-plane materialization
+per-instance / per-edge / per-aggregate data-plane materialization
+```
+
+Non è corretto partire implicitamente dalla domanda:
+
+```text
+"dato lo schema corrente, qual è la query più economica?"
+```
+
+senza avere prima rivalidato la domanda più ampia:
+
+```text
+"lo schema corrente e il confine fra model-plane e data-plane
+ sono ancora il posto migliore in cui mantenere questa informazione?"
+```
+
+La valutazione deve includere, in modo proporzionato al rischio e all'impatto:
+
+- frequenza relativa di read e mutation coinvolte;
+- numero di round-trip e statement sul path frequente;
+- warm path e cold path, inclusa la variabilità introdotta dalle cache;
+- cardinalità, fan-out e dimensione delle strutture materializzate;
+- storage aggiuntivo;
+- write amplification sulle mutation rare;
+- costo di mantenimento atomico/coerente della derivazione;
+- opportunità di spostare invarianti verso PK/FK/UNIQUE/CHECK o altra arbitration relazionale;
+- impatto sulla concorrenza e sulla durata delle transaction;
+- riuso cross-operation della stessa materializzazione;
+- semplificazione o eliminazione di cache, traversal, reconstruction e semantic recertification.
+
+Una materializzazione mutable o per-instance non deve essere scartata solo perché duplica informazione derivabile dal model-plane. Se la mutation che la mantiene è molto più rara delle operazioni che la consumano e la coerenza può essere mantenuta con un protocollo chiaro, essa è un candidate M4 legittimo e deve essere confrontata con le alternative normalizzate/cache-based.
+
+Quando la frequenza relativa delle operazioni influenza materialmente il trade-off, tale frequenza deve essere trattata come input esplicito. Se non è nota, il WIP deve dichiarare l'assunto o confrontare scenari; non deve scegliere implicitamente un profilo di workload.
+
+#### Ottimizzazione cross-operation e costo ponderato
+
+Una route frequente non deve essere ottimizzata in isolamento quando una scelta di persistence/materialization modifica il costo di altre operazioni.
+
+La discovery deve distinguere:
+
+```text
+route-local cost
+!= workload-weighted system cost
+```
+
+Quando una scelta sposta lavoro fra operazioni con frequenze diverse, il confronto deve rendere visibile almeno qualitativamente, e quantitativamente quando utile, il costo ponderato:
+
+```text
+weighted candidate cost
+    ~= Σ (operation_frequency_i * candidate_cost_i)
+```
+
+Non serve trasformare la discovery in un benchmark prematuro, ma è obbligatorio evitare conclusioni basate soltanto sul costo della mutation che riceve nuovo lavoro o della singola route che lo perde.
+
+Esempio di ragionamento ammesso:
+
+```text
++1 statement su una mutation rara
+-1 statement su una operation cento volte più frequente
+
+-> trade-off presumibilmente favorevole,
+   salvo storage/concurrency/write-amplification che lo contraddicano
+```
+
+Le frequenze possono essere stime di progetto; quando determinano la scelta devono essere registrate insieme al candidate e rivalidate se cambiano.
+
+#### Assunti e reopen condition dei checkpoint WIP
+
+Quando un WIP seleziona un candidate tecnico che influenza più operazioni o sposta lavoro fra layer, deve rendere recuperabili almeno:
+
+```text
+assunti rilevanti
+operazioni beneficiarie
+operazioni che pagano il costo spostato
+persistence/cache/materialization boundary scelto
+cross-operation dependencies
+condizioni/finding che obbligherebbero a riaprire la scelta
+```
+
+Non è necessario duplicare queste informazioni in ogni micro-file se esiste un owner WIP consolidato, ma devono essere rintracciabili. Lo scopo è permettere alla discovery successiva di capire **quando** una decisione precedente deve essere rimessa in discussione, non soltanto cosa era stato deciso in quel momento.
+
 #### Candidate data path, costi e architecture handoff
 
 Un WIP può descrivere in dettaglio un candidate data path, una candidate UoW o un costo stimato per poter confrontare alternative e individuare hot path.
