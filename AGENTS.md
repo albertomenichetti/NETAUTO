@@ -70,7 +70,7 @@ Repository documentation is authoritative. Code, tests, generated artifacts, Git
 |---|---|
 | `README.md` | Identify the active cycle, its documentation root and branch. |
 | `AGENTS.md` | Apply coding-agent operating rules. It governs how the agent works, not what the system means. |
-| `docs/general/linee_guida_progetto.md` | Apply project governance: cycle lifecycle, document roles, freeze/reopen/propagation, review ownership, final gates and closure. |
+| `docs/general/linee_guida_progetto.md` | Apply project governance: cycle lifecycle, document roles, discovery/WIP discipline, freeze/reopen/propagation, review ownership, final gates and closure. |
 | `docs/architecture/README.md` | Enter the authoritative current delivered AS-IS and locate its owning documents. |
 | `docs/architecture/*.md` | Verify every current assumption that the active cycle declares unchanged. |
 | milestone `contract.md` | Read scope, non-goals and acceptance criteria. |
@@ -82,7 +82,7 @@ Repository documentation is authoritative. Code, tests, generated artifacts, Git
 | active `status.md` | Determine the detailed current phase, slice and blockers. |
 | milestone `acceptance.md`, when present | Read durable final-acceptance evidence; it is evidence, not a replacement for architecture. |
 | `docs/general/technology_baseline.md` | Read every ratified `STACK-*` decision applicable to the task. Technology realizes semantic contracts; it cannot reinterpret them. |
-| active `wip/` material | Use only as temporary, non-normative execution aid. |
+| active `wip/` material | Use only as temporary, always non-normative working material; local freeze/closure wording never makes it architecture authority. |
 | `pyproject.toml`, lockfile and code | Inspect configured realization and collect evidence; do not treat them as independent design authority. |
 
 ### Combining current AS-IS and active-cycle authority
@@ -120,6 +120,32 @@ current code or test behavior
 ```
 
 If normative sources conflict, do not choose the newest or most convenient. Stop the affected work and report an architecture/documentation defect.
+
+### Discovery and WIP operating discipline
+
+The normative method is owned by `docs/general/linee_guida_progetto.md`. When the active milestone status authorizes discovery or design exploration, apply these operating rules before reasoning from a route-local or mechanism-level candidate:
+
+```text
+current semantic guarantee / invariant
+!= current technical realization
+!= candidate WIP delta
+```
+
+Required behavior:
+
+- re-read the relevant current AS-IS owners before evaluating a dependent discovery point;
+- preserve awareness of current guarantees and invariants without treating the current technical mechanism as automatically immutable;
+- allow a milestone WIP to question or replace AS-IS signatures, data paths, persistence shapes, caches, query strategies, transaction/locking mechanisms or other realization choices when that is the purpose of discovery;
+- do not reject a candidate merely because it diverges from the AS-IS mechanism;
+- do not silently treat a semantic divergence as already adopted: record it as a candidate delta requiring later normative closure;
+- treat every file under `wip/` as non-normative even when its local status says `FROZEN`, `CLOSED`, `RECONCILED` or `FROZEN DISCOVERY INPUT`;
+- interpret such local freeze wording only as a working checkpoint that prevents circular rediscovery, never as architecture freeze or implementation authority;
+- when a candidate changes or bypasses an AS-IS mechanism, record the affected guarantee and the architecture handoff needed for later cross-cutting revalidation;
+- do not force route-local discovery to close the entire global concurrency, transactionality or verification model unless that closure is necessary to answer the current discovery question;
+- treat WIP SQL/statement counts, latency expectations and other cost profiles as candidate estimates, not normative budgets;
+- before implementation, disregard WIP as independent authority and use only current AS-IS plus the explicitly frozen active-cycle architecture.
+
+No WIP decision is promoted by default because it was committed, repeatedly reused, human-approved during discovery or deeply analyzed. Promotion occurs only through deliberate architecture-phase adoption and propagation as defined by project governance.
 
 ## 4. Mandatory pre-flight before implementation
 
@@ -298,7 +324,7 @@ Schema, migration and dependency changes are permitted only when explicitly insi
 - Delivered milestone and fix directories are historical records. Do not rewrite them as current authority.
 - Do not change an active frozen contract, `defects.md` or architecture merely to fit implementation.
 - Update active `steps.md`, `status.md`, `acceptance.md` or execution aids only when the task explicitly assigns that responsibility.
-- Treat `wip/` as non-normative working space.
+- Treat `wip/` as always non-normative working space; local freeze/closure labels are never architecture or implementation authority.
 
 ### Reviewer-owned states
 
