@@ -140,10 +140,34 @@ Required behavior:
 - do not silently treat a semantic divergence as already adopted: record it as a candidate delta requiring later normative closure;
 - treat every file under `wip/` as non-normative even when its local status says `FROZEN`, `CLOSED`, `RECONCILED` or `FROZEN DISCOVERY INPUT`;
 - interpret such local freeze wording only as a working checkpoint that prevents circular rediscovery, never as architecture freeze or implementation authority;
+- treat discovery as iterative convergence: every new finding must trigger an explicit check of whether upstream AS-IS assumptions or prior WIP candidates have become suboptimal, redundant, inconsistent or unnecessary;
+- reopen, modify or supersede an upstream WIP whenever a downstream finding materially changes its assumptions, cost model, persistence boundary, concurrency rationale or cross-operation value; do not preserve a local closure merely for continuity;
+- a local discovery freeze prevents circular rehash only while no new relevant evidence exists; new evidence is a mandatory reopen trigger, not an optional reason to revisit;
+- before optimizing "given the current schema/data path", first challenge whether that schema, materialization boundary or division of work between model-plane and data-plane is itself still the best candidate, unless the current task explicitly fixes that boundary as an assumption;
+- for a frequent data-plane path that derives or repeatedly resolves stable/slow-changing information, explicitly compare, when applicable: derive-on-read, worker-local cache, shared model-plane materialization, and per-instance/per-edge/per-aggregate data-plane materialization;
+- do not reject mutable/per-instance denormalization merely because the value is derivable elsewhere; compare its maintenance cost against the frequency and cost of all operations that would consume it;
+- use relative operation frequencies, cardinality/fan-out, warm/cold behavior, storage, write amplification, transaction/concurrency impact and cross-operation reuse as explicit inputs when they can change the preferred candidate;
+- when a choice shifts work from a frequent operation to a rarer one, evaluate workload-weighted cost rather than route-local statement count alone; make material frequency assumptions visible instead of silently inventing a workload;
+- if a new persistence/materialization candidate can eliminate an earlier query, cache lookup, traversal, lock or recheck, reopen the earlier candidate and recompute its path/cost instead of layering the new mechanism on top of stale work;
 - when a candidate changes or bypasses an AS-IS mechanism, record the affected guarantee and the architecture handoff needed for later cross-cutting revalidation;
 - do not force route-local discovery to close the entire global concurrency, transactionality or verification model unless that closure is necessary to answer the current discovery question;
 - treat WIP SQL/statement counts, latency expectations and other cost profiles as candidate estimates, not normative budgets;
 - before implementation, disregard WIP as independent authority and use only current AS-IS plus the explicitly frozen active-cycle architecture.
+
+Use this mandatory thinking loop during discovery:
+
+```text
+current question
+    -> identify upstream assumptions and candidate dependencies
+    -> challenge current realization/materialization boundaries
+    -> compare materially different alternatives
+    -> select a local checkpoint
+    -> propagate known consequences
+    -> continue downstream
+    -> on new evidence, walk dependencies backward and revalidate
+```
+
+For a hot data-plane candidate, do not declare route-local closure until the persistence/materialization challenge has been performed or explicitly recorded as not applicable.
 
 No WIP decision is promoted by default because it was committed, repeatedly reused, human-approved during discovery or deeply analyzed. Promotion occurs only through deliberate architecture-phase adoption and propagation as defined by project governance.
 
