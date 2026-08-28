@@ -10,20 +10,41 @@ This note records the current route-local M4 candidate data path for:
 DELETE /api/v1/core/objects/{object_id}
 ```
 
-The public contract is tracked separately in `object-delete-public-contract.md`.
+The public contract is tracked separately in `object-delete-public-contract.md`; FK failure mapping is tracked in `object-delete-fk-failure-mapping.md`.
 
 This file freezes only the current discovery candidate. Final transaction, locking, wait-for graph, FK realization and verification remain architecture-phase responsibilities.
 
-## Candidate direction
+## Current candidate direction
 
-Object DELETE should not perform a preliminary blocker-count query, a separate Object snapshot read, or ObjectTemplate/DataType recertification solely to decide whether the Object may be deleted.
+Object DELETE should not perform:
 
-The candidate path is:
+```text
+preliminary blocker-count query
+separate Object snapshot read
+ObjectTemplate/DataType recertification
+cache/model-plane work
+PostgreSQL diagnostics-only queries
+```
+
+The current candidate is one data-modifying PostgreSQL statement inside the semantic transaction:
 
 ```text
 BEGIN
 
-Q1  DELETE FROM objects
+Q1  DELETE Object
+    -> retain deleted row server-side
+    -> construct DELETED before_state server-side
+    -> INSERT one DELETED lifecycle row
+    -> return only a tiny success carrier
+
+COMMIT
+```
+
+Conceptually:
+
+```sql
+WITH deleted AS (
+    DELETE FROM objects
     WHERE id = :object_id
     RETURNING
         id,
@@ -31,125 +52,107 @@ Q1  DELETE FROM objects
         template_id,
         template_version,
         properties
-
-Q2  INSERT one DELETED lifecycle event
-    from Q1 returned row
-    without RETURNING
-
-COMMIT
+)
+INSERT INTO object_lifecycle_events (
+    kind,
+    object_id,
+    canonical_name,
+    before_state,
+    after_state
+)
+SELECT
+    'DELETED',
+    id,
+    canonical_name,
+    jsonb_build_object(
+        'id', id::text,
+        'canonical_name', canonical_name,
+        'template_id', template_id::text,
+        'template_version', template_version,
+        'properties', properties
+    ),
+    NULL
+FROM deleted
+RETURNING object_id;
 ```
 
-Successful route-local candidate cost:
+The exact SQL carrier/build functions remain implementation details.
+
+## Why the single statement supersedes the earlier two-statement candidate
+
+The previous candidate used:
 
 ```text
-2 PostgreSQL business statements + COMMIT
+Q1 DELETE ... RETURNING complete Object before snapshot
+Q2 INSERT DELETED lifecycle
 ```
 
-There is no cache warm/cold distinction and no model-plane read.
-
-## Q1 authority
-
-Q1 is both:
+That shape required the potentially large `properties` JSONB to travel:
 
 ```text
-current Object existence test
-+
-actual root DML
-+
-authoritative before-snapshot capture
+PostgreSQL -> application -> PostgreSQL
 ```
+
+solely so the application could rebuild the lifecycle `before_state` and write the same payload back.
+
+The single-statement candidate avoids that transfer, decode and re-encode. The deleted row remains inside PostgreSQL and feeds the mandatory lifecycle INSERT directly.
+
+This refinement is therefore based on reduced real work, not statement-count minimization for its own sake.
+
+## Outcome classification
 
 ### Missing Object
 
+If the `deleted` CTE produces no row, the lifecycle INSERT also produces no row:
+
 ```text
-DELETE ... RETURNING returns zero rows
+Q1 returns zero success rows
     -> ROLLBACK
     -> 404 resource_not_found
 ```
 
-A second DELETE after an already-committed delete therefore remains non-convergent and returns `404`.
+A second DELETE after an already committed deletion remains non-convergent and returns `404`.
 
-### Current references
+### Current reference blocker
 
-Current cross-aggregate references to `objects.id` remain protected by PostgreSQL FK lifetime constraints.
+The root `DELETE FROM objects` remains subject to current inbound lifetime enforcement.
 
-Relevant current families include at least:
-
-```text
-object_components.child_object_id
-object_components.parent_object_id
-runtime_relationship_resolutions.from_object_id
-runtime_relationship_resolutions.to_object_id
-```
-
-If any blocking reference wins before the Object deletion can commit, the Object DELETE statement fails through the relevant FK authority and the application maps the recognized current-reference failure to:
+Per the separate failure-mapping checkpoint:
 
 ```text
-409 delete_blocked
+SQLSTATE 23503 during this root Object DELETE
+    -> ROLLBACK
+    -> 409 delete_blocked
 ```
 
-The M4 public contract does not require exact blocker counts, blocker identity lists, or an exhaustive blocker-type census.
-
-No PostgreSQL query is issued solely to enrich `delete_blocked` diagnostics.
+No blocker count, blocker type or constraint-name whitelist is required by the public contract.
 
 ### Successful delete
 
-If Q1 deletes one row, its `RETURNING` payload is the authoritative historical before snapshot for the DELETED lifecycle event:
+Exactly one returned success row means:
 
 ```text
-id
-canonical_name
-template_id
-template_version
-properties
+Object root deleted in the transaction
++
+one DELETED lifecycle row inserted from that exact deleted row
 ```
 
-No separate pre-delete Object SELECT is required solely for lifecycle capture.
+The route commits and returns:
 
-## No blocker precheck
-
-The current AS-IS `delete_blocker_counts()` query is not the correctness authority. PostgreSQL FK arbitration already determines whether a current reference prevents deletion.
-
-The candidate therefore removes the normal-path pattern:
-
-```text
-count blockers
--> if zero, attempt DELETE
+```http
+204 No Content
 ```
 
-and uses instead:
+The returned carrier should remain minimal; the application does not need lifecycle `id`, `occurred_at`, `before_state` or the full event row.
 
-```text
-attempt DELETE directly
--> FK success/failure is the authoritative lifetime result
-```
+## Lifecycle mapping
 
-This removes an always-paid round trip and avoids scanning current reference sets merely for diagnostics.
-
-## No persisted-state semantic recertification
-
-DELETE admission asks whether the Object lifetime may end. It does not require re-proving that the already-persisted Object is semantically valid under its exact ObjectTemplate/DataType closure.
-
-The candidate therefore does not perform DELETE-only work equivalent to:
-
-```text
-ObjectTemplate effective-schema reconstruction
-DataTypeVersion loading
-runtime-property re-canonicalization
-schema admissibility recertification
-ownership-slot interpretation
-```
-
-The persisted root row is decoded only to the extent required to produce the historical DELETED snapshot.
-
-## Q2 lifecycle
-
-Q2 inserts exactly one intrinsic lifecycle event:
+The lifecycle row is constructed directly from the deleted Object row:
 
 ```text
 kind           = DELETED
-object_id      = Q1.id
-canonical_name = Q1.canonical_name
+object_id      = deleted.id
+canonical_name = deleted.canonical_name
 before_state   = {
     id,
     canonical_name,
@@ -160,36 +163,99 @@ before_state   = {
 after_state    = null
 ```
 
-The public DELETE response is `204 No Content`; no later route step consumes the generated lifecycle row identity or timestamp.
+Lifecycle row identity and timestamp remain PostgreSQL-generated/current persistence concerns.
 
-Therefore the candidate lifecycle INSERT uses no `RETURNING`.
+Historical lifecycle identity/name fields remain historical data and do not create a live FK back to the deleted Object.
 
-If Q2 fails:
+## Atomicity
+
+DELETE and lifecycle INSERT are part of the same data-modifying statement and semantic transaction.
+
+Therefore:
 
 ```text
-ROLLBACK
+root DELETE fails
+    -> no lifecycle row
+
+lifecycle INSERT fails
+    -> whole statement fails
+    -> Object deletion does not commit
+
+statement succeeds + COMMIT
+    -> deletion and DELETED event become durable together
 ```
 
-and Q1 deletion is restored. No Object deletion may commit without its required DELETED lifecycle event.
+No committed Object deletion may exist without its required lifecycle event.
 
-## Why Q1 and Q2 remain separate
+## No blocker precheck
 
-A data-modifying CTE could technically combine Object deletion and lifecycle insertion into one PostgreSQL statement.
+The AS-IS `delete_blocker_counts()` query is not the correctness authority. PostgreSQL lifetime arbitration is the definitive current-reference result.
 
-The current candidate keeps two statements because:
+The candidate uses:
 
-- PostgreSQL still performs one Object delete plus one lifecycle insert;
-- combining them mainly removes one round trip while materially increasing SQL complexity;
-- two simple statements preserve the same transaction atomicity;
-- statement-count minimization alone is not a project goal.
+```text
+attempt root DELETE directly
+-> success or FK-arbitrated failure
+```
 
-This tradeoff remains available for later physical-query review.
+rather than:
+
+```text
+count blockers
+-> attempt DELETE only when counts are zero
+```
+
+No PostgreSQL work is performed solely to enrich `delete_blocked` diagnostics.
+
+## No persisted-state semantic recertification
+
+DELETE asks whether Object lifetime may terminate; it does not re-prove the semantic validity of already-persisted Object data.
+
+The candidate performs no DELETE-only:
+
+```text
+ObjectTemplate effective-schema reconstruction
+DataTypeVersion loading
+runtime-property re-canonicalization
+schema admissibility recertification
+ownership-slot interpretation
+```
+
+## Candidate cost
+
+Excluding transaction-control commands:
+
+```text
+success path = 1 PostgreSQL business statement
+```
+
+The statement performs the necessary physical work:
+
+```text
+1 Object DELETE
++
+1 DELETED lifecycle INSERT
++
+current FK arbitration
+```
+
+while avoiding:
+
+```text
+blocker precheck round trips
+separate Object pre-read
+Object payload DB -> app -> DB transfer
+lifecycle reread/decoding
+model-plane/cache work
+```
+
+There is no hot/cold-cache distinction.
 
 ## Concurrency / architecture handoff
 
 This discovery candidate intentionally does not require preservation of the AS-IS preliminary `OBJ@U` acquisition as a route-local mechanism.
 
-Future M4 architecture closure must compose direct root DELETE arbitration with all affected guarantees and decide the final stabilization mechanism, including at least:
+Future M4 architecture closure must compose the one-statement direct root DELETE with all affected guarantees and decide the final stabilization/arbitration protocol, including at least:
 
 ```text
 OS  DELETE vs intrinsic Object mutations
@@ -213,43 +279,44 @@ atomic lifecycle emission
 no unsupported-path deadlock
 ```
 
-It may retain, replace, batchify or otherwise redesign the AS-IS LockPlan realization provided those guarantees remain satisfied.
+Every TO-BE current dependency that must keep an Object alive must have FK enforcement or another proven arbitration mechanism capable of preventing a false-success root DELETE.
 
 ## Supersession note
 
-This candidate supersedes the route-local data-path parts of the older `object-delete-discovery.md` that proposed:
+This current candidate supersedes:
 
-```text
-stabilize/load Object snapshot
--> current blocker projection
--> DELETE
--> lifecycle
-```
+1. the route-local data-path parts of older `object-delete-discovery.md` that proposed a blocker projection before DELETE;
+2. the earlier revision of this file that used two PostgreSQL business statements (`DELETE ... RETURNING` followed by a separate lifecycle INSERT).
 
-Retained semantic findings from that older note include:
+Retained semantic findings include:
 
 ```text
 no schema/property recertification for DELETE
 no implicit detach / relationship deletion / cascade
-FK RESTRICT as final reference-lifetime authority
-DELETED lifecycle atomic with real deletion
+current lifetime enforcement is authoritative
+DELETED lifecycle atomic with the real deletion
 ```
 
 ## Frozen discovery takeaway
 
 ```text
-Object.DELETE candidate
+Object.DELETE current candidate
 
-Q1 = DELETE Object ... RETURNING before snapshot
-Q2 = one DELETED lifecycle INSERT, no RETURNING
+one data-modifying PostgreSQL statement:
+    DELETE objects
+    -> keep deleted row server-side
+    -> build before_state server-side
+    -> INSERT DELETED lifecycle
+    -> tiny success carrier only
 
 0 blocker-precheck queries
-0 separate Object snapshot reads
+0 separate Object reads
 0 schema/cache/model-plane reads
+0 Object properties round-trip through application
 
-missing row -> 404
-recognized current-reference FK failure -> 409 delete_blocked
-success -> 204
+missing Object -> 404
+23503 on root Object DELETE -> 409 delete_blocked
+success -> COMMIT -> 204
 
-candidate success path = 2 PostgreSQL statements + COMMIT
+candidate success path = 1 PostgreSQL business statement + COMMIT
 ```
