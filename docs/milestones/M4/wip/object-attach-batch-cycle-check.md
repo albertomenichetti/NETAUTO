@@ -1,28 +1,10 @@
 # M4 WIP — Object ATTACH batch cycle check
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: SUPERSEDED DETAIL RECONCILED / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Scope
 
-This note freezes the route-local acyclicity check for batch Object ATTACH.
-
-Public candidate:
-
-```http
-POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
-```
-
-with one parent Object `P` and a non-empty set of requested child Objects `{C1..Cn}`.
-
-## Relevant ownership invariant
-
-Current ownership is single-owner:
-
-```text
-child Object -> at most one current owner
-```
-
-Equivalently, following the incoming ownership relation from any Object yields at most one owner at each step.
+This note reconciles the earlier owner-chain-intersection candidate with the final route-local ATTACH cycle predicate.
 
 Ownership edges are directed:
 
@@ -30,90 +12,90 @@ Ownership edges are directed:
 parent -> child
 ```
 
-Adding `P -> C` creates a cycle iff `C` is already an ancestor of `P` in the current ownership graph.
-
-Because each Object has at most one owner, the current ancestors of `P` form one unique owner chain rather than a branching graph.
-
-## Frozen batch simplification
-
-For a batch that adds only edges from the same parent `P`:
+and current ownership is single-owner:
 
 ```text
-P -> C1
-P -> C2
-...
-P -> Cn
+child Object -> at most one current owner
 ```
 
-acyclicity does not require one traversal per requested child.
+## Earlier candidate
 
-The command may instead:
+The earlier sufficient predicate was:
 
 ```text
-1. obtain the current owner chain of P once
-2. materialize requested child ids as a lookup set
-3. fail if any requested child id occurs in P's owner chain
-4. otherwise all requested P -> Ci edges are cycle-safe relative to that graph snapshot
+owner_chain(parent) INTERSECT requested_child_ids = empty
 ```
 
-Self-attachment `P -> P` is already rejected independently and is also a direct cycle.
+under the ownership graph edge-add gate.
 
-## Why one traversal is sufficient
+That predicate remains logically correct, but M4 discovery found a simpler equivalent test once current ownerlessness of every requested child is certified in the same protected graph state.
 
-For any requested child `Ci`, a newly added edge `P -> Ci` creates a cycle exactly when a pre-existing path exists:
+## Final simplification
+
+If a requested child `C` is currently ownerless and is already an ancestor of parent `P`, then under the single-owner invariant `C` cannot be an intermediate ancestor: every intermediate ancestor has an owner.
+
+Therefore `C` must be exactly the current root of `P`'s ownership tree.
+
+The final batch predicate is consequently:
 
 ```text
-Ci -> ... -> P
+all requested children are currently ownerless
+AND
+root(parent) not in requested_child_ids
 ```
 
-With single-owner ownership, that path exists iff `Ci` appears while repeatedly following the current owner of `P` upward.
+This is sufficient for all requested `P -> Ci` edges in one batch.
 
-All requested new edges share the same source parent. The batch itself introduces no edge between two requested children, so successful addition of several sibling edges does not create a new path among those children that would require sequential re-evaluation.
+Self-attachment remains rejected independently and also has a relational CHECK backstop.
 
-Therefore one owner-chain traversal of `P` is sufficient for the whole batch.
+## Protected statement
 
-## Concurrency protection direction
-
-The current architecture already identifies ownership edge addition as a graph-wide predicate that must not be certified concurrently by independent ATTACH operations capable of jointly creating a cycle.
-
-The route-local candidate therefore retains one ownership graph write gate for the whole batch:
+After acquiring `OWNERSHIP_GRAPH_WRITE_GATE`, one PostgreSQL statement computes two logical facts:
 
 ```text
-OWNERSHIP_GRAPH_WRITE_GATE
+has_owned_requested_child
+root_is_requested
 ```
 
-The gate is acquired once per batch, not once per child.
-
-After the gate is held, the cycle predicate is read from a fresh PostgreSQL statement before inserting the requested edges.
-
-A concurrent DETACH does not require the graph-add gate because edge removal cannot create a cycle. If a DETACH removes part of the chain while ATTACH is checking it, a stale conservative failure is acceptable; it cannot produce a false-success cycle. Another concurrent ATTACH is serialized by the graph-add gate.
-
-## Cost shape
-
-For cycle certification, batch cost is therefore:
+Application mapping:
 
 ```text
-1 gate acquisition
-1 owner-chain traversal/query rooted at parent P
-O(chain_length + requested_child_count) application comparison
+has_owned_requested_child = true
+    -> ownership_conflict
+
+otherwise root_is_requested = true
+    -> ownership_cycle
+
+otherwise
+    -> graph admission succeeds
 ```
 
-not:
+The owner chain is not materialized in application memory.
 
-```text
-N independent graph traversals
-```
+## Root lookup
 
-The exact SQL shape for loading the owner chain and its required physical index are deferred to the remaining ATTACH route-local SQL/index review and the final global physical-schema phase.
+No denormalized `object_id -> root_object_id` table/cache is introduced for M4 ATTACH.
+
+Root lookup remains one recursive traversal following `object_components.child_object_id -> parent_object_id` upward from the parent.
+
+This keeps read cost proportional to ownership depth and avoids the much larger write amplification that a materialized root would impose on ATTACH/DETACH of subtrees.
+
+## Concurrency protection
+
+The graph write gate serializes edge-add operations so no concurrent ATTACH can change the graph between certification and commit.
+
+DETACH removes edges only and therefore does not require the graph-add gate. A concurrent DETACH can make an attempt conservatively fail, but cannot turn a positive ownerless+root certification into a cycle-producing false success for the fixed requested batch.
 
 ## Frozen decision
 
 ```text
-single parent batch ATTACH
-+
 single-owner current ownership
++
+all requested children certified ownerless
++
+one graph-protected root(parent) lookup
 
-=> cycle check = one current owner-chain traversal of parent
-=> reject if any requested child appears in that chain
-=> one graph-write gate acquisition for the whole batch
+=> cycle iff root(parent) is requested
 ```
+
+This note supersedes the earlier requirement to compare the full owner chain against every requested child while preserving the same acyclicity guarantee.
