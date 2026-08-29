@@ -121,7 +121,7 @@ The Object family has already been partially consolidated. **Use these owners be
 
 ### [`object.md`](object.md) — SPINE / Object route owner
 
-Primary current working owner for the Object public surface and route-local semantics/data paths.
+Primary consolidated working owner for the Object public surface and route-local semantics/data paths.
 
 Use it first for:
 
@@ -130,7 +130,7 @@ CREATE
 LIST
 GET Object
 canonical-name mutation
-properties mutation
+properties mutation after DATA_CHANGE absorption
 GET schema
 component navigation
 ATTACH
@@ -142,17 +142,18 @@ high-level SCHEMA_CHANGE boundary
 
 The document is consolidated but not final or normative.
 
-Current full-sweep checkpoints:
+Current full-sweep checkpoints across the Object working set:
 
 ```text
 POST /objects
 GET /objects
 GET /objects/{id}
 PUT /objects/{id}/canonical-name
+POST /objects/{id}/properties
 DELETE /objects/{id}
 ```
 
-The canonical-name public/lifecycle contract remains owned by `object.md`; its focused persistence/concurrency revalidation after `revision` introduction is closed by [`object-revision.md`](object-revision.md) and must be read through that cross-operation owner until the next lossless consolidated-owner refresh.
+`POST /objects/{id}/properties` is route-locally full-sweep closed but is still awaiting the final lossless absorption into `object.md`; until that mechanical consolidation is completed, use the dedicated route owner listed below together with `object-revision.md`.
 
 The dedicated legacy WIPs that existed only for already-absorbed full-swept routes have been removed after lossless absorption; Git history remains the historical record.
 
@@ -163,33 +164,38 @@ Current owner for the ratified M4 `objects.revision` direction.
 Use it for:
 
 ```text
-revision as universal internal intrinsic-row generation token
+revision as universal intrinsic-row generation token
 CREATE explicitly inserts revision = 1
-all prepared/derived intrinsic mutations use expected_revision
-revision mismatch -> no stale commit + bounded retry
+all prepared intrinsic mutations use expected_revision
 persisted intrinsic row mutation increments revision atomically
 RENAME focused revision revalidation completed
-DATA_CHANGE integration during its active full sweep
+DATA_CHANGE full sweep completed under revision CAS
 SCHEMA_CHANGE future handoff from intrinsic fingerprint to expected revision
 revision scope excludes ownership/Relationship facts outside objects
 ```
 
 The revision is technical persistence/concurrency state and is not automatically exposed in public Object or lifecycle DTOs.
 
-### [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md) — ACTIVE INPUT / DATA_CHANGE full-sweep revalidation
+### [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md) — ACTIVE INPUT / DATA_CHANGE full-sweep closed pending absorption
 
-Current route-local owner for the active `POST /objects/{id}/properties` full sweep.
+Current route-local owner for the completed `POST /objects/{id}/properties` full sweep until lossless absorption into `object.md`.
 
-Already-ratified current points include:
+Closed route direction includes:
 
 ```text
 atomic unordered SET/REMOVE operation set
 requested-effects-only semantic validation
-cheap/no-material-extra-work no-op elision rule
+application-layer full properties mutation/replacement
+universal expected_revision CAS
+cheap/no-material-extra-work no-op elision
 exact changed-property lifecycle delta
+bounded stale retry with exhaustion -> 500 internal_error
+no normal public 409
+warm real change target = 2 DB statements + COMMIT
+warm no-op target = 1 DB statement
 ```
 
-The hot mutation data path, universal expected-revision integration and final concurrency/failure closure remain under active revalidation.
+Do not delete this file or the older `object-data-change-discovery.md` source until the lossless absorption check against `object.md` is complete.
 
 ### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / cross-operation Object component persistence
 
@@ -327,7 +333,9 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`object-data-change-discovery.md`](object-data-change-discovery.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their historical full-sweep contents are owned by `object.md`; the canonical-name focused revision revalidation is now closed in [`object-revision.md`](object-revision.md). Git history remains the historical record for the removed route-only files.
+`object-data-change-discovery.md` is retained only as historical/source evidence until the newly closed route owner is absorbed into `object.md`; its older complete-candidate-revalidation/fingerprint-era assumptions do not override the closed DATA_CHANGE route owner or `object-revision.md`.
+
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are owned by `object.md`, and the superseded files were deleted after lossless absorption. Git history remains the historical record.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
