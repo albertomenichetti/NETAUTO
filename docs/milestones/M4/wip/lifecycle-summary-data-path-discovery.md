@@ -41,23 +41,29 @@ not automatically
 
 Consequently `before_state` / `after_state`, where retained as persistence carriers, may contain different semantic shapes for different event kinds.
 
-Ratified example:
+Ratified Object examples:
 
 ```text
-Object.RENAME
+RENAME
     before  = { canonical_name: old_name }
     after   = { canonical_name: new_name }
+
+DATA_CHANGE
+    exact binding context = (template_id, template_version)
+    changed properties only
+    property identity = (declaring_template_id, property_name)
+    each before/after = canonical value | ABSENT
 ```
 
-A complete Object snapshot is not required for RENAME because all other Object fields are outside that operation's mutation responsibility.
+A complete Object snapshot is not required for either operation because unrelated Object state is outside their mutation responsibility.
 
-DATA_CHANGE and SCHEMA_CHANGE payload boundaries remain subject to their own full-sweep review. CREATE/DELETE may legitimately require broader historical state because a resource enters or leaves current existence.
+SCHEMA_CHANGE payload boundary remains subject to its own full-sweep review. CREATE/DELETE may legitimately require broader historical state because a resource enters or leaves current existence.
 
 ## Current persistence behavior
 
 The delivered lifecycle persistence uses a shared row shape and the current collection path can select/deserialize complete event rows, including historical JSONB carriers.
 
-When an event kind carries large property state, this can be materially larger than the metadata needed to render a collection page.
+When an event kind carries property transition state, this can be materially larger than the metadata needed to render a collection page.
 
 A summary collection should not transfer or decode those payloads merely because they are stored in the same persistence row.
 
@@ -112,14 +118,48 @@ Conceptually:
 RENAME
     -> old/new canonical_name transition
 
+DATA_CHANGE
+    -> exact changed-property delta
+    -> exact ObjectTemplate binding context
+    -> value-vs-ABSENT semantics
+
 CREATE / DELETE
     -> broader snapshot carrier where their final contracts require it
 
-DATA_CHANGE / SCHEMA_CHANGE
-    -> exact operation-specific carrier to be decided by their owners
+SCHEMA_CHANGE
+    -> exact operation-specific carrier to be decided by its owner
 ```
 
 Ownership history remains represented by dedicated ATTACH/DETACH events rather than being embedded into intrinsic event payloads.
+
+## DATA_CHANGE detail data consequence
+
+The ratified DATA_CHANGE history does not require reading or decoding a complete historical Object property map merely because the Object may contain many properties.
+
+A DATA_CHANGE detail payload scales with the number and size of properties that actually changed in that event:
+
+```text
+K_changed = number of changed semantic properties in the event
+
+historical transition payload
+    -> O(K_changed + changed value size)
+
+not automatically
+    -> O(total Object property count)
+```
+
+The exact persistence representation is still open. If the shared lifecycle row keeps JSONB transition carriers, those carriers must encode the exact binding and semantic property deltas without requiring reconstruction from current ObjectTemplate state during lifecycle reads.
+
+Therefore a lifecycle detail read for DATA_CHANGE should not need:
+
+```text
+current ObjectTemplate reads
+DataType reads
+semantic cache
+current Object properties
+```
+
+The event itself must persist enough historical semantic identity/value context to decode the transition independently of later current-state/model changes.
 
 ## Decoder separation
 
@@ -198,5 +238,7 @@ Lifecycle collection optimization is not merely an HTTP serialization change.
 The target data path should avoid reading and decoding complete historical transition carriers when the caller requested only a paginated collection. Full kind-specific payload belongs to single-event detail.
 
 The event-detail payload itself follows the semantic responsibility of the owning operation; it is not automatically a complete aggregate snapshot.
+
+For DATA_CHANGE specifically, the detail payload is bounded by the actually changed property delta and contains sufficient historical binding/property semantic identity to avoid current model-plane lookups during readback.
 
 Locking, persistence carrier finalization and concurrency realization remain deferred to their owning later phases.
