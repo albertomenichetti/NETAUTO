@@ -151,6 +151,8 @@ reference removal commits first
     -> Object DELETE may become admissible
 ```
 
+This complete database-enforced lifetime graph is an explicit dependency of the current one-statement DELETE contract. If the set of current Object lifetime references changes, or if any FK/arbitration mechanism is removed, weakened, deferred, replaced or moved outside database-enforced arbitration, `Object.DELETE` must be reopened and revalidated. The existing one-statement path and `delete_blocked` failure mapping must not be assumed to remain correct automatically after such a persistence change.
+
 ## Retained discovery takeaway
 
 ```text
@@ -166,4 +168,7 @@ statement-fusion qualification:
 
 architecture handoff:
     every TO-BE Object lifetime dependency must have DELETE-arbitrating enforcement
+
+revalidation trigger:
+    any material change to that DB-enforced lifetime graph reopens Object.DELETE
 ```
