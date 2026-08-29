@@ -130,7 +130,7 @@ CREATE
 LIST
 GET Object
 canonical-name mutation
-properties mutation after DATA_CHANGE absorption
+properties mutation / DATA_CHANGE
 GET schema
 component navigation
 ATTACH
@@ -153,9 +153,7 @@ POST /objects/{id}/properties
 DELETE /objects/{id}
 ```
 
-`POST /objects/{id}/properties` is route-locally full-sweep closed but is still awaiting the final lossless absorption into `object.md`; until that mechanical consolidation is completed, use the dedicated route owner listed below together with `object-revision.md`.
-
-The dedicated legacy WIPs that existed only for already-absorbed full-swept routes have been removed after lossless absorption; Git history remains the historical record.
+The DATA_CHANGE route has completed its full sweep and lossless absorption into `object.md`. Its dedicated route/source WIPs were removed afterward; Git history remains the historical record.
 
 ### [`object-revision.md`](object-revision.md) — SPINE / cross-operation intrinsic Object generation
 
@@ -169,33 +167,12 @@ CREATE explicitly inserts revision = 1
 all prepared intrinsic mutations use expected_revision
 persisted intrinsic row mutation increments revision atomically
 RENAME focused revision revalidation completed
-DATA_CHANGE full sweep completed under revision CAS
+DATA_CHANGE full sweep absorbed into object.md under revision CAS
 SCHEMA_CHANGE future handoff from intrinsic fingerprint to expected revision
 revision scope excludes ownership/Relationship facts outside objects
 ```
 
 The revision is technical persistence/concurrency state and is not automatically exposed in public Object or lifecycle DTOs.
-
-### [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md) — ACTIVE INPUT / DATA_CHANGE full-sweep closed pending absorption
-
-Current route-local owner for the completed `POST /objects/{id}/properties` full sweep until lossless absorption into `object.md`.
-
-Closed route direction includes:
-
-```text
-atomic unordered SET/REMOVE operation set
-requested-effects-only semantic validation
-application-layer full properties mutation/replacement
-universal expected_revision CAS
-cheap/no-material-extra-work no-op elision
-exact changed-property lifecycle delta
-bounded stale retry with exhaustion -> 500 internal_error
-no normal public 409
-warm real change target = 2 DB statements + COMMIT
-warm no-op target = 1 DB statement
-```
-
-Do not delete this file or the older `object-data-change-discovery.md` source until the lossless absorption check against `object.md` is complete.
 
 ### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / cross-operation Object component persistence
 
@@ -330,12 +307,9 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`to-be-api-object-attach-batch.md`](to-be-api-object-attach-batch.md)
 - [`to-be-api-object-detach-batch.md`](to-be-api-object-detach-batch.md)
 - [`to-be-api-object-schema.md`](to-be-api-object-schema.md)
-- [`object-data-change-discovery.md`](object-data-change-discovery.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-`object-data-change-discovery.md` is retained only as historical/source evidence until the newly closed route owner is absorbed into `object.md`; its older complete-candidate-revalidation/fingerprint-era assumptions do not override the closed DATA_CHANGE route owner or `object-revision.md`.
-
-The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are owned by `object.md`, and the superseded files were deleted after lossless absorption. Git history remains the historical record.
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name`, `POST /objects/{id}/properties` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are owned by `object.md`, and superseded route/source files were deleted after lossless absorption. Git history remains the historical record.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
