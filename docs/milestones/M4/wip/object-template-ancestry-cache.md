@@ -108,7 +108,13 @@ If a cold load for an existing lineage returns ancestry data without the require
 
 ## ATTACH usage
 
-For batch ATTACH, after bulk-reading the requested child Objects, collect the DISTINCT stable `child.template_id` values and evaluate each against the resolved slot `target_template_id`.
+For batch ATTACH, Object stable lineage knowledge is prepared cache-first as:
+
+```text
+ObjectLineageCache[object_id] -> template_id
+```
+
+ATTACH collects the DISTINCT requested child `template_id` values from that READY stable Object-lineage knowledge and evaluates each against the current materialized slot `target_template_id`.
 
 ```text
 READY positive
@@ -121,7 +127,9 @@ MISS
     -> accumulate source id for one bounded bulk fill
 ```
 
-If any already-READY source is incompatible, the request may fail before filling unrelated misses because the atomic batch is already known to be inadmissible.
+All ancestry MISS sources required by the operation are filled together from `object_template_ancestry`; each source receives its full denormalized neighborship/ancestor set before being marked READY. There is no recursive ObjectTemplate traversal on the ATTACH data plane and no N+1 query per child/source/target pair.
+
+The Object-lineage cache is not defined by this file and does not make this cache authoritative for current Object existence. This file owns only stable ObjectTemplate ancestry knowledge.
 
 ## Lifecycle / invalidation
 
