@@ -84,6 +84,10 @@ implicitly delete a subtree
 implicitly rewrite blockers
 ```
 
+Current lifetime blockers are external current facts whose semantics require the Object to remain alive, including current ownership edges involving the Object and current factual Relationship runtime-closure references involving the Object. Object-owned derived state such as `object_component_slots` is not itself a blocker and is removed with the Object; historical lifecycle state is not a live reference and does not block deletion.
+
+Object DELETE owns only the admission needed to terminate the selected Object lifetime. It does not perform a proactive consistency sweep, schema recertification, blocker census or global-domain audit.
+
 ## Public `delete_blocked` contract
 
 The public failure remains intentionally bounded.
@@ -270,6 +274,48 @@ B. the final persistence boundary can distinguish the failure source
 ```
 
 The route must never map an unrelated persistence defect to `409 delete_blocked` merely because it shares SQLSTATE `23503`.
+
+## Referential-integrity dependency and reopen trigger
+
+The current DELETE contract and one-statement data path deliberately depend on database-enforced referential integrity for Object lifetime arbitration.
+
+In particular, the route assumes that every current external fact whose semantics require an Object to remain alive participates in an atomic database-level arbitration with the root `DELETE FROM objects`, preferably through immediate `RESTRICT` / `NO ACTION` foreign-key semantics or another globally proven database mechanism with equivalent guarantees.
+
+Conceptually:
+
+```text
+current external lifetime reference exists
+    -> root Object DELETE cannot commit
+
+root Object DELETE commits first
+    -> a new conflicting current lifetime reference cannot commit
+```
+
+This database-enforcement assumption is part of the current route contract, not merely a physical optimization. It is what allows Object DELETE to avoid blocker prechecks, blocker enumeration, application-side lifetime scans and consistency sweeps.
+
+Therefore any later persistence change that alters the Object lifetime-reference graph or weakens/removes/replaces the database arbitration mechanism is an explicit DELETE revalidation trigger.
+
+Examples include:
+
+```text
+adding a new current Object reference that must keep the Object alive
+removing or changing an existing lifetime FK
+changing CASCADE / RESTRICT / NO ACTION semantics
+moving a current lifetime dependency outside database-enforced arbitration
+introducing deferred or otherwise materially different enforcement timing
+changing the object_component_slots / object_components lifetime composition
+changing factual Relationship endpoint lifetime enforcement
+```
+
+Such a change must not be treated as transparent to this route. `Object.DELETE` must be reopened and re-proven for lifetime admission, concurrency outcomes, public `delete_blocked` mapping and one-statement correctness before the new persistence design can be considered compatible with the current DELETE contract.
+
+The dependency direction is therefore explicit:
+
+```text
+Object.DELETE one-statement contract
+    depends on
+complete DB-enforced current Object lifetime integrity
+```
 
 ## Lifecycle mapping
 
@@ -479,6 +525,8 @@ All source WIPs remain non-normative discovery history.
 - `409 delete_blocked` lifetime semantics;
 - bounded public failure detail;
 - direct relational lifetime arbitration;
+- explicit dependency on complete database-enforced Object lifetime integrity;
+- mandatory DELETE revalidation if the lifetime-reference graph or its DB arbitration changes materially;
 - no blocker precheck or diagnostic query;
 - no ObjectTemplate/DataType recertification;
 - one fused root DELETE + DELETED lifecycle statement;
