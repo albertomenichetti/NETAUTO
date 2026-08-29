@@ -63,8 +63,9 @@ Working owner for general domain principles explicitly discovered or ratified du
 Current examples include:
 
 ```text
-version number is exact-version identity,
-not a generic temporal/genealogical/semantic order
+version number identifies an exact version
+and orders creation/allocation within one lineage,
+but does not encode genealogy, semantic order or migrability
 
 validity of one exact version
 !=
@@ -75,6 +76,22 @@ they do not speculate about future runtime migrations
 ```
 
 This file is expected to grow as new general principles are ratified.
+
+### [`version-allocation.md`](version-allocation.md) — SPINE / cross-domain version allocation
+
+Current cross-domain owner for the temporal version-number guarantee and the shared `last_versions(id,last_version)` allocator direction.
+
+Use it for:
+
+```text
+created-after => numerically-greater version
+no version-number reuse
+shared allocator across versioned domain families
+logical last_version allocation semantics
+architecture handoff for atomic realization
+```
+
+It does not define semantic compatibility or migrability between versions.
 
 ### [`discovery.md`](discovery.md) — SPINE / discovery framing
 
@@ -161,6 +178,8 @@ Every file listed below remains an **ACTIVE INPUT** to the current working state
 - [`datatype-set-default-discovery.md`](datatype-set-default-discovery.md)
 - [`datatype-set-description-discovery.md`](datatype-set-description-discovery.md)
 
+Version allocation for this family is cross-domain and owned by [`version-allocation.md`](version-allocation.md); operation-local files must not independently redefine numeric allocation semantics.
+
 ## 3.2 ObjectTemplate — ACTIVE INPUT set
 
 - [`objecttemplate-create-discovery.md`](objecttemplate-create-discovery.md)
@@ -179,6 +198,8 @@ Every file listed below remains an **ACTIVE INPUT** to the current working state
 - [`objecttemplate-set-default-discovery.md`](objecttemplate-set-default-discovery.md)
 - [`objecttemplate-set-description-discovery.md`](objecttemplate-set-description-discovery.md)
 - [`objecttemplate-clear-default-discovery.md`](objecttemplate-clear-default-discovery.md)
+
+Version allocation for this family is cross-domain and owned by [`version-allocation.md`](version-allocation.md).
 
 Additional cross-domain handoff:
 
@@ -200,6 +221,8 @@ Additional cross-domain handoff:
 - [`relationshipdefinition-revise-discovery.md`](relationshipdefinition-revise-discovery.md)
 - [`relationshipdefinition-set-default-discovery.md`](relationshipdefinition-set-default-discovery.md)
 - [`relationshipdefinition-clear-default-discovery.md`](relationshipdefinition-clear-default-discovery.md)
+
+Version allocation for this family is cross-domain and owned by [`version-allocation.md`](version-allocation.md).
 
 ---
 
@@ -423,6 +446,9 @@ repository governance / M4 status
 
 general-domain-principles.md
     -> ratified general principles discovered during M4
+
+version-allocation.md
+    -> cross-domain numeric version allocation semantics
 
 current SPINE owner for the relevant family/topic
     -> current working direction
