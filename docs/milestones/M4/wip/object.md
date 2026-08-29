@@ -1,20 +1,32 @@
 # M4 WIP — Object TO-BE consolidated discovery
 
-**Status:** ACTIVE CONSOLIDATION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** ROUTE-OWNER CONSOLIDATED / CROSS-CUTTING OWNERS PENDING / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
 This document is the consolidated working owner for the M4 Object operation family during discovery.
 
-It exists to replace the growing set of route-local and micro-step Object WIPs with one readable current checkpoint while preserving the project rule that everything under `wip/` remains non-normative until deliberately adopted into the M4 contract/architecture set.
+It replaces route-local fragmentation with one readable checkpoint for the current Object public surface, route-local semantics, logical data paths, cache boundaries, candidate costs, concurrency guarantees and architecture handoffs.
 
-During this first consolidation pass the older route-local files still remain in the repository as comparison evidence. After a lossless consistency check, superseded micro-WIPs can be removed; Git history remains the historical record.
+Everything under `wip/` remains non-normative. Local closure wording is only a discovery checkpoint and does not authorize implementation.
 
-Detailed cross-operation component persistence is intentionally kept outside this file and is currently owned by the materialization/schema WIPs that will be consolidated separately into `object-components-persistence.md`.
+The route-owner comparison pass has been completed against the current route-local Object owners. Older route-local and micro-step files remain temporarily in the tree only until the two cross-cutting consolidations are complete and references can be cleaned safely.
 
-Detailed Object schema-migration mechanics are intentionally kept outside this file and will be consolidated separately into `object-schema-change.md`.
+Detailed cross-operation component persistence is intentionally kept outside this file and will be consolidated into:
 
-## Shared Object runtime candidate
+```text
+object-components-persistence.md
+```
+
+Detailed Object schema-migration mechanics are intentionally kept outside this file and will be consolidated into:
+
+```text
+object-schema-change.md
+```
+
+Git history is the historical record for superseded discovery checkpoints after cleanup.
+
+# Shared Object runtime candidate
 
 Current intrinsic Object state remains:
 
@@ -27,7 +39,7 @@ objects
     properties JSONB
 ```
 
-Current Object component/ownership candidate is:
+Current component/ownership candidate is:
 
 ```text
 object_component_slots
@@ -45,7 +57,7 @@ object_components
 
 `object_component_slots` contains one row for every component slot currently effective for one Object, including empty slots.
 
-It is not a second semantic authority. The semantic source remains the Object current exact ObjectTemplateVersion and its certified immutable effective schema. The data-plane table is a transactionally maintained runtime derivative.
+It is not a second semantic authority. The semantic source remains the Object current exact ObjectTemplateVersion and its certified immutable effective schema. The slot table is a transactionally maintained data-plane derivative.
 
 Fundamental candidate invariant:
 
@@ -53,26 +65,26 @@ Fundamental candidate invariant:
 MaterializedSlots(O)
     ==
 EffectiveComponentSlots(
-    O.template_id,
-    O.template_version
-)
+        O.template_id,
+        O.template_version
+    )
 ```
 
-The Object exact binding and the corresponding materialized slot set must become visible atomically.
+The Object exact binding and corresponding materialized slot set must become atomically visible.
 
-Current semantic slot identity is:
+Current semantic slot identity:
 
 ```text
 (slot_declaring_template_id, slot_name)
 ```
 
-Current public/runtime slot lookup is:
+Current public/runtime slot lookup:
 
 ```text
 (object_id, slot_name)
 ```
 
-The current ownership-edge candidate references the current semantic slot relationally:
+Current ownership-edge relational dependency candidate:
 
 ```text
 (parent_object_id, slot_declaring_template_id, slot_name)
@@ -89,20 +101,20 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
-| `POST /objects` | public contract retained; slot persistence revalidated | current admission + READY semantic cache + Object/slot materialization |
+| `POST /objects` | public contract retained; slot persistence revalidated | current binding admission + READY semantic cache + Object/slot materialization |
 | `GET /objects` | route-local closed | one statement on `objects` |
-| `GET /objects/{id}` | revalidated after slot materialization | one current data-plane statement, no component-schema cache |
+| `GET /objects/{id}` | route-local revalidated after slot materialization | one current data-plane statement, no component-schema cache |
 | `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
 | `POST /objects/{id}/properties` | route-local closed | binding read + READY semantic cache + short protected UoW |
 | `GET /objects/{id}/schema` | route-local closed | one Object -> ObjectTemplate PK-to-PK statement |
 | `POST /objects/{id}/schema` | public surface retained; execution active revalidation | immutable migration plan + intrinsic revalidation + slot-delta maintenance |
-| `GET /objects/{parent}/components/{slot}` | route-local discovery checkpoint | one current data-plane statement |
+| `GET /objects/{parent}/components/{slot}` | route-local checkpoint | one current data-plane statement |
 | `POST /objects/{parent}/components/{slot}/attach` | public semantics retained; execution revalidated | current slot materialization + ancestry cache + graph admission + FK arbitration |
 | `POST /objects/{parent}/components/{slot}/detach` | public semantics retained; execution revalidated | set-based current-edge delete + lifecycle |
 | `GET /objects/{child}/owner` | working current-fact candidate | one child-rooted statement over `objects` + `object_components` |
 | `DELETE /objects/{id}` | route-local closed | one fused Object DELETE + DELETED lifecycle statement |
 
-Object-relative Relationship and Lifecycle routes are listed near the end of this file for navigation, but their semantic/detail closure remains owned by the later Relationship/Lifecycle discovery passes.
+Object-relative Relationship and Lifecycle routes remain owned by their later top-down discovery passes even when the URL is rooted under `/objects`.
 
 # 1. CREATE Object
 
@@ -113,7 +125,9 @@ POST /api/v1/core/objects
 Content-Type: application/json
 ```
 
-Request candidate:
+Query parameters: none.
+
+Request:
 
 ```json
 {
@@ -145,18 +159,20 @@ Selector semantics:
 
 ```text
 version present
-    -> exact (template_id, version)
+    -> request exact (template_id, version)
 
 version omitted
-    -> current default_version of template_id
+    -> resolve current default_version of template_id
 
-no default
-    -> failure
+no current default
+    -> implicit CREATE fails
 
 no latest/highest-PUBLISHED fallback
 ```
 
-The Object id is server-generated.
+Explicit JSON `null` is not omission.
+
+The Object id is server-generated and never caller-supplied.
 
 `canonical_name`:
 
@@ -173,12 +189,16 @@ not identity
 Properties remain sparse canonical JSONB:
 
 ```text
-optional scalar/list omitted -> key absent
-optional LIST = []            -> canonical key absence
-JSON null                     -> invalid
-required property omitted     -> invalid
-required LIST = []            -> invalid
+properties omitted          -> {}
+optional SCALAR omitted     -> key absent
+optional LIST omitted       -> key absent
+optional LIST = []          -> canonical key absence
+JSON null runtime value     -> invalid
+required property omitted   -> invalid
+required LIST = []          -> invalid
 ```
+
+`migration_default` is not a CREATE default mechanism.
 
 Success:
 
@@ -207,9 +227,30 @@ STEP 3 — short mutation UoW
     + CREATED lifecycle
 ```
 
-STEP 1 must not load effective schema, parent chains, DataType semantics or unrelated model metadata.
+STEP 1 always consults PostgreSQL. Cache state must never resolve a mutable current default or prove current PUBLISHED status.
 
-STEP 2 validates only from complete READY exact-version semantic cache state. Missing/partial immutable knowledge is completed before validation and outside the mutation UoW.
+Explicit selector:
+
+```text
+(T,V)
+    -> exact version must exist and currently be PUBLISHED
+```
+
+Implicit selector:
+
+```text
+T
+    -> resolve current default V
+    -> exact (T,V) must currently be PUBLISHED
+```
+
+Once STEP 1 resolves an exact binding, the command stays pinned to it. A concurrent later `SET_DEFAULT` does not retarget the in-flight CREATE.
+
+STEP 1 must not load effective schema, parent chains, DataType semantics, component declarations or unrelated model metadata.
+
+STEP 2 validates only from complete READY exact-version semantic cache state. The cache may contain stable direct-creation knowledge such as `abstract`, effective property semantics, exact DataTypeVersion semantics and compiled validators, but not mutable PUBLISHED/default state.
+
+Missing or partial immutable knowledge is completed before validation and outside the mutation UoW. No model-plane PostgreSQL lock is held during cache fill, compilation, property validation or canonicalization.
 
 Current STEP 3 candidate:
 
@@ -229,6 +270,17 @@ COMMIT
 ```
 
 Object state, exact binding, materialized slot set and CREATED lifecycle transition must be atomic.
+
+Required concurrency outcome:
+
+```text
+DEPRECATE wins before final admission
+    -> CREATE cannot commit the new binding
+
+CREATE final admission/protection wins first
+    -> CREATE may commit
+    -> DEPRECATE waits/proceeds afterward
+```
 
 Warm route statement direction remains approximately:
 
@@ -279,16 +331,21 @@ canonical_name
 
 Unknown filter values return an empty `200` page rather than `404`.
 
-Response item:
+Response:
 
 ```json
 {
-  "id": "<object-id>",
-  "canonical_name": "server-1",
-  "object_template": {
-    "id": "<template-id>",
-    "version": 4
-  }
+  "items": [
+    {
+      "id": "<object-id>",
+      "canonical_name": "server-1",
+      "object_template": {
+        "id": "<template-id>",
+        "version": 4
+      }
+    }
+  ],
+  "next_cursor": null
 }
 ```
 
@@ -338,6 +395,8 @@ Physical index review remains architecture-wide.
 GET /api/v1/core/objects/{object_id}
 ```
 
+Query parameters/body: none.
+
 Missing Object:
 
 ```text
@@ -383,6 +442,8 @@ ObjectReference
     id
     canonical_name
 ```
+
+`properties` is the complete current canonical sparse property map.
 
 `components` contains every current effective slot, including empty slots. If the Object has no component slots:
 
@@ -466,9 +527,9 @@ Internal grouping uses:
 (slot_declaring_template_id, slot_name)
 ```
 
-while public representation exposes only `slot_name`.
+while the public representation exposes only `slot_name`.
 
-The SQL carrier must preserve these semantic cases:
+The SQL carrier must preserve:
 
 ```text
 parent absent
@@ -484,9 +545,9 @@ slot populated
     -> current children with current canonical names
 ```
 
-The preferred logical result must avoid transferring the potentially large root `properties` payload once per child. The exact physical carrier is deliberately open between equivalent one-statement realizations such as aggregated fact carriers or tagged fact streams.
+The preferred logical result must avoid transferring the potentially large root `properties` payload once per child. The exact physical carrier remains open between equivalent one-statement realizations such as aggregated fact carriers or tagged fact streams.
 
-Required logical work remains:
+Required logical work:
 
 ```text
 O(1 + S + C)
@@ -495,13 +556,19 @@ O(1 + S + C)
 where:
 
 ```text
-S = effective current slot count
+S = current effective slot count
 C = direct child count
 ```
 
-Typical workload expectation used during revalidation is `S << C`; the GET must read the `C` component facts anyway, making the additional `S` current-slot rows a small incremental data-plane cost in the common case.
+The typical workload expectation used in this revalidation is:
 
-The key comparison against the former warm cache path is therefore:
+```text
+S << C
+```
+
+The GET must read the `C` membership/child facts anyway, so reading the additional `S` small current-slot facts is a small incremental data-plane cost in the common case.
+
+Key comparison:
 
 ```text
 former warm path
@@ -517,13 +584,11 @@ current materialized-slot candidate
     + no multi-statement coherent-read protocol
 ```
 
-Because the slot materialization is assumed to exist independently for other Object workloads, its storage/write-maintenance cost is not attributed to this GET decision.
+Because slot materialization exists independently for other Object workloads, its storage/write-maintenance cost is not attributed to this GET decision.
 
 ## Concurrency/read semantics
 
 One response must be explainable by one current PostgreSQL statement snapshot.
-
-The candidate correctly handles:
 
 ```text
 SCHEMA_CHANGE
@@ -535,7 +600,7 @@ ATTACH
 
 DETACH
     -> child present before commit / absent after commit
-    -> current slot remains visible as [] when last child is removed
+    -> slot remains visible as [] when last child is removed
 
 child RENAME
     -> old or new child canonical_name from the same statement snapshot
@@ -601,7 +666,7 @@ Success:
 204 No Content
 ```
 
-Same-name assignment is not treated as a semantic no-op. The command follows the normal mutation path and may emit a normal `RENAME` lifecycle event.
+Same-name assignment is not treated as a semantic no-op. There is no pre-write equality check; a same-name request follows the normal mutation path and may emit a normal `RENAME` lifecycle event.
 
 ## Candidate execution
 
@@ -612,6 +677,8 @@ Q1 unlocked preliminary complete intrinsic Object snapshot
 BEGIN
 
 Q2 UPDATE objects.canonical_name by Object PK
+    0 rows -> 404 resource_not_found
+    1 row  -> continue
 
 Q3 INSERT RENAME lifecycle event
 
@@ -619,6 +686,10 @@ COMMIT
 ```
 
 Current Object row correctness is strong. RENAME lifecycle before/after snapshot precision under concurrent unrelated intrinsic mutation is deliberately best-effort/approximate.
+
+No explicit Object row lock or optimistic fingerprint is required route-locally. Ordinary PostgreSQL row-update serialization is the current rendezvous for concurrent RENAME assignments.
+
+The mutation updates only `canonical_name`; it must not overwrite concurrent `properties`, exact binding, ownership or Relationship state.
 
 No ObjectTemplate, DataType, effective-schema, ancestry, ownership or Relationship knowledge is required.
 
@@ -659,14 +730,14 @@ REMOVE has no value
 array order has no semantic mutation-order meaning
 ```
 
-Sparse semantics remain:
+Sparse semantics:
 
 ```text
-REMOVE optional -> key absent
-SET optional LIST = [] -> prepared REMOVE/key absence
-JSON null -> invalid
-REMOVE required -> semantic failure
-SET required LIST = [] -> semantic failure
+REMOVE optional          -> key absent
+SET optional LIST = []   -> prepared REMOVE/key absence
+JSON null                -> invalid
+REMOVE required          -> semantic failure
+SET required LIST = []   -> semantic failure
 ```
 
 Success:
@@ -676,6 +747,8 @@ Success:
 ```
 
 A semantic no-op also returns `204` but performs no UPDATE and emits no fake DATA_CHANGE event.
+
+This operation mutates only runtime properties. It does not directly change Object identity/name, exact schema binding, ownership/components or Relationships.
 
 ## Candidate execution
 
@@ -697,12 +770,16 @@ STEP 3
     -> apply prepared effects to fresh properties
 ```
 
-Binding mismatch causes no mutation and a bounded restart from STEP 1/2.
+An existing Object may remain pinned to a DEPRECATED exact ObjectTemplateVersion. Property mutation is not a new model-plane binding admission and therefore does not require current PUBLISHED status or current default resolution.
+
+Untouched persisted properties remain valid by construction while the exact binding remains unchanged; the route validates only the requested semantic effects rather than re-certifying the complete Object.
+
+Binding mismatch causes no mutation and a bounded restart from STEP 1/2. Cache fill never occurs while holding the Object lock.
 
 Real change:
 
 ```text
-protected Object read
+protected complete Object read
 UPDATE complete properties JSONB
 INSERT DATA_CHANGE lifecycle
 COMMIT
@@ -711,7 +788,7 @@ COMMIT
 No-op:
 
 ```text
-protected Object read
+protected complete Object read
 no UPDATE
 no lifecycle INSERT
 ```
@@ -725,7 +802,22 @@ no-op      = 2 PostgreSQL statements
 
 Cold semantic-cache fill happens before the protected UoW.
 
-This route does not read ownership/components/Relationships and introduces no new Object denormalization.
+Concurrency direction:
+
+```text
+property mutation x property mutation
+    -> protected fresh-state application prevents lost JSONB updates
+
+property mutation x SCHEMA_CHANGE
+    -> property mutation commits on current binding first
+       OR sees binding mismatch and restarts on the new binding
+
+property mutation x DELETE
+    -> mutation commits first OR later mutation observes absence
+    -> no resurrection
+```
+
+This route introduces no new Object denormalization.
 
 # 6. GET current Object schema binding
 
@@ -751,7 +843,9 @@ The route answers only:
 which exact ObjectTemplate binding governs this Object now?
 ```
 
-It does not expose effective schema, properties, components or other ObjectTemplate metadata.
+It does not expose effective schema, properties, components, namespace, description, lifecycle status, default state or other ObjectTemplate metadata.
+
+`template_id` is authoritative lineage identity. `template_name` is stable human-readable convenience and does not participate in identity.
 
 ## Data path
 
@@ -768,6 +862,8 @@ object_templates PK(template_id)
 0 locks
 0 semantic schema reconstruction
 ```
+
+A cache for stable template name is not justified because PostgreSQL must already be consulted for current Object existence/binding and the PK-to-PK join adds no round trip.
 
 Concurrent SCHEMA_CHANGE is observed before or after commit, never as an intermediate binding.
 
@@ -813,7 +909,7 @@ GET /objects/{id}/schema
 
 ## Current high-level candidate
 
-The public surface is retained, while the execution model remains actively revalidated after `object_component_slots`.
+The public surface is retained while the execution model remains actively revalidated after `object_component_slots`.
 
 Current component-side direction:
 
@@ -855,7 +951,7 @@ Existing `object_components` edges remain unchanged on a successful normal migra
 
 The new materialization reopens the earlier assumption that outgoing ownership membership must participate in the optimistic Object fingerprint. Preferred direction is now intrinsic Object fingerprinting plus final relational slot/edge arbitration, but exact fingerprint/UoW decomposition remains OPEN.
 
-Detailed migration semantics, cache inputs, property rules, fingerprint and final UoW are intentionally deferred to the dedicated consolidated `object-schema-change.md` owner to be created in the next consolidation pass.
+Detailed migration semantics, cache inputs, property rules, fingerprint and final UoW belong to the dedicated `object-schema-change.md` consolidation.
 
 # 8. GET one component slot
 
@@ -867,14 +963,18 @@ GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
     &limit=...
 ```
 
-There is no generic public cross-slot collection in the TO-BE candidate:
+`slot_name` is a path resource identity, not an optional search filter.
+
+The TO-BE surface does not retain a generic cross-slot route:
 
 ```text
 GET /objects/{parent}/components
     -> not retained
 ```
 
-The complete Object GET already exposes all direct slots/children; the specialized route exists for selective bounded pagination of one slot.
+The complete Object GET already exposes all direct slots/children; this specialized route exists for selective bounded pagination of one potentially large slot.
+
+No additional component filter is part of the current candidate; query parameters are only `cursor` and `limit`.
 
 Response uses the same child representation as Object GET:
 
@@ -893,6 +993,9 @@ Response uses the same child representation as Object GET:
 Public outcomes:
 
 ```text
+malformed slot carrier
+    -> normal 400 invalid_request boundary
+
 parent absent
     -> 404 resource_not_found / object
 
@@ -928,16 +1031,31 @@ limit
 
 `slot_declaring_template_id` remains internal opaque cursor material. Same-name semantic slot replacement invalidates an old cursor rather than silently continuing against a different collection.
 
+Static malformed/incompatible cursor carriers return:
+
+```text
+400 invalid_cursor
+```
+
 Current-state precedence:
 
 ```text
-parent absent -> 404 object
-slot absent -> 404 object_component_slot
-slot present but cursor declaring lineage differs -> 400 invalid_cursor
-otherwise -> normal continuation
+parent absent
+    -> 404 object
+
+slot absent
+    -> 404 object_component_slot
+
+slot present but cursor declaring lineage differs
+    -> 400 invalid_cursor
+
+otherwise
+    -> normal continuation
 ```
 
 ATTACH/DETACH, child RENAME and target widening do not invalidate a cursor merely because membership/display state changes; cross-request repeatable membership is not promised.
+
+The route reuses the existing versioned canonical-JSON + URL-safe-Base64 cursor envelope with a distinct route identity; no global cursor-envelope version bump is introduced by this route-local change.
 
 ## Data path
 
@@ -957,6 +1075,14 @@ objects parent
 ```
 
 All mutable response facts and current semantic cursor compatibility come from one statement snapshot.
+
+Cursor generation itself adds:
+
+```text
+0 DB statements
+0 model-plane reads
+0 cache lookups
+```
 
 Final indexes/plan evidence remain architecture work.
 
@@ -991,7 +1117,7 @@ add membership only
 no implicit DETACH/replacement
 ```
 
-Any requested child already owning any edge causes whole-batch failure, including the exact same current parent/slot edge. There is no convergent `ON CONFLICT` success.
+Any requested child already owning any edge causes whole-batch failure, including the exact same current parent/slot edge. There is no convergent `ON CONFLICT` success and no partial success.
 
 Success:
 
@@ -1013,7 +1139,15 @@ target_template_id
 
 from current data-plane state.
 
-No parent exact-template read or component-schema cache lookup is required merely to resolve the current slot contract.
+```text
+parent absent
+    -> 404 resource_not_found
+
+parent present + slot absent
+    -> 409 ownership_slot_unavailable
+```
+
+No parent exact-template read or component-schema cache lookup is required merely to resolve the current slot contract. A parent pinned to a DEPRECATED exact OTV remains governed by its current materialized slot contract; ATTACH is not a new parent-binding admission.
 
 One bulk child Object read returns:
 
@@ -1024,6 +1158,8 @@ canonical_name
 ```
 
 and stable-lineage compatibility is checked against slot `target_template_id` through the stable ObjectTemplate ancestry cache.
+
+A READY ancestry source contains its complete sparse ancestor set, including self. Missing source lineages are loaded in bounded bulk; there is no per-child N+1 ancestry query.
 
 ## Current mutation candidate
 
@@ -1044,7 +1180,7 @@ Q4 bulk ATTACH_TO lifecycle INSERT
 COMMIT
 ```
 
-Graph admission precedence remains:
+Graph admission precedence:
 
 ```text
 owned requested child
@@ -1076,7 +1212,42 @@ graph gate + protected root check
     -> DAG acyclicity
 ```
 
-The slot FK becomes the preferred narrow ATTACH x SCHEMA_CHANGE arbitration point for slot REMOVE/semantic replacement. Target widening is non-key and semantically monotonic.
+The slot FK is the preferred narrow ATTACH x SCHEMA_CHANGE arbitration point for slot REMOVE/semantic replacement. Target widening is non-key and semantically monotonic.
+
+Parent/child canonical names used in ATTACH lifecycle history remain best-effort display metadata; no extra DB reread is added solely for display-name freshness.
+
+Candidate public/failure precedence:
+
+```text
+1. invalid wire/static request
+    -> 400 invalid_request
+
+2. parent path target absent
+    -> 404 resource_not_found
+
+3. parent appears in child_object_ids
+    -> 422 semantic_validation_failed / self_reference
+
+4. current slot unavailable
+    -> 409 ownership_slot_unavailable
+
+5. one or more child Objects absent
+    -> 422 referenced_resource_not_found
+
+6. one or more present children incompatible with slot target lineage
+    -> 422 semantic_validation_failed
+
+7. protected graph admission finds an owned requested child
+    -> 409 ownership_conflict
+
+8. otherwise root(parent) is requested
+    -> 409 ownership_cycle
+
+9. residual edge-insert constraint race
+    -> translate from the known violated constraint class
+```
+
+A final mapping is still required for the race where the current semantic slot disappears/replaces after unlocked preparation but before edge INSERT. No diagnostic-only query may be added solely to enrich this classification.
 
 Candidate successful costs:
 
@@ -1090,7 +1261,7 @@ The only normal semantic-cache cold fill left is stable child-lineage ancestry.
 Still open:
 
 ```text
-final failure mapping when slot disappears/replaces after unlocked preparation
+final slot-disappearance/replacement failure mapping
 final direct parent-FK necessity
 architecture-wide FK/locking/deadlock proof
 ```
@@ -1112,6 +1283,20 @@ Request:
     "<child-2>"
   ]
 }
+```
+
+Static validation:
+
+```text
+malformed/missing body
+missing/empty child_object_ids
+malformed UUID carriers
+duplicate child_object_ids
+invalid transport carriers
+    -> 400 invalid_request
+
+parent_object_id included in child_object_ids
+    -> 422 semantic_validation_failed / self_reference
 ```
 
 DETACH is strict, non-convergent and atomic:
@@ -1166,22 +1351,38 @@ Q2 one bulk DETACH_FROM lifecycle INSERT
 COMMIT
 ```
 
-Failure direction:
+Failure precedence:
 
 ```text
-parent absent -> 404
-requested child absent -> 422 referenced_resource_not_found
-incomplete exact edge set -> 409 ownership_conflict
+1. static invalid request
+    -> 400 invalid_request
+
+2. self-reference
+    -> 422 semantic_validation_failed / self_reference
+
+3. parent absent
+    -> 404 resource_not_found
+
+4. requested child absent
+    -> 422 referenced_resource_not_found
+
+5. requested exact edge set incomplete
+    -> 409 ownership_conflict
+
+6. persistence/lifecycle failure
+    -> normal bounded persistence classification
 ```
 
 No diagnostics-only DB reads are introduced.
 
+Canonical names used in lifecycle history remain best-effort historical display metadata.
+
 Candidate cost:
 
 ```text
-success = 2 PostgreSQL statements + COMMIT
+success                  = 2 PostgreSQL statements + COMMIT
 failure classified by Q1 = 1 statement + rollback
-static failure = 0 DB
+static failure            = 0 DB
 ```
 
 A parent Object stabilization statement is no longer preferred solely as generic SCHEMA_CHANGE rendezvous. Edge removal cannot create a graph/schema violation; slot REMOVE/replacement arbitration occurs at the referenced slot FK boundary.
@@ -1205,7 +1406,7 @@ OwnerProjection
     slot_name
 ```
 
-The public-surface shape remains a point to recheck during the Object consistency sweep before architecture freeze; this section must not silently create a new public contract from the current implementation alone.
+The public-surface shape remains a point to recheck during the Object consistency sweep before architecture freeze; this section must not silently create a new public contract from current implementation alone.
 
 ## Data-path candidate
 
@@ -1305,12 +1506,14 @@ Outcome classification:
 zero deleted/success rows
     -> 404
 
-root Object DELETE current-reference FK violation
+SQLSTATE 23503 attributable to current references blocking root Object DELETE
     -> 409 delete_blocked
 
 one success row
     -> 204
 ```
+
+The fused statement requires architecture to preserve unambiguous classification: an unrelated FK failure from the lifecycle branch must never be mislabeled `delete_blocked` merely because it also uses SQLSTATE `23503`.
 
 No blocker precheck, separate Object snapshot read, model-plane recertification, cache work or diagnostic-only DB read is required.
 
@@ -1330,11 +1533,9 @@ Object delete
 
 Empty slot materialization does not itself become a lifetime blocker.
 
-Architecture must preserve unambiguous failure classification for fused DELETE/lifecycle work and prove DELETE races against all current Object-lifetime references.
+Architecture must prove DELETE races against all current Object-lifetime references and preserve Object deletion + DELETED lifecycle atomicity.
 
 # Nested surfaces owned by later discovery passes
-
-The repository currently also exposes or explores Object-rooted routes whose business owner is not the Object aggregate itself.
 
 ## Object lifecycle history
 
@@ -1351,7 +1552,17 @@ current ObjectDto
     != historical intrinsic Object snapshot
 ```
 
-Historical lifecycle `before` / `after` should remain bounded intrinsic snapshots rather than recursively embedding current component projections. A distinct `ObjectSnapshotDto` is the current direction.
+Historical intrinsic lifecycle `before` / `after` should remain bounded snapshots of:
+
+```text
+id
+canonical_name
+template_id
+template_version
+properties
+```
+
+rather than embedding current component projections. A distinct `ObjectSnapshotDto` is the current direction. Ownership history remains represented by explicit ATTACH_TO/DETACH_FROM events.
 
 ## Object-relative factual Relationship collection/detail
 
@@ -1364,11 +1575,11 @@ These remain owned by the later factual Relationship top-down pass because publi
 
 # Cross-operation observations
 
-## Current component-schema cache consumers
+## Component-schema cache boundary
 
 `object_component_slots` does **not** delete the immutable exact component-schema cache as a system capability.
 
-It currently removes the normal cache dependency from these Object runtime candidates:
+It removes the normal component-schema cache dependency from these current Object runtime candidates:
 
 ```text
 GET Object
@@ -1377,7 +1588,7 @@ ATTACH slot resolution
 DETACH
 ```
 
-Immutable exact schema/validation caches remain useful where semantic validation or migration genuinely needs model-plane knowledge.
+Immutable exact schema/validation caches remain useful where semantic validation or migration genuinely needs model-plane knowledge, including CREATE properties validation, properties mutation and SCHEMA_CHANGE preparation.
 
 ## Current read boundary
 
@@ -1406,38 +1617,33 @@ final global LockPlan/deadlock realization
 
 Those belong to the later M4 architecture-wide persistence/concurrency phase.
 
-# Consolidation sources
+# Route-owner comparison closure
 
-This first consolidated version was built from the current route-local owners and current revalidation findings, including at least:
-
-```text
-to-be-api-object-create.md
-to-be-api-object-list.md
-to-be-api-object-get.md
-to-be-api-object-rename.md
-to-be-api-object-properties-mutation.md
-to-be-api-object-schema.md
-object-components-navigation-public-contract.md
-to-be-api-object-attach-batch.md
-to-be-api-object-detach-batch.md
-object-components-reads-discovery.md
-to-be-api-object-delete.md
-object-component-slots-data-plane-materialization.md
-```
-
-The older files remain temporarily in the tree for a lossless comparison pass. Their continued presence during consolidation does not make older superseded checkpoints preferable to the current candidate summarized here.
-
-# Next consolidation steps
-
-Before removing old Object WIPs:
+The route-owner consolidation has been checked against the current owner/checkpoint files for:
 
 ```text
-1. compare this consolidated owner against every route-local owner
-2. recover any non-superseded semantic/error/cost detail accidentally omitted
-3. reconcile cross-references that point to micro-WIPs
-4. consolidate component persistence into object-components-persistence.md
-5. consolidate SCHEMA_CHANGE internals into object-schema-change.md
-6. only then delete superseded Object micro-WIPs
+CREATE
+LIST
+GET
+canonical-name mutation
+properties mutation
+Object schema GET/public POST surface
+component-slot navigation + cursor/data-path checkpoints
+ATTACH
+DETACH
+GET owner working projection
+DELETE
 ```
 
-Git history remains the source for historical discovery checkpoints after cleanup.
+Non-superseded contract, failure, concurrency and cost details omitted by the first consolidation draft have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
+
+The remaining pre-cleanup work is cross-cutting rather than route-owner reconstruction:
+
+```text
+1. build object-components-persistence.md
+2. build object-schema-change.md
+3. reconcile references from surviving non-Object WIPs
+4. then remove superseded Object route-local/micro-step WIPs
+```
+
+Until those two cross-cutting owners exist, their current source WIPs remain necessary comparison evidence and should not be deleted.
