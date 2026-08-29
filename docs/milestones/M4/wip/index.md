@@ -66,14 +66,15 @@ object-template-ancestry-cache.md
 
 Interpretation of `object.md` is section-sensitive: routes/sections explicitly marked full-sweep complete and already-revalidated cross-operation findings are baseline; later Object sections still marked checkpoint/open remain subject to their own review frontiers.
 
-The Object family owner has now been refreshed losslessly after the focused SCHEMA_CHANGE and component-slot GET closures. `object.md` directly owns the complete reviewed route-level findings for:
+The Object family owner has now been refreshed losslessly after the focused SCHEMA_CHANGE, component-slot GET and ATTACH closures. `object.md` directly owns the complete reviewed route-level findings for:
 
 ```text
 POST /objects/{id}/schema
 GET /objects/{parent_object_id}/components/{slot_name}
+POST /objects/{parent_object_id}/components/{slot_name}/attach
 ```
 
-including their public contracts, logical data paths, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. The former dedicated route-owner files were removed after the lossless absorption/reference cleanup; Git history remains the historical record.
+including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. Former dedicated route-owner/source files may be removed only after the corresponding lossless absorption/reference cleanup; Git history remains the historical record.
 
 Cross-operation responsibilities remain intentionally separate:
 
@@ -92,32 +93,31 @@ The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was already removed aft
 The next Object route in the top-down sequence is:
 
 ```text
-POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
+POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/detach
 ```
 
 Current owner/frontier:
 
 ```text
 object.md
-    -> section: ATTACH children to one slot
+    -> section: DETACH children from one slot
 ```
 
-Primary source evidence for this frontier is the retained ATTACH family:
+Primary source evidence for this frontier is the retained DETACH family:
 
 ```text
-object-attach-*.md
-to-be-api-object-attach-*.md
+object-detach-*.md
+to-be-api-object-detach-*.md
 object-ownership-command-routes.md
 ```
 
-Cross-operation dependencies already reviewed and reusable for ATTACH include:
+Cross-operation dependencies already reviewed and reusable for DETACH include:
 
 ```text
 object-components-persistence.md
-object-template-ancestry-cache.md
 ```
 
-These source files do not override reviewed cross-operation owners; they are inputs for the focused ATTACH full sweep.
+These source files do not override reviewed cross-operation owners; they are inputs for the focused DETACH full sweep.
 
 # 2. Current M4 spine
 
@@ -171,6 +171,7 @@ POST /objects/{id}/properties
 GET /objects/{id}/schema
 POST /objects/{id}/schema
 GET /objects/{parent}/components/{slot}
+POST /objects/{parent}/components/{slot}/attach
 DELETE /objects/{id}
 ```
 
@@ -205,7 +206,29 @@ bounded 0/1-statement cost profile
 physical plan/index handoff
 ```
 
-Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`.
+For `POST /objects/{parent}/components/{slot}/attach`, use the ATTACH section in `object.md` for:
+
+```text
+explicit /attach command route
+strict atomic batch 1..100 + 204 success
+parent vs nested-slot 404 distinction
+positive-only ObjectLineageCache[object_id] -> template_id
+no semantic negative Object-existence cache
+full READY stable ancestry/neighborship cache from object_template_ancestry
+protected ownerlessness + root-only cycle admission
+no mutable root materialization
+strict bulk edge insert
+child lifetime FK current-existence authority
+semantic-slot FK stale_state arbitration
+PK/self-edge CHECK unexpected-failure classification after successful admission
+required parent/child historical canonical_name read after successful edge insertion
+one ATTACH_TO lifecycle row per committed edge
+execution-path failure precedence + no diagnostic-only rereads/default retry
+warm 6 / full-cold 8 logical statement baseline
+architecture cache/SQL/FK/lock/index handoff
+```
+
+Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`; reusable stable ObjectTemplate ancestry-cache semantics by `object-template-ancestry-cache.md`.
 
 ### [`object-revision.md`](object-revision.md) — SPINE / REVIEWED BASELINE
 
@@ -235,7 +258,7 @@ architecture physical-design handoff
 
 ### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / REVIEWED BASELINE SUPPORT
 
-Reusable stable ObjectTemplate lineage ancestry/compatibility cache. Exact physical/cache implementation remains architecture work.
+Reusable stable ObjectTemplate lineage ancestry/compatibility cache backed by the denormalized `object_template_ancestry` closure. A source becomes READY only after its complete ancestor/neighborship set is loaded. Exact physical/cache implementation remains architecture work.
 
 # 4. Model-plane families — ACTIVE INPUT sets
 
@@ -347,6 +370,15 @@ DATA_CHANGE
 
 SCHEMA_CHANGE
     -> exact binding transition + actual changed-property delta
+
+ATTACH
+    -> edge semantic identity
+       child_object_id
+       parent_object_id
+       slot_declaring_template_id
+       slot_name
+    -> required historical child/parent canonical_name display metadata
+    -> exactly one ATTACH_TO event per committed ownership edge
 ```
 
 The lifecycle API pass still owns final collection/detail DTOs, discriminated detail carrier, persistence decoding and read-side physical realization.
@@ -381,7 +413,9 @@ object-attach-*.md
 to-be-api-object-attach-*.md
 ```
 
-are SOURCE MATERIAL behind `object.md` / `object-components-persistence.md` unless explicitly re-promoted during the active ATTACH full sweep.
+are SOURCE MATERIAL behind the reviewed ATTACH section in `object.md` and the cross-operation persistence/cache owners. They do not override `object.md`, including where they still contain superseded mandatory child reads, parent exact-binding locks/rechecks, old failure codes or old cost profiles.
+
+The ATTACH route has completed its lossless full sweep. These route-specific source files may be removed after explicit reference cleanup confirms no remaining current owner depends on them; Git history remains the historical reasoning record.
 
 ## DETACH source family
 
@@ -392,7 +426,7 @@ object-detach-*.md
 to-be-api-object-detach-*.md
 ```
 
-are SOURCE MATERIAL behind the current owners unless explicitly re-promoted.
+remain SOURCE MATERIAL for the active DETACH review frontier behind the current owners unless explicitly re-promoted during that full sweep.
 
 ## Component-persistence source / architecture inputs
 
