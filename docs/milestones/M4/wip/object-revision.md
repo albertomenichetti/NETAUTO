@@ -1,6 +1,6 @@
 # M4 WIP — Object intrinsic revision / generation token
 
-**Status:** RATIFIED CROSS-OPERATION DIRECTION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** RATIFIED CROSS-OPERATION DIRECTION / RENAME + DATA_CHANGE + SCHEMA_CHANGE ALIGNED / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
@@ -162,12 +162,16 @@ current revision still R
     -> no committed SCHEMA_CHANGE occurred
     -> binding is still T@V
 
+SCHEMA_CHANGE prepared from binding T@VS + properties P + revision R
+current revision still R
+    -> binding/properties still belong to that exact intrinsic generation
+
 RENAME observed canonical_name A + revision R
 current revision still R
     -> A still belongs to the same current intrinsic generation
 ```
 
-Operation-specific semantic admission remains separate: revision freshness does not prove target schema admissibility, property-value validity, or any fact outside `objects`.
+Operation-specific semantic admission remains separate: revision freshness does not prove target schema admissibility, property-value validity, slot/ownership facts, or any fact outside `objects`.
 
 ---
 
@@ -197,10 +201,14 @@ DATA_CHANGE semantic no-op elided on the normal cheap path
     -> no lifecycle event
     -> revision does not increment
 
-future DATA_CHANGE realization that intentionally performs a normal row mutation
-for a same-result request because no-op recognition would be materially costly
-    -> revision increments because a new row generation was written
+SCHEMA_CHANGE target exact version already current
+    -> semantic no-op
+    -> no Object UPDATE
+    -> no lifecycle event
+    -> revision does not increment
 ```
+
+A future mutation realization that intentionally writes a same-result intrinsic row generation because no-op recognition would be materially costly still increments revision because a new technical generation was written.
 
 The revision counter therefore must not be interpreted as a count of semantically distinct business values.
 
@@ -259,13 +267,13 @@ factual Relationship runtime state
 
 Where a mutation also depends on current structural facts, those facts still need their own relational admission/protection mechanism.
 
+For SCHEMA_CHANGE specifically, current slot REMOVE/semantic-replacement blockers are arbitrated by the edge -> current-slot relational dependency rather than being pulled into `revision` or the intrinsic preparation snapshot.
+
 ---
 
-# 8. RENAME focused revalidation
+# 8. RENAME focused alignment
 
-RENAME is the only already-full-swept intrinsic Object mutation that needed focused revalidation after revision introduction.
-
-Its public contract and lifecycle responsibility remain unchanged.
+RENAME public semantics and lifecycle responsibility remain unchanged by the universal revision direction.
 
 Current logical generation protocol:
 
@@ -298,9 +306,9 @@ The revision protocol replaces the need for a separate canonical-name-specific f
 
 ---
 
-# 9. DATA_CHANGE full-sweep consequence
+# 9. DATA_CHANGE full-sweep alignment
 
-The DATA_CHANGE full sweep is route-locally closed and adopts the universal revision protocol.
+DATA_CHANGE is full-swept and losslessly absorbed into [`object.md`](object.md) under the universal revision protocol.
 
 Its current generation read retains:
 
@@ -344,57 +352,93 @@ No revision refresh is required solely to return a no-op or a semantic failure p
 
 Revision mismatch on the real-write branch is an internal stale-attempt condition and triggers bounded retry from the current generation. If the retry budget is exhausted, DATA_CHANGE maps that internal stabilization failure to `500 internal_error`, not a normal public `409`.
 
-The complete DATA_CHANGE route contract/data path remains owned by its route owner until lossless absorption into `object.md`.
-
 ---
 
-# 10. SCHEMA_CHANGE consequence
+# 10. SCHEMA_CHANGE focused alignment
 
-The existing SCHEMA_CHANGE discovery uses an intrinsic Object fingerprint to prove that an expensive prepared candidate is still based on the current intrinsic Object generation.
+The SCHEMA_CHANGE execution/retry block has now absorbed the universal revision protocol into its current owner [`object-schema-change.md`](object-schema-change.md).
 
-The universal persisted revision supersedes that fingerprint role for intrinsic-row freshness:
+Each attempt begins from one coherent intrinsic generation:
 
 ```text
-prepare
-    observe revision = R
-    derive candidate from intrinsic state at R
+template_id
+template_version = source_version
+properties
+revision = R
+```
 
+The exact SOURCE -> TARGET MigrationPlan and concrete target properties are prepared from that generation outside the short final UoW.
+
+Canonical stale-success rule:
+
+```text
 final mutation UoW
     current revision == R
         -> intrinsic generation unchanged
+        -> prepared intrinsic candidate may proceed
+           if TARGET and relational slot admissions also succeed
 
     current revision != R
         -> stale candidate
-        -> candidate must not commit
-        -> bounded retry according to the final SCHEMA_CHANGE protocol
+        -> no Object/slot/lifecycle mutation
+        -> complete bounded fresh retry
 ```
 
-This direction must be absorbed when the SCHEMA_CHANGE full sweep reaches its data-path/concurrency block.
+A fresh retry:
 
-Revision does not replace separate relational admission/protection for component-slot/ownership facts because those are outside intrinsic-row scope.
+```text
+same SOURCE
+    -> may reuse the same immutable MigrationPlan
+    -> must reapply it to fresh properties
+
+changed SOURCE
+    -> resolve/build MigrationPlan(fresh SOURCE, requested TARGET)
+
+fresh SOURCE == requested TARGET
+    -> 204 semantic no-op
+    -> no mutation/revision/lifecycle
+```
+
+A semantic migration failure derived from a coherent generation may return without a final revision refresh solely to see whether later concurrent state changed the answer; CAS is required for writes, not for conservative failures that persist nothing.
+
+Retry is bounded, but exact retry count/backoff is architecture work. Route-level retry exhaustion is:
+
+```text
+500 internal_error
+```
+
+not a normal `409 schema_change_blocked` concurrency business conflict.
+
+The revision replaces all intrinsic canonical-JSON/SHA fingerprint roles. It still does not replace separate relational admission/protection for current component-slot/ownership facts.
 
 ---
 
-# 11. Already-full-swept route impact
+# 11. Object-route impact
 
 Current impact classification:
 
 ```text
 POST /objects
-    -> persistence alignment only
+    -> persistence alignment
     -> INSERT explicitly includes revision = 1
 
 GET /objects
 GET /objects/{id}
+GET /objects/{id}/schema
     -> no public representation change
     -> revision not exposed merely because it exists
 
 PUT /objects/{id}/canonical-name
-    -> focused revalidation completed by the universal expected-revision rule
+    -> aligned with universal expected-revision rule
 
 POST /objects/{id}/properties
-    -> route-local full sweep completed under the universal revision rule
-    -> pending only lossless absorption/cleanup into object.md
+    -> full-sweep complete and absorbed into object.md
+    -> aligned with universal expected-revision rule
+
+POST /objects/{id}/schema
+    -> active full sweep
+    -> exact-target/migration-matrix/execution-retry blocks aligned with revision
+    -> remaining route work is lifecycle/failure/cost closure
 
 DELETE /objects/{id}
     -> deletes current revisioned generation
