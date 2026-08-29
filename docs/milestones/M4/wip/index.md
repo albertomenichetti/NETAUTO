@@ -142,22 +142,17 @@ high-level SCHEMA_CHANGE boundary
 
 The document is consolidated but not final or normative.
 
-Current full-sweep checkpoints that remain closed without revalidation:
+Current full-sweep checkpoints:
 
 ```text
 POST /objects
 GET /objects
 GET /objects/{id}
+PUT /objects/{id}/canonical-name
 DELETE /objects/{id}
 ```
 
-Focused revalidation currently required:
-
-```text
-PUT /objects/{id}/canonical-name
-    -> public/lifecycle semantics retained
-    -> execution/persistence revalidation after Object revision introduction
-```
+The canonical-name public/lifecycle contract remains owned by `object.md`; its focused persistence/concurrency revalidation after `revision` introduction is closed by [`object-revision.md`](object-revision.md) and must be read through that cross-operation owner until the next lossless consolidated-owner refresh.
 
 The dedicated legacy WIPs that existed only for already-absorbed full-swept routes have been removed after lossless absorption; Git history remains the historical record.
 
@@ -168,10 +163,12 @@ Current owner for the ratified M4 `objects.revision` direction.
 Use it for:
 
 ```text
-revision as internal intrinsic-row generation token
+revision as universal internal intrinsic-row generation token
 CREATE explicitly inserts revision = 1
+all prepared/derived intrinsic mutations use expected_revision
+revision mismatch -> no stale commit + bounded retry
 persisted intrinsic row mutation increments revision atomically
-RENAME focused revalidation trigger
+RENAME focused revision revalidation completed
 DATA_CHANGE integration during its active full sweep
 SCHEMA_CHANGE future handoff from intrinsic fingerprint to expected revision
 revision scope excludes ownership/Relationship facts outside objects
@@ -192,7 +189,7 @@ cheap/no-material-extra-work no-op elision rule
 exact changed-property lifecycle delta
 ```
 
-The hot mutation data path, revision integration, binding-change behavior and final concurrency/failure closure remain under active revalidation.
+The hot mutation data path, universal expected-revision integration and final concurrency/failure closure remain under active revalidation.
 
 ### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / cross-operation Object component persistence
 
@@ -330,7 +327,7 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`object-data-change-discovery.md`](object-data-change-discovery.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their historical full-sweep contents are owned by `object.md`; canonical-name execution is currently reopened only for the focused `revision` revalidation described above. Git history remains the historical record for the removed route-only files.
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their historical full-sweep contents are owned by `object.md`; the canonical-name focused revision revalidation is now closed in [`object-revision.md`](object-revision.md). Git history remains the historical record for the removed route-only files.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
