@@ -1,40 +1,20 @@
-# M4 WIP — Object component-slot navigation public contract
+# M4 WIP — Object component-slot GET consolidated discovery
 
-Status: PUBLIC CONTRACT REVALIDATED / CURSOR + DATA PATH ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** FULL-SWEEP COMPLETE / REVIEWED BASELINE CANDIDATE / M4 WIP / ALWAYS NON-NORMATIVE
 
-## Scope
+## Purpose
 
-This note records the ratified route-local public contract for Object direct-component navigation during the M4 top-down sweep.
+This file is the consolidated route owner for:
 
-The public contract is a reviewed local discovery checkpoint only; everything under `wip/` remains globally non-normative and does not authorize implementation.
-
-The current data-path candidate is recorded separately in:
-
-```text
-object-components-navigation-data-path.md
+```http
+GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
 ```
 
-The current cursor candidate is recorded separately in:
+It absorbs the public-contract, cursor, one-statement data-path, failure, cost and architecture-handoff findings previously split across the component-navigation WIPs. `object.md` remains the Object-family owner; `object-components-persistence.md` owns the shared current slot/edge persistence semantics.
 
-```text
-object-components-navigation-cursor.md
-```
+Everything under `wip/` remains globally non-normative and does not authorize implementation.
 
-Both use the per-Object current-slot materialization owned by the current Object component-persistence direction.
-
-After the public-contract revalidation, the remaining route-local review is:
-
-```text
-cursor semantic identity / continuation behavior
-data path / coherence confirmation
-failure precedence integration
-cost + architecture handoff
-final physical indexes / EXPLAIN evidence
-```
-
-The previous generic global read-coherence question is narrowed by the one-statement data-path candidate: all mutable route response facts and current semantic-slot cursor validation are intended to come from one PostgreSQL statement snapshot.
-
-## Ratified route
+# 1. Public contract
 
 ```http
 GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
@@ -42,7 +22,7 @@ GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
     &limit=...
 ```
 
-Path parameters:
+Path:
 
 ```text
 parent_object_id
@@ -53,84 +33,86 @@ slot_name
     ^[a-z][a-z0-9_]{0,63}$
 ```
 
-Query parameters:
+Query:
 
 ```text
 cursor
-    opaque pagination cursor
+    opaque string
     optional
 
 limit
-    positive integer
-    1..500
+    positive integer 1..500
     optional
     default 100
 ```
 
-No request body is accepted.
+No request body. Unknown or repeated query parameters are invalid request input. No additional child filter is part of the M4 contract.
 
-Unknown or repeated query parameters are invalid request input. No additional child filter is part of the M4 contract.
-
-## No public cross-slot collection
-
-The TO-BE public surface does not retain a generic cross-slot navigation route of the form:
+The TO-BE surface does not retain the generic cross-slot route:
 
 ```http
 GET /api/v1/core/objects/{parent_object_id}/components
 ```
 
-and does not model `slot_name` as an optional query filter on that route.
+`slot_name` is a path resource identity, not an optional filter. The route is the bounded/paginated view of one current direct-child collection already visible in the complete first-level `GET /objects/{id}` representation.
 
-Reason:
+# 2. Response and nested-resource semantics
 
-- TO-BE `GET /objects/{object_id}` already exposes every effective direct component slot and all direct children in the complete first-level Object representation;
-- the specialized navigation endpoint is justified by selective, paginated access to one potentially large slot;
-- a cross-slot page would duplicate the Object GET representation while introducing an artificial heterogeneous pagination order across unrelated semantic slots.
+Response:
 
-## Why `slot_name` is a path parameter
+```json
+{
+  "items": [
+    {
+      "id": "<child-object-id>",
+      "canonical_name": "eth0"
+    }
+  ],
+  "next_cursor": null
+}
+```
 
-`slot_name` identifies the semantic child collection being navigated; it is not merely an arbitrary search filter.
-
-Conceptually:
+The child representation is exactly the same first-level reference used by Object GET. It does not expose:
 
 ```text
-/objects/{parent}/components/{slot}
-    = current child collection of that effective component slot
+slot_declaring_template_id
+target_template_id
+child ObjectTemplate binding
+child properties
+child components
 ```
 
-This yields a consistent ownership API family:
-
-```http
-GET  /objects/{parent}/components/{slot}
-POST /objects/{parent}/components/{slot}/attach
-POST /objects/{parent}/components/{slot}/detach
-```
-
-The path therefore identifies the nested collection; query parameters only control how that collection is paged.
-
-## Query-parameter role
-
-The only accepted query parameters are pagination controls:
+Canonical ordering:
 
 ```text
-cursor
-limit
+child_object_id ASC
 ```
 
-`limit` follows the shared bounded-page contract:
+Public current-resource outcomes:
 
 ```text
-1..500
-default 100
+parent absent
+    -> 404 resource_not_found
+       resource_type = object
+
+parent present + current slot absent
+    -> 404 resource_not_found
+       resource_type = object_component_slot
+
+parent present + current slot present + zero children
+    -> 200 {"items": [], "next_cursor": null}
+
+parent present + current slot present + children
+    -> 200 bounded page
 ```
 
-No filter such as child `canonical_name` is introduced without a concrete later consumer requirement.
+A valid empty slot is therefore distinct from a nonexistent nested slot resource.
 
-## Candidate cursor contract — active revalidation
+# 3. Cursor semantics
 
-The route retains opaque keyset pagination. The current candidate binds the token to the exact current semantic slot collection.
+The cursor identifies the semantic slot collection, not the complete parent Object generation and not a repeatable membership snapshot.
 
-Candidate identity:
+Canonical cursor identity:
 
 ```text
 codec route
@@ -145,295 +127,307 @@ position
     child_object_id ASC
 
 limit
-    not semantic identity
+    excluded from semantic identity
 ```
 
-`slot_declaring_template_id` remains internal opaque cursor material, not a public path/query parameter or response field.
+`slot_declaring_template_id` is internal opaque cursor material only. It remains excluded from the public path/query/response contract.
 
-The rationale is that the same public `(parent_object_id, slot_name)` path can resolve after `SCHEMA_CHANGE` to a different semantic slot declaration. A cursor issued for the previous declaring lineage must not silently continue against a replacement collection.
+It is required because one public path `(parent_object_id, slot_name)` can later resolve after SCHEMA_CHANGE to a different semantic slot declaration.
 
-The current candidate reuses the existing versioned canonical-JSON + URL-safe-Base64 cursor envelope with a new codec route identity; no global envelope-version bump is justified by this local route change.
-
-Static malformed/incompatible cursor carriers remain candidate:
+Consequences:
 
 ```text
-400 invalid_cursor
+same-name semantic replacement
+    current slot_declaring_template_id differs
+    -> 400 invalid_cursor
+
+current slot removal
+    -> 404 object_component_slot
+
+SCHEMA_CHANGE preserving the same semantic slot identity
+    -> cursor remains semantically compatible
+
+target widening preserving semantic slot identity
+    -> cursor remains compatible
+
+ATTACH / DETACH
+child RENAME
+    -> do not structurally invalidate cursor
 ```
 
-Current-state candidate precedence is:
+The cursor is not a cross-request snapshot. Membership/display changes between page requests are visible according to ordinary keyset semantics.
+
+The position child need not remain current:
+
+```text
+cursor key = child C
+C later detached or deleted
+    -> continuation still uses child_object_id > C
+    -> no lookup/admission of C itself
+```
+
+`limit` may change between pages.
+
+Publicly the cursor remains only an opaque string. The current realization may reuse the existing v1 canonical-JSON/base64url envelope with a route-specific identity and no server-side cursor state; exact envelope internals are not a caller contract.
+
+# 4. Failure precedence
+
+Static request validation:
+
+```text
+malformed parent_object_id
+malformed slot_name
+malformed/out-of-range limit
+unknown/repeated query parameter
+request body present
+    -> 400 invalid_request
+```
+
+Static cursor validation happens before database access:
+
+```text
+malformed envelope
+wrong route identity
+cursor parent != requested parent
+cursor slot_name != requested slot
+missing/malformed internal semantic id
+malformed position key
+    -> 400 invalid_cursor
+```
+
+Then the authoritative current-state statement classifies in this order:
 
 ```text
 parent absent
     -> 404 resource_not_found / object
 
-parent exists + current slot absent
+parent present + slot absent
     -> 404 resource_not_found / object_component_slot
 
-parent exists + current slot present
-+ cursor slot_declaring_template_id differs from current slot
+slot present + continuation semantic id differs
     -> 400 invalid_cursor
 
-matching semantic slot identity
-    -> normal keyset continuation
+otherwise
+    -> 200 current page
 ```
 
-Target widening, ATTACH/DETACH, child RENAME, or parent schema-version movement that preserves the same semantic slot identity are candidate cases that should not invalidate the cursor merely because membership/display state changed. Cross-request repeatable membership remains intentionally unpromised.
+Unexpected persistence/invariant failures encountered on the required path are `500 internal_error`.
 
-Detailed encoding, cost and verification cases are owned by `object-components-navigation-cursor.md` and are the next focused review block.
-
-## Ratified response role
-
-The endpoint is a paginated view of the same direct-child representation already used by Object GET:
-
-```json
-{
-  "items": [
-    {
-      "id": "<child-object-id>",
-      "canonical_name": "eth0"
-    }
-  ],
-  "next_cursor": null
-}
-```
-
-Canonical ordering is:
+There is no normal route-level:
 
 ```text
-child_object_id ASC
+409
+422
 ```
 
-The route must not create a second poorer or differently shaped public child representation.
+No diagnostic-only second query is permitted solely to enrich failure details or search for impossible corruption.
 
-The response does not expose:
+# 5. Current data path
+
+The normal route reads only current data-plane state:
 
 ```text
+objects parent
+object_component_slots requested current slot
+object_components current semantic-slot membership
+objects child for current canonical_name
+```
+
+Required logical path:
+
+```text
+one root-preserving PostgreSQL statement
+
+parent Object PK lookup
+-> requested current slot by (object_id, slot_name)
+-> compare current slot_declaring_template_id with cursor semantic id when present
+-> bounded semantic-slot membership page
+-> child Object id/current canonical_name
+```
+
+The membership branch uses the resolved current semantic identity:
+
+```text
+parent_object_id
 slot_declaring_template_id
-target_template_id
-child ObjectTemplate binding
-child properties
-child components
+slot_name
+child_object_id > cursor_child_id when present
+ORDER BY child_object_id ASC
+LIMIT limit + 1
 ```
 
-`slot_declaring_template_id` remains internal semantic identity material and is not justified as a normal public child field.
+For a continuation cursor, the bounded child-page branch should be gated by semantic-id equality so a stale same-name replacement cursor does not scan a page that will be rejected.
 
-## Ratified slot existence and not-found semantics
+The application returns the first `limit` rows and builds `next_cursor` from the last returned child only when the `limit + 1` probe proves another row exists.
 
-The route preserves three distinct public outcomes.
+Cursor generation requires no additional database read.
 
-### Parent Object absent
+# 6. Authority boundary
+
+ObjectTemplate exact effective schema remains the semantic/model-plane authority for component-slot definitions.
+
+`object_component_slots` is the transactionally maintained current per-Object derivative produced by Object CREATE/SCHEMA_CHANGE.
+
+The read consumes the already-admitted current invariant:
 
 ```text
-parent Object does not exist
-    -> 404 resource_not_found
-    -> resource_type = object
+MaterializedSlots(O)
+    == EffectiveComponentSlots(O.template_id, O.template_version)
 ```
 
-### Effective slot exists but is empty
+It does not re-certify that invariant on the hot path.
+
+Normal route work therefore requires no:
 
 ```text
-parent exists
-+ requested slot exists in the parent's current effective slot materialization
-+ zero current attached children
-    -> 200 OK
-    -> {"items": [], "next_cursor": null}
+parent template binding read for schema interpretation
+object_template_effective_components
+ObjectTemplate inheritance traversal
+component semantic cache
+DataType semantics
+ancestry cache
+objects.revision
+explicit row locks
+lifecycle reads/writes
 ```
 
-An empty valid slot is successful collection navigation, never a not-found result.
+The current persistence model is also responsible for preventing dangling membership/child facts. The GET does not add integrity sweeps or diagnostic reads to re-prove those write-owned invariants.
 
-### Requested effective slot absent
+# 7. Coherence and concurrency
 
-A syntactically valid `slot_name` that is not present in the existing parent's current effective slot set identifies no nested component-slot resource:
+One PostgreSQL statement snapshot is the complete current-read coherence boundary.
 
 ```text
-parent exists
-+ requested effective slot absent
-    -> 404 resource_not_found
-    -> resource_type = object_component_slot
+SCHEMA_CHANGE
+    -> old semantic slot state OR new semantic slot state
+    -> never an intermediate mixture
+
+same-name semantic replacement
+    snapshot before replacement
+        -> old cursor may continue on old semantic collection
+    snapshot after replacement
+        -> current semantic id differs
+        -> invalid_cursor
+
+slot removal visible in snapshot
+    -> 404 object_component_slot
+
+ATTACH
+    -> child absent before commit / present after commit
+
+DETACH
+    -> child present before commit / absent after commit
+
+child RENAME
+    -> old or new canonical_name according to the same statement snapshot
+
+parent DELETE
+    -> current parent result or 404 according to statement visibility
 ```
 
-Bounded detail direction:
+No revision check, retry or multi-statement coherent-read protocol is needed.
 
-```json
-{
-  "resource_type": "object_component_slot",
-  "parent_object_id": "<uuid>",
-  "slot_name": "interfaces"
-}
-```
+# 8. Cost profile
 
-This is intentionally distinct from mutation-side `ownership_slot_unavailable` semantics.
-
-A malformed `slot_name` transport carrier is rejected by normal request validation before semantic lookup and does not become a semantic slot-not-found result.
-
-## Static request failures ratified in this block
-
-```text
-400 invalid_request
-    malformed parent_object_id carrier
-    malformed slot_name carrier
-    malformed/out-of-range limit
-    unknown/repeated query parameter
-    unsupported request body
-
-400 invalid_cursor
-    malformed or statically incompatible cursor
-```
-
-The detailed distinction between static cursor incompatibility and current semantic-slot mismatch remains part of the active cursor block.
-
-## Relationship to Object GET
-
-TO-BE Object GET remains the complete first-level representation surface:
-
-```text
-GET /objects/{id}
-    -> all effective component slots
-    -> all direct children
-    -> empty valid slots represented as []
-```
-
-A caller can therefore distinguish directly from the Object representation:
-
-```text
-"disks": []
-    -> disks is a valid effective slot and is currently empty
-
-slot key absent
-    -> the slot is not part of this Object's current exact effective schema
-```
-
-The component-slot navigation endpoint exists for bounded selective access/pagination of one slot, not to compensate for missing component-slot state in Object GET.
-
-## Authority split: ObjectTemplate vs Object instance
-
-The public surfaces answer different questions and are intentionally not duplicates.
-
-ObjectTemplate / exact ObjectTemplateVersion remains the semantic schema authority:
-
-```text
-which component slots are defined?
-which lineage declares the slot?
-what target ObjectTemplate lineage is allowed?
-what is the slot's exact model-plane contract?
-```
-
-`object_component_slots` is the transactionally maintained current runtime derivative of that contract for a particular Object.
-
-Object runtime reads answer:
-
-```text
-which effective slots does this particular Object expose now?
-which child Objects are attached to each slot now?
-```
-
-Therefore:
-
-```text
-ObjectTemplate
-    = semantic component-slot definition / contract authority
-
-object_component_slots
-    = current per-Object derived data-plane materialization
-
-Object
-    = effective runtime slot set + current membership
-```
-
-Object GET and this navigation route intentionally do not expose model-plane details such as `target_template_id` or `slot_declaring_template_id` merely because they are materialized internally.
-
-## Current data-path checkpoint — active revalidation
-
-Current candidate from `object-components-navigation-data-path.md`:
-
-```text
-one PostgreSQL statement
-
-objects parent PK lookup
-LEFT JOIN requested object_component_slots row by (object_id, slot_name)
-LEFT/LATERAL bounded object_components page
-JOIN child objects for current canonical_name
-```
-
-Normal runtime candidate:
-
-```text
-0 component-schema cache lookups
-0 ObjectTemplate effective-schema reads
-0 recursive traversal
-0 explicit locks
-```
-
-All mutable response facts and current semantic-slot cursor compatibility are intended to come from one statement snapshot.
-
-Cursor generation candidate adds:
+Static request/cursor failure:
 
 ```text
 0 PostgreSQL statements
-0 model-plane reads
-0 cache lookups
 ```
 
-and only small application serialization/transport work.
-
-## Supersession
-
-The ratified public contract supersedes the AS-IS public shape:
-
-```http
-GET /objects/{parent_object_id}/components?slot_name=...
-```
-
-where `slot_name` is optional and omission means cross-slot listing.
-
-It retains the useful AS-IS pagination concepts `cursor` and `limit` but scopes them to one semantic slot collection. Cursor codec identity/compatibility is finalized by the active cursor review.
-
-## Ratified Block 1 takeaway
+Every path that consults current state, including:
 
 ```text
-Object component-slot navigation public contract
-
-GET /objects/{parent_object_id}/components/{slot_name}
-    ?cursor=...
-    &limit=...
-
-parent_object_id
-    -> UUID
-
-slot_name
-    -> ^[a-z][a-z0-9_]{0,63}$
-
-cursor
-    -> optional opaque token
-
-limit
-    -> 1..500
-    -> default 100
-
-no request body
-no additional filters
-no public generic cross-slot /components collection
-same {id, canonical_name} child representation as Object GET
-child ordering = child_object_id ASC
-
-malformed request carrier
-    -> 400 invalid_request
-
-malformed/static incompatible cursor
-    -> 400 invalid_cursor
-
-parent absent
-    -> 404 resource_not_found / object
-
-parent exists + slot absent
-    -> 404 resource_not_found / object_component_slot
-
-parent exists + slot exists + empty
-    -> 200 empty page
-
-parent exists + slot exists + children
-    -> 200 bounded page
-
-next focused review
-    -> cursor semantic identity and SCHEMA_CHANGE compatibility
+first page
+continuation page
+empty valid slot
+missing slot
+missing parent
+stale semantic cursor
 ```
+
+has target cost:
+
+```text
+1 PostgreSQL business statement maximum
+0 cache lookups
+0 model-plane reads
+0 recursive traversal
+0 explicit locks
+0 lifecycle work
+```
+
+Logical work:
+
+```text
+O(1) parent lookup
++ O(1) requested current-slot lookup / semantic-id comparison
++ O(page size) membership and child-name rows
+```
+
+It must not scale with:
+
+```text
+total slots on the parent
+total children in other slots
+Object property count
+ObjectTemplate inheritance depth
+Relationship count
+lifecycle-event count
+```
+
+# 9. Architecture handoff
+
+Deferred physical decisions:
+
+```text
+exact SQL / SQLAlchemy root-preserving carrier
+LEFT/LATERAL vs equivalent realization
+final PK/UNIQUE/index realization
+edge index key order / INCLUDE choices
+EXPLAIN (ANALYZE, BUFFERS) evidence
+payload/runtime measurements
+```
+
+Architecture must prove the bounded path:
+
+```text
+objects PK(parent_object_id)
+-> one current slot by (object_id, slot_name)
+-> one keyset range for that semantic slot only
+-> child Object PK/name access
+```
+
+and preserve:
+
+```text
+one statement
+limit + 1 pagination
+no semantic N+1
+no other-slot scan
+no model/cache dependency
+no diagnostic follow-up query
+```
+
+No route-local physical index is frozen during discovery.
+
+# 10. Full-sweep closure
+
+The logical `GET /objects/{parent_object_id}/components/{slot_name}` route is **full-sweep complete** on:
+
+```text
+public route/query/response contract
+removal of generic cross-slot GET surface
+slot absent vs empty semantics
+semantic-slot cursor identity
+keyset ordering and limit semantics
+SCHEMA_CHANGE cursor compatibility/replacement behavior
+failure precedence
+one-statement current data path
+no cache/model/revision/lock/lifecycle boundary
+statement-snapshot concurrency semantics
+bounded cost profile
+architecture physical-design handoff
+```
+
+The older navigation cursor/data-path and broad Object-components brainstorming files are source evidence only after this consolidation. Git history is the historical record once they are removed.
