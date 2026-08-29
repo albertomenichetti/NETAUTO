@@ -225,10 +225,11 @@ GET /objects
 GET /objects/{id}
 PUT /objects/{id}/canonical-name
 POST /objects/{id}/properties
+GET /objects/{id}/schema
 DELETE /objects/{id}
 ```
 
-The DATA_CHANGE route has completed its full sweep and lossless absorption into `object.md`. Its dedicated route/source WIPs were removed afterward; Git history remains the historical record.
+The DATA_CHANGE and Object-schema GET routes have completed their full sweeps and lossless absorption into `object.md`. Their dedicated route/source WIPs were removed afterward; Git history remains the historical record.
 
 The sections above that are explicitly full-swept, together with the already-revalidated cross-operation Object findings absorbed into this owner, form part of the current reviewed baseline. Sections that explicitly point to later review fronts remain subject to those owners.
 
@@ -387,10 +388,9 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`to-be-api-object-attach-batch-cost.md`](to-be-api-object-attach-batch-cost.md)
 - [`to-be-api-object-attach-batch.md`](to-be-api-object-attach-batch.md)
 - [`to-be-api-object-detach-batch.md`](to-be-api-object-detach-batch.md)
-- [`to-be-api-object-schema.md`](to-be-api-object-schema.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name`, `POST /objects/{id}/properties` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are owned by `object.md`, and superseded route/source files were deleted after lossless absorption. Git history remains the historical record.
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name`, `POST /objects/{id}/properties`, `GET /objects/{id}/schema` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are owned by `object.md`, and superseded route/source files were deleted after lossless absorption. Git history remains the historical record.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
