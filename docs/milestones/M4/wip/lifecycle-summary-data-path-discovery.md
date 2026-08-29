@@ -4,9 +4,9 @@ Status: WIP / NON-NORMATIVE
 
 ## Scope
 
-This note records the first-phase data-path consequence of the M4 API direction that lifecycle collection endpoints return paginated event summaries while complete historical `before` / `after` snapshots are retrieved only through a single-event detail read.
+This note records the first-phase data-path consequence of the M4 API direction that lifecycle collection endpoints return paginated event summaries while complete historical transition payloads are retrieved only through a single-event detail read.
 
-This is discovery only. It does not freeze route shapes, exact summary DTO fields, or implementation details.
+This is discovery only. It does not freeze route shapes, exact summary DTO fields, event-detail union shapes or implementation details.
 
 ## Agreed API direction
 
@@ -17,40 +17,49 @@ GET /api/v1/core/lifecycle-events
 GET /api/v1/core/objects/{object_id}/lifecycle-events
 ```
 
-are candidates to return bounded event summaries rather than complete event snapshots.
+are candidates to return bounded event summaries rather than complete event payloads.
 
-A separate single-event detail read is the candidate surface for complete historical state:
+A separate single-event detail read is the candidate surface for one complete historical transition:
 
 ```text
 GET /api/v1/core/lifecycle-events/{event_id}
 ```
 
-The exact route and DTO are intentionally deferred to per-API design.
+The exact route and DTO remain deferred to per-API design.
+
+## Operation-specific payload principle
+
+M4 has ratified:
+
+```text
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+
+not automatically
+    = complete aggregate before + after snapshots
+```
+
+Consequently `before_state` / `after_state`, where retained as persistence carriers, may contain different semantic shapes for different event kinds.
+
+Ratified example:
+
+```text
+Object.RENAME
+    before  = { canonical_name: old_name }
+    after   = { canonical_name: new_name }
+```
+
+A complete Object snapshot is not required for RENAME because all other Object fields are outside that operation's mutation responsibility.
+
+DATA_CHANGE and SCHEMA_CHANGE payload boundaries remain subject to their own full-sweep review. CREATE/DELETE may legitimately require broader historical state because a resource enters or leaves current existence.
 
 ## Current persistence behavior
 
-`LifecycleStore.list_events()` currently selects the complete `object_lifecycle_events` row for every collection item and passes every row through the complete lifecycle decoder.
+The delivered lifecycle persistence uses a shared row shape and the current collection path can select/deserialize complete event rows, including historical JSONB carriers.
 
-For intrinsic and factual Relationship state-change events this means the collection path reads and decodes:
+When an event kind carries large property state, this can be materially larger than the metadata needed to render a collection page.
 
-```text
-before_state
-after_state
-```
-
-including complete canonical historical property maps.
-
-This can be materially larger than the event metadata needed to render a collection page.
-
-Concrete example:
-
-```text
-100 DATA_CHANGE events
-x 2 snapshots per event
-x 200 properties per snapshot
-```
-
-A summary collection should not transfer or decode those JSONB payloads merely because they are stored in the same persistence row.
+A summary collection should not transfer or decode those payloads merely because they are stored in the same persistence row.
 
 ## Target collection projection
 
@@ -73,7 +82,7 @@ slot_declaring_template_id
 slot_name
 ```
 
-with family-inapplicable fields remaining NULL as they already do in the shared lifecycle table.
+with family-inapplicable fields remaining NULL where the shared-table design keeps them so.
 
 Do not select in the collection path:
 
@@ -82,7 +91,7 @@ before_state
 after_state
 ```
 
-The exact final summary field set is deferred until the public lifecycle routes are designed in detail.
+The exact final summary field set is deferred until lifecycle public routes are designed in detail.
 
 ## Single-event detail path
 
@@ -93,25 +102,28 @@ before_state
 after_state
 ```
 
-and decodes the complete historical event carrier.
+where those carriers apply, and decodes the complete **kind-specific** historical event payload.
 
-Historical Object snapshots remain intentionally distinct from the richer current `GET Object` representation:
+The detail decoder must dispatch by event kind rather than assuming all intrinsic Object events contain the same complete Object snapshot shape.
+
+Conceptually:
 
 ```text
-id
-canonical_name
-template_id
-template_version
-properties
+RENAME
+    -> old/new canonical_name transition
+
+CREATE / DELETE
+    -> broader snapshot carrier where their final contracts require it
+
+DATA_CHANGE / SCHEMA_CHANGE
+    -> exact operation-specific carrier to be decided by their owners
 ```
 
-They do not gain current component expansion merely because `GET /objects/{id}` becomes richer.
-
-Ownership history remains represented by dedicated ATTACH/DETACH events.
+Ownership history remains represented by dedicated ATTACH/DETACH events rather than being embedded into intrinsic event payloads.
 
 ## Decoder separation
 
-The collection path should not invoke the complete historical snapshot decoder.
+The collection path should not invoke complete historical-payload decoders.
 
 Candidate separation:
 
@@ -119,11 +131,12 @@ Candidate separation:
 LifecycleEventSummary
     -> metadata-only row decoder / projection
 
-LifecycleEvent detail
-    -> complete event decoder including before_state / after_state
+LifecycleEventDetail
+    -> common metadata
+    -> kind-dispatched transition decoder
 ```
 
-This avoids decoding data that the public collection does not expose.
+This avoids decoding data that the public collection does not expose and avoids one artificially universal intrinsic snapshot type.
 
 ## Global lifecycle collection
 
@@ -137,7 +150,7 @@ the target remains one database statement.
 
 No cache is needed.
 
-No join is required solely to populate summary display names because lifecycle events already persist historical Object / destination names as event metadata.
+No join is required solely to populate summary display names when historical identity/display metadata is already persisted on the event row.
 
 Therefore:
 
@@ -150,8 +163,8 @@ DB payload
     current: complete event rows
     target:  summary projection only
 
-historical JSONB decoding
-    current: every collection item
+historical transition JSONB decoding
+    current: potentially every collection item
     target:  none in collection path
 ```
 
@@ -163,27 +176,27 @@ For:
 GET /api/v1/core/objects/{object_id}/lifecycle-events
 ```
 
-preserve the M3 single-statement framing that distinguishes:
+preserve the single-statement framing that distinguishes:
 
 ```text
 Object absent
     -> 404
 
 Object exists, no matching events
-    -> 200 []
+    -> empty page
 
 Object exists, matching events
     -> paginated summary page
 ```
 
-The M4 change is that the event-page CTE / projection should carry summary columns only rather than the complete `before_state` / `after_state` payloads.
+The M4 change is that the event-page projection carries summary columns only rather than complete historical transition payloads.
 
 ## First-phase conclusion
 
 Lifecycle collection optimization is not merely an HTTP serialization change.
 
-The target data path should avoid reading and decoding complete historical snapshots when the caller requested only a paginated collection. `before_state` / `after_state` belong to the single-event detail path.
+The target data path should avoid reading and decoding complete historical transition carriers when the caller requested only a paginated collection. Full kind-specific payload belongs to single-event detail.
 
-This keeps collection cost proportional primarily to event count and summary metadata rather than to the potentially unbounded size of historical property maps.
+The event-detail payload itself follows the semantic responsibility of the owning operation; it is not automatically a complete aggregate snapshot.
 
-Locking and concurrency realization are intentionally deferred to the global second phase.
+Locking, persistence carrier finalization and concurrency realization remain deferred to their owning later phases.
