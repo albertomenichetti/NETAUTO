@@ -163,6 +163,44 @@ without that fact alone invalidating the exact version itself.
 
 ---
 
+# GP-04 — Lifecycle records the operation-owned semantic transition
+
+A lifecycle event must record the complete historical transition that the owning operation is semantically responsible for.
+
+It does **not** follow that every event must duplicate a complete snapshot of the whole aggregate before and after the mutation.
+
+Canonical rule:
+
+```text
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+
+lifecycle payload
+    != automatically
+       complete aggregate before snapshot
+       + complete aggregate after snapshot
+```
+
+Fields and related facts that the operation cannot change do not have to be duplicated merely to make lifecycle payload shapes uniform across mutation kinds.
+
+This avoids turning audit/history representation choices into artificial mutation responsibilities or concurrency dependencies.
+
+For example, `Object.RENAME` owns only:
+
+```text
+canonical_name: old -> new
+```
+
+and therefore its lifecycle contract can be exact and complete with the old and new canonical-name values, without copying unchanged ObjectTemplate binding, runtime properties, ownership or Relationship state.
+
+By contrast, an operation that creates or destroys a complete current resource may legitimately require a broader snapshot because the whole resource enters or leaves current existence.
+
+The appropriate lifecycle payload boundary must therefore be evaluated operation by operation. Uniform storage or DTO convenience must not silently widen the semantic responsibility of a mutation.
+
+Lifecycle remains historical/audit state; current authoritative state is owned by the current-state persistence model rather than reconstructed implicitly from the event stream unless a separate contract explicitly says otherwise.
+
+---
+
 # Promotion note
 
 Before M4 closure, every principle retained here must be reviewed for:
