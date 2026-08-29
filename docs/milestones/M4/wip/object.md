@@ -10,18 +10,12 @@ It replaces route-local fragmentation with one readable checkpoint for the curre
 
 Everything under `wip/` remains non-normative. Local closure wording is only a discovery checkpoint and does not authorize implementation.
 
-The route-owner comparison pass has been completed against the current route-local Object owners. Older route-local and micro-step files remain temporarily in the tree only until the relevant lossless consolidations are complete and references can be cleaned safely.
+The route-owner comparison pass has been completed against the current route-local Object owners. Full-swept route-local owners are absorbed here losslessly; cross-operation owners remain separate where their scope spans multiple Object operations.
 
 Detailed cross-operation component persistence is intentionally kept outside this file and is owned by:
 
 ```text
 object-components-persistence.md
-```
-
-Detailed Object schema-migration mechanics are intentionally kept outside this file and are owned by:
-
-```text
-object-schema-change.md
 ```
 
 Cross-operation intrinsic Object generation semantics are owned by:
@@ -116,8 +110,8 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | `PUT /objects/{id}/canonical-name` | **full-sweep complete** | read old name + revision, expected-revision CAS, `revision+1`, exact minimal RENAME lifecycle |
 | `POST /objects/{id}/properties` | **full-sweep complete** | read full Object generation, READY requested-effect validation, application-side complete properties candidate, cheap no-op or expected-revision replacement + exact DATA_CHANGE delta |
 | `GET /objects/{id}/schema` | **full-sweep complete** | one coherent Object PK -> ObjectTemplate PK statement; no cache/locks/revision/OTV admission |
-| `POST /objects/{id}/schema` | public surface retained; execution active revalidation | immutable migration plan + universal expected-revision intrinsic freshness + slot-delta maintenance |
-| `GET /objects/{parent}/components/{slot}` | route-local checkpoint | one current data-plane statement |
+| `POST /objects/{id}/schema` | **full-sweep complete** | exact-pair MigrationPlan + universal expected-revision freshness + set-based slot delta + final TARGET admission |
+| `GET /objects/{parent}/components/{slot}` | **full-sweep complete** | one current root-preserving data-plane statement + semantic-slot keyset cursor |
 | `POST /objects/{parent}/components/{slot}/attach` | public semantics retained; execution revalidated | current slot materialization + ancestry cache + graph admission + FK arbitration |
 | `POST /objects/{parent}/components/{slot}/detach` | public semantics retained; execution revalidated | set-based current-edge delete + lifecycle |
 | `GET /objects/{child}/owner` | working current-fact candidate | one child-rooted statement over `objects` + `object_components` |
@@ -2521,7 +2515,7 @@ no effective-schema reconstruction
 no diagnostic-only second query
 ```
 
-# 7. POST Object schema change
+# 7. POST Object schema change — full sweep complete
 
 ## Public contract
 
@@ -2529,6 +2523,14 @@ no diagnostic-only second query
 POST /api/v1/core/objects/{object_id}/schema
 Content-Type: application/json
 ```
+
+Path:
+
+```text
+object_id: UUID
+```
+
+Query parameters: none.
 
 Request:
 
@@ -2538,7 +2540,16 @@ Request:
 }
 ```
 
-The mutation changes only the exact version inside the Object current stable ObjectTemplate lineage; it does not select another `template_id`.
+Conceptual transport model:
+
+```text
+ObjectSchemaMutationBody
+    target_version: positive integer
+```
+
+Unknown/malformed request carriers remain normal static invalid-request input.
+
+The operation keeps the Object's stable `template_id` and selects one exact ObjectTemplateVersion inside that lineage.
 
 Success:
 
@@ -2553,54 +2564,1043 @@ GET /objects/{id}
 GET /objects/{id}/schema
 ```
 
-## Current high-level candidate
+## Exact-target command semantics
 
-The public surface is retained while the execution model remains actively revalidated after `object_component_slots` and the universal Object revision decision.
-
-Current component-side direction:
+For current exact binding:
 
 ```text
-immutable MigrationPlan SOURCE -> TARGET
-
-prepare/migrate intrinsic Object state outside the short UoW where safe
-
-short SCHEMA_CHANGE UoW
-    -> use expected_revision for intrinsic Object generation freshness
-    -> protect final TARGET mutable admission
-    -> maintain object_component_slots delta atomically
-    -> use edge->slot FK as final REMOVE/replacement blocker authority
-    -> update Object exact binding + migrated properties + revision
-    -> append SCHEMA_CHANGE lifecycle
-    -> COMMIT
+SOURCE = T@VS
 ```
 
-Candidate slot delta:
+and request:
+
+```text
+TARGET = T@VT
+```
+
+SCHEMA_CHANGE is an **exact-target migration command**.
+
+Canonical version rule:
+
+```text
+version number
+    = exact-version identity
+    + creation/allocation order within one lineage
+
+version number
+    != genealogy
+    != semantic evolution order
+    != compatibility order
+    != migration order
+    != publication order
+```
+
+Therefore:
+
+```text
+VT > VS
+VT < VS
+```
+
+carry no migration-admission meaning by themselves. Terms such as upgrade/downgrade must not be inferred from the numeric relation alone.
+
+Intermediate numeric versions are never replayed:
+
+```text
+T@VS -> T@VT
+    = compare EffectiveSchema(T@VS) directly with EffectiveSchema(T@VT)
+```
+
+### Equal target is a semantic no-op
+
+```text
+VT == VS
+    -> 204 No Content
+    -> no MigrationPlan
+    -> no Object UPDATE
+    -> no slot DML
+    -> no revision increment
+    -> no SCHEMA_CHANGE lifecycle
+```
+
+The no-op is serially explainable at the coherent current generation observation. No final revision refresh/CAS is added solely to preserve the no-op through response time.
+
+The current exact version may already be DEPRECATED. Equal-target success creates no new binding and therefore does not re-admit PUBLISHED status.
+
+### Distinct target is a real new binding
+
+```text
+VT != VS
+    -> exact SOURCE -> TARGET migration candidate
+```
+
+The real migration owns two separate questions:
+
+```text
+TARGET admission
+    -> does exact T@VT exist and remain PUBLISHED through commit?
+
+SOURCE -> TARGET migrability
+    -> can this exact schema pair, and where required this concrete Object state,
+       be migrated according to the rules below?
+```
+
+SOURCE is an already-current binding and may be PUBLISHED or DEPRECATED. It does not need a new PUBLISHED admission merely because the Object is leaving it.
+
+## Exact schema comparison and semantic identity
+
+The immutable planner compares:
+
+```text
+EffectiveSchema(SOURCE)
+vs
+EffectiveSchema(TARGET)
+```
+
+It does not derive runtime migration behavior from:
+
+```text
+numeric version order
+version adjacency
+intermediate versions
+local declarations alone
+name equality alone
+current defaults
+```
+
+Property continuity:
+
+```text
+PropertySemanticKey
+    = (declaring_template_id, property_name)
+```
+
+Component-slot continuity:
+
+```text
+SlotSemanticKey
+    = (declaring_template_id, slot_name)
+```
+
+The same effective name under a different declaring lineage is semantic replacement, not continuity.
+
+Differences caused by different exact parent-version pins are classified solely from the resolved SOURCE/TARGET effective schemas; declaration/inheritance provenance is not a separate runtime migration class.
+
+## Immutable reusable MigrationPlan
+
+For one exact pair:
+
+```text
+(template_id, source_version, target_version)
+```
+
+certified SOURCE/TARGET semantics are immutable. Therefore:
+
+```text
+MigrationPlan(T, VS, VT)
+    = f(EffectiveSchema(T@VS), EffectiveSchema(T@VT))
+```
+
+is immutable and Object-independent.
+
+Conceptual cache:
+
+```text
+ObjectTemplateMigrationPlanCache[(T, VS, VT)]
+```
+
+A READY plan may contain compiled immutable rules for:
+
+```text
+property semantic continuity/replacement
+requiredness/add/remove
+SCALAR/LIST transformation
+conditional LIST -> SCALAR cardinality rule
+TARGET exact-DTV validation/canonicalization
+TARGET migration_default behavior
+component semantic continuity/replacement
+slot ADD/REMOVE/widening/position changes
+categorically unsupported component target relations
+current object_component_slots delta
+```
+
+It must not contain one Object's mutable:
+
+```text
+properties
+canonical_name
+ownership membership
+revision
+current TARGET lifecycle status
+```
+
+## MigrationPlan cache resolution
+
+Normal execution consumes the same READY-plan path whether the plan was already cached or became READY during the request.
+
+```text
+HIT
+    -> consume plan
+
+MISS
+    -> make required immutable semantic inputs READY
+    -> compile/cache plan
+    -> consume plan
+```
+
+Required immutable inputs are bounded by semantic class:
+
+```text
+SOURCE/TARGET certified exact effective ObjectTemplate closures
+exact DataTypeVersion semantics referenced by SOURCE union TARGET
+stable ObjectTemplate lineage ancestry required for component-target relation
+```
+
+Cold-loading rules:
+
+```text
+load only missing immutable entries
+bulk homogeneous misses
+no per-property DTV query
+no per-slot ancestry query
+no recursive inheritance reconstruction fallback
+no one-off raw-DB planner path
+```
+
+Current cold upper-bound direction:
+
+```text
+missing SOURCE/TARGET exact closures
+    -> at most 1 bounded bulk semantic-loader statement
+
+missing exact DTV semantics
+    -> at most 1 bounded bulk semantic-loader statement
+
+missing stable ancestry sources
+    -> at most 1 bounded bulk semantic-loader statement
+```
+
+Thus cold preparation adds `0..3` bounded semantic-loader classes, independent in round-trip count from inheritance depth and effective-member count. Payload naturally scales with returned semantics.
+
+For certified PUBLISHED/DEPRECATED exact versions, unexpectedly missing/incomplete immutable materialization or referenced exact DTV state is an internal invariant failure. Runtime does not substitute default/latest/another exact version and does not fall back to recursive reconstruction.
+
+## Property migration matrix
+
+Target properties are built **from TARGET semantic properties**. The migration is not a textual JSON-key patch program.
+
+For each TARGET semantic property, preparation selects exactly one of:
+
+```text
+preserved/transformed SOURCE semantic information
+canonical TARGET migration_default
+absence
+```
+
+SOURCE-only semantic properties are not selected into the target state.
+
+### Add/remove
+
+```text
+ADD optional
+    -> absent
+
+ADD required
+    -> canonical TARGET migration_default
+
+REMOVE optional/required
+    -> SOURCE semantic value omitted from TARGET state
+```
+
+Removed data is not archived or copied to an extras bucket.
+
+### Requiredness
+
+```text
+optional -> required
+    SOURCE value present
+        -> preserve information
+        -> apply all simultaneous TARGET transformations/validation
+        -> incompatibility blocks this Object migration
+        -> never replace existing incompatible information with migration_default
+
+    SOURCE value absent
+        -> canonical TARGET migration_default
+
+required -> optional
+    -> preserve existing information
+    -> apply all simultaneous TARGET transformations/validation
+    -> incompatibility blocks this Object migration
+    -> never drop merely because TARGET permits absence
+```
+
+`migration_default` fills absence only; it is never remediation for incompatible existing information.
+
+### SCALAR -> LIST
+
+```text
+SOURCE value present x
+    -> [x]
+    -> complete TARGET validation/canonicalization
+
+SOURCE optional value absent
+    -> absent unless independent TARGET requiredness supplies migration_default
+```
+
+### Conditional lossless LIST -> SCALAR
+
+A continuous LIST property may migrate to SCALAR only when the concrete Object transformation preserves all information.
+
+```text
+SOURCE value absent
+    -> TARGET absent
+       unless independent TARGET requiredness supplies canonical migration_default
+
+SOURCE value = [x]
+    -> TARGET candidate x
+    -> complete TARGET exact-DTV validation/canonicalization
+
+SOURCE value contains more than one item
+    -> 409 schema_change_blocked for this Object
+```
+
+Cardinality is literal:
+
+```text
+[x, x]
+    -> two items
+    -> not lossless
+    -> blocked
+```
+
+LIST order and multiplicity are semantic runtime information. SCHEMA_CHANGE never performs:
+
+```text
+first-item selection
+last-item selection
+arbitrary item selection
+deduplicate-then-collapse
+drop-to-absence because TARGET is optional
+migration_default replacement of incompatible existing information
+```
+
+### Exact DataTypeVersion change
+
+For a continuous semantic property within the same stable `datatype_id` lineage:
+
+```text
+existing information
+    -> preserve/shape-transform as applicable
+    -> validate/canonicalize under TARGET exact DTV
+
+TARGET incompatibility
+    -> 409 schema_change_blocked for this Object
+```
+
+LIST order is preserved. No cross-DataType-lineage or cross-PrimitiveType conversion is invented by Object migration.
+
+### Semantic replacement
+
+Same textual name with different `PropertySemanticKey` means:
+
+```text
+REMOVE old semantic property
+ADD new semantic property
+```
+
+No value carry-forward occurs merely because JSON field names match.
+
+## Component-slot migration matrix
+
+Current component runtime state uses the reviewed `object_component_slots` / `object_components` boundary.
+
+For supported SOURCE -> TARGET slot deltas:
 
 ```text
 ADD
     -> INSERT current slot row
+    -> new semantic slot starts empty
 
 REMOVE
     -> DELETE current slot row
+    -> no implicit DETACH
+    -> referenced old edge blocks final removal
 
-continuous target widening
+same SlotSemanticKey + equal target
+    -> preserve slot/edges
+
+same SlotSemanticKey + target widening toward ancestor
     -> UPDATE target_template_id
+    -> preserve edges
+    -> no current-child compatibility revalidation
+
+position-only
+    -> no current-slot DML
+    -> ownership unchanged
 
 semantic replacement
-    -> key-changing slot_declaring_template_id UPDATE
-       + target_template_id as required
-
-position-only change
-    -> no slot DML
+    -> old semantic identity removed + new semantic identity added/replaced
+    -> no implicit rebind/detach+reattach
+    -> referenced old edge blocks replacement
+    -> new semantic slot starts empty
 ```
 
-Existing `object_components` edges remain unchanged on a successful normal migration.
+Successful normal SCHEMA_CHANGE does not rewrite `object_components` membership.
 
-The universal persisted `revision` supersedes the earlier intrinsic Object fingerprint as the preferred stale-success guard for `objects`-row state. Structural slot/ownership facts remain outside revision scope and still rely on their own relational admission/arbitration.
+### Categorically unsupported relations
 
-Detailed migration semantics, cache inputs, property rules, expected-revision retry behavior and final UoW belong to the dedicated `object-schema-change.md` consolidation and must be revalidated there before SCHEMA_CHANGE full-sweep closure.
+For one continuous slot:
 
-# 8. GET one component slot
+```text
+SOURCE target ancestor
+TARGET target descendant
+    -> narrowing
+
+SOURCE/TARGET targets unrelated
+    -> unrelated relation
+```
+
+Both exact-pair relations are categorically non-migrable through normal SCHEMA_CHANGE:
+
+```text
+narrowing  -> 422 semantic_validation_failed
+unrelated  -> 422 semantic_validation_failed
+```
+
+Current children never rescue the pair:
+
+```text
+zero children
+all current children happen to satisfy narrower TARGET
+```
+
+are irrelevant to migration admission.
+
+Operational consequence:
+
+```text
+0 current child reads
+0 per-child compatibility checks
+0 membership freshness/protection for component-target admission
+```
+
+The immutable MigrationPlan is sufficient to reject the pair.
+
+### REMOVE/replacement blocker authority
+
+Current membership matters only at the final relational slot boundary for REMOVE/semantic replacement.
+
+With the reviewed edge -> current semantic-slot dependency:
+
+```text
+DETACH removes last old edge first
+    -> slot removal/replacement may proceed
+
+old edge still references slot at final transition
+    -> slot DELETE/key change cannot commit
+    -> 409 schema_change_blocked
+```
+
+No preparatory ownership snapshot, child list, blocker count or child-specific diagnostic read is required.
+
+## One-generation preparation path
+
+Each attempt begins with one coherent current intrinsic Object generation read.
+
+Required Object projection:
+
+```text
+template_id = T
+template_version = VS
+properties
+revision = R
+```
+
+`object_id` is already the path target. `canonical_name` is not required by SCHEMA_CHANGE semantics/lifecycle. Current ownership membership is not part of normal preparation.
+
+The same STEP 1 may also observe requested distinct TARGET existence/current status so that obviously unusable targets can be rejected before semantic preparation **without adding a standalone preliminary TARGET round trip**.
+
+Conceptual flow:
+
+```text
+STEP 1 — one authoritative current-generation statement
+    Object generation T@VS + properties + revision R
+    optionally requested TARGET header/existence/status in same bounded statement
+
+    Object absent
+        -> 404 resource_not_found
+
+    VT == VS
+        -> 204 semantic no-op
+
+    VT != VS + TARGET absent
+        -> 422 referenced_resource_not_found
+
+    VT != VS + TARGET DRAFT/DEPRECATED
+        -> 409 dependency_not_admissible
+
+STEP 2 — worker/application semantic preparation
+    obtain/build READY MigrationPlan(T, VS, VT)
+    reject categorically unsupported component pair
+    apply plan to current properties
+    derive complete canonical target_properties
+    derive actual changed-property lifecycle delta
+    retain immutable/current-slot delta
+    build PreparedSchemaChange(expected_revision=R)
+
+STEP 3 — short real-migration UoW
+    final protected TARGET PUBLISHED admission
+    expected_revision freshness
+    relational slot arbitration/maintenance
+    atomic Object + revision + slots + lifecycle persistence
+```
+
+Normal preparation reads no:
+
+```text
+child Objects
+object_components membership
+Relationship state
+lifecycle state
+current object_component_slots for semantic reconstruction
+```
+
+### Conservative semantic failures
+
+A semantic failure derived from coherent generation `R` may return immediately without a final revision refresh solely to discover whether a concurrent later mutation changed the answer.
+
+Examples:
+
+```text
+multi-item LIST -> SCALAR
+current property value incompatible with TARGET exact DTV
+categorically unsupported component target relation
+```
+
+These paths commit no stale state. The response is serially explainable at the generation observed.
+
+Canonical principle:
+
+```text
+expected-revision CAS is required for writes
+not for no-op or semantic failure paths that persist nothing
+```
+
+## PreparedSchemaChange
+
+Conceptually:
+
+```text
+PreparedSchemaChange
+    object_id
+    template_id
+    source_version
+    target_version
+    expected_revision
+    target_properties
+    component_slot_delta | MigrationPlan reference
+    lifecycle binding transition
+    lifecycle changed-property delta
+```
+
+It is mechanically applicable once final mutable admissions succeed. Expensive schema comparison, property migration and TARGET value validation are not repeated simply because the final UoW begins.
+
+## Final TARGET admission and short UoW
+
+A real distinct TARGET is a lifecycle-sensitive new binding.
+
+Final success requires exact TARGET:
+
+```text
+same template_id
+exact requested target_version
+current status == PUBLISHED
+```
+
+protected through the binding commit by a SHARE-equivalent semantic hold or another architecture-proven mechanism.
+
+The final short UoW owns:
+
+```text
+A. protect/re-admit TARGET PUBLISHED through commit
+
+B. require current Object revision == expected_revision R
+
+C. apply current object_component_slots delta subject to DB referential arbitration
+
+D. atomically commit:
+       objects.template_version := VT
+       objects.properties       := complete target_properties
+       objects.revision         := R + 1
+       complete current slot delta
+       exactly one SCHEMA_CHANGE lifecycle event
+
+E. leave object_components membership unchanged
+```
+
+No cache fill, MigrationPlan compilation, property transformation, TARGET value validation, child scan or lifecycle semantic reconstruction belongs inside the final protected path.
+
+Exact SQL/lock/statement fusion remains architecture work.
+
+## Intrinsic freshness and retry
+
+`objects.revision` is the only intrinsic-row freshness token.
+
+```text
+candidate prepared from generation R
+
+current revision == R
+    -> exact intrinsic generation used for preparation is still current
+
+current revision != R
+    -> stale attempt
+    -> no Object mutation
+    -> no slot mutation
+    -> no lifecycle
+    -> bounded fresh retry from STEP 1
+```
+
+No canonical-JSON/SHA fingerprint or second binding-specific freshness mechanism is retained.
+
+### Retry with unchanged SOURCE
+
+```text
+fresh SOURCE == previous SOURCE
+    -> existing READY MigrationPlan(T, SOURCE, TARGET) reusable
+    -> reapply to fresh properties
+    -> recompute concrete migration outcome and lifecycle delta
+```
+
+### Retry with changed SOURCE
+
+```text
+fresh SOURCE != previous SOURCE
+    -> old exact-pair plan not applicable
+    -> resolve/build MigrationPlan(T, fresh_SOURCE, requested_TARGET)
+    -> reprepare from fresh properties
+```
+
+### Retry reaches requested TARGET
+
+```text
+fresh source_version == requested target_version
+    -> 204 semantic no-op
+    -> no new mutation/revision/lifecycle
+```
+
+### Retry exhaustion
+
+Retry is bounded. Exact count/backoff is architecture work.
+
+If the internal policy cannot stabilize one intrinsic generation:
+
+```text
+-> 500 internal_error
+```
+
+There is no public route-specific `409 concurrent_modification` or `schema_change_blocked/concurrent_object_change` for stale revision contention.
+
+Only stale `expected_revision` is an automatic intrinsic retry trigger. TARGET absence/inadmissibility, semantic migration failure, slot blocker and persistence defects retain their own normal classifications.
+
+## Failure semantics and precedence
+
+Public failure families:
+
+```text
+400 invalid_request
+404 resource_not_found
+422 referenced_resource_not_found
+422 semantic_validation_failed
+409 dependency_not_admissible
+409 schema_change_blocked
+500 internal_error
+```
+
+Normal precedence:
+
+```text
+1. malformed/static request carrier
+    -> 400 invalid_request
+
+2. current Object absent on authoritative generation read/retry
+    -> 404 resource_not_found
+
+3. target_version == current source_version
+    -> 204 semantic no-op
+
+4. distinct exact TARGET absent
+    -> 422 referenced_resource_not_found
+       resource_type = object_template_version
+       id = template_id
+       version = target_version
+
+5. distinct exact TARGET exists but is DRAFT/DEPRECATED
+    -> 409 dependency_not_admissible
+
+6. immutable SOURCE -> TARGET migration relation categorically unsupported
+    -> 422 semantic_validation_failed
+    -> bounded violation identifies the unsupported schema-change rule/member
+
+7. supported migration pair blocked by concrete current Object property state
+    -> 409 schema_change_blocked
+    -> blocker_type = property
+    -> bounded semantic property identity/name detail
+
+8. final TARGET re-admission
+    TARGET became DRAFT/DEPRECATED
+        -> 409 dependency_not_admissible
+
+    TARGET absent
+        -> 422 referenced_resource_not_found
+        -> not a revision retry trigger
+
+9. expected_revision stale
+    -> internal bounded retry from STEP 1
+
+10. final slot REMOVE/replacement blocked by current edge reference
+    -> 409 schema_change_blocked
+    -> blocker_type = component_slot_in_use
+    -> bounded slot semantic identity detail
+    -> no blocker count/child-id diagnostic query required
+
+11. bounded revision retry exhausted
+    -> 500 internal_error
+
+12. unexpected persistence/cache/materialization/invariant failure
+    -> 500 internal_error
+```
+
+A TARGET observation made during STEP 1 is only an early failure filter. Successful real migration still depends on final protected PUBLISHED admission.
+
+No diagnostic-only DB read is introduced merely to enrich a failure.
+
+## SCHEMA_CHANGE lifecycle
+
+A successful real `SOURCE != TARGET` migration appends exactly one:
+
+```text
+kind = SCHEMA_CHANGE
+```
+
+Equal-target no-op, semantic failure, blocked migration and rolled-back attempts emit no SCHEMA_CHANGE event.
+
+The event follows the general operation-owned lifecycle principle and does **not** persist full intrinsic Object before/after snapshots.
+
+Canonical semantic payload:
+
+```text
+SCHEMA_CHANGE event
+    object_id = O
+
+    binding transition
+        template_id = T
+        source_version = VS
+        target_version = VT
+
+    changed runtime properties only
+        PropertySemanticKey
+            declaring_template_id
+            property_name
+
+        before
+            canonical value | ABSENT
+
+        after
+            canonical value | ABSENT
+```
+
+The binding transition is always present for a real migration, even when no runtime property value changes:
+
+```text
+T@4 -> T@5
+property_changes = []
+```
+
+is still a real historical SCHEMA_CHANGE.
+
+Property deltas record actual semantic value transitions only. Unchanged property values are omitted.
+
+Examples:
+
+```text
+ADD required via migration_default
+    ABSENT -> canonical default
+
+REMOVE present property
+    canonical value -> ABSENT
+
+SCALAR -> LIST
+    x -> [x]
+
+LIST -> SCALAR
+    [x] -> x
+
+DTV change that changes canonical representation
+    old canonical -> new canonical
+```
+
+For semantic replacement, identical textual names do not merge identities. Example:
+
+```text
+(Device, hostname): "srv01" -> ABSENT
+(Server, hostname): ABSENT -> "unknown"
+```
+
+rather than a false single-property rename/value change.
+
+`ABSENT` is distinct from JSON null; null remains invalid runtime property state.
+
+Lifecycle does not duplicate:
+
+```text
+canonical_name
+revision
+full properties before/after
+unchanged properties
+object_component_slots rows
+components/ownership membership
+Relationships
+template display/status/default/description metadata
+effective-schema snapshots
+```
+
+The slot delta is derived current-state materialization of the exact binding transition and is not copied into lifecycle. Ownership membership is unchanged by successful SCHEMA_CHANGE and ownership history remains owned by ATTACH/DETACH events.
+
+Lifecycle binding + changed-property delta is derived during normal application-side MigrationPlan application; no second full-property-map pass or extra DB statement is required solely to build history.
+
+Object binding/properties/revision, current slot materialization and the lifecycle event commit atomically.
+
+## Concurrency outcomes
+
+### Intrinsic writers
+
+```text
+SCHEMA_CHANGE x RENAME
+SCHEMA_CHANGE x DATA_CHANGE
+SCHEMA_CHANGE x SCHEMA_CHANGE
+```
+
+share the universal revision protocol. One committed intrinsic writer advances revision; a candidate based on the prior generation becomes stale and retries from fresh current state.
+
+No lost intrinsic transition or stale full-properties overwrite is allowed.
+
+### DELETE
+
+```text
+SCHEMA_CHANGE commits first
+    -> DELETE may remove the resulting generation
+
+DELETE commits first
+    -> fresh SCHEMA_CHANGE retry observes Object absence
+    -> 404
+```
+
+No mutation-after-delete or resurrection is permitted.
+
+### ATTACH/DETACH
+
+For preserved/equal/widened slots, membership changes do not invalidate an intrinsic property candidate merely because membership changed.
+
+For REMOVE/replacement:
+
+```text
+ATTACH old slot commits first
+    -> referenced slot cannot be removed/key-changed
+    -> SCHEMA_CHANGE blocked
+
+SCHEMA_CHANGE slot removal/replacement commits first
+    -> later old-slot ATTACH cannot satisfy current semantic-slot FK
+
+DETACH first
+    -> may remove the final relational blocker
+```
+
+No parent Object revision bump or generic parent-lock rendezvous is required solely for slot continuity.
+
+## Cost profile
+
+### Equal-target no-op
+
+```text
+1 authoritative Object generation statement
+0 MigrationPlan work
+0 semantic-loader work
+0 final UoW
+0 UPDATE
+0 slot DML
+0 lifecycle
+0 revision increment
+```
+
+### Warm real migration
+
+With `MigrationPlan(T, VS, VT)` READY:
+
+```text
+1 preparation statement
+    -> current Object generation
+    -> optional distinct TARGET early existence/status observation in same statement
+
+0 semantic-loader statements
+
+application/worker CPU
+    -> apply MigrationPlan
+    -> construct complete target_properties
+    -> derive actual changed-property lifecycle delta
+    -> retain slot delta
+
+1 bounded short final UoW + COMMIT
+    -> final TARGET admission
+    -> expected_revision freshness
+    -> set-based slot maintenance / FK arbitration
+    -> Object binding + full properties + revision + lifecycle persistence
+```
+
+Discovery deliberately does not freeze the physical statement count inside the final UoW. Architecture may safely fuse/decompose DML/protection while preserving the semantic contract. The UoW statement count must remain bounded independently of schema member count and child count.
+
+### Cold preparation
+
+Cold semantic work adds at most:
+
+```text
+0..1 exact closure bulk load
+0..1 exact DTV bulk load
+0..1 stable ancestry bulk load
+```
+
+No N+1 query growth is allowed.
+
+### Application complexity
+
+Let:
+
+```text
+P = effective property count involved in target-oriented candidate construction
+V = size of current/target property values processed
+D = component-slot delta size
+```
+
+Application semantic/candidate work is bounded by:
+
+```text
+O(P + V + D)
+```
+
+It does not scale with:
+
+```text
+current child count
+ownership depth
+Relationship count
+lifecycle-event count
+ObjectTemplate inheritance depth
+```
+
+LIST -> SCALAR needs no extra DB read because current list state is already in the full property map.
+
+Slot maintenance must be set-based/bulk; M4 does not accept one PostgreSQL statement per slot as the intended architecture direction.
+
+### Full property replacement trade-off
+
+SCHEMA_CHANGE intentionally reads the full current property map and writes the full canonical TARGET map:
+
+```text
+PostgreSQL -> application
+    full current properties
+
+application/domain
+    MigrationPlan application
+    TARGET canonicalization/validation
+    lifecycle property delta
+
+application -> PostgreSQL
+    complete target properties
+```
+
+This is appropriate because schema migration may affect the whole property contract. PostgreSQL remains current-state/CAS/referential/atomicity authority; application/domain code owns migration semantics.
+
+Architecture must measure realistic:
+
+```text
+JSONB payload size
+network transfer
+Python decode/encode/CPU
+PostgreSQL CPU
+TOAST/WAL amplification
+p50/p95/p99 latency
+same-Object contention/retry amplification
+```
+
+before physical freeze.
+
+## Architecture handoff
+
+SCHEMA_CHANGE route semantics are full-sweep complete. Deferred to architecture-wide realization only:
+
+```text
+exact SQL / SQLAlchemy carriers
+exact STEP-1 root/TARGET join carrier
+final-UoW statement fusion/decomposition
+exact TARGET/Object/slot lock modes
+wait-for ordering and deadlock proof
+exact bounded retry count/backoff
+slot-delta set-based DML realization
+PK/UNIQUE/FK actions/timing/constraint names
+constraint/SQLSTATE -> ratified public failure translation
+lifecycle JSON/typed persistence carrier
+cache layout/eviction/local fill coordination
+final physical indexes
+EXPLAIN/BUFFERS evidence
+JSONB/TOAST/WAL/storage/runtime measurements
+```
+
+Architecture must preserve:
+
+```text
+exact-target semantics; numeric order never decides migrability
+equal-target one-read 204 no-op
+one authoritative intrinsic Object generation read per attempt
+no standalone preliminary TARGET query
+bounded bulk immutable semantic fills; no N+1
+application-side target-oriented property migration
+conditional lossless LIST -> SCALAR only
+categorical component target narrowing/unrelated rejection
+no child/ownership semantic-preparation scan
+expected_revision as only intrinsic freshness authority
+bounded fresh retry; exhaustion -> 500
+final protected TARGET PUBLISHED admission for real bindings
+set-based current-slot maintenance
+edge->slot FK final REMOVE/replacement arbitration
+no diagnostic-only queries
+atomic binding + properties + revision + current slots + lifecycle
+operation-owned lifecycle binding transition + changed-property delta
+no ownership membership rewrite on successful normal SCHEMA_CHANGE
+```
+
+## Full-sweep closure
+
+The logical `POST /objects/{id}/schema` route is **full-sweep complete** on:
+
+```text
+public route/body/success contract
+exact-target and equal-target no-op semantics
+SOURCE/TARGET semantic identity and exact-pair planning
+immutable MigrationPlan/cache boundary
+property migration matrix including lossless LIST -> SCALAR
+component migration matrix including categorical narrowing/unrelated rejection
+single-generation Object preparation
+TARGET early/final admission responsibilities
+universal revision CAS + bounded retry/reprepare
+slot FK arbitration and no child-preparation scan
+public failure taxonomy/precedence
+operation-owned lifecycle payload
+concurrency outcomes
+no-op/warm/cold cost character
+architecture handoff
+```
+
+Older SCHEMA_CHANGE/fingerprint micro-WIPs are superseded wherever they conflict with this family owner. Non-superseded semantic/cache/concurrency/cost findings have been absorbed here. After reference cleanup they may be deleted; Git history remains the historical reasoning record.
+
+# 8. GET one component slot — full sweep complete
 
 ## Public contract
 
@@ -2610,20 +3610,43 @@ GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
     &limit=...
 ```
 
-`slot_name` is a path resource identity, not an optional search filter.
-
-The TO-BE surface does not retain a generic cross-slot route:
+Path:
 
 ```text
-GET /objects/{parent}/components
-    -> not retained
+parent_object_id
+    UUID
+
+slot_name
+    canonical component-slot name
+    ^[a-z][a-z0-9_]{0,63}$
 ```
 
-The complete Object GET already exposes all direct slots/children; this specialized route exists for selective bounded pagination of one potentially large slot.
+Query:
 
-No additional component filter is part of the current candidate; query parameters are only `cursor` and `limit`.
+```text
+cursor
+    opaque string
+    optional
 
-Response uses the same child representation as Object GET:
+limit
+    positive integer 1..500
+    optional
+    default 100
+```
+
+No request body. Unknown or repeated query parameters are invalid request input. No additional child filter is part of the M4 contract.
+
+The TO-BE surface does not retain the generic cross-slot route:
+
+```http
+GET /api/v1/core/objects/{parent_object_id}/components
+```
+
+`slot_name` is a path resource identity, not an optional filter. The route is the bounded/paginated view of one current direct-child collection already visible in the complete first-level `GET /objects/{id}` representation.
+
+## Response and nested-resource semantics
+
+Response:
 
 ```json
 {
@@ -2637,31 +3660,50 @@ Response uses the same child representation as Object GET:
 }
 ```
 
-Public outcomes:
+The child representation is exactly the same first-level reference used by Object GET. It does not expose:
 
 ```text
-malformed slot carrier
-    -> normal 400 invalid_request boundary
+slot_declaring_template_id
+target_template_id
+child ObjectTemplate binding
+child properties
+child components
+```
 
+Canonical ordering:
+
+```text
+child_object_id ASC
+```
+
+Public current-resource outcomes:
+
+```text
 parent absent
-    -> 404 resource_not_found / object
+    -> 404 resource_not_found
+       resource_type = object
 
 parent present + current slot absent
-    -> 404 resource_not_found / object_component_slot
+    -> 404 resource_not_found
+       resource_type = object_component_slot
 
-parent present + slot present + empty
-    -> 200 empty page
+parent present + current slot present + zero children
+    -> 200 {"items": [], "next_cursor": null}
 
-parent present + slot present + children
+parent present + current slot present + children
     -> 200 bounded page
 ```
 
-## Cursor
+A valid empty slot is therefore distinct from a nonexistent nested slot resource.
 
-Opaque cursor identity:
+## Cursor semantics
+
+The cursor identifies the semantic slot collection, not the complete parent Object generation and not a repeatable membership snapshot.
+
+Canonical cursor identity:
 
 ```text
-route identity
+codec route
     object_component_slot_children
 
 semantic query identity
@@ -2673,65 +3715,310 @@ position
     child_object_id ASC
 
 limit
-    excluded from identity
+    excluded from semantic identity
 ```
 
-`slot_declaring_template_id` remains internal opaque cursor material. Same-name semantic slot replacement invalidates an old cursor rather than silently continuing against a different collection.
+`slot_declaring_template_id` is internal opaque cursor material only. It remains excluded from the public path/query/response contract.
 
-Static malformed/incompatible cursor carriers return:
+It is required because one public path `(parent_object_id, slot_name)` can later resolve after SCHEMA_CHANGE to a different semantic slot declaration.
+
+Consequences:
 
 ```text
-400 invalid_cursor
+same-name semantic replacement
+    current slot_declaring_template_id differs
+    -> 400 invalid_cursor
+
+current slot removal
+    -> 404 object_component_slot
+
+SCHEMA_CHANGE preserving the same semantic slot identity
+    -> cursor remains semantically compatible
+
+target widening preserving semantic slot identity
+    -> cursor remains compatible
+
+ATTACH / DETACH
+child RENAME
+    -> do not structurally invalidate cursor
 ```
 
-Current-state precedence:
+The cursor is not a cross-request snapshot. Membership/display changes between page requests are visible according to ordinary keyset semantics.
+
+The position child need not remain current:
+
+```text
+cursor key = child C
+C later detached or deleted
+    -> continuation still uses child_object_id > C
+    -> no lookup/admission of C itself
+```
+
+`limit` may change between pages.
+
+Publicly the cursor remains only an opaque string. The current realization may reuse the existing v1 canonical-JSON/base64url envelope with a route-specific identity and no server-side cursor state; exact envelope internals are not a caller contract.
+
+## Failure precedence
+
+Static request validation:
+
+```text
+malformed parent_object_id
+malformed slot_name
+malformed/out-of-range limit
+unknown/repeated query parameter
+request body present
+    -> 400 invalid_request
+```
+
+Static cursor validation happens before database access:
+
+```text
+malformed envelope
+wrong route identity
+cursor parent != requested parent
+cursor slot_name != requested slot
+missing/malformed internal semantic id
+malformed position key
+    -> 400 invalid_cursor
+```
+
+Then the authoritative current-state statement classifies in this order:
 
 ```text
 parent absent
-    -> 404 object
+    -> 404 resource_not_found / object
 
-slot absent
-    -> 404 object_component_slot
+parent present + slot absent
+    -> 404 resource_not_found / object_component_slot
 
-slot present but cursor declaring lineage differs
+slot present + continuation semantic id differs
     -> 400 invalid_cursor
 
 otherwise
-    -> normal continuation
+    -> 200 current page
 ```
 
-ATTACH/DETACH, child RENAME and target widening do not invalidate a cursor merely because membership/display state changes; cross-request repeatable membership is not promised.
+Unexpected persistence/invariant failures encountered on the required path are `500 internal_error`.
 
-The route reuses the existing versioned canonical-JSON + URL-safe-Base64 cursor envelope with a distinct route identity; no global cursor-envelope version bump is introduced by this route-local change.
-
-## Data path
-
-Current candidate:
+There is no normal route-level:
 
 ```text
-1 PostgreSQL statement
-objects parent
-+ requested object_component_slots row
-+ bounded object_components page
-+ child objects for canonical_name
+409
+422
+```
 
-0 component-schema cache
-0 ObjectTemplate effective-schema reads
+No diagnostic-only second query is permitted solely to enrich failure details or search for impossible corruption.
+
+## Current data path
+
+The normal route reads only current data-plane state:
+
+```text
+objects parent
+object_component_slots requested current slot
+object_components current semantic-slot membership
+objects child for current canonical_name
+```
+
+Required logical path:
+
+```text
+one root-preserving PostgreSQL statement
+
+parent Object PK lookup
+-> requested current slot by (object_id, slot_name)
+-> compare current slot_declaring_template_id with cursor semantic id when present
+-> bounded semantic-slot membership page
+-> child Object id/current canonical_name
+```
+
+The membership branch uses the resolved current semantic identity:
+
+```text
+parent_object_id
+slot_declaring_template_id
+slot_name
+child_object_id > cursor_child_id when present
+ORDER BY child_object_id ASC
+LIMIT limit + 1
+```
+
+For a continuation cursor, the bounded child-page branch should be gated by semantic-id equality so a stale same-name replacement cursor does not scan a page that will be rejected.
+
+The application returns the first `limit` rows and builds `next_cursor` from the last returned child only when the `limit + 1` probe proves another row exists.
+
+Cursor generation requires no additional database read.
+
+## Authority boundary
+
+ObjectTemplate exact effective schema remains the semantic/model-plane authority for component-slot definitions.
+
+`object_component_slots` is the transactionally maintained current per-Object derivative produced by Object CREATE/SCHEMA_CHANGE.
+
+The read consumes the already-admitted current invariant:
+
+```text
+MaterializedSlots(O)
+    == EffectiveComponentSlots(O.template_id, O.template_version)
+```
+
+It does not re-certify that invariant on the hot path.
+
+Normal route work therefore requires no:
+
+```text
+parent template binding read for schema interpretation
+object_template_effective_components
+ObjectTemplate inheritance traversal
+component semantic cache
+DataType semantics
+ancestry cache
+objects.revision
+explicit row locks
+lifecycle reads/writes
+```
+
+The current persistence model is also responsible for preventing dangling membership/child facts. The GET does not add integrity sweeps or diagnostic reads to re-prove those write-owned invariants.
+
+## Coherence and concurrency
+
+One PostgreSQL statement snapshot is the complete current-read coherence boundary.
+
+```text
+SCHEMA_CHANGE
+    -> old semantic slot state OR new semantic slot state
+    -> never an intermediate mixture
+
+same-name semantic replacement
+    snapshot before replacement
+        -> old cursor may continue on old semantic collection
+    snapshot after replacement
+        -> current semantic id differs
+        -> invalid_cursor
+
+slot removal visible in snapshot
+    -> 404 object_component_slot
+
+ATTACH
+    -> child absent before commit / present after commit
+
+DETACH
+    -> child present before commit / absent after commit
+
+child RENAME
+    -> old or new canonical_name according to the same statement snapshot
+
+parent DELETE
+    -> current parent result or 404 according to statement visibility
+```
+
+No revision check, retry or multi-statement coherent-read protocol is needed.
+
+## Cost profile
+
+Static request/cursor failure:
+
+```text
+0 PostgreSQL statements
+```
+
+Every path that consults current state, including:
+
+```text
+first page
+continuation page
+empty valid slot
+missing slot
+missing parent
+stale semantic cursor
+```
+
+has target cost:
+
+```text
+1 PostgreSQL business statement maximum
+0 cache lookups
+0 model-plane reads
 0 recursive traversal
 0 explicit locks
+0 lifecycle work
 ```
 
-All mutable response facts and current semantic cursor compatibility come from one statement snapshot.
-
-Cursor generation itself adds:
+Logical work:
 
 ```text
-0 DB statements
-0 model-plane reads
-0 cache lookups
+O(1) parent lookup
++ O(1) requested current-slot lookup / semantic-id comparison
++ O(page size) membership and child-name rows
 ```
 
-Final indexes/plan evidence remain architecture work.
+It must not scale with:
+
+```text
+total slots on the parent
+total children in other slots
+Object property count
+ObjectTemplate inheritance depth
+Relationship count
+lifecycle-event count
+```
+
+## Architecture handoff
+
+Deferred physical decisions:
+
+```text
+exact SQL / SQLAlchemy root-preserving carrier
+LEFT/LATERAL vs equivalent realization
+final PK/UNIQUE/index realization
+edge index key order / INCLUDE choices
+EXPLAIN (ANALYZE, BUFFERS) evidence
+payload/runtime measurements
+```
+
+Architecture must prove the bounded path:
+
+```text
+objects PK(parent_object_id)
+-> one current slot by (object_id, slot_name)
+-> one keyset range for that semantic slot only
+-> child Object PK/name access
+```
+
+and preserve:
+
+```text
+one statement
+limit + 1 pagination
+no semantic N+1
+no other-slot scan
+no model/cache dependency
+no diagnostic follow-up query
+```
+
+No route-local physical index is frozen during discovery.
+
+## Full-sweep closure
+
+The logical `GET /objects/{parent_object_id}/components/{slot_name}` route is **full-sweep complete** on:
+
+```text
+public route/query/response contract
+removal of generic cross-slot GET surface
+slot absent vs empty semantics
+semantic-slot cursor identity
+keyset ordering and limit semantics
+SCHEMA_CHANGE cursor compatibility/replacement behavior
+failure precedence
+one-statement current data path
+no cache/model/revision/lock/lifecycle boundary
+statement-snapshot concurrency semantics
+bounded cost profile
+architecture physical-design handoff
+```
+
+The older navigation cursor/data-path and broad Object-components brainstorming files are source evidence only after this consolidation. Git history is the historical record once they are removed.
 
 # 9. ATTACH children to one slot
 
@@ -3597,7 +4884,11 @@ CREATE
     -> broad created-state after snapshot may remain justified by whole-resource creation
 
 SCHEMA_CHANGE
-    -> payload boundary remains to be revalidated by its own full sweep
+    -> exact binding transition T@SOURCE -> T@TARGET
+    -> exact delta of actually changed semantic properties
+    -> semantic key (declaring_template_id, property_name)
+    -> before/after value | ABSENT
+    -> no full intrinsic before/after snapshot
 ```
 
 Technical `revision` is not automatically lifecycle semantic payload.
@@ -3696,8 +4987,9 @@ LIST
 GET
 canonical-name mutation
 properties mutation / DATA_CHANGE
-Object schema GET/public POST surface
-component-slot navigation + cursor/data-path checkpoints
+Object schema GET
+Object SCHEMA_CHANGE
+component-slot navigation / GET
 ATTACH
 DETACH
 GET owner working projection
@@ -3707,6 +4999,10 @@ DELETE
 The current Object DATA_CHANGE full sweep has been losslessly absorbed here, including public contract, requested-effects-only validation, application-side complete JSON mutation, semantic no-op cost rule, universal revision CAS/retry, exact changed-property lifecycle delta, failure mapping, warm/cold cost direction and architecture handoff. The older first-phase DATA_CHANGE discovery is superseded where it proposed full-candidate semantic recertification; its still-relevant cache/authority and hot-path no-recertification findings are preserved above.
 
 The current `GET /objects/{id}/schema` full sweep has also been losslessly absorbed here, including exact public DTO, stable `template_name` convenience, one-statement Object-PK -> ObjectTemplate-PK read path, no exact-OTV admission/recertification, no cache/lock/revision dependency, bounded failure mapping, concurrency semantics, cost target and physical-plan handoff.
+
+The current `POST /objects/{id}/schema` full sweep is now losslessly absorbed here, including exact-target/equal-target semantics, immutable exact-pair MigrationPlan, complete property/component migration matrices, one-generation preparation, universal revision retry, final TARGET admission, slot-FK arbitration, failure precedence, operation-owned lifecycle delta, concurrency outcomes, bounded cold classes and architecture handoff.
+
+The current `GET /objects/{parent}/components/{slot}` full sweep is now losslessly absorbed here, including exact route/query/response contract, semantic-slot cursor identity, slot-absent vs empty semantics, keyset continuation, one-statement current data path, failure precedence, snapshot concurrency semantics, bounded cost profile and physical-design handoff.
 
 Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
