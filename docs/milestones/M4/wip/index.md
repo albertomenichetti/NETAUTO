@@ -141,11 +141,12 @@ The document is consolidated but not final or normative.
 Current full-sweep checkpoints inside this owner:
 
 ```text
+POST /objects
 GET /objects
 GET /objects/{id}
 ```
 
-The dedicated legacy WIPs that existed only for those two routes have been removed after lossless absorption; Git history remains the historical record.
+The dedicated legacy WIPs that existed only for these full-swept routes have been removed after lossless absorption; Git history remains the historical record.
 
 ### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / cross-operation Object component persistence
 
@@ -279,21 +280,18 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`to-be-api-object-attach-batch-cost.md`](to-be-api-object-attach-batch-cost.md)
 - [`to-be-api-object-attach-batch.md`](to-be-api-object-attach-batch.md)
 - [`to-be-api-object-canonical-name.md`](to-be-api-object-canonical-name.md)
-- [`to-be-api-object-create.md`](to-be-api-object-create.md)
 - [`to-be-api-object-delete.md`](to-be-api-object-delete.md)
 - [`to-be-api-object-detach-batch.md`](to-be-api-object-detach-batch.md)
 - [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md)
 - [`to-be-api-object-rename.md`](to-be-api-object-rename.md)
 - [`to-be-api-object-schema.md`](to-be-api-object-schema.md)
-- [`object-create-discovery.md`](object-create-discovery.md)
-- [`object-create-cold-cache-discovery.md`](object-create-cold-cache-discovery.md)
 - [`object-data-change-discovery.md`](object-data-change-discovery.md)
 - [`object-rename-discovery.md`](object-rename-discovery.md)
 - [`object-rename-same-name-semantics.md`](object-rename-same-name-semantics.md)
 - [`object-rename-approximate-lifecycle.md`](object-rename-approximate-lifecycle.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `GET /objects` and `GET /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after absorption.
+The dedicated legacy files for `POST /objects`, `GET /objects` and `GET /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after lossless absorption.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
