@@ -1,11 +1,12 @@
 # M4 WIP — TO-BE Object canonical-name mutation
 
-Status: ROUTE-LOCAL CLOSED / FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: ROUTE-LOCAL ACTIVE REVALIDATION / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Public signature
 
 ```http
 PUT /api/v1/core/objects/{object_id}/canonical-name
+Content-Type: application/json
 ```
 
 Path:
@@ -22,14 +23,19 @@ Request body:
 }
 ```
 
+No query parameters are accepted.
+
 `canonical_name` remains required current Object state with the existing semantic constraints:
 
 ```text
+string
 1..255 characters
 no automatic normalization
 not unique
 not an alternative Object identity
 ```
+
+Malformed body/carrier, missing or explicit-null `canonical_name`, empty string and values longer than 255 characters belong to the normal `400 invalid_request` transport boundary.
 
 Success:
 
@@ -37,162 +43,209 @@ Success:
 204 No Content
 ```
 
-The mutation does not return the full Object representation.
+The mutation does not return the full Object representation. Current representation remains owned by `GET /objects/{id}`.
+
+Missing path target:
+
+```text
+Object absent
+    -> 404 resource_not_found
+```
 
 ## Same-name semantics
 
-The command does not compare the requested value with the currently persisted name before writing.
+The command semantics are assignment:
 
 ```text
-UPDATE objects
-SET canonical_name = requested_name
-WHERE id = object_id
+Object O canonical_name := requested_name
 ```
 
-Therefore:
+not conditional change-only-if-different.
+
+Therefore a same-name request is a normal successful mutation:
 
 ```text
-0 updated rows
-    -> Object absent -> path-resource error
+Object exists + current name differs
+    -> 204
 
-1 updated row
-    -> success 204
-    -> same-name and different-name assignments are intentionally not distinguished
+Object exists + current name already equals requested name
+    -> 204
 ```
 
-A same-name request follows the normal mutation path and may emit a normal `RENAME` lifecycle event.
+No preliminary equality check is required merely to distinguish those cases. A successful same-name assignment follows the normal RENAME lifecycle path and may therefore produce a RENAME event whose before/after canonical-name values are equal.
 
-This supersedes the earlier same-name no-op candidate.
+This remains intentionally different from DATA_CHANGE, where a semantic no-op emits no fake lifecycle transition.
 
-## Minimal TO-BE data path
+## Semantic responsibility boundary
 
-Input validation of `canonical_name` is pure CPU work.
-
-The runtime path is intentionally small:
+RENAME changes only:
 
 ```text
-Q1 unlocked preliminary Object read
-    -> complete intrinsic Object snapshot S
-    -> used only to prepare lifecycle before/after
+canonical_name
+```
 
-BEGIN short mutation UoW
+It preserves:
 
-Q2 UPDATE objects
-    SET canonical_name = :new_name
-    WHERE id = :object_id
+```text
+Object.id
+Object.template_id
+Object.template_version
+Object.properties
+ownership/component facts
+factual Relationships
+```
 
-    0 rows -> Object absent -> rollback/error
-    1 row  -> continue
+The requested name is validated from caller input. RENAME does not re-certify persisted Object state against ObjectTemplate/DataType semantics and does not perform a domain consistency sweep.
 
-Q3 INSERT one RENAME lifecycle event
+Normal path requires no:
+
+```text
+ObjectTemplate reads
+DataType reads
+effective-schema reconstruction
+ancestry reads
+ownership reads
+Relationship reads
+semantic cache
+```
+
+## Exact lifecycle semantics — revalidated
+
+The earlier M4 candidate that accepted best-effort/approximate RENAME lifecycle snapshots is superseded.
+
+The delivered Object semantic contract requires RENAME to produce exact complete intrinsic snapshots of the Object generation on which the rename is actually performed:
+
+```text
+RENAME.before
+    = exact complete intrinsic Object state immediately before this rename transition
+
+RENAME.after
+    = exact complete intrinsic Object state immediately after this rename transition
+
+allowed semantic difference
+    = canonical_name only
+```
+
+Intrinsic snapshot fields remain:
+
+```text
+id
+canonical_name
+template_id
+template_version
+properties
+```
+
+Therefore a concurrent DATA_CHANGE or SCHEMA_CHANGE must not cause the RENAME event to mix a stale preliminary intrinsic generation with a later row mutation.
+
+Example requirement:
+
+```text
+SCHEMA_CHANGE commits first
+    -> RENAME before/after use the post-SCHEMA_CHANGE exact binding/properties
+
+RENAME commits first
+    -> RENAME before/after use the pre-SCHEMA_CHANGE exact binding/properties
+```
+
+A hybrid historical event whose `before`/`after` do not describe the Object generation actually renamed is not accepted.
+
+The reason to keep the stronger guarantee is also proportional: RENAME is not expected to be a high-frequency operation, so M4 does not weaken historical correctness merely to avoid bounded synchronization work.
+
+## Logical execution requirement
+
+The logical mutation flow is:
+
+```text
+validate canonical_name
+    -> CPU only
+
+BEGIN
+
+obtain/protect exact current intrinsic Object state S
+    absent -> 404 resource_not_found
+
+perform canonical_name-only update against that protected generation
+
+construct exact after state:
+    S with canonical_name = requested_name
+
+insert exactly one RENAME lifecycle event
     before_state = S
-    after_state  = S with canonical_name replaced
+    after_state  = after
 
 COMMIT
 ```
 
-No ObjectTemplate, DataType, effective-schema, ancestry, ownership or Relationship knowledge is required.
+Current Object transition and its RENAME event commit or rollback atomically.
 
-## Lifecycle precision
+The route requirement is exactness and serialization, not a frozen statement count or PostgreSQL lock mode.
 
-`canonical_name` is low-criticality human/search metadata. `RENAME` deliberately does not pay for a protected exact-before snapshot.
+## Physical realization handoff
 
-Q1 is not row-locked. A concurrent intrinsic mutation can therefore make the prepared lifecycle before/after snapshots stale relative to the exact Object state at Q2.
-
-This is accepted for `RENAME` only:
+M4 discovery does not yet freeze whether architecture realizes the logical flow using:
 
 ```text
-current objects row correctness
-    -> strong
+protected SELECT + UPDATE + lifecycle INSERT
 
-RENAME lifecycle snapshot exactness under concurrent unrelated mutation
-    -> best-effort / approximate
+UPDATE with an adequate old/new carrier + lifecycle INSERT
+
+or another safe fused PostgreSQL realization
 ```
 
-The mutation itself updates only `canonical_name`; it does not overwrite concurrent `properties`, `template_version`, ownership or Relationship state.
+The exact SQL shape, row-lock mode, statement fusion and PostgreSQL-version-specific facilities are architecture concerns.
 
-The event insert remains atomic with the rename update inside the same UoW. What is relaxed is the exactness of the historical snapshot content, not mutation/event commit atomicity.
-
-## Concurrency behavior
-
-No explicit Object row lock or optimistic fingerprint is required for RENAME.
-
-The `UPDATE` itself is the PostgreSQL row-update concurrency rendezvous for `canonical_name`.
-
-Concurrent RENAME assignments serialize as ordinary row updates; the final current name follows normal last-committed-writer behavior.
-
-Concurrent DATA_CHANGE or SCHEMA_CHANGE do not need semantic coordination with RENAME merely to protect current Object correctness because their intended writes do not replace `canonical_name`; the global concurrency phase must preserve this column-level non-overwrite property in the final concrete SQL realization.
-
-DELETE races are resolved by normal row lifetime/update behavior; an update that finds no current Object fails as path-resource absence.
-
-## Cost
-
-Route-total successful cost, excluding transaction-control commands:
+Any realization must preserve:
 
 ```text
-1 preliminary SELECT of one Object row
-1 UPDATE of one Object row
-1 INSERT of one lifecycle event row
-
-= 3 PostgreSQL business statements
+exact before/after intrinsic snapshots
+canonical_name-only current write
+atomic Object + lifecycle transition
+no lost intrinsic Object changes
+no mutation-after-delete / resurrection
 ```
 
-Mutation-UoW write cost specifically:
+A PostgreSQL-version-specific optimization must not become an unstated semantic dependency of the route.
+
+## Concurrency direction
+
+RENAME participates in the complete-Object-state (`OS`) concurrency contract when racing with intrinsic mutations of the same Object.
+
+Required outcomes are serially explainable:
 
 ```text
-1 Object UPDATE
-1 lifecycle INSERT
+RENAME x RENAME
+    -> both real transitions serialize
+    -> each lifecycle event describes its own exact transition
+    -> final canonical_name follows the serial commit order
 
-= 2 write statements
+RENAME x DATA_CHANGE
+    -> one complete transition before the other
+    -> RENAME never overwrites properties
+
+RENAME x SCHEMA_CHANGE
+    -> one complete transition before the other
+    -> RENAME never overwrites exact binding/properties
+
+RENAME x DELETE
+    -> RENAME commits before DELETE
+       OR DELETE wins and RENAME cannot commit against/resurrect the absent Object
 ```
 
-All statements are bounded and PK-addressed or append-only. There is no model traversal, N+1 work or semantic recertification.
+RENAME is semantically independent from ownership mutations merely because the same Object participates; it does not read or change ownership state.
 
-## Cache
+Exact locking/wait-for realization remains architecture work.
 
-Cache is not useful for this route.
+## Cost/cache/schema direction
 
-The requested new name is caller input, current Object existence/current state belongs to PostgreSQL, and the lifecycle preparatory snapshot must observe current persisted data rather than worker-local cached state.
+There is no warm/cold cache distinction and no route-specific cache.
 
-No cache key/value or fill path is introduced.
+Logical required work is bounded to one Object row plus one lifecycle event. Exact successful PostgreSQL statement count remains an architecture optimization target after the exact-lifecycle requirement is satisfied.
 
-## Relational-schema implications
+No route-specific table, denormalization, materialization or index is introduced.
 
-None.
+## Revalidation status
 
-The route uses the existing authoritative structures:
+Public contract, same-name assignment semantics, semantic responsibility boundary and exact lifecycle requirement are ratified during the current full-sweep pass.
 
-```text
-objects
-object_lifecycle_events
-```
-
-No new table, denormalization, materialization, key or route-specific index is required.
-
-Physical index review remains part of the later architecture-wide relational/index phase, but this route introduces no new access pattern beyond Object PK lookup/update and lifecycle append.
-
-## Public-surface rationale
-
-The canonical-name change remains an explicit Object subresource mutation rather than introducing a generic Object PATCH/update operation:
-
-```text
-PUT /objects/{id}/canonical-name
-```
-
-This makes the replaced field explicit while retaining a narrow semantic mutation surface.
-
-## Route-local closure
-
-This operation is route-locally closed for the M4 TO-BE sweep on:
-
-- HTTP signature and wire contract;
-- success/error direction;
-- same-name semantics;
-- minimal data path;
-- lifecycle semantics;
-- concurrency guarantee;
-- exact warm/cold cost (cache is irrelevant, so there is no warm/cold distinction);
-- cache policy;
-- relational-schema implications.
-
-The later global concurrency/schema phase may change concrete SQL/lock realization only if required by cross-operation proof; it must preserve the caller-visible semantics and the explicitly accepted approximate RENAME lifecycle guarantee recorded here.
+The remaining route-local sweep work is limited to confirming final failure/concurrency closure and then absorbing this direction into the consolidated Object route owner before marking `PUT /objects/{id}/canonical-name` full-sweep complete.
