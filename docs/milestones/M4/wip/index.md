@@ -32,9 +32,25 @@ SOURCE MATERIAL
     not a standalone authority for the current working state
 ```
 
-None of those labels means normative, complete, final, frozen or implementation-authorizing.
+Those navigation labels are intentionally separate from the **review-state** dimension used by the current top-down review:
 
-Likewise, words such as `FROZEN`, `CLOSED` or `RECONCILED` inside older WIP files remain only local discovery checkpoints. Everything under `wip/` is globally non-normative.
+```text
+REVIEWED BASELINE
+    current owner/support whose relevant contents have already passed
+    the current review/revalidation process and can be used as baseline
+    input for subsequent review steps
+
+ACTIVE REVIEW FRONTIER
+    current owner actively being revalidated against the reviewed baseline;
+    it may still contain open, legacy or superseded assumptions and must not
+    be treated as a closed baseline until its review/absorption is completed
+```
+
+A document may therefore be both `SPINE` and `ACTIVE REVIEW FRONTIER`. `SPINE` answers **where to read**; `REVIEWED BASELINE` / `ACTIVE REVIEW FRONTIER` answers **how far the current review has progressed**.
+
+None of those labels means normative, implementation-authorizing or milestone-frozen. Everything under `wip/` remains globally non-normative.
+
+Likewise, words such as `FROZEN`, `CLOSED` or `RECONCILED` inside older WIP files remain only local discovery checkpoints unless the current review-state classification below explicitly treats the document as part of the reviewed baseline.
 
 ## External interpretation anchors
 
@@ -48,6 +64,65 @@ Before using this map, the governing context remains outside this directory:
 
 Until M4 explicitly freezes a TO-BE delta, the delivered architecture remains the normative system baseline. This index only maps the M4 working set.
 
+## Current review-state snapshot
+
+The current **reviewed baseline** of the ongoing top-down review is:
+
+```text
+general-domain-principles.md
+version-allocation.md
+
+object.md
+object-revision.md
+object-components-persistence.md
+
+object-template-ancestry-cache.md
+    -> reviewed reusable support dependency
+```
+
+Interpretation:
+
+```text
+REVIEWED BASELINE
+    general-domain-principles.md
+    version-allocation.md
+    object.md
+    object-revision.md
+    object-components-persistence.md
+
+REVIEWED BASELINE SUPPORT
+    object-template-ancestry-cache.md
+```
+
+The current **active review frontier** is:
+
+```text
+object-schema-change.md
+```
+
+It is the current detailed owner for SCHEMA_CHANGE, but it is still being revalidated against the reviewed baseline above. In particular, older fingerprint/freshness and source→target assumptions inside that owner must not be treated as already closed merely because the file is consolidated.
+
+The following are useful navigation/method/discovery inputs but are **not, by that fact alone, part of the reviewed baseline**:
+
+```text
+index.md
+    -> navigation map
+
+discovery.md
+    -> framing / hypotheses
+
+top-down-api-closure-sweep.md
+    -> review method
+
+mutation-response-semantics-discovery.md
+lifecycle discovery files
+model-plane operation-level discovery sets
+factual Relationship discovery sets
+    -> active/distributed discovery still awaiting their own review closure
+```
+
+Review-state labels do not replace ownership or precedence rules. An `ACTIVE REVIEW FRONTIER` document remains the current owner for its topic while being reviewed; the label only means that its contents are not yet safe to treat as a closed reviewed baseline for later topics.
+
 ---
 
 # 1. Current M4 navigation spine
@@ -56,7 +131,7 @@ These are the first documents to read when reconstructing the current working st
 
 ## 1.1 Cross-cutting discovery and principles
 
-### [`general-domain-principles.md`](general-domain-principles.md) — SPINE / active collection
+### [`general-domain-principles.md`](general-domain-principles.md) — SPINE / REVIEWED BASELINE / active collection
 
 Working owner for general domain principles explicitly discovered or ratified during M4 and intended for later promotion to the appropriate normative documentation on `master`.
 
@@ -79,9 +154,9 @@ lifecycle payload
     != automatic full aggregate before/after snapshots
 ```
 
-This file is expected to grow as new general principles are ratified.
+This file is expected to grow as new general principles are ratified. Already-ratified entries participate in the reviewed baseline; newly added principles must still satisfy the file's explicit ratification rule.
 
-### [`version-allocation.md`](version-allocation.md) — SPINE / cross-domain version allocation
+### [`version-allocation.md`](version-allocation.md) — SPINE / REVIEWED BASELINE / cross-domain version allocation
 
 Current cross-domain owner for the temporal version-number guarantee and the shared `last_versions(id,last_version)` allocator direction.
 
@@ -97,17 +172,17 @@ architecture handoff for atomic realization
 
 It does not define semantic compatibility or migrability between versions.
 
-### [`discovery.md`](discovery.md) — SPINE / discovery framing
+### [`discovery.md`](discovery.md) — SPINE / discovery framing / NOT REVIEWED BASELINE
 
-Initial M4 problem framing, workload hypotheses, evidence and design hypotheses. Use it to understand *why* M4 exists, not as a TO-BE contract.
+Initial M4 problem framing, workload hypotheses, evidence and design hypotheses. Use it to understand *why* M4 exists, not as a TO-BE contract or as a closed reviewed baseline.
 
-### [`top-down-api-closure-sweep.md`](top-down-api-closure-sweep.md) — SPINE / operating method
+### [`top-down-api-closure-sweep.md`](top-down-api-closure-sweep.md) — SPINE / operating method / NOT REVIEWED BASELINE
 
-Working method for the top-down closure pass from public API surface down to data path, persistence, cache and concurrency consequences.
+Working method for the top-down closure pass from public API surface down to data path, persistence, cache and concurrency consequences. It defines how the review proceeds, not the reviewed semantic baseline itself.
 
 ### [`mutation-response-semantics-discovery.md`](mutation-response-semantics-discovery.md) — ACTIVE INPUT / cross-family API semantics
 
-Cross-family discovery around mutation success responses versus GET representation surfaces.
+Cross-family discovery around mutation success responses versus GET representation surfaces. It remains active discovery rather than reviewed-baseline authority.
 
 ### [`milestone-relational-schema-closure-requirement.md`](milestone-relational-schema-closure-requirement.md) — SUPPORT / governance handoff
 
@@ -119,7 +194,7 @@ Working governance requirement that milestone closure should document the comple
 
 The Object family has already been partially consolidated. **Use these owners before reading route-local or micro-step Object files.**
 
-### [`object.md`](object.md) — SPINE / Object route owner
+### [`object.md`](object.md) — SPINE / REVIEWED BASELINE / Object route owner
 
 Primary consolidated working owner for the Object public surface and route-local semantics/data paths.
 
@@ -155,7 +230,9 @@ DELETE /objects/{id}
 
 The DATA_CHANGE route has completed its full sweep and lossless absorption into `object.md`. Its dedicated route/source WIPs were removed afterward; Git history remains the historical record.
 
-### [`object-revision.md`](object-revision.md) — SPINE / cross-operation intrinsic Object generation
+The sections above that are explicitly full-swept, together with the already-revalidated cross-operation Object findings absorbed into this owner, form part of the current reviewed baseline. Sections that explicitly point to later review fronts remain subject to those owners.
+
+### [`object-revision.md`](object-revision.md) — SPINE / REVIEWED BASELINE / cross-operation intrinsic Object generation
 
 Current owner for the ratified M4 `objects.revision` direction.
 
@@ -174,13 +251,13 @@ revision scope excludes ownership/Relationship facts outside objects
 
 The revision is technical persistence/concurrency state and is not automatically exposed in public Object or lifecycle DTOs.
 
-### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / cross-operation Object component persistence
+### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / REVIEWED BASELINE / cross-operation Object component persistence
 
 Primary current working owner for reusable current component/ownership persistence concepts, including the `object_component_slots` / `object_components` candidate boundary, logical identities, materialization invariant, FK-arbitration findings and architecture handoff.
 
-Physical DDL/index choices remain architecture work.
+Its lossless persistence comparison is complete and its current cross-operation direction is part of the reviewed baseline. Physical DDL/index choices remain architecture work.
 
-### [`object-schema-change.md`](object-schema-change.md) — SPINE / detailed SCHEMA_CHANGE owner / ACTIVE REVALIDATION
+### [`object-schema-change.md`](object-schema-change.md) — SPINE / ACTIVE REVIEW FRONTIER / detailed SCHEMA_CHANGE owner
 
 Primary current working owner for detailed `Object.SCHEMA_CHANGE` discovery.
 
@@ -188,9 +265,13 @@ Primary current working owner for detailed `Object.SCHEMA_CHANGE` discovery.
 
 When a legacy SCHEMA_CHANGE source file conflicts with this owner, [`object-revision.md`](object-revision.md), or a newly ratified general principle, do not silently choose one: revalidate the point explicitly and update the owner.
 
-### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / reusable stable-lineage cache
+When the SCHEMA_CHANGE full sweep and lossless cleanup are complete, move this owner from `ACTIVE REVIEW FRONTIER` to `REVIEWED BASELINE` and advance the frontier to the next review target.
+
+### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / REVIEWED BASELINE SUPPORT / reusable stable-lineage cache
 
 Reusable stable ObjectTemplate ancestry/compatibility cache input used by Object and other consumers. Kept separate because it is not Object-route-local state.
+
+Its current stable-lineage compatibility/cache direction is a reviewed support dependency of the Object baseline, while exact physical/cache implementation remains architecture work.
 
 ---
 
@@ -198,7 +279,7 @@ Reusable stable ObjectTemplate ancestry/compatibility cache input used by Object
 
 These families do **not** yet have a single consolidated owner comparable to `object.md`.
 
-Every file listed below remains an **ACTIVE INPUT** to the current working state of its family unless and until it is explicitly consolidated/superseded.
+Every file listed below remains an **ACTIVE INPUT** to the current working state of its family unless and until it is explicitly consolidated/superseded. These distributed sets are not automatically part of the `REVIEWED BASELINE`; each family must pass its own current review/closure process first.
 
 ## 3.1 DataType — ACTIVE INPUT set
 
@@ -264,7 +345,7 @@ Version allocation for this family is cross-domain and owned by [`version-alloca
 
 # 4. Factual Relationship discovery still active
 
-Factual Relationship has not yet been consolidated into one family owner. The following remain **ACTIVE INPUT**:
+Factual Relationship has not yet been consolidated into one family owner. The following remain **ACTIVE INPUT** and are not yet part of the reviewed baseline:
 
 - [`relationship-create-discovery.md`](relationship-create-discovery.md)
 - [`relationship-create-runtime-closure-discovery.md`](relationship-create-runtime-closure-discovery.md)
@@ -291,7 +372,7 @@ The current Lifecycle working set is:
 - [`lifecycle-list-detail-api-discovery.md`](lifecycle-list-detail-api-discovery.md) — collection/detail API direction.
 - [`lifecycle-summary-data-path-discovery.md`](lifecycle-summary-data-path-discovery.md) — summary/detail data-path consequences.
 
-All three are **ACTIVE INPUT** and remain subject to later consolidation/revalidation.
+All three are **ACTIVE INPUT** and remain subject to later consolidation/revalidation. Ratified lifecycle principles already absorbed into `general-domain-principles.md`, `object.md` or another reviewed owner are baseline; these lifecycle discovery documents as complete files are not yet reviewed-baseline owners.
 
 ---
 
@@ -412,7 +493,7 @@ The physical schema/index files remain useful **architecture inputs only**. Thei
 
 These files have already fed a consolidation/comparison pass, but remain important evidence while `object-schema-change.md` is being revalidated against newly clarified domain principles and the Object revision direction.
 
-Do not promote a statement from one of these files to current state merely because the file says `FROZEN`; compare it against the current owner, [`object-revision.md`](object-revision.md), and the general principles first.
+Do not promote a statement from one of these files to current state merely because the file says `FROZEN`; compare it against the current owner, [`object-revision.md`](object-revision.md), the reviewed baseline and the general principles first.
 
 ---
 
@@ -423,9 +504,32 @@ This file is part of the working process and must evolve with M4.
 Whenever a new WIP document is created:
 
 ```text
-1. add it here in the appropriate category
+1. add it here in the appropriate navigation category
 2. state whether it is SPINE, ACTIVE INPUT, SUPPORT/HANDOFF or SOURCE MATERIAL
-3. do not imply completion merely by indexing it
+3. if it participates in the current review, also classify its review state
+4. do not imply completion merely by indexing it
+```
+
+Whenever a review target is completed:
+
+```text
+1. finish the explicit full-sweep/revalidation required for that owner
+2. perform any required lossless absorption/comparison and cleanup
+3. move the owner/support from ACTIVE REVIEW FRONTIER to REVIEWED BASELINE
+   only when the current review no longer depends on unresolved legacy assumptions
+4. advance ACTIVE REVIEW FRONTIER to the next owner/topic
+5. update the Current review-state snapshot above
+```
+
+If a reviewed-baseline assumption is materially reopened later:
+
+```text
+do not leave the document silently classified as REVIEWED BASELINE
+
+instead:
+    mark the affected owner/topic as ACTIVE REVIEW FRONTIER
+    state the precise reopened boundary
+    retain unaffected reviewed findings where their ownership permits it
 ```
 
 Whenever several WIPs are consolidated into one owner:
@@ -437,6 +541,7 @@ Whenever several WIPs are consolidated into one owner:
 4. clean surviving cross-references
 5. delete superseded files only when safe
 6. rely on Git history as the historical record afterward
+7. update the review-state classification if consolidation completes or reopens review work
 ```
 
 If a SOURCE MATERIAL file conflicts with a SPINE owner or with a newly ratified general principle:
@@ -448,7 +553,7 @@ DO NOT infer a resolution
 instead:
     reopen/revalidate the specific point
     record the resulting decision in the correct owner
-    update this index if ownership/status changes
+    update this index if ownership/status or review-state classification changes
 ```
 
 ## Current-state rule
@@ -468,8 +573,9 @@ version-allocation.md
 object-revision.md where intrinsic Object generation/freshness is relevant
     -> cross-operation Object row-generation semantics
 
-current SPINE owner for the relevant family/topic
+current owner for the relevant family/topic
     -> current working direction
+    -> may be REVIEWED BASELINE or ACTIVE REVIEW FRONTIER
 
 ACTIVE INPUT set where no consolidated owner exists
     -> current distributed discovery state
@@ -481,10 +587,12 @@ SOURCE MATERIAL
     -> traceability / explicit revalidation only
 ```
 
+Review-state classification does **not** change topic ownership or this precedence. It tells the reader whether the current owner may be safely reused as a closed baseline for later review work, or whether it is still the active place where assumptions are being revalidated.
+
 This precedence is only a working-navigation rule. It does not turn M4 WIP into normative project documentation.
 
 ## Completeness rule for the map
 
-The intent of this index is to enumerate the documents that currently participate in reconstructing the M4 working state.
+The intent of this index is to enumerate the documents that currently participate in reconstructing the M4 working state and to make the progress of the current review explicit.
 
-A WIP file not represented here should **not** be assumed to contribute to the current state merely because it exists in the directory. If it becomes relevant again, add it to this map explicitly.
+A WIP file not represented here should **not** be assumed to contribute to the current state merely because it exists in the directory. If it becomes relevant again, add it to this map explicitly and classify its navigation role and, where applicable, its review state.
