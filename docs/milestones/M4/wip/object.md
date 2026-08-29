@@ -101,7 +101,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
-| `POST /objects` | public contract + semantic admission + execution/data-path ratified; final failure/closure sweep pending | non-abstract lineage + exact target PUBLISHED admission + READY validation cache with opportunistic component warming + Object/slot materialization |
+| `POST /objects` | **full-sweep complete** | non-abstract lineage + exact target PUBLISHED admission + READY validation cache with opportunistic component warming + atomic Object/slot/lifecycle materialization |
 | `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
 | `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
 | `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
@@ -116,7 +116,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 Object-relative Relationship and Lifecycle routes remain owned by their later top-down discovery passes even when the URL is rooted under `/objects`.
 
-# 1. CREATE Object
+# 1. CREATE Object — full sweep complete
 
 ## Public contract
 
@@ -544,6 +544,19 @@ A successful Object may later remain pinned to that exact version after it becom
 
 CREATE does not independently close races against parent/ancestor OTV or exact DTV deprecation. Those transitions are already constrained by the active PUBLISHED model graph while the target T@V remains PUBLISHED.
 
+Whole-lineage deletion is also a direct binding race at the final admission boundary:
+
+```text
+DELETE_LINEAGE wins before final admission
+    -> selected exact T@V no longer exists
+    -> CREATE cannot commit
+
+CREATE binding commits first
+    -> the new Object reference becomes a normal lineage-delete blocker
+```
+
+Exact PostgreSQL arbitration remains architecture work.
+
 ### Cost direction
 
 Warm target:
@@ -593,6 +606,141 @@ object_component_slots
 ```
 
 No CREATE-specific additional table or copied component payload on `objects` is required.
+
+## Failure mapping and precedence
+
+`POST /objects` is a collection CREATE. ObjectTemplate selectors supplied in the request body are referenced command operands, not URI/path target identities. Missing referenced ObjectTemplate resources therefore do not produce `404`.
+
+Public failure set:
+
+```text
+400 invalid_request
+
+422 referenced_resource_not_found
+422 semantic_validation_failed
+
+409 default_version_unavailable
+409 dependency_not_admissible
+
+500 internal_error
+```
+
+Precedence on the normal command path:
+
+```text
+1. malformed/static request input
+       -> 400 invalid_request
+
+2. selected ObjectTemplate lineage operand absent
+       -> 422 referenced_resource_not_found
+          resource_type = object_template
+
+3. implicit selector + current default_version is NULL
+       -> 409 default_version_unavailable
+
+4. selected explicit exact ObjectTemplateVersion absent
+       -> 422 referenced_resource_not_found
+          resource_type = object_template_version
+
+5. selected exact ObjectTemplateVersion exists but is not PUBLISHED
+       -> 409 dependency_not_admissible
+
+6. selected lineage is abstract
+       -> 422 semantic_validation_failed
+          rule = abstract_template
+
+7. Object property validation/canonicalization fails
+       -> 422 semantic_validation_failed
+
+8. final admission race
+       exact T@V disappeared
+           -> 422 referenced_resource_not_found
+
+       exact T@V still exists but is no longer PUBLISHED
+           -> 409 dependency_not_admissible
+
+9. impossible invariant/integrity failure encountered on required CREATE state
+       -> 500 internal_error
+```
+
+For an implicit selector, a persisted `default_version` pointing to an exact version that does not exist is an invariant failure rather than caller operand absence:
+
+```text
+500 internal_error
+```
+
+`semantic_validation_failed` remains the aggregate Object-candidate validation code. Bounded `details.violations` carries stable `path` / `rule` diagnostics for `abstract_template`, unknown/required properties, SCALAR/LIST shape, primitive validation and exact DataTypeVersion constraint failures.
+
+The route introduces no `404 resource_not_found`, canonical-name conflict or ownership/schema-change-specific failure class.
+
+## CREATE consistency boundary — no proactive consistency sweep
+
+Object CREATE validates only the invariants required to certify the state it is creating.
+
+Required CREATE certification is bounded to:
+
+```text
+selected lineage T
+    -> abstract == false
+
+selected exact T@V
+    -> PUBLISHED through new-binding commit
+
+Object candidate properties
+    -> valid and canonical under certified exact T@V semantics
+
+new persisted Object state
+    -> exact binding
+    -> complete current effective slot materialization
+    -> zero ownership edges
+    -> CREATED lifecycle transition
+    -> atomic visibility
+```
+
+CREATE is **not** a domain consistency sweep. It must not proactively:
+
+```text
+re-check parent/ancestor OTV lifecycle
+re-check exact DTV lifecycle dependencies
+re-certify the active model graph
+scan for dangling model references
+rebuild/re-certify effective schema construction
+validate invariants owned by unrelated domain mutations
+perform diagnostic-only reads to search for corruption
+```
+
+Those invariants are preserved by the mutations that own them. Downstream CREATE consumes the certified state they establish.
+
+If an impossible invariant violation is encountered incidentally while consuming state that CREATE already needs on its required path, it is classified as `500 internal_error`. This classification does not authorize additional consistency queries or traversal solely to discover such violations.
+
+Principle:
+
+```text
+each mutation pays for the invariants it owns
+
+downstream consumers trust
+already-certified upstream invariants
+```
+
+## Architecture handoff and full-sweep closure
+
+The logical `POST /objects` route is full-sweep complete.
+
+Deferred only to later M4 architecture-wide physical/concurrency realization:
+
+```text
+exact STEP-1 SQL projections
+exact cold semantic-loader SQL/carrier
+final cache class/layout/eviction and local fill coordination
+exact STEP-3 SQL statement fusion
+final lock mode / rendezvous against DEPRECATE and DELETE_LINEAGE
+final PK/UNIQUE/FK realization
+final indexes
+EXPLAIN/BUFFERS and measured row/payload evidence
+constraint/SQLSTATE realization preserving the ratified public failure classes
+```
+
+Those choices must preserve the public contract, bounded three-stage data path, no-consistency-sweep boundary, failure precedence, exact new-binding admission, opportunistic component warming policy and atomic Object/slot/lifecycle state defined above.
 
 # 2. LIST Objects — full sweep complete
 
@@ -2069,7 +2217,7 @@ It removes the normal component-schema cache dependency from these current Objec
 
 ```text
 GET Object
-GET one component slot
+GET component slot
 ATTACH slot resolution
 DETACH
 ```
