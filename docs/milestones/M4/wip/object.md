@@ -104,7 +104,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | `POST /objects` | **full-sweep complete** | non-abstract lineage + exact target PUBLISHED admission + READY validation cache with opportunistic component warming + atomic Object/slot/lifecycle materialization |
 | `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
 | `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
-| `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
+| `PUT /objects/{id}/canonical-name` | **full-sweep complete** | exact current-name protection + canonical-name-only update + exact minimal RENAME lifecycle |
 | `POST /objects/{id}/properties` | route-local closed | binding read + READY semantic cache + short protected UoW |
 | `GET /objects/{id}/schema` | route-local closed | one Object -> ObjectTemplate PK-to-PK statement |
 | `POST /objects/{id}/schema` | public surface retained; execution active revalidation | immutable migration plan + intrinsic revalidation + slot-delta maintenance |
@@ -1269,13 +1269,22 @@ O(S + C) fact volume
 application-side components assembly
 ```
 
-# 4. Mutate canonical name
+# 4. Mutate canonical name — full sweep complete
 
 ## Public contract
 
 ```http
 PUT /api/v1/core/objects/{object_id}/canonical-name
+Content-Type: application/json
 ```
+
+Path:
+
+```text
+object_id UUID
+```
+
+Query parameters: none.
 
 Request:
 
@@ -1285,13 +1294,20 @@ Request:
 }
 ```
 
-Rules:
+`canonical_name` is required and remains:
 
 ```text
+string
 1..255 characters
 no automatic normalization
 not unique
-not identity
+not Object identity
+```
+
+Malformed body/carrier, missing or explicit-null `canonical_name`, empty string and values longer than 255 characters belong to the normal:
+
+```text
+400 invalid_request
 ```
 
 Success:
@@ -1300,38 +1316,302 @@ Success:
 204 No Content
 ```
 
-Same-name assignment is not treated as a semantic no-op. There is no pre-write equality check; a same-name request follows the normal mutation path and may emit a normal `RENAME` lifecycle event.
+The mutation returns no Object representation. Current state remains owned by `GET /objects/{id}`.
 
-## Candidate execution
+Missing path target:
 
 ```text
-Q1 unlocked preliminary complete intrinsic Object snapshot
-    -> lifecycle before/after preparation
+404 resource_not_found
+```
+
+## Same-name assignment
+
+The operation is assignment:
+
+```text
+Object O canonical_name := requested_name
+```
+
+not a change-only-if-different command.
+
+Therefore:
+
+```text
+current name differs
+    -> normal successful mutation
+    -> 204
+
+current name already equals requested name
+    -> normal successful mutation
+    -> 204
+```
+
+No equality precheck is introduced solely to classify same-name requests. A successful same-name assignment follows the normal RENAME lifecycle path and may record:
+
+```text
+old_name == new_name
+```
+
+This is intentionally distinct from DATA_CHANGE, where a semantic no-op currently emits no fake lifecycle transition.
+
+## Semantic responsibility boundary
+
+RENAME changes only:
+
+```text
+canonical_name
+```
+
+It preserves and does not re-certify:
+
+```text
+Object.id
+Object.template_id
+Object.template_version
+Object.properties
+ownership/component facts
+factual Relationships
+```
+
+Normal RENAME therefore requires no:
+
+```text
+ObjectTemplate reads
+DataType reads
+effective-schema reconstruction
+ancestry reads
+ownership reads
+Relationship reads
+semantic cache
+```
+
+RENAME is not a domain consistency sweep. It validates caller-supplied `canonical_name` and pays only for the current-state/lifecycle facts that its own contract changes.
+
+## Lifecycle — exact minimal semantic transition
+
+M4 uses the general lifecycle principle:
+
+```text
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+
+not automatically
+    = complete aggregate before + complete aggregate after
+```
+
+For RENAME the complete semantic transition is exactly:
+
+```text
+canonical_name: old -> new
+```
+
+Conceptually:
+
+```text
+RENAME event
+    object_id = O
+
+    before:
+        canonical_name = exact old_name
+
+    after:
+        canonical_name = requested_name
+```
+
+Equivalent generic JSON-carrier direction:
+
+```json
+{
+  "before": {
+    "canonical_name": "server-1"
+  },
+  "after": {
+    "canonical_name": "server-2"
+  }
+}
+```
+
+The event must not duplicate unchanged state merely for payload uniformity:
+
+```text
+id inside before/after when object_id already identifies the event subject
+template_id
+template_version
+properties
+ownership/components
+Relationships
+```
+
+The historical transition remains exact. What is removed is irrelevant unchanged state, not precision.
+
+This supersedes both earlier candidates:
+
+```text
+best-effort / approximate complete Object snapshots
+exact complete Object snapshots
+```
+
+Neither is needed for the semantic transition RENAME owns.
+
+## Ratified logical execution/data path
+
+Only current existence, the exact old canonical name and the requested new canonical name are required.
+
+```text
+validate canonical_name
+    -> CPU only
 
 BEGIN
 
-Q2 UPDATE objects.canonical_name by Object PK
-    0 rows -> 404 resource_not_found
-    1 row  -> continue
+Q1
+    obtain/protect current Object identity + exact old canonical_name
 
-Q3 INSERT RENAME lifecycle event
+    absent
+        -> 404 resource_not_found
+
+Q2
+    UPDATE canonical_name only
+    + INSERT exactly one RENAME lifecycle event
+
+    lifecycle before:
+        canonical_name = old_name
+
+    lifecycle after:
+        canonical_name = requested_name
 
 COMMIT
 ```
 
-Current Object row correctness is strong. RENAME lifecycle before/after snapshot precision under concurrent unrelated intrinsic mutation is deliberately best-effort/approximate.
-
-No explicit Object row lock or optimistic fingerprint is required route-locally. Ordinary PostgreSQL row-update serialization is the current rendezvous for concurrent RENAME assignments.
-
-The mutation updates only `canonical_name`; it must not overwrite concurrent `properties`, exact binding, ownership or Relationship state.
-
-No ObjectTemplate, DataType, effective-schema, ancestry, ownership or Relationship knowledge is required.
-
-Candidate successful cost:
+Preferred logical successful cost:
 
 ```text
-3 PostgreSQL business statements
-0 cache
+2 PostgreSQL business statements + COMMIT
+
+Q1
+    exact old-name acquisition/protection
+
+Q2
+    canonical_name UPDATE + RENAME lifecycle INSERT
+```
+
+The second statement is a logical fused write direction: the row actually updated can feed the lifecycle append inside PostgreSQL without transferring unrelated Object state through the application.
+
+There is no warm/cold distinction.
+
+Data/cache profile:
+
+```text
+current Object columns needed
+    id
+    canonical_name
+
+properties JSONB read
+    0
+
+ObjectTemplate/DataType reads
+    0
+
+component/ownership reads
+    0
+
+Relationship reads
+    0
+
+semantic cache
+    0
+```
+
+## Concurrency outcomes
+
+Lifecycle narrowing removes any RENAME-owned need to serialize with unrelated Object fields merely to capture a full aggregate snapshot.
+
+Required outcomes:
+
+```text
+RENAME x RENAME on same Object
+    -> each successful assignment records its exact old -> new transition
+    -> transitions are serially explainable
+    -> final canonical_name is one complete committed assignment
+
+RENAME x DATA_CHANGE on same Object
+    -> neither operation may overwrite the other's field ownership
+    -> RENAME does not require a properties snapshot
+
+RENAME x SCHEMA_CHANGE on same Object
+    -> neither operation may overwrite the other's field ownership
+    -> RENAME does not require exact binding/properties for its lifecycle
+
+RENAME x DELETE on same Object
+    -> RENAME commits before DELETE
+       OR DELETE wins and RENAME cannot commit against/resurrect the absent Object
+```
+
+RENAME is semantically independent from ATTACH/DETACH ownership state. If ownership or factual Relationship mutations require coherent historical display names, that observation belongs to those mutations' own lifecycle responsibility; RENAME does not load or validate their state.
+
+PostgreSQL may still physically serialize operations touching the same `objects` row. Physical contention does not enlarge RENAME's semantic responsibility.
+
+Exact lock modes, wait-for behavior and statement realization remain architecture work.
+
+## Failure mapping
+
+Bounded public failures:
+
+```text
+400 invalid_request
+    malformed/static transport input
+    invalid canonical_name carrier/value
+
+404 resource_not_found
+    selected Object does not exist at mutation admission
+
+500 internal_error
+    unexpected persistence/lifecycle/invariant failure
+```
+
+The route introduces no:
+
+```text
+409 state-conflict class
+422 semantic/dependency admission class
+canonical-name uniqueness conflict
+schema admission
+ownership admission
+```
+
+## Cache / relational implications
+
+No cache is useful or required.
+
+No route-specific table, denormalization, materialization or index is introduced. The operation uses current `objects` state and Object lifecycle persistence.
+
+## Architecture handoff and full-sweep closure
+
+The logical `PUT /objects/{id}/canonical-name` route is full-sweep complete.
+
+Deferred only to architecture-wide realization:
+
+```text
+exact PostgreSQL current-name protection mechanism
+exact SQL / SQLAlchemy carrier
+exact lock / wait-for realization
+final UPDATE + lifecycle statement fusion
+whether a future PostgreSQL baseline permits safe further one-statement fusion
+lifecycle physical JSON/typed carrier and constraints
+physical index / EXPLAIN evidence
+```
+
+No PostgreSQL-major-specific `OLD/NEW` facility is part of the M4 semantic contract.
+
+Architecture must preserve:
+
+```text
+exact old canonical_name
+exact requested/new canonical_name
+canonical_name-only current write
+atomic Object + RENAME lifecycle transition
+serially explainable same-Object RENAME assignments
+no lost same-field rename transition
+no mutation-after-delete / resurrection
 ```
 
 # 5. Mutate Object properties
@@ -2556,20 +2836,31 @@ Important already-discovered consequence of enriching `ObjectDto` with current c
 
 ```text
 current ObjectDto
-    != historical intrinsic Object snapshot
+    != lifecycle event payload
 ```
 
-Historical intrinsic lifecycle `before` / `after` should remain bounded snapshots of:
+Lifecycle payloads are operation-specific historical facts. They record the complete exact semantic transition owned by the mutation, not automatically a complete Object aggregate snapshot.
+
+Current consequences already ratified during Object route discovery:
 
 ```text
-id
-canonical_name
-template_id
-template_version
-properties
+RENAME
+    -> exact canonical_name old -> new only
+
+DELETE
+    -> broad intrinsic before snapshot remains justified because the Object ceases to exist
+
+CREATE
+    -> broad created-state after snapshot may remain justified by whole-resource creation
+
+DATA_CHANGE / SCHEMA_CHANGE
+    -> payload shape must be revalidated during their own full sweeps;
+       no full-snapshot requirement is inherited merely from historical uniformity
 ```
 
-rather than embedding current component projections. A distinct `ObjectSnapshotDto` is the current direction. Ownership history remains represented by explicit ATTACH_TO/DETACH_FROM events.
+Ownership history remains represented by explicit `ATTACH_TO` / `DETACH_FROM` events rather than being embedded into unrelated intrinsic events.
+
+The Lifecycle discovery pass owns the final discriminated detail DTO/persistence carrier for these operation-specific payloads.
 
 ## Object-relative factual Relationship collection/detail
 
