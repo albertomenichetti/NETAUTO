@@ -112,7 +112,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | `POST /objects/{parent}/components/{slot}/attach` | public semantics retained; execution revalidated | current slot materialization + ancestry cache + graph admission + FK arbitration |
 | `POST /objects/{parent}/components/{slot}/detach` | public semantics retained; execution revalidated | set-based current-edge delete + lifecycle |
 | `GET /objects/{child}/owner` | working current-fact candidate | one child-rooted statement over `objects` + `object_components` |
-| `DELETE /objects/{id}` | route-local closed | one fused Object DELETE + DELETED lifecycle statement |
+| `DELETE /objects/{id}` | **full-sweep complete** | DB-enforced lifetime arbitration + one fused Object DELETE + DELETED lifecycle statement |
 
 Object-relative Relationship and Lifecycle routes remain owned by their later top-down discovery passes even when the URL is rooted under `/objects`.
 
@@ -2076,7 +2076,7 @@ Candidate runtime path:
 
 This is a pure current-fact read.
 
-# 12. DELETE Object
+# 12. DELETE Object — full sweep complete
 
 ## Public contract
 
@@ -2084,90 +2084,463 @@ This is a pure current-fact read.
 DELETE /api/v1/core/objects/{object_id}
 ```
 
-No request body and no `force`, cascade, recursive/subtree or implicit-detach option.
+Path:
 
-Success:
+```text
+object_id UUID
+```
+
+No request body is accepted. No query parameter is introduced for:
+
+```text
+force
+cascade
+recursive/subtree deletion
+implicit detach
+implicit Relationship deletion
+```
+
+Successful deletion returns:
 
 ```http
 204 No Content
 ```
 
-Absence is non-convergent:
+The deleted Object representation is not returned.
+
+A repeated DELETE after a committed deletion is not convergent success:
 
 ```text
-already absent -> 404 resource_not_found
+Object already absent
+    -> 404 resource_not_found
 ```
 
-Current lifetime dependency:
+A current external lifetime dependency produces:
 
 ```text
--> 409 delete_blocked
+409 delete_blocked
 ```
 
-Public `delete_blocked` detail remains bounded to selected Object identity; blocker identities/counts/constraint names are not required.
+The public `delete_blocked` detail is intentionally bounded to the selected Object identity. The contract does not require blocker identities, blocker types, exact blocker counts or PostgreSQL constraint names, and no PostgreSQL statement may be required solely to enrich this diagnostic.
 
-DELETE never implicitly:
+DELETE removes only the selected Object. It never implicitly DETACHes ownership, deletes factual Relationships, removes a subtree or rewrites blockers merely to make deletion admissible.
+
+## Lifetime admission boundary
+
+Object DELETE owns only the admission needed to terminate the selected Object lifetime:
 
 ```text
-DETACHes ownership
-removes factual Relationships
-deletes a subtree
-rewrites blockers
+Object.DELETE(O) may commit
+iff
+no current external fact requires O to remain alive
 ```
 
-## Candidate execution
+Current lifetime blockers include:
 
-Preferred route-local candidate is one data-modifying PostgreSQL business statement:
+```text
+current ownership edge where O is child
+current ownership edge where O is parent
+current factual Relationship runtime-closure reference involving O
+any future current external fact whose semantics require O lifetime
+```
+
+Not blockers:
+
+```text
+O's owned object_component_slots
+O's outgoing exact ObjectTemplateVersion binding
+lifecycle/history rows
+worker caches
+immutable model semantics
+```
+
+`object_component_slots` is owned derived state. Empty/current slot rows disappear with the Object and do not keep it alive. When a current ownership edge references one of those semantic slot rows, that external edge is the blocker; Object DELETE must not implicitly remove it.
+
+The Object's exact `(template_id, template_version)` reference points outward to model-plane state. DELETE releases that reference; the target OTV does not have to be re-admitted, lifecycle-checked or stabilized merely for the Object to remove its outgoing binding.
+
+Lifecycle history has no live current-resource lifetime semantics and survives deletion without blocking it.
+
+DELETE is not a domain consistency sweep. It must not proactively:
+
+```text
+re-certify ObjectTemplate/DataType semantics
+validate persisted Object properties against schema
+re-derive Relationship runtime closure
+validate ownership consistency
+re-certify object_component_slots against model-plane schema
+count or enumerate all blocker families
+scan for dangling references
+perform diagnostic-only reads searching for corruption
+```
+
+The route trusts invariants established by the mutations that own them and consumes only the current database lifetime result required by DELETE.
+
+## Ratified execution/data path
+
+DELETE has no semantic-preparation phase and no cache path. The current route candidate is one data-modifying PostgreSQL business statement inside one semantic transaction:
 
 ```text
 BEGIN
 
 Q1
-    DELETE objects root by id
-    -> retain deleted row server-side
+    DELETE Object root by id
+
+    -> database current-lifetime arbitration
+    -> owned derived Object state disappears as allowed
+    -> retain the exact deleted intrinsic Object row server-side
     -> construct DELETED before_state server-side
     -> INSERT exactly one DELETED lifecycle row
-    -> return tiny success carrier
+    -> return a tiny success carrier
 
 COMMIT
 ```
 
-The server-side fusion avoids transferring the potentially large Object `properties` payload DB -> application -> DB solely to rebuild the historical snapshot.
+The route performs:
 
-Outcome classification:
+```text
+0 preliminary Object SELECTs
+0 blocker-precheck/count statements
+0 ObjectTemplate/DataType/model-plane reads
+0 semantic recertification
+0 cache operations
+0 diagnostic-only PostgreSQL reads
+```
+
+The root delete itself is the current lifetime-admission point. Conceptually:
 
 ```text
 zero deleted/success rows
-    -> 404
+    -> 404 resource_not_found
 
-SQLSTATE 23503 attributable to current references blocking root Object DELETE
+current database lifetime reference rejects the root delete
     -> 409 delete_blocked
 
-one success row
-    -> 204
+one success carrier
+    -> 204 No Content
 ```
 
-The fused statement requires architecture to preserve unambiguous classification: an unrelated FK failure from the lifecycle branch must never be mislabeled `delete_blocked` merely because it also uses SQLSTATE `23503`.
+The server-side fusion is intentional because the potentially large `properties` JSONB need not travel:
 
-No blocker precheck, separate Object snapshot read, model-plane recertification, cache work or diagnostic-only DB read is required.
+```text
+PostgreSQL -> application -> PostgreSQL
+```
 
-Candidate success cost:
+solely to construct the mandatory historical event. The exact row actually deleted feeds the lifecycle snapshot inside PostgreSQL.
+
+Candidate successful cost, excluding transaction control:
 
 ```text
 1 PostgreSQL business statement
 ```
 
-With `object_component_slots`:
+There is no warm/cold distinction.
+
+## DELETED lifecycle and atomicity
+
+For one successfully deleted Object row, the intrinsic historical snapshot remains bounded to:
 
 ```text
-Object delete
-    -> owned empty/current slot rows cascade
-    -> referenced slot FK blocks deletion when attached children remain
+kind           = DELETED
+object_id      = deleted.id
+canonical_name = deleted.canonical_name
+before_state   = {
+    id,
+    canonical_name,
+    template_id,
+    template_version,
+    properties
+}
+after_state    = null
 ```
 
-Empty slot materialization does not itself become a lifetime blocker.
+Current ownership, component slots, owner projection and factual Relationships are not embedded in the intrinsic DELETED snapshot. Their structural history remains represented by their own lifecycle families.
 
-Architecture must prove DELETE races against all current Object-lifetime references and preserve Object deletion + DELETED lifecycle atomicity.
+Required atomicity:
+
+```text
+root Object DELETE fails
+    -> no DELETED event
+
+DELETED lifecycle INSERT fails
+    -> whole statement/transaction fails
+    -> Object deletion does not commit
+
+statement succeeds + COMMIT
+    -> Object absence + exactly one DELETED event become durable together
+```
+
+No committed Object deletion may exist without the required DELETED event.
+
+## Failure mapping
+
+The bounded public outcomes are:
+
+```text
+missing Object
+    -> 404 resource_not_found
+
+current external lifetime blocker
+    -> 409 delete_blocked
+
+unexpected persistence/integrity defect
+    -> normal bounded persistence/internal-failure classification
+```
+
+A foreign-key violation can map to `delete_blocked` only when it is attributable to the root Object lifetime deletion. The fused lifecycle branch must not cause an unrelated FK failure to be mislabeled merely because it shares SQLSTATE `23503`.
+
+Architecture must therefore preserve one of:
+
+```text
+lifecycle INSERT cannot generate an unrelated 23503
+
+or
+
+the persistence boundary can distinguish the failure source
+without issuing a diagnostic-only query
+```
+
+## Referential-integrity dependency and revalidation trigger
+
+The one-statement DELETE contract deliberately depends on complete database-enforced Object lifetime integrity.
+
+Every current external fact whose semantics require an Object to remain alive must participate in atomic database-level arbitration with the root Object DELETE, preferably through immediate `RESTRICT` / `NO ACTION` foreign-key semantics or another globally proven database mechanism with equivalent guarantees.
+
+Conceptually:
+
+```text
+current external lifetime reference commits/is effective first
+    -> root Object DELETE cannot commit
+
+root Object DELETE commits first
+    -> a new conflicting current lifetime reference cannot commit
+```
+
+This is part of the route contract, not merely a physical optimization. It is what permits the DELETE path to avoid blocker scans, blocker census and application-side admission logic.
+
+Therefore any material persistence change to the Object lifetime-reference graph or its database arbitration **reopens Object.DELETE** and requires the route to be re-proven before the new design can be considered compatible.
+
+Revalidation triggers include:
+
+```text
+adding a new current Object reference that must keep the Object alive
+removing or changing an existing lifetime FK
+changing CASCADE / RESTRICT / NO ACTION semantics
+moving a current lifetime dependency outside DB-enforced arbitration
+introducing deferred or materially different enforcement timing
+changing object_component_slots / object_components lifetime composition
+changing factual Relationship endpoint lifetime enforcement
+```
+
+Dependency direction:
+
+```text
+Object.DELETE one-statement contract
+    depends on
+complete DB-enforced current Object lifetime integrity
+```
+
+## Ratified concurrency outcomes
+
+Object DELETE requires serially explainable lifetime outcomes. Discovery does not freeze exact PostgreSQL lock modes, advisory gates, ordering, wait strategy or retry counts.
+
+General rule:
+
+```text
+Object.DELETE may commit
+iff
+no current external fact still requires Object lifetime
+at the database lifetime-arbitration point
+```
+
+### DELETE vs DELETE
+
+```text
+first DELETE commits
+    -> 204
+    -> exactly one DELETED lifecycle event
+
+second concurrent/later DELETE observes absence
+    -> 404 resource_not_found
+    -> no second DELETED event
+```
+
+Two DELETE commands must never both report successful deletion of the same current Object generation.
+
+### DELETE vs intrinsic Object mutation
+
+This includes canonical-name mutation, properties mutation and SCHEMA_CHANGE.
+
+```text
+intrinsic mutation commits first
+    -> DELETE removes that resulting current Object generation
+    -> DELETED.before_state is the row actually deleted
+
+DELETE commits first
+    -> intrinsic mutation cannot later commit against or recreate the deleted Object
+```
+
+Required guarantees:
+
+```text
+no mutation-after-delete
+no resurrection
+serially explainable current state
+```
+
+For SCHEMA_CHANGE, Object exact binding and materialized slot set remain one atomic Object generation: either the schema transition commits first and DELETE removes the new generation, or DELETE commits first and SCHEMA_CHANGE cannot publish replacement current state afterward.
+
+### DELETE vs ATTACH
+
+ATTACH creates a new current Object lifetime reference whether the selected Object participates as parent or child.
+
+```text
+ATTACH lifetime reference commits first
+    -> DELETE cannot commit
+    -> 409 delete_blocked
+
+DELETE commits first
+    -> ATTACH cannot commit a new current reference to the absent Object
+```
+
+### DELETE vs DETACH
+
+DETACH removes a current ownership lifetime reference.
+
+```text
+DETACH removal commits first
+    -> that blocker disappears
+    -> DELETE may succeed if no other blocker remains
+
+DELETE reaches arbitration while the edge still blocks
+    -> DELETE may return 409 delete_blocked
+```
+
+DELETE does not promise to wait for concurrent DETACH, auto-retry until it commits or perform DETACH implicitly. A later caller retry may succeed.
+
+A successful DELETE while the blocking ownership edge remains committed is forbidden.
+
+### DELETE vs factual Relationship.CREATE
+
+```text
+Relationship.CREATE endpoint reference commits first
+    -> DELETE cannot commit
+    -> 409 delete_blocked
+
+DELETE commits first
+    -> Relationship.CREATE cannot commit a runtime endpoint reference to the absent Object
+```
+
+No committed factual Relationship runtime closure may reference an absent Object.
+
+### DELETE vs factual Relationship.DELETE
+
+```text
+Relationship.DELETE commits first
+    -> owned runtime closure disappears
+    -> endpoint blocker disappears
+    -> DELETE may succeed if no other blocker remains
+
+DELETE reaches arbitration while the Relationship reference still exists
+    -> DELETE may return 409 delete_blocked
+```
+
+As with DETACH, DELETE has no obligation to wait or retry internally merely because a concurrent operation is removing the blocker.
+
+### DELETE vs Relationship mutation retaining endpoints
+
+A Relationship mutation that preserves the factual Relationship endpoint references does not release Object lifetime:
+
+```text
+current factual Relationship still references O
+    -> O remains delete_blocked
+```
+
+Object DELETE does not inspect or re-certify Relationship schema semantics to determine this; the persisted current endpoint reference is sufficient.
+
+### DELETE vs ObjectTemplate whole-lineage deletion
+
+The lifetime dependency is outgoing from Object:
+
+```text
+Object O
+    -> exact ObjectTemplateVersion T@V
+```
+
+Therefore:
+
+```text
+Object O still exists
+    -> ObjectTemplate.DELETE_LINEAGE(T) remains blocked by O
+
+Object.DELETE commits first
+    -> O -> T@V reference disappears
+    -> whole-lineage deletion may subsequently become admissible
+```
+
+ObjectTemplate lifecycle/default mutations such as DEPRECATE, SET_DEFAULT and CLEAR_DEFAULT are not Object.DELETE admission predicates.
+
+## Concurrency/architecture handoff
+
+Architecture must realize the ratified outcomes while preserving:
+
+```text
+no dangling current references
+no mutation-after-delete
+no resurrection
+no double DELETE success
+exactly one DELETED event for the deleted Object generation
+no false-success DELETE
+atomic Object disappearance + DELETED lifecycle
+serially explainable outcomes
+```
+
+Discovery deliberately does not ratify:
+
+```text
+FOR UPDATE / FOR KEY SHARE / exact row-lock modes
+specific advisory gates
+final lock ordering
+retry count
+wait strategy
+deadlock realization
+```
+
+The referential-integrity revalidation trigger above applies to this concurrency proof too: material changes to the DB-enforced Object lifetime graph invalidate the assumptions behind this route and require DELETE to be reopened.
+
+## Full-sweep closure
+
+The logical `DELETE /objects/{id}` route is full-sweep complete on:
+
+```text
+public 204 / 404 / 409 semantics
+no force/cascade/implicit blocker mutation
+bounded delete_blocked diagnostics
+external-current-fact lifetime boundary
+owned-derived/history non-blocker boundary
+no proactive consistency sweep
+one-statement direct lifetime transition
+server-side DELETED before_state construction
+atomic Object disappearance + lifecycle
+one-statement success cost / no cache
+DB-enforced referential-integrity dependency
+explicit persistence-change revalidation trigger
+failure mapping including 23503 qualification
+serially explainable concurrency outcomes
+```
+
+Deferred only to later architecture-wide physical/concurrency realization:
+
+```text
+final PK/UNIQUE/FK/CASCADE/RESTRICT realization
+exact root DELETE + lifecycle SQL carrier
+exact SQLSTATE/constraint-source classification
+final lock modes / advisory gates / wait-for ordering
+retry/wait/deadlock strategy
+final indexes and PostgreSQL plan evidence
+verification of the complete Object lifetime-reference graph
+```
+
+Those physical choices must preserve the route contract above. A change to the lifetime-reference graph is not transparent to this closure and explicitly reopens DELETE.
 
 # Nested surfaces owned by later discovery passes
 
@@ -2271,15 +2644,6 @@ GET owner working projection
 DELETE
 ```
 
-Non-superseded contract, failure, concurrency and cost details omitted by the first consolidation draft have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
+Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
-The remaining pre-cleanup work is cross-cutting rather than route-owner reconstruction:
-
-```text
-1. build object-components-persistence.md
-2. build object-schema-change.md
-3. reconcile references from surviving non-Object WIPs
-4. then remove superseded Object route-local/micro-step WIPs
-```
-
-Until those two cross-cutting owners exist, their current source WIPs remain necessary comparison evidence and should not be deleted.
+For routes already marked `full-sweep complete`, dedicated route-only legacy WIPs may be removed after an explicit lossless absorption/reference check; Git history remains the historical record. Cross-operation owners and source families needed by routes that are not yet full-swept remain in the working set until their own revalidation/cleanup passes.
