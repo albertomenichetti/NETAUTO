@@ -112,7 +112,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | `GET /objects/{id}/schema` | **full-sweep complete** | one coherent Object PK -> ObjectTemplate PK statement; no cache/locks/revision/OTV admission |
 | `POST /objects/{id}/schema` | **full-sweep complete** | exact-pair MigrationPlan + universal expected-revision freshness + set-based slot delta + final TARGET admission |
 | `GET /objects/{parent}/components/{slot}` | **full-sweep complete** | one current root-preserving data-plane statement + semantic-slot keyset cursor |
-| `POST /objects/{parent}/components/{slot}/attach` | public semantics retained; execution revalidated | current slot materialization + ancestry cache + graph admission + FK arbitration |
+| `POST /objects/{parent}/components/{slot}/attach` | **full-sweep complete** | materialized current slot + stable Object-lineage/ancestry caches + protected graph admission + FK arbitration + post-edge lifecycle display read |
 | `POST /objects/{parent}/components/{slot}/detach` | public semantics retained; execution revalidated | set-based current-edge delete + lifecycle |
 | `GET /objects/{child}/owner` | working current-fact candidate | one child-rooted statement over `objects` + `object_components` |
 | `DELETE /objects/{id}` | **full-sweep complete** | DB-enforced lifetime arbitration + one fused Object DELETE + DELETED lifecycle statement |
@@ -4020,15 +4020,29 @@ architecture physical-design handoff
 
 The older navigation cursor/data-path and broad Object-components brainstorming files are source evidence only after this consolidation. Git history is the historical record once they are removed.
 
-# 9. ATTACH children to one slot
+# 9. ATTACH children to one slot — full sweep complete
 
 ## Public contract
 
 ```http
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
+Content-Type: application/json
 ```
 
-Request:
+Path:
+
+```text
+parent_object_id
+    UUID
+
+slot_name
+    canonical component-slot name
+    ^[a-z][a-z0-9_]{0,63}$
+```
+
+Query parameters: none.
+
+Request body:
 
 ```json
 {
@@ -4039,19 +4053,33 @@ Request:
 }
 ```
 
-Rules:
+Static/request-shape rules:
 
 ```text
-non-empty batch
-duplicate ids invalid
+child_object_ids required
+batch size 1..100
+every child id is a UUID
+duplicate child ids invalid
 input order has no semantic meaning
-parent id cannot appear in child ids
+unknown body fields invalid
+unknown/repeated query parameters invalid
 atomic batch
-add membership only
-no implicit DETACH/replacement
 ```
 
-Any requested child already owning any edge causes whole-batch failure, including the exact same current parent/slot edge. There is no convergent `ON CONFLICT` success and no partial success.
+The parent may not appear in `child_object_ids`; that is a semantic self-reference failure after current parent/slot resolution, not a wire-shape failure.
+
+ATTACH is a strict add-membership command:
+
+```text
+add only
+no implicit DETACH
+no move
+no replacement
+no partial success
+no ON CONFLICT convergence
+```
+
+Any requested child that already owns any current edge causes whole-batch failure, including the exact same current parent/semantic-slot edge.
 
 Success:
 
@@ -4059,146 +4087,623 @@ Success:
 204 No Content
 ```
 
-## Current preparation candidate
+The command returns no component projection. Current state remains owned by Object/component GET surfaces.
 
-One current parent+slot statement returns:
+## Authority and data structures
+
+ATTACH consumes:
+
+```text
+objects
+    current parent existence/template lineage in S1
+    current child existence only at the persistence/lifecycle boundary where required
+
+object_component_slots
+    current requested semantic slot identity
+    current target_template_id admission contract
+
+object_components
+    current ownership graph
+    final ownership edges
+
+object_template_ancestry
+    denormalized stable lineage closure used only to fill READY ancestry cache misses
+
+ObjectLineageCache
+    worker-local stable object_id -> template_id knowledge
+
+StableObjectTemplateAncestryCache
+    worker-local complete source-lineage ancestry/neighborship knowledge
+
+object lifecycle persistence
+    ATTACH_TO history
+```
+
+`object_component_slots` remains current mutable runtime truth derived atomically from the parent exact ObjectTemplate binding. Worker caches never replace PostgreSQL as authority for current parent/slot existence, current ownership or final child lifetime.
+
+## S1 — current parent + semantic slot
+
+One current PostgreSQL statement resolves the path target and requested nested slot directly from data-plane materialization.
+
+Required logical result:
 
 ```text
 parent existence
-parent canonical_name
+parent template_id
 slot existence
 slot_declaring_template_id
 target_template_id
 ```
 
-from current data-plane state.
+It does not need:
+
+```text
+parent template_version
+parent canonical_name
+parent revision
+component-schema cache
+ObjectTemplate exact-schema reconstruction
+```
+
+Public outcomes:
 
 ```text
 parent absent
     -> 404 resource_not_found
+       resource_type = object
 
-parent present + slot absent
-    -> 409 ownership_slot_unavailable
+parent present + current slot absent
+    -> 404 resource_not_found
+       resource_type = object_component_slot
+
+parent + slot present
+    -> continue with the current semantic slot identity/target
 ```
 
-No parent exact-template read or component-schema cache lookup is required merely to resolve the current slot contract. A parent pinned to a DEPRECATED exact OTV remains governed by its current materialized slot contract; ATTACH is not a new parent-binding admission.
+A parent pinned to a DEPRECATED exact ObjectTemplateVersion remains governed by its current materialized slot contract; ATTACH is not a new parent-binding admission.
 
-One bulk child Object read returns:
+`parent.template_id` can opportunistically populate the stable Object-lineage cache without an additional PostgreSQL statement.
+
+## S2 — cache-first stable semantic preparation
+
+S2 is not a mandatory PostgreSQL child read. It makes the stable semantic knowledge required for compatibility READY, then evaluates compatibility in memory.
+
+### Stable Object-lineage cache
+
+Conceptual cache:
 
 ```text
-id
-template_id
-canonical_name
+ObjectLineageCache[object_id] -> template_id
 ```
 
-and stable-lineage compatibility is checked against slot `target_template_id` through the stable ObjectTemplate ancestry cache.
+Meaning:
 
-A READY ancestry source contains its complete sparse ancestor set, including self. Missing source lineages are loaded in bounded bulk; there is no per-child N+1 ancestry query.
+```text
+if Object identity X exists,
+its stable ObjectTemplate lineage is T
+```
 
-## Current mutation candidate
+It does **not** mean:
+
+```text
+Object X exists now
+```
+
+`template_id` is stable for one Object identity; normal Object operations never reclassify an Object to another ObjectTemplate lineage. M4 also treats kernel-generated UUIDv4 Object identity as globally non-reused for semantic/cache purposes: once UUID X has identified one Object, the system does not intentionally reuse X for another Object incarnation. No historical UUID registry/tombstone table is introduced solely to enforce this; UUIDv4 generation plus current PK authority remain the realization.
+
+Consequently a positive:
+
+```text
+X -> T
+```
+
+may remain useful stable knowledge even after X is deleted. It must never be interpreted as current-existence proof.
+
+Negative absence is different:
+
+```text
+X -> NOT_FOUND
+```
+
+is only a current observation and is not stable semantic knowledge. M4 therefore introduces no permanent semantic negative cache for Object absence. Architecture may later evaluate bounded temporary negative caching/TTL only as a performance policy, never as current-state authority.
+
+For one ATTACH batch:
+
+```text
+1. lookup every required Object identity in ObjectLineageCache
+2. retain every HIT
+3. collect all and only MISS object ids
+4. if MISS set is non-empty, issue one bounded bulk PostgreSQL read
+5. cache every positive object_id -> template_id result
+6. require complete lineage resolution before compatibility evaluation
+```
+
+The bulk fill is set-based over all missing ids, never one query per child. Parent lineage may already be supplied by S1; the cold fill therefore normally concerns only child identities not already READY.
+
+If one or more requested child misses are absent from the bulk result:
+
+```text
+-> 422 referenced_resource_not_found
+-> cache positive rows that were actually found
+-> do not create stable negative entries for absent ids
+-> stop this ATTACH attempt
+```
+
+No dedicated current-existence read is performed for child ids already present in `ObjectLineageCache`.
+
+### Stable ancestry/neighborship cache
+
+For all DISTINCT child `template_id` values needed by compatibility, ATTACH consumes:
+
+```text
+StableObjectTemplateAncestryCache[source_template_id]
+```
+
+A READY source contains its complete stable ancestor/neighborship set, including self. The persistent source is the already denormalized closure:
+
+```text
+object_template_ancestry
+    descendant_template_id
+    ancestor_template_id
+    depth
+```
+
+including the reflexive row:
+
+```text
+(A, A, 0)
+```
+
+For every source not READY, ATTACH accumulates all missing source ids and fills them together with one bounded statement over `object_template_ancestry`. Each source is loaded completely and only then marked READY. There is no recursive ObjectTemplate traversal on the ATTACH data plane and no N+1 query per child/source/target pair.
+
+Compatibility is then CPU/in-memory only:
+
+```text
+child.template_id compatible with slot.target_template_id
+iff
+slot.target_template_id is present in READY ancestry[child.template_id]
+```
+
+A READY negative is authoritative for stable lineage semantics; PostgreSQL cannot reveal a later new ancestor for the same existing source lineage.
+
+### Conservative cache-staleness failure is acceptable
+
+A positive Object-lineage cache entry may outlive current Object existence. Therefore this attempt is possible:
+
+```text
+cache: child C -> lineage T
+C has since been deleted
+T is incompatible with slot target
+```
+
+S2 may return:
+
+```text
+422 semantic_validation_failed / incompatible_template_lineage
+```
+
+instead of the currently fresher `referenced_resource_not_found` result.
+
+This diagnostic imprecision is accepted because the mutation cannot proceed and stale cache knowledge must never enable an invalid commit. Current referential validity is still enforced at the persistence boundary. Cache refresh, TTL, eviction, explicit refresh APIs and local fill coordination belong to architecture; correctness must not depend on them.
+
+## Mutation Unit of Work
+
+After S1/S2 and self-reference validation succeed:
 
 ```text
 BEGIN
 
-Q1 acquire OWNERSHIP_GRAPH_WRITE_GATE
+Q1  acquire OWNERSHIP_GRAPH_WRITE_GATE
 
-Q2 protected graph admission
-    -> any requested child currently owned?
-    -> root(parent) among requested ids?
+Q2  one fresh protected graph-admission statement
+    -> has_owned_requested_child
+    -> derive root(parent) through the single-owner chain
+    -> root_is_requested
 
-Q3 bulk INSERT object_components
-    -> semantic slot FK must still reference current slot
+Q3  one strict bulk INSERT object_components
+    -> N ownership edges
 
-Q4 bulk ATTACH_TO lifecycle INSERT
+Q4  one bounded Object display-name read
+    -> parent canonical_name
+    -> canonical_name for all N inserted children
+
+Q5  one bulk ATTACH_TO lifecycle INSERT
+    -> exactly N lifecycle events
 
 COMMIT
 ```
 
-Graph admission precedence:
+The graph edge-add gate is held through graph certification, edge persistence, lifecycle work and commit. ATTACH does not acquire an explicit parent row lock merely to stabilize the prepared semantic slot and does not use `objects.revision` as a parent freshness fence.
+
+The semantic-slot FK is the final narrow ATTACH x SCHEMA_CHANGE stabilization/arbitration boundary.
+
+## Q2 — protected ownership/cycle admission
+
+Q2 owns only fresh mutable ownership-graph predicates:
 
 ```text
-owned requested child
-    -> ownership_conflict
-
-otherwise root(parent) requested
-    -> ownership_cycle
-
-otherwise
-    -> proceed
+has_owned_requested_child
+root_is_requested
 ```
 
-Current relational responsibilities:
+Application precedence:
 
 ```text
-PK object_components(child_object_id)
-    -> single owner
-
-FK child -> objects
-    -> child lifetime
-
-FK semantic parent slot -> object_component_slots
-    -> current parent/slot existence + semantic identity
-
-self-edge CHECK
-    -> relational backstop
-
-graph gate + protected root check
-    -> DAG acyclicity
-```
-
-The slot FK is the preferred narrow ATTACH x SCHEMA_CHANGE arbitration point for slot REMOVE/semantic replacement. Target widening is non-key and semantically monotonic.
-
-Parent/child canonical names used in ATTACH lifecycle history remain best-effort display metadata; no extra DB reread is added solely for display-name freshness.
-
-Candidate public/failure precedence:
-
-```text
-1. invalid wire/static request
-    -> 400 invalid_request
-
-2. parent path target absent
-    -> 404 resource_not_found
-
-3. parent appears in child_object_ids
-    -> 422 semantic_validation_failed / self_reference
-
-4. current slot unavailable
-    -> 409 ownership_slot_unavailable
-
-5. one or more child Objects absent
-    -> 422 referenced_resource_not_found
-
-6. one or more present children incompatible with slot target lineage
-    -> 422 semantic_validation_failed
-
-7. protected graph admission finds an owned requested child
+has_owned_requested_child = true
     -> 409 ownership_conflict
 
-8. otherwise root(parent) is requested
+otherwise root_is_requested = true
     -> 409 ownership_cycle
 
-9. residual edge-insert constraint race
-    -> translate from the known violated constraint class
+otherwise
+    -> continue
 ```
 
-A final mapping is still required for the race where the current semantic slot disappears/replaces after unlocked preparation but before edge INSERT. No diagnostic-only query may be added solely to enrich this classification.
+Q2 does not certify child current existence and does not join `objects` solely for that purpose. A deleted requested child may simply appear ownerless; final lifetime authority remains Q3's child FK.
 
-Candidate successful costs:
+Under single-owner ownership, once every requested child is ownerless, an ownerless requested child can already be an ancestor of the parent only if it is exactly `root(parent)`. Therefore one recursive upward root traversal for the parent is sufficient for the entire batch.
+
+M4 does not materialize or worker-cache mutable:
+
+```text
+object_id -> root_object_id
+```
+
+because ATTACH/DETACH would then require subtree-wide derived-state maintenance. Root lookup remains bounded by ownership depth rather than batch size.
+
+## Q3 — strict bulk edge persistence and final arbitration
+
+Q3 inserts every requested edge in one multi-row statement:
+
+```text
+object_components
+    child_object_id
+    parent_object_id
+    slot_declaring_template_id
+    slot_name
+```
+
+There is no `ON CONFLICT`, per-child loop or partial-success branch.
+
+Relational responsibilities and failure meanings are deliberately separated.
+
+### `PK(child_object_id)`
+
+The PK is the final structural at-most-one-owner authority.
+
+However, after successful fresh Q2 under a graph gate respected by every edge-add writer, a normal competing ATTACH cannot create a new owner between Q2 and Q3. A PK violation after successful Q2 is therefore **not** the normal public ownership-conflict path; it indicates an invariant/concurrency-protocol failure or an edge-add writer bypassing the required arbitration.
+
+Current discovery mapping:
+
+```text
+unexpected PK violation after successful Q2
+    -> 500 internal_error
+```
+
+Architecture must prove that every writer capable of adding ownership edges participates in the required graph-add arbitration.
+
+### `FK child_object_id -> objects.id`
+
+This FK is the final current child lifetime/existence authority.
+
+Normal race:
+
+```text
+S2 stable lineage knowledge is valid/compatible
+child is deleted before Q3
+Q3 child FK fails
+```
+
+Mapping:
+
+```text
+422 referenced_resource_not_found
+resource_type = object
+operand = child_object_ids
+```
+
+The exact missing child id may be omitted when it is not already known. No row lock or diagnostic reread is introduced solely to identify it.
+
+### semantic-slot FK
+
+Candidate dependency:
+
+```text
+(parent_object_id, slot_declaring_template_id, slot_name)
+    -> object_component_slots(
+           object_id,
+           slot_declaring_template_id,
+           slot_name
+       )
+```
+
+This is the final current semantic-slot identity authority and the preferred narrow ATTACH x SCHEMA_CHANGE arbitration boundary.
+
+If the prepared semantic slot is removed or semantically replaced before Q3 can establish its reference:
+
+```text
+-> semantic-slot FK failure
+-> 409 stale_state
+```
+
+Candidate bounded public details use only already-known public context:
+
+```text
+resource_type = object_component_slot
+parent_object_id
+slot_name
+```
+
+No diagnostic reread is performed to distinguish REMOVE from same-name semantic replacement, and discovery does not automatically reprepare/retry after this stale failure. Architecture may later evaluate an explicit bounded retry policy, but ambiguous failure alone never authorizes additional backend work.
+
+If Q3 establishes the FK reference first, slot removal or referenced-key replacement cannot commit while the edge remains. `target_template_id` is deliberately non-key, so monotonic target widening may race without creating a false ATTACH failure.
+
+### self-edge CHECK
+
+```text
+CHECK(parent_object_id <> child_object_id)
+```
+
+remains a structural backstop. Self-reference is already determined from request operands before the UoW. Therefore a CHECK failure after that validation is an unexpected invariant/protocol defect:
+
+```text
+-> 500 internal_error
+```
+
+The need for a separate direct `parent_object_id -> objects.id` FK remains an architecture-wide relational-schema question because parent lifetime is already implied through the referenced current semantic slot.
+
+## Q4 — lifecycle display-name read after edge success
+
+Parent/child canonical names are **required historical display metadata** for `ATTACH_TO`. Lifecycle must remain useful even after the referenced Object ids no longer exist.
+
+They are not ownership identity or admission facts and therefore do not belong in S1/S2 merely to prepare ATTACH.
+
+Only after Q3 has inserted the complete edge batch successfully, Q4 performs one bounded read for:
+
+```text
+parent_object_id
++
+all requested child_object_ids
+```
+
+and returns:
+
+```text
+object_id -> canonical_name
+```
+
+Expected result cardinality is exactly:
+
+```text
+N children + 1 parent
+```
+
+because successful Q3 has established child lifetime references and the semantic-slot reference protects parent/slot lifetime through the surrounding transaction. Therefore an incomplete Q4 result is not a normal domain absence result:
+
+```text
+Q4 cannot read parent or one inserted child
+    -> 500 internal_error
+    -> rollback complete ATTACH
+```
+
+A concurrent RENAME may determine whether Q4 observes the old or new name. Exact name freshness at the instant of edge commit is not correctness-bearing and no extra locks/retries/rereads are added solely to improve display-name freshness.
+
+## Q5 — edge-oriented lifecycle persistence
+
+A successful batch with `N` new edges creates exactly `N` `ATTACH_TO` lifecycle events in one bulk statement.
+
+There is no request-level aggregate ATTACH event.
+
+Each event carries at least:
+
+```text
+child_object_id
+child_canonical_name
+parent_object_id
+parent_canonical_name
+slot_declaring_template_id
+slot_name
+```
+
+Thus:
+
+```text
+N committed ownership edges
+==
+N committed ATTACH_TO events
+```
+
+Q3 edges and Q5 lifecycle rows belong to the same UoW. If Q5 fails:
+
+```text
+-> rollback
+-> no ownership edge from the batch commits
+-> 500 internal_error
+```
+
+The simplest/economical timestamp realization is acceptable: all rows produced by the one lifecycle bulk statement may share one `occurred_at` value. Per-row timestamp differentiation carries no ATTACH semantic requirement.
+
+## Public failure semantics and execution precedence
+
+Canonical rule:
+
+```text
+public failure
+    = first decisive failure observed by the normal execution path
+
+no additional backend work is performed
+solely to discover a logically "better" or more current diagnostic
+```
+
+Because stable Object-lineage knowledge is cache-first, there is no longer one global child-absence-before-compatibility ordering independent of cache state.
+
+Normal path:
+
+```text
+1. malformed/static request
+    -> 400 invalid_request
+
+2. S1 parent absent
+    -> 404 resource_not_found / object
+
+3. S1 current slot absent
+    -> 404 resource_not_found / object_component_slot
+
+4. parent_object_id appears in child_object_ids
+    -> 422 semantic_validation_failed / self_reference
+
+5. S2 stable semantic preparation
+    ObjectLineageCache MISS fill proves one or more child ids absent
+        -> 422 referenced_resource_not_found
+
+    otherwise READY compatibility proves one or more child lineages incompatible
+        -> 422 semantic_validation_failed
+           rule = incompatible_template_lineage
+
+6. Q2 protected graph admission
+    has_owned_requested_child
+        -> 409 ownership_conflict
+
+    otherwise root_is_requested
+        -> 409 ownership_cycle
+
+7. Q3 bulk edge INSERT
+    child lifetime FK failure
+        -> 422 referenced_resource_not_found
+
+    semantic-slot FK failure
+        -> 409 stale_state
+
+    unexpected child PK violation after successful Q2
+        -> 500 internal_error
+
+    unexpected self-edge CHECK violation
+        -> 500 internal_error
+
+8. Q4 incomplete required lifecycle-name read
+    -> 500 internal_error
+
+9. Q5 lifecycle persistence failure
+    -> 500 internal_error
+
+10. other unexpected persistence/cache/materialization/invariant failure
+    -> 500 internal_error
+```
+
+A stale positive ObjectLineageCache entry for a deleted child may cause an incompatible-lineage 422 before current absence is observed. That conservative failure is accepted because no invalid mutation can commit. If the cached lineage is compatible, Q3's child FK remains the final current-existence authority.
+
+No failure-only diagnostic SELECT is allowed. Public details must use request/prepared context or the known failed constraint class and must not expose raw PostgreSQL text, SQL, table/column names or constraint names.
+
+`stale_state` is a new M4 route-level public error-code candidate and must be reconciled with the finite global public error catalog during milestone closure.
+
+## Cost profile
+
+The logical discovery baseline deliberately does not assume SQL statement fusion that belongs to architecture.
+
+Warm successful path, excluding `BEGIN`:
+
+```text
+S1  parent + current semantic slot read            1
+S2  ObjectLineageCache + ancestry cache HIT        0
+Q1  graph-write gate acquisition                   1
+Q2  fresh ownership/root graph admission           1
+Q3  strict bulk object_components INSERT           1
+Q4  parent + N child canonical_name read            1
+Q5  bulk N ATTACH_TO lifecycle INSERT              1
+-----------------------------------------------------
+                                                    6 PostgreSQL statements + COMMIT
+```
+
+Full-cold adds at most:
+
+```text
++1 bounded bulk ObjectLineageCache fill
++1 bounded bulk full-ancestry/neighborship fill
+```
+
+therefore:
 
 ```text
 warm      = 6 PostgreSQL statements + COMMIT
-full-cold = 7 PostgreSQL statements + COMMIT
+full-cold = 8 PostgreSQL statements + COMMIT
 ```
 
-The only normal semantic-cache cold fill left is stable child-lineage ancestry.
+Batch cardinality `1..100` changes row volume, not normal statement count. Q2 recursive work scales with parent ownership depth. The ancestry fill reads already-denormalized closure rows and does not recursively reconstruct ObjectTemplate parentage.
 
-Still open:
+Architecture may later reduce the physical round-trip count, especially around S1/Q2 or by safe write/lifecycle fusion, but `6/8` is the current logical discovery baseline and no optimization may weaken the responsibilities separated above.
+
+## Architecture handoff
+
+Deferred physical/cache decisions include:
 
 ```text
-final slot-disappearance/replacement failure mapping
-final direct parent-FK necessity
-architecture-wide FK/locking/deadlock proof
+ObjectLineageCache concrete class/layout
+positive-entry eviction / TTL / refresh policy
+optional temporary negative caching policy
+explicit cache refresh API or other freshness mechanism
+local concurrent-fill coordination
+
+S1 exact root/slot query carrier and possible safe fusion
+Q2 exact recursive carrier and possible safe optimization/fusion
+OWNERSHIP_GRAPH_WRITE_GATE physical realization
+final transaction/isolation/wait ordering and deadlock proof
+semantic-slot FK DDL/actions/timing
+child lifetime FK DDL/actions/timing
+direct parent FK necessity
+constraint/SQLSTATE -> public failure classification
+bulk edge SQL carrier
+Q4 display-name carrier / possible lifecycle INSERT-SELECT fusion
+Q5 lifecycle bulk carrier and timestamp realization
+final indexes / EXPLAIN/BUFFERS evidence
+realistic row-volume/latency measurements
 ```
+
+Architecture must preserve:
+
+```text
+cache never proves current Object existence/current ownership/current slot state
+positive object_id -> template_id knowledge remains stable semantic knowledge
+no permanent semantic negative Object-existence cache
+full source ancestry is READY before authoritative negative compatibility
+no recursive/N+1 model traversal on ATTACH
+no explicit parent lock or revision fence solely for slot continuity
+fresh ownerlessness + root-only cycle admission under the graph edge-add gate
+strict non-convergent atomic edge insert
+child FK as final current child-existence authority
+semantic-slot FK as final slot continuity/arbitration boundary
+no diagnostic-only backend work after decisive failure
+no automatic discovery-default retry of stale_state
+required historical parent/child names read only after successful edge insertion
+one lifecycle row per edge, atomic with ownership state
+```
+
+## Full-sweep closure
+
+The logical `POST /objects/{parent_object_id}/components/{slot_name}/attach` route is **full-sweep complete** on:
+
+```text
+explicit /attach command route
+exact batch request/success contract and 1..100 bound
+strict non-convergent add-only semantics
+parent vs nested-slot 404 distinction
+self-reference semantics
+cache-first Object stable-lineage preparation
+positive-only stable Object-lineage knowledge / no semantic negative absence cache
+full denormalized ancestry-neighborship READY cache
+compatibility and accepted conservative cache-staleness diagnostic behavior
+protected ownerlessness + root-only cycle admission
+no mutable root materialization
+strict bulk edge persistence
+child lifetime FK / semantic-slot FK / PK / CHECK failure classification
+stale_state boundary with no diagnostic reread or default retry
+post-edge required canonical-name read
+edge-oriented required ATTACH_TO lifecycle metadata/atomicity
+execution-path failure precedence
+warm 6 / full-cold 8 logical cost baseline
+architecture cache/SQL/FK/lock/index handoff
+```
+
+The retained `object-attach-*` / `to-be-api-object-attach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including mandatory preliminary child reads, parent exact-binding lock/recheck, `ownership_slot_unavailable`, `concurrent_object_change`, old 7/9 or 6/7 costs and PK-as-normal-residual-race behavior — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
 
 # 10. DETACH children from one slot
 
@@ -5003,6 +5508,8 @@ The current `GET /objects/{id}/schema` full sweep has also been losslessly absor
 The current `POST /objects/{id}/schema` full sweep is now losslessly absorbed here, including exact-target/equal-target semantics, immutable exact-pair MigrationPlan, complete property/component migration matrices, one-generation preparation, universal revision retry, final TARGET admission, slot-FK arbitration, failure precedence, operation-owned lifecycle delta, concurrency outcomes, bounded cold classes and architecture handoff.
 
 The current `GET /objects/{parent}/components/{slot}` full sweep is now losslessly absorbed here, including exact route/query/response contract, semantic-slot cursor identity, slot-absent vs empty semantics, keyset continuation, one-statement current data path, failure precedence, snapshot concurrency semantics, bounded cost profile and physical-design handoff.
+
+The current `POST /objects/{parent}/components/{slot}/attach` full sweep is now losslessly absorbed here, including the strict batch command contract, nested-slot 404 semantics, stable Object-lineage cache, denormalized ancestry-neighborship cache, protected graph admission, FK arbitration/failure mapping, required historical display-name read, edge-oriented lifecycle, execution-path failure precedence, warm/full-cold cost profile and architecture handoff.
 
 Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
