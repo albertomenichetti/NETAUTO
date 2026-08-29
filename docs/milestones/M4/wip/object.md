@@ -101,7 +101,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
-| `POST /objects` | public contract retained; slot persistence revalidated | current binding admission + READY semantic cache + Object/slot materialization |
+| `POST /objects` | public contract + semantic admission ratified; execution revalidation pending | exact target PUBLISHED admission + certified exact semantics + Object/slot materialization |
 | `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
 | `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
 | `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
@@ -209,6 +209,139 @@ Location: /api/v1/core/objects/{new_object_id}
 
 Response body: none. The canonical current representation is obtained through `GET /objects/{id}`.
 
+## Semantic admission and validation
+
+Object CREATE must always resolve and persist one concrete exact ObjectTemplate binding:
+
+```text
+(template_id, template_version)
+```
+
+No created Object persists `default`, `latest`, `highest`, `follow-current`, or any other floating version reference.
+
+Explicit selector:
+
+```text
+object_template = { id: T, version: V }
+    -> selected exact binding = T@V
+```
+
+Implicit selector:
+
+```text
+object_template = { id: T }
+    -> resolve current T.default_version = V
+    -> selected exact binding = T@V
+```
+
+If `default_version` is absent, implicit CREATE fails even if other PUBLISHED versions of the lineage exist. Once the exact binding `T@V` has been resolved, the in-flight CREATE remains pinned to it; a concurrent later default change must not retarget the command.
+
+The **only model-plane admission predicate owned by Object CREATE** is:
+
+```text
+selected exact ObjectTemplateVersion T@V
+    -> status == PUBLISHED through the new Object binding commit
+```
+
+Object CREATE does not independently re-admit, re-certify or lifecycle-check any other model-plane dependency.
+
+This relies on the active-model graph invariant paid by model-plane mutations. Publication admits direct lifecycle-sensitive exact dependencies only while they are PUBLISHED, and later deprecation is blocked while an active PUBLISHED consumer still pins them. Therefore a PUBLISHED ObjectTemplateVersion is already a lifecycle-consistent active-model anchor.
+
+Conceptually:
+
+```text
+PUBLISHED ObjectTemplateVersion
+    -> exact DataTypeVersion
+```
+
+prevents that exact DataTypeVersion from becoming DEPRECATED while the active PUBLISHED dependency exists, and:
+
+```text
+PUBLISHED child ObjectTemplateVersion
+    -> exact parent ObjectTemplateVersion
+```
+
+prevents that exact parent from becoming DEPRECATED while the active PUBLISHED dependency exists.
+
+Transitive lifecycle consistency follows from these direct active-model invariants. CREATE therefore does not recursively inspect parent/ancestor ObjectTemplateVersion status or the status of exact DataTypeVersions used by effective properties.
+
+This is not permission to consume a lifecycle-inconsistent graph. The graph is required to remain lifecycle-consistent by the model-plane itself; Object CREATE consumes that already-certified active state and owns only the target `T@V == PUBLISHED` admission predicate.
+
+CREATE also performs no cross-version reasoning. It does not infer admission from numeric order, creation order, genealogy, widening/narrowing, compatibility or migrability. The selected exact version is either currently PUBLISHED for the new binding or it is not.
+
+After resolving exact `T@V`, caller properties are validated against the complete effective property schema certified for that exact version, including inherited properties.
+
+For every effective property, runtime validation consumes:
+
+```text
+property name
+value mode
+required flag
+exact DataTypeVersion pin
+```
+
+and the immutable exact DataTypeVersion semantics:
+
+```text
+PrimitiveType
+canonicalization rules
+constraints
+```
+
+Conceptually:
+
+```text
+raw caller value
+    -> SCALAR/LIST shape validation
+    -> PrimitiveType parsing/validation
+    -> primitive canonicalization
+    -> exact DataTypeVersion constraint validation
+    -> canonical runtime value
+```
+
+CREATE persists the complete canonical validated runtime property map, not the raw request payload.
+
+Property rules include:
+
+```text
+unknown property
+    -> invalid
+
+required property omitted
+    -> invalid
+
+JSON null
+    -> invalid
+
+SCALAR property receives a list
+    -> invalid
+
+LIST property receives a scalar
+    -> invalid
+
+optional LIST = []
+    -> canonical absence / key omitted
+
+required LIST = []
+    -> invalid
+
+non-empty LIST
+    -> every item independently validated and canonicalized
+       against the same exact DataTypeVersion
+```
+
+LIST order is preserved and duplicate values are allowed unless forbidden by an independent semantic rule.
+
+`migration_default` is exclusively migration-oriented schema metadata and is never a CREATE default mechanism:
+
+```text
+required property omitted
++ migration_default exists
+    -> CREATE still fails
+```
+
+A newly created Object starts with the complete effective component-slot contract of the selected exact `T@V` and zero current ownership edges. No child attachment is part of Object CREATE. The Object exact binding and its current effective slot contract must correspond to the same exact `T@V`; the persistence/materialization realization is handled by the execution/data-path block.
+
 ## Candidate execution
 
 Three stages remain preferred:
@@ -248,7 +381,7 @@ Once STEP 1 resolves an exact binding, the command stays pinned to it. A concurr
 
 STEP 1 must not load effective schema, parent chains, DataType semantics, component declarations or unrelated model metadata.
 
-STEP 2 validates only from complete READY exact-version semantic cache state. The cache may contain stable direct-creation knowledge such as `abstract`, effective property semantics, exact DataTypeVersion semantics and compiled validators, but not mutable PUBLISHED/default state.
+STEP 2 validates only from complete READY exact-version semantic cache state. The cache may contain effective property semantics, exact DataTypeVersion semantics and compiled validators, but not mutable PUBLISHED/default state and not independent lifecycle-admission proofs for transitive dependencies.
 
 Missing or partial immutable knowledge is completed before validation and outside the mutation UoW. No model-plane PostgreSQL lock is held during cache fill, compilation, property validation or canonicalization.
 
