@@ -4,11 +4,28 @@ Status: WIP / NON-NORMATIVE
 
 ## Scope
 
-This note records the M4 discovery around `GET /objects/{id}/lifecycle-events` after the public `GET /objects/{id}` representation was reopened to include direct component children.
+This note records the M4 discovery around `GET /objects/{id}/lifecycle-events` after the public `GET /objects/{id}` representation was reopened to include direct component children and after lifecycle payload responsibility was revalidated during the Object.RENAME full sweep.
 
-This is discovery only. It does not freeze the public contract and does not authorize implementation.
+This is discovery only. It does not freeze the complete lifecycle public contract and does not authorize implementation.
 
-## Concrete consumer example
+## General lifecycle payload principle
+
+M4 has ratified the following general rule:
+
+```text
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+
+not automatically
+    = complete aggregate before snapshot
+      + complete aggregate after snapshot
+```
+
+Therefore lifecycle event families must not be forced into one complete Object snapshot shape merely for DTO/storage uniformity.
+
+Current Object GET representation and historical mutation payloads have different responsibilities.
+
+## Concrete RENAME consequence
 
 Consider current Object state:
 
@@ -27,31 +44,58 @@ and a rename:
 server-1 -> web-01
 ```
 
-The strong candidate current GET representation may include:
+RENAME owns only:
+
+```text
+canonical_name: server-1 -> web-01
+```
+
+Its exact lifecycle payload therefore does not need to duplicate:
+
+```text
+template_id
+template_version
+properties
+components
+ownership
+Relationships
+```
+
+Conceptually:
 
 ```json
 {
-  "id": "...",
-  "canonical_name": "web-01",
-  "template_id": "...",
-  "template_version": 4,
-  "properties": {
-    "hostname": "srv01"
+  "before": {
+    "canonical_name": "server-1"
   },
-  "components": {
-    "interfaces": [
-      {"id": "...", "canonical_name": "eth0"},
-      {"id": "...", "canonical_name": "eth1"}
-    ]
+  "after": {
+    "canonical_name": "web-01"
   }
 }
 ```
 
-The lifecycle RENAME event should not automatically duplicate that complete current representation in both `before` and `after`.
+with Object identity already carried by the lifecycle event itself.
 
-## Historical snapshot candidate
+This is an **exact** historical transition, not an approximate one.
 
-Current lifecycle persistence already stores intrinsic Object snapshots as:
+## Components remain outside intrinsic mutation payloads
+
+Enriching current `GET /objects/{id}` with direct components still does not imply embedding component state in intrinsic lifecycle payloads.
+
+Ownership changes are already represented by distinct lifecycle events:
+
+```text
+ATTACH_TO
+DETACH_FROM
+```
+
+which carry the semantic ownership transition and required historical display metadata.
+
+An intrinsic mutation must not reload and duplicate all direct children merely because the current Object GET representation includes them.
+
+## Intrinsic payloads are operation-specific
+
+The previous strong candidate used one generic intrinsic snapshot shape:
 
 ```text
 id
@@ -61,91 +105,70 @@ template_version
 properties
 ```
 
-For example:
+for every intrinsic event.
 
-```json
-{
-  "before": {
-    "id": "...",
-    "canonical_name": "server-1",
-    "template_id": "...",
-    "template_version": 4,
-    "properties": {
-      "hostname": "srv01"
-    }
-  },
-  "after": {
-    "id": "...",
-    "canonical_name": "web-01",
-    "template_id": "...",
-    "template_version": 4,
-    "properties": {
-      "hostname": "srv01"
-    }
-  }
-}
-```
+That universal rule is superseded.
 
-This remains the strong M4 candidate even if the current Object GET becomes richer.
-
-Reason: ownership changes are already represented by distinct lifecycle events:
+Current direction is operation-by-operation:
 
 ```text
-ATTACH_TO
-DETACH_FROM
+CREATED
+    -> may legitimately carry broad created current state
+       because the resource enters existence
+
+RENAME
+    -> exact old/new canonical_name only
+
+DATA_CHANGE
+    -> payload boundary to be revalidated during DATA_CHANGE full sweep
+
+SCHEMA_CHANGE
+    -> payload boundary to be revalidated during SCHEMA_CHANGE full sweep
+
+DELETED
+    -> may legitimately carry broad final current state
+       because the resource leaves current existence
 ```
 
-which carry child/parent display metadata and the slot semantic identity. A RENAME or DATA_CHANGE should not have to reload and duplicate all direct children merely because the current GET representation includes them.
-
-Concrete timeline:
-
-```text
-10:00 CREATED server-1
-10:05 ATTACH eth0 -> server-1.interfaces
-10:06 ATTACH eth1 -> server-1.interfaces
-10:20 DATA_CHANGE hostname srv01 -> srv02
-10:30 DETACH eth1 <- server-1.interfaces
-```
-
-The 10:20 DATA_CHANGE event does not need to repeat `eth0` and `eth1`; ownership history is represented by the ATTACH/DETACH events themselves.
+The CREATE/DELETE observations above express the current rationale, not a generic requirement that their final payloads must mirror the public Object DTO.
 
 ## DTO consequence
 
-Today lifecycle intrinsic event DTOs reuse `ObjectDto` for `before` / `after`.
+Today lifecycle intrinsic event DTOs/persistence decoding are shaped around a common Object before/after carrier.
 
-If M4 enriches `ObjectDto` with current direct components, that DTO reuse becomes incorrect and unnecessarily expensive.
+M4 should not preserve that coupling merely for uniformity.
 
-Strong candidate split:
+Candidate direction is a discriminated event-detail model whose payload depends on `kind`.
+
+Conceptually:
 
 ```text
-ObjectDto
-    id
-    canonical_name
-    template_id
-    template_version
-    properties
-    components
+LifecycleEventDetail
+    common historical metadata
+    + kind-specific transition payload
+
+RENAME payload
+    before.canonical_name
+    after.canonical_name
 
 ObjectSnapshotDto
-    id
-    canonical_name
-    template_id
-    template_version
-    properties
+    retained only for event kinds whose semantic contract genuinely requires
+    a complete intrinsic Object snapshot
 ```
 
-`ObjectSnapshotDto` is not an arbitrary lightweight copy. It directly matches the historical snapshot persisted by lifecycle events.
+Therefore `ObjectSnapshotDto` is no longer the universal before/after type for every intrinsic lifecycle event.
+
+The exact public discriminated-union shape remains part of the later Lifecycle API closure.
 
 ## Read data path
 
-The current `GET /objects/{id}/lifecycle-events` projection is already close to the desired M4 shape:
+The current `GET /objects/{id}/lifecycle-events` projection remains conceptually close to the desired M4 collection path:
 
 ```text
 one statement
     -> verify target Object existence
-    -> page lifecycle events involving the Object
+    -> page lifecycle event summaries involving the Object
     -> order by (occurred_at, id) DESC
-    -> decode trusted historical carriers
 ```
 
 Required public distinction remains:
@@ -155,25 +178,37 @@ Object absent
     -> 404
 
 Object exists + no matching events
-    -> []
+    -> empty page
 
 Object exists + matching events
-    -> paged events
+    -> paged event summaries
 ```
 
-No ObjectTemplate/DataType/effective-schema lookup is needed for this read.
+No ObjectTemplate/DataType/effective-schema lookup is needed for the read.
+
+Complete kind-specific historical payload belongs to the single-event detail surface rather than the collection summary path.
 
 ## Abstract architectural reading
 
-The current public Object representation and the historical event snapshot are different projections with different responsibilities.
+Lifecycle is historical/audit state, not an implicit event-sourcing authority for rebuilding current Object state.
 
-Current Object GET may expose direct first-level ownership for consumer usability. Lifecycle intrinsic snapshots remain bounded factual snapshots of the state changed by intrinsic Object mutations, while ownership history is modeled by explicit structural events.
+Therefore:
 
-This avoids making every intrinsic mutation and every historical event payload scale with the Object's current component cardinality.
+```text
+current Object state
+    -> current persistence/read surfaces
 
-## Candidate first-phase conclusion
+historical lifecycle event
+    -> exact semantic transition owned by its mutation kind
+```
 
-- Keep intrinsic lifecycle `before` / `after` limited to `id`, `canonical_name`, `template_id`, `template_version`, and `properties`.
-- Keep ATTACH/DETACH as the historical authority for ownership transitions.
-- If `ObjectDto` becomes richer, introduce a separate historical `ObjectSnapshotDto` rather than expanding lifecycle snapshots.
-- Keep the current one-statement target-rooted lifecycle read data path; no cache or new denormalization is justified for the read itself.
+This keeps audit data semantically complete without making every mutation/event scale with unrelated aggregate state.
+
+## Current conclusion
+
+- Lifecycle payloads are operation-specific, not universally full Object snapshots.
+- RENAME stores/returns only the exact old/new canonical-name transition.
+- Components remain outside intrinsic event payloads; ATTACH/DETACH own ownership history.
+- DATA_CHANGE and SCHEMA_CHANGE payload boundaries remain to be revalidated by their own full sweeps.
+- Collection reads should use bounded summaries; complete kind-specific payload belongs to event detail.
+- No cache or new read-side denormalization is justified by this decision.
