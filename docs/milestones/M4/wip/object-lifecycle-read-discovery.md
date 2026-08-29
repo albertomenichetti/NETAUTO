@@ -4,7 +4,7 @@ Status: WIP / NON-NORMATIVE
 
 ## Scope
 
-This note records the M4 discovery around `GET /objects/{id}/lifecycle-events` after the public `GET /objects/{id}` representation was reopened to include direct component children and after lifecycle payload responsibility was revalidated during the Object.RENAME and Object.DATA_CHANGE full sweeps.
+This note records the M4 discovery around `GET /objects/{id}/lifecycle-events` after the public `GET /objects/{id}` representation was reopened to include direct component children and after lifecycle payload responsibility was revalidated during the Object.RENAME, Object.DATA_CHANGE and Object.SCHEMA_CHANGE full sweeps.
 
 This is discovery only. It does not freeze the complete lifecycle public contract and does not authorize implementation.
 
@@ -120,6 +120,59 @@ Relationships
 
 The exact JSON/DTO carrier remains Lifecycle API/persistence work; the semantic delta above is already fixed by the Object mutation owner.
 
+## Concrete SCHEMA_CHANGE consequence
+
+SCHEMA_CHANGE owns the real transition between two exact ObjectTemplate bindings plus the runtime-property state changes produced by that migration.
+
+Its ratified historical payload is:
+
+```text
+object_id
+
+binding transition
+    template_id
+    source_version
+    target_version
+
+changed runtime properties only
+    semantic identity:
+        (declaring_template_id, property_name)
+
+    before:
+        canonical value | ABSENT
+
+    after:
+        canonical value | ABSENT
+```
+
+A successful real binding transition emits exactly one SCHEMA_CHANGE event even when the property-change list is empty:
+
+```text
+T@4 -> T@5
+property_changes = []
+```
+
+Property semantic replacement is represented as separate old-semantic-key removal and new-semantic-key addition rather than as one false name-based transition.
+
+SCHEMA_CHANGE does not duplicate:
+
+```text
+canonical_name
+revision
+complete properties before/after snapshots
+unchanged properties
+object_component_slots materialized rows
+object_components / ownership membership
+Relationships
+effective-schema snapshots
+```
+
+The current slot materialization changes atomically with the new binding but is derived from that exact binding and is not copied into the lifecycle payload. Ownership membership itself remains unchanged on successful normal SCHEMA_CHANGE; blockers fail instead of causing implicit DETACH/rebind.
+
+Equal-target semantic no-op and failed/rolled-back SCHEMA_CHANGE attempts emit no lifecycle event.
+
+The exact JSON/detail carrier remains Lifecycle API/persistence work; the operation-owned semantic content is already fixed by the SCHEMA_CHANGE owner.
+
 ## Components remain outside intrinsic mutation payloads
 
 Enriching current `GET /objects/{id}` with direct components still does not imply embedding component state in intrinsic lifecycle payloads.
@@ -166,7 +219,9 @@ DATA_CHANGE
        + exact ObjectTemplate binding context
 
 SCHEMA_CHANGE
-    -> payload boundary to be revalidated during SCHEMA_CHANGE full sweep
+    -> exact binding transition
+       + exact changed-property delta
+       + no full intrinsic snapshots or slot/ownership duplication
 
 DELETED
     -> may legitimately carry broad final current state
@@ -196,6 +251,10 @@ RENAME payload
 
 DATA_CHANGE payload
     exact binding context
+    changed property deltas keyed by semantic property identity
+
+SCHEMA_CHANGE payload
+    exact source/target binding transition
     changed property deltas keyed by semantic property identity
 
 ObjectSnapshotDto
@@ -256,7 +315,8 @@ This keeps audit data semantically complete without making every mutation/event 
 - Lifecycle payloads are operation-specific, not universally full Object snapshots.
 - RENAME stores/returns only the exact old/new canonical-name transition.
 - DATA_CHANGE stores/returns the exact changed-property delta plus exact binding context.
+- SCHEMA_CHANGE stores/returns the exact source/target binding transition plus the exact delta of runtime properties that actually changed.
+- SCHEMA_CHANGE does not duplicate full Object snapshots, materialized slot rows or ownership membership.
 - Components remain outside intrinsic event payloads; ATTACH/DETACH own ownership history.
-- SCHEMA_CHANGE payload boundary remains to be revalidated by its own full sweep.
 - Collection reads should use bounded summaries; complete kind-specific payload belongs to event detail.
-- No cache or new read-side denormalization is justified by this decision.
+- No cache or new read-side denormalization is justified by these decisions.
