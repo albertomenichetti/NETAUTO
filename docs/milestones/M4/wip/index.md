@@ -69,6 +69,8 @@ Interpretation of `object.md` is section-sensitive: routes/sections explicitly m
 
 `object-schema-change.md` is now full-sweep complete and part of the reviewed baseline. It owns the detailed `POST /objects/{id}/schema` semantics, including exact-target migration, migration matrix, `objects.revision` retry alignment, slot-FK arbitration, failure mapping, lifecycle delta and cost/architecture handoff.
 
+**Temporary consolidation note:** the high-level `POST /objects/{id}/schema` paragraph/operation-map wording still present in `object.md` predates this closure and says execution is under active revalidation. For this route that stale wording is explicitly superseded by the full-swept `object-schema-change.md` owner and must not be interpreted as reopening SCHEMA_CHANGE. The high-level `object.md` checkpoint will be refreshed when the Object route owner is next edited during the component-navigation frontier; no SCHEMA_CHANGE semantic decision remains open because of that wording.
+
 The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was removed after lossless consolidation; Git history is the historical record.
 
 ## ACTIVE REVIEW FRONTIER
@@ -147,9 +149,10 @@ GET /objects/{id}
 PUT /objects/{id}/canonical-name
 POST /objects/{id}/properties
 GET /objects/{id}/schema
-POST /objects/{id}/schema
 DELETE /objects/{id}
 ```
+
+The detailed `POST /objects/{id}/schema` full sweep is owned by `object-schema-change.md` and is reviewed baseline despite the temporary stale high-level wording in `object.md` described above.
 
 Detailed SCHEMA_CHANGE mechanics are owned by `object-schema-change.md`; current component persistence mechanics by `object-components-persistence.md`; intrinsic generation by `object-revision.md`.
 
@@ -330,7 +333,7 @@ object-components-navigation-data-path.md
 object-components-navigation-cursor.md
 ```
 
-The first four relevant navigation files are also current evidence for the active GET-component-slot frontier.
+The relevant navigation files above are also current evidence for the active GET-component-slot frontier.
 
 ## ATTACH source family
 
