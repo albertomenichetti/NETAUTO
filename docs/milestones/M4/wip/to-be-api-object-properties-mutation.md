@@ -202,7 +202,7 @@ STEP 3 — short mutation Unit of Work
     PostgreSQL + application merge
 ```
 
-The current full-sweep pass must still confirm lifecycle payload, final data path and concurrency consequences before this route returns to closed/full-sweep status.
+The current full-sweep pass must still confirm final hot/cold data path, binding-change behavior and concurrency/failure consequences before this route returns to closed/full-sweep status.
 
 ## STEP 1 — minimal Object binding lookup candidate
 
@@ -271,6 +271,14 @@ REMOVE
         -> prepared REMOVE
 ```
 
+Prepared operation state must retain the semantic property identity required later by lifecycle construction:
+
+```text
+PropertySemanticKey
+    declaring_template_id
+    property_name
+```
+
 Example:
 
 ```text
@@ -279,8 +287,8 @@ input
     REMOVE description
 
 prepared mutation for (Server,4)
-    SET hostname = canonical("srv02")
-    REMOVE description
+    SET (declaring_template_id, hostname) = canonical("srv02")
+    REMOVE (declaring_template_id, description)
 ```
 
 No current Object property read and no Object row lock is required merely to validate/canonicalize the request effects during this preparation stage.
@@ -361,7 +369,7 @@ not
     -> O(total persisted property count)
 ```
 
-## STEP 3 — existing candidate: short protected mutation UoW
+## STEP 3 — short protected mutation UoW candidate
 
 The route obtains a fresh protected Object generation after operation preparation.
 
@@ -372,7 +380,7 @@ fresh exact binding
 fresh current sparse properties
 ```
 
-The old full-snapshot lifecycle requirement is no longer assumed: after the ratified operation-owned lifecycle principle, DATA_CHANGE lifecycle payload must be revalidated independently during this full sweep.
+DATA_CHANGE does not need `canonical_name` or unrelated Object state solely for lifecycle construction.
 
 ### Binding-stability candidate
 
@@ -424,19 +432,111 @@ after = {
 
 No-op recognition, when retained, follows the ratified zero-material-extra-work rule above. The route must not add a second complete-map comparison pass solely to decide whether to skip persistence.
 
-### Real mutation — subject to lifecycle revalidation
+## Ratified DATA_CHANGE lifecycle — exact changed-property delta
 
-The current persistence direction for a real property change remains:
+DATA_CHANGE lifecycle follows the M4 operation-owned lifecycle principle. It records the complete exact semantic transition owned by DATA_CHANGE rather than complete Object before/after snapshots.
+
+The transition is the set of semantic properties whose current state actually changed.
+
+Event context includes:
 
 ```text
-update current Object properties atomically
+object_id
+exact ObjectTemplate binding:
+    template_id
+    template_version
+```
+
+The exact binding is already required by DATA_CHANGE validation/stability and gives the historical schema context under which the delta was admitted.
+
+Each changed property is identified semantically by:
+
+```text
+PropertySemanticKey
+    = (declaring_template_id, property_name)
+```
+
+For each changed property the event records:
+
+```text
+exact before
+    canonical value | ABSENT
+
+exact after
+    canonical value | ABSENT
+```
+
+`ABSENT` is a semantic state distinct from JSON `null`; runtime `null` is not a valid property value.
+
+Examples:
+
+```text
+SET previously absent p = V
+    before = ABSENT
+    after  = canonical V
+
+SET existing p = V2
+    before = canonical V1
+    after  = canonical V2
+
+REMOVE existing optional p
+    before = canonical V
+    after  = ABSENT
+```
+
+Only properties that actually changed are included. If one request contains no-op and real-change operations, no-op operations are omitted from lifecycle history.
+
+Example:
+
+```text
+request
+    SET hostname = srv01      # already current
+    SET location = milan      # current rome
+    REMOVE description        # already absent
+
+DATA_CHANGE lifecycle delta
+    location: rome -> milan
+```
+
+Therefore lifecycle history records semantic state transition, not the raw command/request audit trail.
+
+DATA_CHANGE lifecycle must not duplicate merely for uniformity:
+
+```text
+canonical_name
+unchanged properties
+components / ownership
+Relationships
+complete Object before snapshot
+complete Object after snapshot
+```
+
+The delta is naturally derivable while STEP 3 already examines each requested operation against fresh current property state. Lifecycle-delta construction must not introduce a second full-property-map pass solely for history.
+
+The exact persistence/DTO carrier remains lifecycle architecture/API work. Equivalent realizations may use kind-specific JSON carriers or another typed representation, but they must preserve:
+
+```text
+exact binding context
+semantic property identity
+exact value-or-ABSENT before/after
+only actually changed properties
+```
+
+### Real mutation
+
+For a real property change the current logical persistence direction is:
+
+```text
+update current Object property state
 +
-append the required DATA_CHANGE lifecycle fact(s)
+append exactly one DATA_CHANGE event carrying the exact changed-property delta
 +
 COMMIT
 ```
 
-The previous assumption that DATA_CHANGE must persist complete Object `before` / `after` snapshots is explicitly reopened. The final lifecycle payload will be derived from the semantic transition DATA_CHANGE itself owns.
+Current property mutation and the DATA_CHANGE event are atomic. If lifecycle persistence fails, the property mutation must not commit.
+
+A request for which the normal apply path discovers zero changed properties may return `204` without current-state UPDATE and without DATA_CHANGE event under the ratified no-op cost rule.
 
 ## Concurrency guarantees — pending current full-sweep revalidation
 
@@ -453,7 +553,7 @@ DATA_CHANGE x DELETE
     -> no mutation-after-delete / no resurrection
 ```
 
-The exact coordination required with RENAME is reduced by the ratified operation-specific lifecycle principle: DATA_CHANGE must not read/stabilize `canonical_name` merely to populate a generic full Object lifecycle snapshot. Any remaining concurrency interaction must follow actual field/invariant ownership rather than historical payload uniformity.
+The ratified lifecycle delta removes any DATA_CHANGE-owned need to stabilize `canonical_name` or unrelated Object fields merely for history. Any remaining concurrency interaction follows actual property/binding/lifetime ownership.
 
 Exact lock/wait/restart realization remains architecture work.
 
@@ -502,7 +602,7 @@ warm no-op
     2 PostgreSQL statements
 ```
 
-Those counts are not re-ratified yet because lifecycle payload and mutation statement fusion are being revisited.
+Those counts are not re-ratified yet because final mutation statement fusion and persistence strategy are being revisited.
 
 The current ratified performance requirements are:
 
@@ -510,6 +610,10 @@ The current ratified performance requirements are:
 requested-effect validation
     -> proportional to requested operations/supplied values
     -> no untouched-property recertification
+
+lifecycle delta construction
+    -> derived from requested-operation application
+    -> no second full-property-map history pass
 
 no-op classification itself
     -> 0 extra DB statements
@@ -531,7 +635,8 @@ objects
     property mutation
 
 object_lifecycle_events
-    DATA_CHANGE event for real changes according to the revalidated lifecycle contract
+    one DATA_CHANGE event for a real change
+    with operation-specific delta payload
 ```
 
 Immutable semantic dependencies:
@@ -568,6 +673,8 @@ objects
 
 Whether final DATA_CHANGE uses complete JSONB replacement or a narrower PostgreSQL JSONB update realization remains an architecture/data-path question to re-evaluate after the semantic/lifecycle blocks close; current-state authority remains the canonical `properties` value on the Object.
 
+The shared lifecycle persistence carrier must become capable of representing the ratified DATA_CHANGE property delta. Exact JSON/typed columns, constraints and indexes remain lifecycle/persistence architecture work.
+
 ## Revalidation status
 
 Ratified in the current full-sweep pass so far:
@@ -583,12 +690,17 @@ Ratified in the current full-sweep pass so far:
 - semantic validation/canonicalization applies only to requested effects;
 - untouched persisted properties are trusted as already-admitted current state and preserved without revalidation;
 - no complete property-map recanonicalization or whole-Object consistency sweep;
-- requested-effect validation cost is proportional to requested operations/supplied values.
+- requested-effect validation cost is proportional to requested operations/supplied values;
+- DATA_CHANGE lifecycle is an exact delta of only actually changed properties;
+- lifecycle context includes the exact ObjectTemplate binding used for validation;
+- changed property identity is `(declaring_template_id, property_name)`;
+- lifecycle before/after distinguish canonical value from semantic `ABSENT`;
+- unchanged properties and `canonical_name` are omitted from DATA_CHANGE history;
+- lifecycle delta construction must fall out of the normal per-operation apply path rather than add a full-map pass.
 
 Still to revalidate before full-sweep closure:
 
 ```text
-exact DATA_CHANGE lifecycle payload
 final hot/cold data path and statement-cost direction
 binding-change/retry behavior
 concurrency matrix/failure mapping
