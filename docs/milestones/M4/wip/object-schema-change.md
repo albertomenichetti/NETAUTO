@@ -1,6 +1,6 @@
 # M4 WIP — Object SCHEMA_CHANGE consolidated discovery
 
-**Status:** SCHEMA_CHANGE OWNER / EXACT-TARGET COMMAND SEMANTICS REVALIDATED / PROPERTY MIGRATION MATRIX REVALIDATED / COMPONENT MATRIX ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** SCHEMA_CHANGE OWNER / EXACT-TARGET COMMAND SEMANTICS REVALIDATED / MIGRATION MATRIX REVALIDATED / EXECUTION ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Public route shape and Object-family navigation are owned by [`object.md`](objec
 
 Everything under `wip/` remains non-normative and does not authorize implementation.
 
-The lossless comparison pass against the current `object-schema-change-*` WIPs is complete. Subsequent top-down revalidation has now superseded the older assumption that Object schema migration is ordered by numeric version. Version numbers identify exact versions and creation/allocation order only; SCHEMA_CHANGE owns the separate exact SOURCE -> TARGET migrability question.
+The lossless comparison pass against the current `object-schema-change-*` WIPs is complete. Subsequent top-down revalidation has superseded the older assumption that Object schema migration is ordered by numeric version. Version numbers identify exact versions and creation/allocation order only; SCHEMA_CHANGE owns the separate exact SOURCE -> TARGET migrability question.
 
 Current ownership of this file includes:
 
@@ -37,7 +37,8 @@ architecture handoff
 RETAIN
     exact SOURCE/TARGET effective-schema comparison
     semantic member identity
-    property migration rules where explicitly defined
+    revalidated property migration matrix
+    revalidated component migration matrix
     immutable reusable MigrationPlan
     READY-cache execution model
     final current TARGET PUBLISHED admission
@@ -64,10 +65,11 @@ RATIFIED PROPERTY-MATRIX REVALIDATION
     only when the current semantic LIST value is absent or has exactly one item
     and the resulting scalar satisfies complete TARGET exact semantics
 
-ACTIVE COMPONENT-MATRIX REVALIDATION
-    exact SOURCE -> TARGET pairs may expose
-    component-target narrowing/unrelated relation
-    regardless of numeric version ordering
+RATIFIED COMPONENT-MATRIX REVALIDATION
+    continuous-slot target narrowing is categorically not migrable
+    unrelated SOURCE/TARGET component targets are categorically not migrable
+    current children never rescue an otherwise unsupported exact-pair relation
+    no child compatibility read/admission is introduced for those cases
 ```
 
 # 1. Public command boundary
@@ -242,9 +244,9 @@ Same effective name under a different declaring lineage is semantic replacement,
 
 Effective deltas caused by different exact parent-version pins are classified from the resolved SOURCE and TARGET effective schemas exactly like equivalent locally-originated deltas. Declaration provenance is not a separate runtime migration class.
 
-# 4. Delta taxonomy and exact-pair migrability revalidation
+# 4. Ratified exact-pair migration matrix
 
-## 4.1 Property rules revalidated for SCHEMA_CHANGE
+## 4.1 Property rules
 
 The current reusable plan has defined runtime behavior for:
 
@@ -269,20 +271,52 @@ The model-plane publication contract remains separate from runtime migrability. 
 
 `LIST -> SCALAR` is intentionally Object-dependent: immutable schema comparison identifies the shape delta, while the concrete current Object value decides whether the transformation can preserve all information.
 
-## 4.2 Component rules already defined for SCHEMA_CHANGE
+## 4.2 Component-slot rules
 
-The current plan has defined runtime behavior for:
+The component matrix is now closed for continuous and replacement cases:
 
 ```text
 ADD
+    -> supported
+
 REMOVE
+    -> supported
+    -> existing edge through removed semantic slot blocks final removal
+
 same semantic slot + equal target
+    -> supported
+
 same semantic slot + target widening toward ancestor
+    -> supported
+
+same semantic slot + target narrowing toward descendant
+    -> categorically unsupported exact-pair migration
+
+same semantic slot + unrelated SOURCE/TARGET targets
+    -> categorically unsupported exact-pair migration
+
 position-only change
+    -> supported
+
 semantic-identity replacement
+    -> REMOVE old + ADD new
+    -> existing edge through old semantic slot blocks replacement
 ```
 
-Again, these are SOURCE -> TARGET delta rules, not numeric-forward rules.
+These are SOURCE -> TARGET delta rules, not numeric-forward rules.
+
+The categorical rejection of narrowing/unrelated relations is a semantic migration rule, not a performance shortcut. A continuous slot that becomes more restrictive or moves to an unrelated lineage does not become an admitted evolution merely because one particular Object's children happen to fit the TARGET today.
+
+Therefore SCHEMA_CHANGE does **not** perform conditional child admission for these exact-pair relations:
+
+```text
+no current child read
+no child-lineage compatibility sweep
+no "all current children happen to fit" success path
+no membership-dependent MigrationPlan executability
+```
+
+The immutable MigrationPlan can classify the relation and reject the pair before any Object child/membership inspection.
 
 ## 4.3 Why numeric order cannot decide the migration matrix
 
@@ -305,29 +339,27 @@ whether the target version number is greater or smaller than the source version 
 
 The earlier warning about out-of-order publication remains useful evidence, but it is no longer needed as an exception to a forward-only rule: the general rule is simply that exact-pair migrability must be evaluated independently of version-number ordering.
 
-## 4.4 Remaining OPEN exact-pair component policy
+## 4.4 Matrix closure consequence
 
-The property `LIST -> SCALAR` policy is now ratified and no longer part of the open migration matrix.
-
-The still-open exact-pair cases are component-slot relations:
+The migration matrix is now semantically closed at this level:
 
 ```text
-continuous component slot:
-    SOURCE target ancestor -> TARGET target descendant
-    SOURCE/TARGET targets unrelated
+properties
+    -> concrete rules above, including conditional lossless LIST -> SCALAR
+
+component slots
+    -> supported equal/widening/add/remove/replacement/position cases
+    -> narrowing/unrelated categorically unsupported
 ```
 
-Candidate policy families to evaluate next include:
+This preserves an intrinsic-only Object preparation boundary for normal semantic candidate construction:
 
 ```text
-A. reject such exact migration pairs categorically
-
-B. define conditional per-Object child-compatibility admission where safe
+property migrability may depend on current Object.properties
+component-pair support does not depend on current children
 ```
 
-No component choice is made by the property decision.
-
-This matters operationally: if conditional component narrowing were allowed, current child compatibility would become mutable admission state again and the preparation/concurrency boundary would need to account for it. Until this semantic point is closed, claims of "no child compatibility read" apply only to exact pairs classified as equal-target/widening or otherwise already-covered slot deltas.
+Current ownership membership remains relevant only at the final relational slot boundary for REMOVE/semantic replacement blockers, not for deciding whether a narrowed/unrelated target relation is semantically acceptable.
 
 # 5. Immutable reusable MigrationPlan
 
@@ -381,7 +413,7 @@ current TARGET lifecycle status
 
 For `LIST -> SCALAR`, the plan contains the immutable transformation/admission rule but not the concrete cardinality outcome. That outcome is selected when the plan is applied to the current Object generation.
 
-Unsupported/open component exact-pair deltas are plan classification outcomes whose runtime policy remains OPEN; they must not be silently normalized into a supported widening/transformation.
+For component target narrowing/unrelated relation, the plan can contain an immutable non-executable/rejection classification. No current child state is needed to reach that result.
 
 # 6. MigrationPlan cache-resolution model
 
@@ -547,6 +579,7 @@ initial Object binding
 -> target == current ? 204 semantic no-op
 -> otherwise identify exact SOURCE/TARGET pair
 -> obtain/build immutable MigrationPlan
+-> reject immutable unsupported component pair if present
 -> prepare concrete Object candidate
 -> enter mutation UoW
 -> final protected exact TARGET admission is current lifecycle authority
@@ -740,7 +773,7 @@ No additional PostgreSQL statement is introduced solely for LIST -> SCALAR admis
 
 # 9. Component-slot migration after current-slot materialization
 
-For already-covered slot deltas:
+For supported slot deltas:
 
 ```text
 ADD
@@ -804,26 +837,55 @@ all SOURCE-admitted children remain TARGET-admissible. No current child read is 
 
 `target_template_id` is not part of the semantic FK key, so a target widening need not conflict solely because ATTACH references the slot identity.
 
-## 9.3 Narrowing/unrelated exact-pair relation is OPEN
+## 9.3 Ratified narrowing/unrelated rejection
 
-An exact SOURCE/TARGET pair may classify as:
+For one continuous semantic slot, an exact SOURCE/TARGET pair may classify as:
 
 ```text
 SOURCE target ancestor
 TARGET target descendant
+    -> narrowing
+
+SOURCE/TARGET targets unrelated
+    -> unrelated relation
 ```
 
-or another unsupported relation irrespective of numeric version ordering.
+Both are categorically non-migrable through normal Object.SCHEMA_CHANGE:
 
-Current policy is OPEN.
+```text
+narrowing
+    -> reject migration pair
 
-If M4 chooses categorical rejection, no current-child admission is needed. If M4 chooses conditional admission, the mutable preparation/concurrency design must be reopened because the current edge FK protects slot existence/semantic identity, not child compatibility with a narrowed `target_template_id`.
+unrelated
+    -> reject migration pair
+```
 
-# 10. Object-specific preparation boundary — execution details still under focused revalidation
+This classification is independent of current membership. SCHEMA_CHANGE must not inspect current children to rescue the pair:
 
-The exact-target command decision does not by itself freeze the final preparation/freshness protocol.
+```text
+all current children compatible with narrower TARGET
+    != migration admission
 
-For currently covered migration pairs, the existing candidate keeps Object-specific semantic preparation intrinsic-only:
+zero current children
+    != migration admission
+```
+
+The rule preserves the distinction between semantic continuity/evolution of the slot contract and incidental compatibility of one current Object state.
+
+Operational consequence:
+
+```text
+MigrationPlan relation classification
+    -> sufficient to reject narrowing/unrelated pair
+
+0 current child reads
+0 per-child compatibility checks
+0 membership freshness/protection introduced for this admission
+```
+
+# 10. Object-specific preparation boundary — execution details under focused revalidation
+
+With the migration matrix now closed, Object-specific semantic preparation can remain intrinsic-only:
 
 ```text
 id
@@ -831,13 +893,14 @@ canonical_name
 template_id
 template_version
 properties
+revision
 ```
 
-Current conceptual sequence, pending replacement of fingerprint-era freshness by the ratified universal revision protocol:
+Current conceptual sequence, pending focused retry/UoW closure:
 
 ```text
-1. read current Object binding
-       -> existence, template_id, source_version
+1. read current intrinsic Object generation
+       -> existence, template_id, source_version, properties, revision=R
 
 2. if target_version == source_version
        -> 204 semantic no-op
@@ -845,34 +908,28 @@ Current conceptual sequence, pending replacement of fingerprint-era freshness by
 3. otherwise obtain/build READY immutable MigrationPlan
        for exact SOURCE -> TARGET
 
-4. read/retain the current intrinsic Object generation needed for preparation
+4. if MigrationPlan contains categorically unsupported component relation
+       -> semantic migration failure
+       -> no child/membership read
 
-5. require prepared SOURCE identity to match that generation
-
-6. apply supported property rules
+5. apply supported property rules to generation R
        -> target_properties
 
-7. carry supported current-slot delta from MigrationPlan
+6. carry supported current-slot delta from MigrationPlan
 
-8. build PreparedSchemaChange
+7. build PreparedSchemaChange(expected_revision=R)
 ```
 
-No normal current child read, ownership-edge scan, effective-schema reread or ancestry reread occurs in this covered path.
+No normal current child read, ownership-edge scan, effective-schema reread or ancestry reread occurs after the plan is READY.
 
-### Binding drift before protected UoW
-
-The older source material used a special pre-UoW fingerprint/binding-drift failure. That behavior is **not current authority** after the universal Object revision decision and will be revalidated in the execution/concurrency block.
-
-The required invariant already known is only:
+The required freshness invariant is:
 
 ```text
-candidate prepared from stale intrinsic Object generation
-    -> must not commit stale state/lifecycle
+candidate prepared from intrinsic Object generation R
+    -> may commit only if R is still current
 ```
 
-Exact retry/reprepare behavior belongs to the upcoming revision-alignment block.
-
-If M4 later chooses conditional support for component narrowing/unrelated target migration, this intrinsic-only boundary must also be revalidated because current membership may become semantic admission input.
+Exact retry/reprepare behavior belongs to the next revision-alignment block.
 
 # 11. PreparedSchemaChange
 
@@ -887,7 +944,7 @@ PreparedSchemaChange
     source_version
     target_version
 
-    expected_revision / intrinsic generation identity
+    expected_revision
 
     target_properties
 
@@ -900,7 +957,7 @@ PreparedSchemaChange
 
 It should be mechanically applicable once final mutable protections/admissions succeed. Expensive schema comparison, property transformation and TARGET value validation are not repeated merely because the mutation UoW begins.
 
-A plan that contains an OPEN component exact-pair delta must not produce an executable PreparedSchemaChange until the policy for that delta is deliberately closed.
+Categorically unsupported component relations never produce an executable PreparedSchemaChange.
 
 # 12. Intrinsic Object freshness — fingerprint source material superseded by revision
 
@@ -979,11 +1036,11 @@ C. on fresh generation, atomically commit:
        current object_component_slots delta
        exactly one SCHEMA_CHANGE lifecycle event
 
-D. keep object_components membership unchanged for covered successful deltas,
+D. keep object_components membership unchanged for supported successful deltas,
    while referenced old semantic slots may block REMOVE/replacement
 ```
 
-The Object remains the intrinsic mutation concurrency owner. Parent Object locking solely to serialize ATTACH/DETACH for slot continuity is superseded by the narrower slot-FK boundary for the covered component cases.
+The Object remains the intrinsic mutation concurrency owner. Parent Object locking solely to serialize ATTACH/DETACH for slot continuity is superseded by the narrower slot-FK boundary for supported component cases.
 
 Architecture decides:
 
@@ -1005,7 +1062,7 @@ No model-plane cache fill, MigrationPlan compilation, property transformation, T
 
 # 15. ATTACH / DETACH interaction
 
-For currently covered slot cases:
+For supported slot cases:
 
 ```text
 ATTACH old semantic slot commits first
@@ -1025,7 +1082,7 @@ ordinary ATTACH/DETACH on preserved slot
     -> need not invalidate intrinsic property candidate merely because membership changed
 ```
 
-If conditional component narrowing is later supported, these guarantees are insufficient by themselves because child compatibility becomes relevant mutable state.
+Narrowing/unrelated component relations never enter this concurrency path because they are rejected from immutable plan classification before child/membership admission is considered.
 
 # 16. Bounded intrinsic-generation retry — details still to revalidate
 
@@ -1106,31 +1163,31 @@ Retained cost properties:
 MigrationPlan comparison/compilation is amortized per worker + exact pair
 semantic cold fill is bounded and bulk
 property migration happens outside critical section
-normal covered preparation no longer scans outgoing edges
+normal preparation does not scan outgoing edges
 slot delta adds bounded SCHEMA_CHANGE DML
 equal-target no-op requires no MigrationPlan or mutation UoW
 LIST -> SCALAR adds no extra PostgreSQL read beyond the current property generation already required for candidate construction
+component narrowing/unrelated rejection adds no current-child or ownership read
 ```
 
-Qualitative shift for covered deltas:
+Qualitative shift:
 
 ```text
 LESS
     ownership rows transferred/hashed for optimistic generation
     retry coupling to preserved-slot ATTACH/DETACH
     generic ownership lock coupling
+    child-compatibility work for categorically unsupported component relations
 
 MORE
-    object_component_slots delta writes
+    object_component_slots delta writes for supported real migrations
 ```
-
-Additional component exact-pair migration policy may change this cost and must be accounted for after the component matrix is closed.
 
 # 19. Current open points
 
-## Active semantic review — component exact-pair migration matrix
+## Migration-matrix closure
 
-The exact-target command boundary and property `LIST -> SCALAR` rule are now ratified:
+The exact-target command boundary and complete current migration matrix are now ratified:
 
 ```text
 target == current
@@ -1140,40 +1197,40 @@ target != current
     -> evaluate exact SOURCE -> TARGET migrability
     -> numeric version relation is irrelevant to admission
 
-LIST -> SCALAR
+property LIST -> SCALAR
     absent
         -> absence/default according to TARGET requiredness
     exactly one item
         -> [x] -> x -> TARGET exact validation/canonicalization
     more than one item
         -> migration failure for this Object
-```
 
-Before SCHEMA_CHANGE can be route-semantically closed, M4 must explicitly choose behavior for still-unsupported component exact-pair deltas:
-
-```text
 component target narrowing
+    -> categorically unsupported
+
 component targets unrelated
+    -> categorically unsupported
 ```
 
-That choice must state:
+No per-Object child compatibility rescue path exists for unsupported component relations.
 
-```text
-admitted vs rejected
-failure class/detail when rejected
-whether any per-Object child compatibility check exists
-concurrency consequences if conditional admission uses mutable membership
-```
+## Active execution/retry review
 
-## Subsequent execution/lifecycle/failure review
-
-After the component migration matrix, the full sweep still must close:
+The next full-sweep block must close:
 
 ```text
 current intrinsic Object generation read/preparation
 expected-revision retry/reprepare details
+MigrationPlan reuse/rebuild across retries
 final TARGET absence classification
 slot blocker failure mapping
+```
+
+## Subsequent lifecycle/failure/cost review
+
+After execution/retry, the full sweep still must close:
+
+```text
 SCHEMA_CHANGE lifecycle payload
 route failure precedence
 warm/no-op/cold cost targets
@@ -1252,6 +1309,10 @@ LIST -> SCALAR categorically outside normal migration contract
     -> absent or exactly-one-item value may migrate
     -> multi-item value remains non-migrable without destructive policy
 
+conditional current-child compatibility admission for component narrowing/unrelated
+    -> explicitly rejected
+    -> unsupported relation is determined from immutable SOURCE/TARGET semantics
+
 preparatory outgoing-edge blocker authority
     -> superseded for REMOVE/replacement by final slot-FK arbitration
 
@@ -1259,7 +1320,7 @@ whole Object + outgoing-edge fingerprint
     -> superseded by intrinsic revision for Object-row freshness
 
 parent Object lock as mandatory ATTACH/DETACH slot-continuity rendezvous
-    -> superseded for covered slot cases
+    -> superseded for supported slot cases
 
 separate post-lock Object+edge fingerprint statement
     -> old justification removed; realization reopened around revision CAS
@@ -1276,6 +1337,6 @@ old 6/9 route totals
 
 ### Historical evidence retained
 
-The legacy component discovery correctly warned that numeric allocation/publication order could expose semantically restrictive SOURCE/TARGET relations. The current reviewed baseline generalizes that finding: numeric version order never encoded migration order in the first place.
+The legacy component discovery correctly warned that numeric allocation/publication order could expose semantically restrictive SOURCE/TARGET relations. The reviewed baseline now generalizes that finding: numeric version order never encoded migration order in the first place.
 
 Older micro-WIPs remain source material for now. Cleanup should occur only after the active SCHEMA_CHANGE full sweep is complete and the consolidated owners are losslessly self-consistent; Git history remains the historical record afterward.
