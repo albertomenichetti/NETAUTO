@@ -24,7 +24,7 @@ Example candidate problem:
 ```text
 GET /objects/server-1/lifecycle-events?limit=100
 
-many DATA_CHANGE-like events
+many state-change events
 x potentially large historical transition payloads
 ```
 
@@ -63,14 +63,20 @@ not automatically
 
 Therefore single-event detail must not assume one universal full-snapshot shape for every intrinsic Object event.
 
-Concrete ratified example:
+Concrete ratified examples:
 
 ```text
 Object.RENAME
     -> exact canonical_name old -> new only
+
+Object.DATA_CHANGE
+    -> exact delta of actually changed properties
+    -> exact ObjectTemplate binding context
+    -> each property identified by (declaring_template_id, property_name)
+    -> before/after distinguish canonical value from ABSENT
 ```
 
-Conceptual detail fragment:
+Conceptual RENAME detail fragment:
 
 ```json
 {
@@ -83,7 +89,19 @@ Conceptual detail fragment:
 }
 ```
 
-Other event kinds may have broader payloads when their semantic transition genuinely requires them. CREATE/DELETE may legitimately preserve broader resource state; DATA_CHANGE and SCHEMA_CHANGE remain subject to their own full-sweep payload review.
+Conceptual DATA_CHANGE semantics:
+
+```text
+binding = T@V
+changes = [
+    (declaring_template_id, "hostname"): "srv01" -> "srv02",
+    (declaring_template_id, "description"): value -> ABSENT
+]
+```
+
+The exact JSON shape for `ABSENT`, property-delta arrays/maps and binding placement remains open for Lifecycle API design; the semantic information is already fixed by the DATA_CHANGE owner.
+
+Other event kinds may have broader payloads when their semantic transition genuinely requires them. CREATE/DELETE may legitimately preserve broader resource state; SCHEMA_CHANGE remains subject to its own full-sweep payload review.
 
 Factual Relationship and ownership event families analogously retain only the complete transition required by their own contracts.
 
@@ -146,6 +164,8 @@ LifecycleEventDetail
 
 A generic `ObjectSnapshotDto` may still be useful for event kinds that genuinely own a complete intrinsic Object snapshot, but it is not the universal `before` / `after` type for all intrinsic events.
 
+DATA_CHANGE detail specifically must be able to express exact value-vs-ABSENT deltas without expanding untouched Object state.
+
 Enriching current `GET Object` with direct components does not imply adding components to lifecycle payloads. Ownership history remains represented through ATTACH/DETACH events.
 
 ## Important non-decisions
@@ -154,7 +174,8 @@ This WIP intentionally does **not** decide yet:
 
 - exact summary fields for every lifecycle event family;
 - exact detail DTO discriminated-union shape;
-- exact payload boundary for Object DATA_CHANGE and SCHEMA_CHANGE;
+- exact JSON/typed carrier for DATA_CHANGE `ABSENT` and property deltas;
+- exact payload boundary for Object SCHEMA_CHANGE;
 - whether a summary should carry small family-specific metadata beyond current identifiers/names;
 - exact ordering/cursor contract changes, if any;
 - whether the object-scoped lifecycle list has any summary field different from the global list;
