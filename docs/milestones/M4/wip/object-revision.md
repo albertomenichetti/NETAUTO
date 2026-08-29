@@ -298,22 +298,23 @@ The revision protocol replaces the need for a separate canonical-name-specific f
 
 ---
 
-# 9. DATA_CHANGE consequence
+# 9. DATA_CHANGE full-sweep consequence
 
-DATA_CHANGE is currently under full-sweep revalidation and adopts the universal revision protocol directly.
+The DATA_CHANGE full sweep is route-locally closed and adopts the universal revision protocol.
 
-STEP-1 current-state resolution must retain:
+Its current generation read retains:
 
 ```text
 object_id
 template_id
 template_version
 revision = R
+full properties
 ```
 
-Requested effects are prepared against the exact binding from that generation.
+Requested effects are validated against the exact binding from that generation and applied to the complete current property map in the application/domain layer.
 
-The final mutation attempt may commit only if:
+A real final mutation may commit only if:
 
 ```text
 current revision == R
@@ -324,9 +325,9 @@ Because SCHEMA_CHANGE is itself an intrinsic row mutation that increments revisi
 On a real persisted DATA_CHANGE:
 
 ```text
-properties mutation
+properties := complete application-derived candidate
 revision := R + 1
-DATA_CHANGE lifecycle delta
+DATA_CHANGE exact changed-property lifecycle delta
 ```
 
 must commit atomically.
@@ -339,7 +340,11 @@ no lifecycle event
 revision remains R
 ```
 
-Revision mismatch is an internal stale-attempt condition and triggers bounded retry from STEP 1; it is not a public semantic conflict merely because another intrinsic mutation won first.
+No revision refresh is required solely to return a no-op or a semantic failure proven from one coherent observed generation, because those outcomes commit no stale state transition.
+
+Revision mismatch on the real-write branch is an internal stale-attempt condition and triggers bounded retry from the current generation. If the retry budget is exhausted, DATA_CHANGE maps that internal stabilization failure to `500 internal_error`, not a normal public `409`.
+
+The complete DATA_CHANGE route contract/data path remains owned by its route owner until lossless absorption into `object.md`.
 
 ---
 
@@ -386,6 +391,10 @@ GET /objects/{id}
 
 PUT /objects/{id}/canonical-name
     -> focused revalidation completed by the universal expected-revision rule
+
+POST /objects/{id}/properties
+    -> route-local full sweep completed under the universal revision rule
+    -> pending only lossless absorption/cleanup into object.md
 
 DELETE /objects/{id}
     -> deletes current revisioned generation
