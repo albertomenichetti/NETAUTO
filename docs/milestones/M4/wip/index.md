@@ -57,6 +57,7 @@ object.md
 object-revision.md
 object-components-persistence.md
 object-schema-change.md
+object-components-navigation-public-contract.md
 ```
 
 ## REVIEWED BASELINE SUPPORT
@@ -67,9 +68,17 @@ object-template-ancestry-cache.md
 
 Interpretation of `object.md` is section-sensitive: routes/sections explicitly marked full-sweep complete and already-revalidated cross-operation findings are baseline; later Object sections still marked checkpoint/open remain subject to their own review frontiers.
 
-`object-schema-change.md` is now full-sweep complete and part of the reviewed baseline. It owns the detailed `POST /objects/{id}/schema` semantics, including exact-target migration, migration matrix, `objects.revision` retry alignment, slot-FK arbitration, failure mapping, lifecycle delta and cost/architecture handoff.
+`object-schema-change.md` is full-sweep complete and owns the detailed `POST /objects/{id}/schema` semantics, including exact-target migration, migration matrix, `objects.revision` retry alignment, slot-FK arbitration, failure mapping, lifecycle delta and cost/architecture handoff.
 
-**Temporary consolidation note:** the high-level `POST /objects/{id}/schema` paragraph/operation-map wording still present in `object.md` predates this closure and says execution is under active revalidation. For this route that stale wording is explicitly superseded by the full-swept `object-schema-change.md` owner and must not be interpreted as reopening SCHEMA_CHANGE. The high-level `object.md` checkpoint will be refreshed when the Object route owner is next edited during the component-navigation frontier; no SCHEMA_CHANGE semantic decision remains open because of that wording.
+`object-components-navigation-public-contract.md` is now the consolidated full-swept route owner for:
+
+```text
+GET /objects/{parent_object_id}/components/{slot_name}
+```
+
+including the public contract, semantic-slot cursor, one-statement current data path, failure precedence, concurrency semantics, cost target and architecture handoff.
+
+**Temporary family-owner note:** the high-level SCHEMA_CHANGE and component-slot GET paragraphs/operation-map wording still present in `object.md` predate their focused closures. For those two routes, the dedicated full-swept owners above take precedence and the stale high-level wording must not be interpreted as reopening either route. `object.md` will be refreshed losslessly as a family owner independently of the now-advanced ATTACH route review.
 
 The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was removed after lossless consolidation; Git history is the historical record.
 
@@ -78,26 +87,32 @@ The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was removed after lossl
 The next Object route in the top-down sequence is:
 
 ```text
-GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
+POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
 ```
 
 Current owner/frontier:
 
 ```text
 object.md
-    -> section: GET one component slot
+    -> section: ATTACH children to one slot
 ```
 
-Primary source evidence for that frontier:
+Primary source evidence for this frontier is the retained ATTACH family:
 
 ```text
-object-get-components-api-discovery.md
-object-components-navigation-public-contract.md
-object-components-navigation-data-path.md
-object-components-navigation-cursor.md
+object-attach-*.md
+to-be-api-object-attach-*.md
+object-ownership-command-routes.md
 ```
 
-These source files do not override `object.md`; they are inputs for the focused full sweep of that route.
+Cross-operation dependencies already reviewed and reusable for ATTACH include:
+
+```text
+object-components-persistence.md
+object-template-ancestry-cache.md
+```
+
+These source files do not override reviewed cross-operation owners; they are inputs for the focused ATTACH full sweep.
 
 # 2. Current M4 spine
 
@@ -136,9 +151,9 @@ Governance input requiring milestone closure to document the resulting relationa
 
 # 3. Object current owners
 
-### [`object.md`](object.md) — SPINE / REVIEWED BASELINE / Object route owner
+### [`object.md`](object.md) — SPINE / REVIEWED BASELINE / Object family owner
 
-Primary owner for Object public surfaces and route-local semantics/data paths.
+Primary family owner for Object public surfaces and route-local navigation.
 
 Current full-sweep checkpoints include:
 
@@ -149,12 +164,22 @@ GET /objects/{id}
 PUT /objects/{id}/canonical-name
 POST /objects/{id}/properties
 GET /objects/{id}/schema
+POST /objects/{id}/schema
+GET /objects/{parent}/components/{slot}
 DELETE /objects/{id}
 ```
 
-The detailed `POST /objects/{id}/schema` full sweep is owned by `object-schema-change.md` and is reviewed baseline despite the temporary stale high-level wording in `object.md` described above.
+Detailed route owners currently taking precedence over stale high-level checkpoints in `object.md` are:
 
-Detailed SCHEMA_CHANGE mechanics are owned by `object-schema-change.md`; current component persistence mechanics by `object-components-persistence.md`; intrinsic generation by `object-revision.md`.
+```text
+POST /objects/{id}/schema
+    -> object-schema-change.md
+
+GET /objects/{parent}/components/{slot}
+    -> object-components-navigation-public-contract.md
+```
+
+Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`.
 
 ### [`object-revision.md`](object-revision.md) — SPINE / REVIEWED BASELINE
 
@@ -199,6 +224,23 @@ failure taxonomy and precedence
 operation-owned lifecycle binding + changed-property delta
 no-op/warm/cold cost character
 architecture handoff
+```
+
+### [`object-components-navigation-public-contract.md`](object-components-navigation-public-contract.md) — SPINE / REVIEWED BASELINE / full-swept component-slot GET owner
+
+Use it for:
+
+```text
+GET /objects/{parent}/components/{slot}
+explicit one-slot nested collection contract
+slot absent vs empty semantics
+child {id, canonical_name} page
+semantic-slot cursor identity
+SCHEMA_CHANGE cursor continuity/replacement rules
+one-statement current data path
+failure precedence
+bounded 0/1-statement cost profile
+physical plan/index handoff
 ```
 
 ### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / REVIEWED BASELINE SUPPORT
@@ -325,15 +367,21 @@ Source material is evidence only. If it conflicts with a reviewed owner/general 
 
 ## Component navigation / ownership route sources
 
+The former dedicated navigation cursor/data-path and broad Object-components brainstorming files were removed after lossless consolidation into:
+
 ```text
-object-get-components-api-discovery.md
-object-ownership-command-routes.md
 object-components-navigation-public-contract.md
-object-components-navigation-data-path.md
-object-components-navigation-cursor.md
+object.md / Object family navigation context
+object-components-persistence.md / shared persistence boundary
 ```
 
-The relevant navigation files above are also current evidence for the active GET-component-slot frontier.
+Git history is their historical source.
+
+Retained ownership-route source shared with upcoming mutations:
+
+```text
+object-ownership-command-routes.md
+```
 
 ## ATTACH source family
 
@@ -344,7 +392,7 @@ object-attach-*.md
 to-be-api-object-attach-*.md
 ```
 
-are SOURCE MATERIAL behind `object.md` / `object-components-persistence.md` unless explicitly re-promoted during ATTACH full sweep.
+are SOURCE MATERIAL behind `object.md` / `object-components-persistence.md` unless explicitly re-promoted during the active ATTACH full sweep.
 
 ## DETACH source family
 
@@ -384,7 +432,7 @@ object-components-persistence.md
 lifecycle discovery consumers
 ```
 
-This includes former `object-schema-change-*` micro-WIPs and the former Object aggregate/optimistic fingerprint WIPs used only by that superseded realization. Git history is the historical source.
+Git history is the historical source.
 
 # 8. Maintenance rules
 
