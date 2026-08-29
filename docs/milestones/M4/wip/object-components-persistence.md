@@ -1,6 +1,6 @@
 # M4 WIP — Object component persistence consolidated discovery
 
-**Status:** ACTIVE CROSS-OPERATION CONSOLIDATION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** CROSS-OPERATION OWNER CONSOLIDATED / SCHEMA_CHANGE OWNER PENDING / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
@@ -19,20 +19,24 @@ including:
 semantic/data-plane responsibilities
 materialized fields and deliberately omitted fields
 logical identities and invariants
-Object lifetime relationship
+Object/slot/edge lifetime relationships
 edge -> current semantic-slot dependency
 cross-operation maintenance/read consequences
 PostgreSQL FK-arbitration evidence
 storage/write trade-off
 migration/backfill direction
-architecture handoff
+physical-design architecture handoff
 ```
 
-It does **not** own the public Object routes; those are consolidated in [`object.md`](object.md).
+Public Object routes are owned by [`object.md`](object.md).
 
-It also does not freeze the final physical relational schema. Exact DDL, PRIMARY KEY vs UNIQUE realization, final index set, constraint names, migration mechanics, `EXPLAIN` evidence and storage/write measurements belong to the later M4 architecture phase.
+Detailed Object schema-migration mechanics are intentionally separate and will be consolidated into `object-schema-change.md`.
 
-Everything under `wip/` remains non-normative. This file is a discovery checkpoint only.
+This document does **not** freeze the final physical relational schema. Exact DDL, PRIMARY KEY vs UNIQUE realization, final index set/order, constraint names/actions, migration mechanics, `EXPLAIN` evidence and storage/write measurements belong to the later M4 architecture phase.
+
+Everything under `wip/` remains non-normative. This file is only a discovery checkpoint.
+
+The lossless comparison pass against the current materialization, runtime-schema, physical-schema, FK-arbitration, read-projection and physical-index WIPs is complete. Older source WIPs remain temporarily in the tree until `object-schema-change.md` is consolidated and references can be cleaned safely.
 
 # 1. Baseline and materialization challenge
 
@@ -54,7 +58,7 @@ object_components
 
 Keeping ownership outside `objects.properties` remains desirable because ownership needs independent relational constraints, reverse lookup, cycle admission and lifetime blocking.
 
-The first M4 improvement enriched the edge with stable slot semantic identity:
+The first M4 improvement enriched the edge with stable semantic slot identity:
 
 ```text
 object_components
@@ -64,9 +68,9 @@ object_components
     slot_name
 ```
 
-That solved repeated reconstruction for existing edges but left empty effective slots exclusively in model-plane knowledge.
+That removes repeated ObjectTemplate reconstruction for existing edges, but it still leaves empty effective slots exclusively in model-plane knowledge.
 
-Later Object GET, component navigation and ATTACH discovery exposed a repeated current data-plane question:
+Later Object GET, component navigation and ATTACH discovery exposed repeated data-plane needs to answer:
 
 ```text
 slot absent
@@ -74,7 +78,7 @@ slot absent
 slot present but empty
 ```
 
-and a repeated need for the current slot target lineage during ATTACH.
+and to retrieve the current slot target lineage for ATTACH.
 
 The supplied workload direction also matters:
 
@@ -83,7 +87,7 @@ Object.SCHEMA_CHANGE : Object.ATTACH
     approximately 1 : 100
 ```
 
-The current preferred discovery direction therefore moves bounded slot-contract maintenance to Object CREATE / SCHEMA_CHANGE so frequent reads and ATTACH can consume current data-plane facts directly.
+The preferred discovery direction therefore shifts bounded current-slot maintenance to Object CREATE / SCHEMA_CHANGE so frequent reads and ATTACH can consume current runtime facts directly.
 
 # 2. Candidate runtime layering
 
@@ -103,7 +107,23 @@ object_components
 
 ObjectTemplate exact effective schema remains the semantic/model-plane authority.
 
-`object_component_slots` is **not** a second model authority. It is a transactionally maintained per-Object runtime derivative of the current exact ObjectTemplateVersion.
+`object_component_slots` is **not** a second model authority. It is a transactionally maintained per-Object runtime derivative of the Object's current exact ObjectTemplateVersion.
+
+The intended boundary is:
+
+```text
+ObjectTemplate exact effective schema
+    -> semantic source
+
+Object CREATE / SCHEMA_CHANGE
+    -> materialization boundary
+
+object_component_slots
+    -> current runtime derivative
+
+hot reads / ATTACH
+    -> direct consumer
+```
 
 # 3. `object_component_slots` logical shape
 
@@ -127,9 +147,9 @@ one row
       and this is its current target-lineage admission contract
 ```
 
-## Why `target_template_id` is materialized
+## 3.1 Why `target_template_id` is materialized
 
-A minimal existence materialization would stop at:
+A minimal existence materialization could stop at:
 
 ```text
 object_id
@@ -137,7 +157,7 @@ slot_declaring_template_id
 slot_name
 ```
 
-The current stronger candidate includes:
+The stronger candidate includes:
 
 ```text
 target_template_id
@@ -156,7 +176,7 @@ frequent ATTACH
     -> no exact component-schema cache lookup/fill merely for slot resolution
 ```
 
-## Fields deliberately not materialized
+## 3.2 Fields deliberately not materialized
 
 Current discovery does not justify copying:
 
@@ -169,7 +189,7 @@ child canonical_name
 components JSONB
 ```
 
-Reasons:
+Rationale:
 
 ```text
 position
@@ -181,7 +201,7 @@ parent exact binding
 
 slot_declaring_template_version
     -> not part of stable slot semantic identity
-    -> would become stale or require unnecessary edge/slot rewrites
+    -> would become stale or require unnecessary rewrites
 
 child canonical_name
     -> mutable current child Object state
@@ -191,7 +211,7 @@ components JSONB
     -> would collapse independently constrained relational ownership
 ```
 
-If a later runtime contract genuinely needs slot ordering, position can be reopened rather than pre-materialized speculatively.
+If a later runtime contract genuinely needs deterministic slot ordering, position can be reopened then rather than pre-materialized speculatively.
 
 # 4. Slot identities and logical uniqueness
 
@@ -219,9 +239,9 @@ one current effective slot under a public name per Object
     (object_id, slot_name)
 ```
 
-The architecture phase decides which unique key is declared PRIMARY KEY and which remains UNIQUE; discovery requires the uniqueness semantics, not a particular DDL spelling.
+The architecture phase decides which unique key is declared PRIMARY KEY and which remains UNIQUE; discovery requires the uniqueness semantics, not a specific DDL spelling.
 
-`slot_declaring_template_id` is intentionally part of semantic identity. Same-name replacement under a different declaring lineage is a different slot rather than continuity by name alone.
+`slot_declaring_template_id` is deliberately part of semantic identity. Same-name replacement under a different declaring lineage is a different semantic slot rather than continuity by name alone.
 
 # 5. Fundamental derived-state invariant
 
@@ -236,7 +256,7 @@ EffectiveComponentSlots(
     )
 ```
 
-For every materialized slot row:
+For every current slot row:
 
 ```text
 slot_declaring_template_id
@@ -264,7 +284,14 @@ or
 old objects.template_version + new slot set
 ```
 
-The normal hot read path does not re-certify this invariant against model-plane schema. Correctness belongs to maintenance protocol, relational constraints where applicable, migration/backfill verification and deterministic tests/evidence.
+The normal hot read path does not re-certify this invariant against model-plane schema. Correctness belongs to:
+
+```text
+write/maintenance protocol
+relational constraints where applicable
+migration/backfill verification
+deterministic tests/evidence
+```
 
 # 6. `object_components` factual edge
 
@@ -278,11 +305,11 @@ object_components
     slot_name                    NOT NULL
 ```
 
-The edge persists the stable semantic slot identity already resolved at ATTACH admission rather than discarding it after validation.
+The edge persists the stable semantic slot identity already resolved at ATTACH admission instead of discarding it after validation.
 
-## Stable identity, not declaring version
+## 6.1 Stable identity, not declaring version
 
-Current ownership continuity uses:
+Ownership continuity uses:
 
 ```text
 (slot_declaring_template_id, slot_name)
@@ -290,11 +317,17 @@ Current ownership continuity uses:
 
 not an exact declaring ObjectTemplateVersion.
 
-Persisting `slot_declaring_template_version` would either leave stale exact-version provenance after parent schema evolution or require rewriting unchanged ownership facts. Historical exact declaration provenance, if ever required, belongs to lifecycle/history rather than current edge identity.
+Persisting `slot_declaring_template_version` would either:
 
-## Single owner and child lifetime
+```text
+leave stale exact-version provenance after parent schema evolution
+or
+force rewrites of ownership facts whose semantic membership did not change
+```
 
-Required logical guarantees remain:
+Historical exact declaration provenance, if ever required, belongs to lifecycle/history rather than current edge identity.
+
+## 6.2 Required logical guarantees
 
 ```text
 child_object_id
@@ -306,7 +339,16 @@ parent_object_id != child_object_id
     -> relational self-edge backstop
 ```
 
-The delivered/current `child_object_id` primary-key direction remains the natural candidate because owner lookup, ownerlessness admission and upward ownership traversal are child-rooted.
+The delivered/current `child_object_id` primary-key direction remains the natural architecture input because these paths are child-rooted:
+
+```text
+GET owner
+ATTACH ownerlessness admission
+DETACH requested-child lookup
+upward ownership/root traversal
+```
+
+A direct child lifetime FK to `objects.id` and the self-edge CHECK remain natural physical candidates, but exact DDL remains architecture work.
 
 # 7. Edge -> current semantic-slot dependency
 
@@ -332,7 +374,7 @@ under the same semantic slot identity
 
 This dependency is the key reason to materialize semantic slot identity on both current slot and edge rows.
 
-## Direct parent Object FK — OPEN
+## 7.1 Direct parent Object FK — OPEN
 
 If:
 
@@ -348,11 +390,11 @@ Therefore a separate:
 object_components.parent_object_id -> objects.id
 ```
 
-may duplicate an invariant and add another FK check on ATTACH.
+may duplicate an invariant and add another FK check to ATTACH.
 
-Architecture must retain it only if it proves a distinct lifetime/arbitration or physical-planning benefit.
+Architecture should retain it only if it proves a distinct lifetime/arbitration or physical-planning benefit.
 
-## Direct model-plane FKs — OPEN
+## 7.2 Direct model-plane lineage FKs — OPEN
 
 Potential direct FKs from:
 
@@ -366,14 +408,15 @@ to ObjectTemplate lineage rows remain open.
 Possible benefit:
 
 ```text
-local corruption prevention / explicit referential integrity
+local corruption prevention
+explicit referential integrity
 ```
 
 Possible cost:
 
 ```text
 duplicate lifetime blockers already guaranteed through certified exact schema
-additional write/check cost
+additional write/check work
 additional low-level delete interactions
 ```
 
@@ -381,17 +424,17 @@ The final lifetime graph must decide this globally.
 
 # 8. Slot lifetime and Object DELETE
 
-Slot rows are owned derived state of the Object, not independent current facts that should keep the Object alive.
+Slot rows are owned derived state of the Object, not independent facts that should keep the Object alive.
 
-Candidate ownership relation:
+Current logical lifetime direction:
 
 ```text
 object_component_slots.object_id
     -> objects.id
-    ON DELETE CASCADE
+    owned/cascading lifetime
 ```
 
-Combined with edge -> slot RESTRICT/NO-ACTION-equivalent behavior:
+Combined with edge -> slot restrictive reference semantics:
 
 ```text
 Object with only empty slots
@@ -405,31 +448,21 @@ Object with attached children
 
 This preserves the semantic rule that Object DELETE never implicitly DETACHes children.
 
-Exact FK actions/spelling remain architecture DDL.
+Exact `CASCADE` / `RESTRICT` / `NO ACTION` DDL spelling and timing belong to architecture.
 
-# 9. PostgreSQL arbitration evidence
+# 9. PostgreSQL FK-arbitration evidence
 
-The current composite edge-to-slot FK is not only referential integrity; it is also a candidate narrow concurrency rendezvous for slot continuity.
+The composite edge-to-slot FK is not only referential integrity; it is also the current candidate narrow concurrency rendezvous for slot continuity.
 
-PostgreSQL referential-integrity checking of an edge INSERT protects the referenced key in a way equivalent to key-share semantics:
+The supporting PostgreSQL evidence is that FK insertion protects the referenced key with key-share semantics: deletion or referenced-key mutation must arbitrate with that reference, while an ordinary non-key update need not conflict merely because the row is referenced.
+
+Current referenced semantic key:
 
 ```text
-referenced current slot key
-    (object_id, slot_declaring_template_id, slot_name)
-
-DELETE referenced row
-    -> conflicts
-
-UPDATE referenced key values
-    -> conflicts
-
-ordinary non-key UPDATE
-    -> need not conflict merely because the row is referenced
+(object_id, slot_declaring_template_id, slot_name)
 ```
 
-This aligns with the semantic split required by normal schema evolution.
-
-## Slot REMOVE
+## 9.1 Slot REMOVE
 
 ```text
 SCHEMA_CHANGE removes slot first
@@ -439,7 +472,9 @@ ATTACH edge commits first
     -> referenced slot cannot be removed while the edge remains
 ```
 
-## Same-name semantic replacement
+No complete parent Object binding lock is required merely to obtain this semantic-slot arbitration.
+
+## 9.2 Same-name semantic replacement
 
 Replacement changes:
 
@@ -447,9 +482,9 @@ Replacement changes:
 slot_declaring_template_id
 ```
 
-which participates in the semantic referenced key.
+which participates in the referenced semantic key.
 
-Therefore an existing edge cannot be silently reinterpreted under a new declaring lineage:
+Therefore:
 
 ```text
 old slot referenced
@@ -459,7 +494,9 @@ old slot unreferenced
     -> semantic replacement may proceed
 ```
 
-## Target widening
+An existing edge cannot silently become membership of a new same-name slot declared by another lineage.
+
+## 9.3 Target widening
 
 Normal target evolution changes only:
 
@@ -469,9 +506,7 @@ target_template_id
 
 which is deliberately not part of the edge referenced key.
 
-This permits the relational realization to avoid treating every target widening as an ownership-identity conflict.
-
-Semantically this is safe because widening moves from a narrower descendant target to an ancestor target; every child admitted under the old target remains admissible under the wider target.
+Semantically, widening moves from a narrower descendant target to an ancestor target, so every child admitted under the old target remains admissible under the wider one.
 
 Therefore:
 
@@ -483,7 +518,11 @@ ATTACH must fail
 
 Only actual slot removal or semantic identity replacement must arbitrate with edge insertion.
 
-## DETACH
+## 9.4 Position-only evolution
+
+Position/order is not materialized. Position-only schema evolution therefore performs no current-slot DML and creates no ownership conflict surface.
+
+## 9.5 DETACH
 
 DETACH removes the referencing edge:
 
@@ -496,9 +535,11 @@ slot transition reaches FK arbitration while edge remains
     -> invalid removal/key change cannot commit
 ```
 
-This evidence supports removing route-local parent-binding stabilization whose only purpose was semantic slot continuity.
+This supports removing route-local parent-binding stabilization whose only purpose was semantic slot continuity.
 
-It does **not** prove the complete global concurrency architecture.
+## 9.6 What this evidence does not prove
+
+This evidence does **not** close the complete global concurrency architecture.
 
 Still open globally:
 
@@ -513,32 +554,35 @@ constraint failure -> public error mapping
 
 # 10. Cross-operation consequences
 
-Public/route-local details remain owned by `object.md`; this section records only persistence consequences.
+Public and route-local details remain owned by `object.md`; this section records persistence consequences only.
 
-## CREATE
+## 10.1 CREATE
 
-For new Object bound to exact `(T,V)`:
+For a new Object bound to exact `(T,V)`:
 
 ```text
 INSERT Object
 +
-materialize one slot row for every certified
+materialize one current slot row for every certified
 object_template_effective_components(T,V) row
 ```
 
-Preferred logical direction is bounded DB-internal copy from immutable certified effective components, in the final Object-admission transaction.
+Preferred logical direction is a bounded DB-internal copy from immutable certified effective components in the final Object-admission transaction.
 
 No ownership edge is created by CREATE.
 
 Additional row work is approximately:
 
 ```text
-+ S slot writes
++ S current slot writes
++ one bounded exact-effective-component source range
 ```
 
 where `S` is effective slot count.
 
-## GET Object
+Whether Object insert + slot copy are physically fused into one SQL statement remains architecture realization work.
+
+## 10.2 GET Object
 
 Current data-plane sources become:
 
@@ -549,9 +593,16 @@ object_components
 objects child
 ```
 
-The route can obtain current root + complete slots + current children in one statement snapshot without component-schema cache/model-plane read.
+The route can obtain current root + complete current slots + current children in one statement snapshot with:
 
-## GET one component slot
+```text
+0 component-schema cache dependency
+0 normal model-plane read
+```
+
+Detailed GET semantics and SQL-carrier handoff are owned by `object.md`.
+
+## 10.3 GET one component slot
 
 Current slot existence/identity is looked up directly by:
 
@@ -559,9 +610,9 @@ Current slot existence/identity is looked up directly by:
 (object_id, slot_name)
 ```
 
-and current membership is paged from `object_components` using the resolved semantic slot identity.
+and membership is paged from `object_components` using the resolved semantic identity.
 
-This directly distinguishes:
+This permits direct distinction between:
 
 ```text
 parent absent
@@ -572,15 +623,15 @@ slot present + children
 
 without exact-schema reconstruction.
 
-## GET owner
+## 10.4 GET owner
 
 Reverse ownership remains child-rooted at `object_components.child_object_id`.
 
-Persisted semantic edge identity removes the need to reconstruct ObjectTemplate ancestry solely to describe the current owner edge.
+Persisted semantic edge identity removes the need to reconstruct ObjectTemplate ancestry merely to describe the current owner edge.
 
-## ATTACH
+## 10.5 ATTACH
 
-Parent current slot lookup supplies directly:
+Current parent-slot lookup supplies directly:
 
 ```text
 slot_declaring_template_id
@@ -599,13 +650,15 @@ parent exact-binding recheck solely for semantic slot continuity
 
 Stable child-lineage ancestry validation remains independently useful.
 
-## DETACH
+Current route-level cost candidate is owned by `object.md`; this persistence boundary is what enables the `7/9 -> 6/7` ATTACH revalidation.
+
+## 10.6 DETACH
 
 DETACH removes factual edge rows directly and receives semantic identity from the deleted edge itself.
 
-The edge-to-slot dependency narrows SCHEMA_CHANGE sequencing and weakens the need for a generic parent lock used only as slot-transition rendezvous.
+The edge-to-slot dependency narrows SCHEMA_CHANGE sequencing and weakens the case for a generic parent lock used only as slot-transition rendezvous.
 
-## SCHEMA_CHANGE
+## 10.7 SCHEMA_CHANGE
 
 The immutable SOURCE -> TARGET MigrationPlan maintains current slot delta:
 
@@ -631,13 +684,31 @@ position-only change
 
 Existing `object_components` membership remains unchanged on every successful normal schema migration.
 
-This also reopens the earlier need to include outgoing ownership membership in the optimistic SCHEMA_CHANGE fingerprint: preserved/widened membership no longer needs to invalidate a prepared candidate merely because ATTACH/DETACH happened, while REMOVE/replacement races are arbitrated at the current slot dependency.
+The final REMOVE/replacement relational boundary also reopens the old assumption that outgoing ownership membership must participate in the optimistic SCHEMA_CHANGE fingerprint:
 
-The exact intrinsic fingerprint and UoW realization belong to `object-schema-change.md`.
+```text
+preserved/widened membership
+    -> need not invalidate prepared migration merely because ATTACH/DETACH happened
 
-## Object DELETE
+REMOVE/replacement
+    -> final current slot dependency arbitrates actual blocker state
+```
 
-Object DELETE gains owned slot-row cascade work proportional to current slot count but no required slot precheck or additional route round trip.
+A concurrent DETACH may therefore allow a slot removal/replacement to succeed if it removes the last reference before final arbitration rather than forcing a conservative failure derived from an older ownership snapshot.
+
+The exact intrinsic fingerprint and UoW/statement realization belong to `object-schema-change.md`.
+
+Slot-delta row work is proportional to changed slots rather than total slots:
+
+```text
+ADD + REMOVE + widened/replaced slots
+```
+
+No final SCHEMA_CHANGE statement count is frozen by this persistence WIP.
+
+## 10.8 Object DELETE
+
+Object DELETE gains owned slot-row removal/cascade work proportional to current slot count but no required slot precheck or additional route round trip.
 
 Referenced ownership still blocks deletion through the slot dependency.
 
@@ -650,7 +721,7 @@ It removes that cache/model-plane dependency from the normal candidates for:
 ```text
 GET Object
 GET one component slot
-ATTACH slot resolution
+ATTACH slot resolution / target lookup
 DETACH
 ```
 
@@ -666,13 +737,15 @@ immutable semantic interpretation/certification
     -> certified model materialization + worker-local cache where useful
 ```
 
+A normal data-plane read should not recertify a current fact against model-plane schema merely to reconstruct information already materialized relationally.
+
 # 12. Storage and workload trade-off
 
 Let:
 
 ```text
 O = number of current Objects
-S = average current effective slot count per Object
+S = average current effective component-slot count per Object
 ```
 
 Then materialized slot row count is approximately:
@@ -719,9 +792,45 @@ SCHEMA_CHANGE
     -> potential reduction of outgoing-edge fingerprint/retry coupling
 ```
 
-The approximate `SCHEMA_CHANGE : ATTACH ~= 1 : 100` workload input supports shifting bounded work toward the rare mutation, but it is an explicit discovery assumption rather than a product guarantee.
+## 12.1 Workload-weighted illustration
+
+The supplied approximate ratio is an explicit discovery assumption, not a product guarantee:
+
+```text
+100 ATTACH
+1 SCHEMA_CHANGE
+```
+
+Using only the previously identified statement-count candidates:
+
+```text
+old warm ATTACH      7
+new warm ATTACH      6
+```
+
+100 ATTACHes save approximately 100 PostgreSQL business statements before counting reads.
+
+Even an illustrative conservative SCHEMA_CHANGE increase from `6` to `9` statements would produce:
+
+```text
+old illustrative mix
+    100*7 + 1*6 = 706
+
+new illustrative upper shape
+    100*6 + 1*9 = 609
+```
+
+or roughly 97 fewer business statements for that mutation mix.
+
+This is **not a benchmark** and ignores row volume, storage, cache state and latency. Its purpose is only to show why SCHEMA_CHANGE route-local statement count cannot reject a materialization whose benefits accrue repeatedly on hotter operations.
+
+Frequent GET Object traffic strengthens the qualitative case further because its candidate moves from a former 2-statement warm / 3-statement cold cache path to one current data-plane statement.
+
+## 12.2 Structural/write cost remains real
 
 Exact byte footprint and write amplification must be measured before architecture freeze.
+
+The materialization deliberately avoids fields such as effective position that would add write amplification without an identified hot-path benefit.
 
 # 13. Migration/backfill direction
 
@@ -754,7 +863,7 @@ every existing edge
 
 Zero or multiple matches are corruption/migration failure and must not be repaired by inventing an identity.
 
-Exact migration ordering, validation SQL, constraint-validation strategy and lock impact belong to architecture/migration design.
+Exact migration order, validation SQL, constraint-validation strategy and lock impact belong to architecture/migration design.
 
 # 14. Physical-design architecture handoff
 
@@ -779,12 +888,12 @@ possible parent/semantic-slot page + FK-support B-tree
      child_object_id)
 ```
 
-This candidate attempts to cover:
+The candidate attempts to cover:
 
 ```text
 current slot lookup by (object_id, slot_name)
 all slots for one Object
-edge FK referenced/referencing work
+edge FK reverse/reference work
 GET Object parent fan-out
 one-slot child_id keyset pagination
 GET owner / ownerlessness / upward traversal by child id
@@ -792,62 +901,141 @@ GET owner / ownerlessness / upward traversal by child id
 
 without adding route-local duplicate indexes.
 
-The same exploration currently sees no demonstrated need for:
+## 14.1 Current physical-candidate cost interpretation
+
+The non-ratified edge-index direction is intentionally a **replacement** for the old parent-oriented secondary index, not an additional near-duplicate.
+
+Illustrative current candidate shape:
 
 ```text
+object_components
+    1 primary-key index by child_object_id
+    1 parent/semantic-slot secondary B-tree
+```
+
+So relative to the AS-IS direction:
+
+```text
+edge index count
+    -> unchanged in shape
+
+secondary edge key width
+    -> increases by slot_declaring_template_id UUID
+```
+
+ATTACH/DETACH therefore need not pay an extra *number* of edge secondary indexes merely because semantic identity is persisted, although they do pay the wider key. Exact bytes/write amplification remain measurement items.
+
+For `object_component_slots`, the logical requirement for both semantic uniqueness and `(object_id, slot_name)` lookup naturally implies additional index/storage work; no third slot index is currently justified by identified consumers.
+
+## 14.2 Why the current architecture input uses semantic edge order
+
+The explored B-tree order:
+
+```text
+(parent_object_id,
+ slot_declaring_template_id,
+ slot_name,
+ child_object_id)
+```
+
+was chosen because it can potentially serve both:
+
+```text
+exact semantic-slot membership/keyset page
+and
+referencing-side lookup for slot DELETE / semantic-key UPDATE
+```
+
+while retaining `parent_object_id` as a leading prefix for parent-rooted GET Object access.
+
+The alternative order remains reopenable from final planner/runtime evidence.
+
+## 14.3 Why no extra physical structures are currently justified
+
+The existing exploration sees no demonstrated need for:
+
+```text
+second near-duplicate parent/slot edge index
 third slot index
 target_template_id search index
 INCLUDE payloads
 copied child canonical_name
 ```
 
-and prefers semantic composite identity over a surrogate `slot_id` while there is no measured storage/write reason to add indirection.
+Child `canonical_name` remains mutable current Object authority and must not be copied into ownership persistence merely to chase a covering read.
 
-These are architecture inputs, **not discovery-final physical decisions**. They must be reopened if final DDL/query shapes or measurements favor another realization.
+## 14.4 Surrogate `slot_id` alternative
 
-## Required architecture evidence
-
-Before architecture freeze, verify with final TO-BE schema/query shapes and representative cardinalities at least:
+A surrogate row identity could narrow the edge FK:
 
 ```text
-component navigation first/continuation page
-empty and absent slot
+object_component_slots.slot_id
+object_components.slot_id
+```
+
+but the current exploration does not prefer it because it would weaken the direct expression of semantic replacement.
+
+To preserve the same invariant, a surrogate design would need an additional proven rule ensuring that an attached edge cannot continue referencing the same surrogate row while that row's declaring-lineage identity changes.
+
+It would also add slot joins to edge-centered operations that currently obtain semantic slot identity directly from the factual edge.
+
+Therefore the explicit composite semantic identity remains the current architecture input unless measured storage/write cost proves the indirection worthwhile and the replacement invariant is separately proven.
+
+These are architecture inputs, **not discovery-final physical decisions**.
+
+# 15. Required architecture evidence
+
+Before architecture freeze, verify final TO-BE DDL/query shapes with representative cardinalities.
+
+At minimum cover:
+
+```text
+component navigation populated first page
+component navigation continuation page
+empty slot
+absent slot
 stale semantic cursor gating
 GET Object representative fan-out
-slot DELETE / semantic-key UPDATE with zero/non-zero references
+slot DELETE / semantic-key UPDATE with zero references
+slot DELETE / semantic-key UPDATE with non-zero references
 FK reverse-reference behavior
-slot/edge index size
-ATTACH/DETACH write cost
-CREATE/SCHEMA_CHANGE slot maintenance cost
+edge secondary-index size delta versus AS-IS key
+slot-table uniqueness/index size
+ATTACH/DETACH write cost at representative batches
+CREATE/SCHEMA_CHANGE slot-index maintenance cost
 ```
 
 Use `EXPLAIN (ANALYZE, BUFFERS)` or the project-approved equivalent where appropriate.
 
-The evidence goal is bounded/selective production-shaped work, not forcing a particular PostgreSQL plan-node spelling on tiny fixtures.
+The evidence goal is bounded/selective production-shaped work, not forcing a particular PostgreSQL plan-node spelling on tiny fixtures. A sequential scan on a genuinely tiny test relation does not by itself invalidate the design.
 
-# 15. Current open points
+The candidate must be reopened if measured costs materially invalidate the workload trade-off.
 
-Discovery-level logical candidate is strong, but architecture must still close:
+# 16. Current open points
+
+Discovery-level logical candidate is strong, but architecture still must close:
 
 ```text
-exact PK vs UNIQUE declaration
-exact FK actions and constraint set
+exact PK vs UNIQUE declarations
+exact FK actions/timing and constraint set
 whether direct parent Object FK remains
 whether direct model-plane lineage FKs remain
 final index keys/order
 surrogate slot-id alternative if measurements justify it
+exact CREATE Object + slot-copy statement realization
+exact SCHEMA_CHANGE slot-delta statement decomposition
 migration/backfill mechanics
-constraint failure mapping
+constraint failure mapping without diagnostic-only queries
 complete transaction/lock/wait-for graph
 storage/write measurements
-final plan evidence
+final PostgreSQL plan evidence
 ```
 
-Downstream Object SCHEMA_CHANGE consolidation must also revalidate the old outgoing-ownership fingerprint assumptions against this boundary.
+Downstream `object-schema-change.md` must specifically revalidate the old outgoing-ownership fingerprint and parent-lock assumptions against this persistence boundary.
 
-# 16. Consolidation sources
+# 17. Consolidation sources
 
-This first consolidated version absorbs current findings from at least:
+This consolidated owner absorbs current non-superseded findings from at least:
 
 ```text
 object-component-slots-data-plane-materialization.md
@@ -860,4 +1048,6 @@ object-components-reads-discovery.md
 
 Route-specific consequences are summarized here only to explain cross-operation value; `object.md` remains the route owner.
 
-The older source WIPs remain temporarily in the tree until a lossless comparison pass and the `object-schema-change.md` consolidation are complete. Git history remains the historical record after cleanup.
+The source WIPs remain temporarily in the tree until `object-schema-change.md` is consolidated and a final reference/cleanup sweep confirms that no active WIP still depends on them as a current owner.
+
+After cleanup, Git history remains the historical record for superseded discovery checkpoints.
