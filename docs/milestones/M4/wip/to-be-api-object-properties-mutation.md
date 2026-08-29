@@ -76,13 +76,13 @@ array order
 
 The request is one atomic semantic operation set, not an ordered patch script. There is no partial success.
 
-Static malformed request shape belongs to `400 invalid_request`; property existence and runtime value admissibility remain semantic questions for the validation block of the current full-sweep pass.
+Static malformed request shape belongs to `400 invalid_request`; property existence and runtime value admissibility are semantic validation questions.
 
 ## Sparse property semantics
 
 Object runtime properties remain sparse canonical JSONB.
 
-Current semantic direction:
+Ratified semantic direction:
 
 ```text
 REMOVE optional property
@@ -189,7 +189,7 @@ Only Object runtime property state is in scope.
 
 # TO-BE execution model — active revalidation
 
-The previously consolidated three-stage model remains useful input but is being revalidated top-down during the current full sweep:
+The three-stage model remains the current working direction:
 
 ```text
 STEP 1 — current Object existence + exact binding
@@ -202,11 +202,11 @@ STEP 3 — short mutation Unit of Work
     PostgreSQL + application merge
 ```
 
-The current full-sweep pass must still confirm the exact validation responsibility, lifecycle payload, final data path and concurrency consequences before this route returns to closed/full-sweep status.
+The current full-sweep pass must still confirm lifecycle payload, final data path and concurrency consequences before this route returns to closed/full-sweep status.
 
-## STEP 1 — existing candidate: minimal Object binding lookup
+## STEP 1 — minimal Object binding lookup candidate
 
-Before semantic preparation the command candidate needs only:
+Before semantic preparation the command needs only:
 
 ```text
 Object exists
@@ -230,7 +230,7 @@ FROM objects
 WHERE id = :object_id;
 ```
 
-Important negative candidate requirement:
+Important negative requirement:
 
 > STEP 1 does not load current `properties`.
 
@@ -238,35 +238,35 @@ An existing Object may remain pinned to a `DEPRECATED` exact ObjectTemplateVersi
 
 STEP 1 should remain a cheap primary-key lookup. Exact physical indexing is deferred to the architecture-wide index review.
 
-## STEP 2 — existing candidate: prepare operations from READY cache semantics
+## STEP 2 — prepare requested operations from READY exact semantics
 
 The exact binding obtained in STEP 1 selects the validation-ready ObjectTemplate capability established for Object runtime consumers.
 
-Current candidate rule:
+Current rule:
 
-> Property mutation should not traverse ObjectTemplate/DataType persistence ad hoc for every request. Missing or partial semantic knowledge is brought to READY immutable/stable cache state before the short mutation UoW.
+> Property mutation must not traverse ObjectTemplate/DataType persistence ad hoc for every request. Missing or partial semantic knowledge is brought to READY immutable/stable cache state before the short mutation UoW.
 
-The cache supplies the exact semantic knowledge required to validate requested operations, including effective property declarations, exact DataTypeVersion semantics and compiled validators.
+The cache supplies the exact semantic knowledge required to validate the requested operations, including effective property declarations, exact DataTypeVersion semantics and compiled validators.
 
-Preparation candidate:
+Preparation rules:
 
 ```text
 SET
     property must exist
     validate SCALAR/LIST shape
     validate exact DTV contract
-    canonicalize value
+    canonicalize supplied value
 
     optional LIST = []
         -> prepared REMOVE
 
     required LIST = []
-        -> error
+        -> semantic validation failure
 
 REMOVE
     property must exist
     required
-        -> error
+        -> semantic validation failure
     optional
         -> prepared REMOVE
 ```
@@ -285,25 +285,85 @@ prepared mutation for (Server,4)
 
 No current Object property read and no Object row lock is required merely to validate/canonicalize the request effects during this preparation stage.
 
-### Validation responsibility — explicitly open in current sweep
+### Ratified validation responsibility — requested effects only
 
-The earlier WIP contains two formulations that must not be silently conflated:
+DATA_CHANGE validates and canonicalizes exactly the semantic effects requested by the caller. It does not revalidate untouched persisted properties and does not re-certify the complete Object.
 
-```text
-validate only requested semantic effects
-```
-
-versus:
+Canonical boundary:
 
 ```text
-construct and canonicalize the complete resulting property map
+DATA_CHANGE validation
+    = requested operations only
+
+DATA_CHANGE validation
+    != complete persisted property-map recertification
+    != complete resulting property-map recanonicalization
+    != domain consistency sweep
 ```
 
-The current full-sweep pass must decide this explicitly using the M4 principle that each mutation pays only for the invariants it owns. Until that block is ratified, neither formulation should be treated as final route authority.
+For `SET p = value`, DATA_CHANGE owns validation of:
+
+```text
+p exists in the effective schema of the prepared exact binding
+requested SCALAR/LIST shape matches p.value_mode
+supplied value satisfies exact PrimitiveType parsing/canonicalization
+supplied value satisfies exact DataTypeVersion constraints
+required LIST is non-empty
+optional LIST = [] becomes canonical absence / prepared REMOVE
+JSON null is invalid and is never interpreted as absence
+```
+
+For `REMOVE p`, DATA_CHANGE owns validation of:
+
+```text
+p exists
+p.required == false
+```
+
+A required property cannot be removed regardless of its current persisted value, so no current-property read is required merely to reject that operation during preparation.
+
+Untouched current properties are trusted as already-admitted current state under the Object's exact binding and are preserved without semantic revalidation:
+
+```text
+untouched persisted property
+    -> preserve current canonical value as-is
+    -> no PrimitiveType reparse
+    -> no exact DTV constraint recheck
+    -> no recanonicalization
+```
+
+The proof obligation is deliberately narrow:
+
+```text
+current Object properties were admitted under exact binding T@V
+prepared binding remains T@V at mutation time
+requested effects are independently valid/canonical under T@V
+untouched values are not changed
+
+therefore
+    applying the requested effects preserves the property-state contract
+```
+
+This relies on the current Object property model having no independent cross-property invariant that must be recomputed after every SET/REMOVE. If such a cross-property invariant is introduced later, DATA_CHANGE must be revalidated rather than silently retaining this local-validation proof.
+
+Impossible corruption encountered incidentally on state already required by the normal path remains an internal invariant failure; this does not authorize additional scans or revalidation solely to search for corruption.
+
+Performance consequence:
+
+```text
+K = requested operation count
+
+semantic validation work
+    -> O(K + supplied value size)
+
+not
+    -> O(total effective property count)
+    -> O(total persisted property count)
+```
 
 ## STEP 3 — existing candidate: short protected mutation UoW
 
-The existing route candidate obtains a fresh protected Object generation after operation preparation.
+The route obtains a fresh protected Object generation after operation preparation.
 
 Conceptually the required current facts include:
 
@@ -312,7 +372,7 @@ fresh exact binding
 fresh current sparse properties
 ```
 
-The old full-snapshot lifecycle requirement is no longer assumed: after the newly ratified operation-owned lifecycle principle, DATA_CHANGE lifecycle payload must be revalidated independently during this full sweep.
+The old full-snapshot lifecycle requirement is no longer assumed: after the ratified operation-owned lifecycle principle, DATA_CHANGE lifecycle payload must be revalidated independently during this full sweep.
 
 ### Binding-stability candidate
 
@@ -332,7 +392,7 @@ No semantic cache fill should occur while holding the final Object mutation prot
 
 ### Fresh-state application
 
-With unchanged binding, requested effects are applied to the fresh current property state while preserving untouched keys.
+With unchanged binding, requested prepared effects are applied to the fresh current property state while preserving untouched keys exactly.
 
 Example:
 
@@ -359,6 +419,8 @@ after = {
   "serial": "ABC"
 }
 ```
+
+`serial` is copied/preserved from current state; it is not semantically revalidated because DATA_CHANGE did not change it.
 
 No-op recognition, when retained, follows the ratified zero-material-extra-work rule above. The route must not add a second complete-map comparison pass solely to decide whether to skip persistence.
 
@@ -391,7 +453,7 @@ DATA_CHANGE x DELETE
     -> no mutation-after-delete / no resurrection
 ```
 
-The exact coordination required with RENAME is reduced by the newly ratified operation-specific lifecycle principle: DATA_CHANGE must not read/stabilize `canonical_name` merely to populate a generic full Object lifecycle snapshot. Any remaining concurrency interaction must follow actual field/invariant ownership rather than historical payload uniformity.
+The exact coordination required with RENAME is reduced by the ratified operation-specific lifecycle principle: DATA_CHANGE must not read/stabilize `canonical_name` merely to populate a generic full Object lifecycle snapshot. Any remaining concurrency interaction must follow actual field/invariant ownership rather than historical payload uniformity.
 
 Exact lock/wait/restart realization remains architecture work.
 
@@ -442,9 +504,13 @@ warm no-op
 
 Those counts are not re-ratified yet because lifecycle payload and mutation statement fusion are being revisited.
 
-The current ratified performance requirement is narrower and stronger for the high-frequency path:
+The current ratified performance requirements are:
 
 ```text
+requested-effect validation
+    -> proportional to requested operations/supplied values
+    -> no untouched-property recertification
+
 no-op classification itself
     -> 0 extra DB statements
     -> 0 extra locks
@@ -513,12 +579,15 @@ Ratified in the current full-sweep pass so far:
 - `204 No Content` on success;
 - semantic no-op may avoid UPDATE/lifecycle only when recognition adds no material work to the normal path;
 - no extra query/lock/cache/model load or whole-state equality pass solely for no-op classification;
-- mutation scope is Object runtime properties only.
+- mutation scope is Object runtime properties only;
+- semantic validation/canonicalization applies only to requested effects;
+- untouched persisted properties are trusted as already-admitted current state and preserved without revalidation;
+- no complete property-map recanonicalization or whole-Object consistency sweep;
+- requested-effect validation cost is proportional to requested operations/supplied values.
 
 Still to revalidate before full-sweep closure:
 
 ```text
-exact semantic-validation responsibility
 exact DATA_CHANGE lifecycle payload
 final hot/cold data path and statement-cost direction
 binding-change/retry behavior
