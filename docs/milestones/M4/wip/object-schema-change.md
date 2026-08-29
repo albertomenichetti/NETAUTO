@@ -1,16 +1,16 @@
 # M4 WIP — Object SCHEMA_CHANGE consolidated discovery
 
-**Status:** SCHEMA_CHANGE OWNER / EXACT-TARGET COMMAND SEMANTICS REVALIDATED / MIGRATION MATRIX REVALIDATED / EXECUTION ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** SCHEMA_CHANGE OWNER / EXACT-TARGET + MIGRATION MATRIX + EXECUTION/RETRY REVALIDATED / LIFECYCLE ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
 This document is the consolidated working owner for detailed M4 `Object.SCHEMA_CHANGE` discovery.
 
-Public route shape and Object-family navigation are owned by [`object.md`](object.md). Cross-operation current component persistence is owned by [`object-components-persistence.md`](object-components-persistence.md). Cross-operation intrinsic Object generation/freshness is owned by [`object-revision.md`](object-revision.md) and takes precedence over older fingerprint-era realization material retained in this file pending its focused execution-path revalidation.
+Public route shape and Object-family navigation are owned by [`object.md`](object.md). Cross-operation current component persistence is owned by [`object-components-persistence.md`](object-components-persistence.md). Cross-operation intrinsic Object generation/freshness is owned by [`object-revision.md`](object-revision.md).
 
 Everything under `wip/` remains non-normative and does not authorize implementation.
 
-The lossless comparison pass against the current `object-schema-change-*` WIPs is complete. Subsequent top-down revalidation has superseded the older assumption that Object schema migration is ordered by numeric version. Version numbers identify exact versions and creation/allocation order only; SCHEMA_CHANGE owns the separate exact SOURCE -> TARGET migrability question.
+The lossless comparison pass against the current `object-schema-change-*` WIPs is complete. Subsequent top-down revalidation has superseded the older assumptions that Object schema migration is ordered by numeric version, that current ownership membership belongs in normal semantic preparation, and that an intrinsic aggregate fingerprint is needed for stale-success protection. Version numbers identify exact versions and creation/allocation order only; SCHEMA_CHANGE owns exact SOURCE -> TARGET migrability, while `objects.revision` owns intrinsic-generation freshness.
 
 Current ownership of this file includes:
 
@@ -46,30 +46,31 @@ RETAIN
     bounded stale-success protection principle
     intrinsic lifecycle responsibility pending focused payload revalidation
 
+RATIFIED EXECUTION/RETRY REVALIDATION
+    one coherent intrinsic Object generation read per attempt
+    application-side candidate preparation from generation R
+    expected_revision = R as the only intrinsic-row freshness token
+    semantic failure may return without a revision refresh
+    stale expected_revision triggers a complete fresh bounded retry
+    fresh retry reuses/rebuilds MigrationPlan according to fresh SOURCE identity
+    retry observing SOURCE == TARGET returns 204 semantic no-op
+    retry exhaustion maps to 500 internal_error
+
 SUPERSEDE / REOPEN
     numeric-forward-only command semantics
     target_version > current_version as migration admission
     target_version <= current_version as automatic semantic failure
     standalone preliminary TARGET admission query
-    outgoing ownership edges in normal optimistic fingerprint
+    separate lightweight binding read followed by a second Object preparation read
+    outgoing ownership edges in normal semantic preparation/fingerprint
     preparatory edge snapshot as REMOVE/replacement blocker authority
     ATTACH/DETACH parent-lock rendezvous solely for slot continuity
     mandatory post-lock Object+edge reread justified by unprotected edges
     intrinsic SHA/fingerprint as current freshness authority
-        -> object-revision.md now owns intrinsic generation freshness
+    fixed two-attempt fingerprint retry policy
+    retry-exhaustion 409 schema_change_blocked / concurrent_object_change
     final business write touching only objects + lifecycle
     old route-total warm/full-cold counts 6 / 9
-
-RATIFIED PROPERTY-MATRIX REVALIDATION
-    LIST -> SCALAR may be conditionally admissible for a concrete Object
-    only when the current semantic LIST value is absent or has exactly one item
-    and the resulting scalar satisfies complete TARGET exact semantics
-
-RATIFIED COMPONENT-MATRIX REVALIDATION
-    continuous-slot target narrowing is categorically not migrable
-    unrelated SOURCE/TARGET component targets are categorically not migrable
-    current children never rescue an otherwise unsupported exact-pair relation
-    no child compatibility read/admission is introduced for those cases
 ```
 
 # 1. Public command boundary
@@ -273,7 +274,7 @@ The model-plane publication contract remains separate from runtime migrability. 
 
 ## 4.2 Component-slot rules
 
-The component matrix is now closed for continuous and replacement cases:
+The component matrix is closed for continuous and replacement cases:
 
 ```text
 ADD
@@ -341,7 +342,7 @@ The earlier warning about out-of-order publication remains useful evidence, but 
 
 ## 4.4 Matrix closure consequence
 
-The migration matrix is now semantically closed at this level:
+The migration matrix is semantically closed at this level:
 
 ```text
 properties
@@ -572,17 +573,18 @@ The old route-total `9`-statement full-cold number is not retained because the m
 
 An earlier candidate issued an unconditional unlocked exact TARGET existence/status read before semantic preparation. That standalone round trip is superseded.
 
-Current high-level sequence after the exact-target revalidation:
+Current high-level sequence:
 
 ```text
-initial Object binding
+read one current intrinsic Object generation
 -> target == current ? 204 semantic no-op
 -> otherwise identify exact SOURCE/TARGET pair
 -> obtain/build immutable MigrationPlan
 -> reject immutable unsupported component pair if present
--> prepare concrete Object candidate
--> enter mutation UoW
+-> apply plan to current Object properties
+-> enter short mutation UoW
 -> final protected exact TARGET admission is current lifecycle authority
+-> expected_revision is current intrinsic freshness authority
 ```
 
 A cold TARGET closure load may incidentally discover absent/non-certifiable target state as part of the same bounded semantic loader; no extra query is issued solely as preliminary lifecycle admission.
@@ -883,53 +885,98 @@ MigrationPlan relation classification
 0 membership freshness/protection introduced for this admission
 ```
 
-# 10. Object-specific preparation boundary — execution details under focused revalidation
+# 10. Ratified Object-generation preparation boundary
 
-With the migration matrix now closed, Object-specific semantic preparation can remain intrinsic-only:
+Each attempt begins with **one coherent current intrinsic Object generation read**.
+
+The path `object_id` is already known from the request. The preparation projection needs:
 
 ```text
-id
-canonical_name
 template_id
-template_version
+template_version = VS
 properties
-revision
+revision = R
 ```
 
-Current conceptual sequence, pending focused retry/UoW closure:
+It does not need `canonical_name` merely to decide or execute SCHEMA_CHANGE, and it does not read current ownership membership.
+
+Conceptual attempt sequence:
 
 ```text
-1. read current intrinsic Object generation
-       -> existence, template_id, source_version, properties, revision=R
+STEP 1 — current intrinsic generation
+    read T, VS, properties, revision=R
 
-2. if target_version == source_version
-       -> 204 semantic no-op
+    Object absent
+        -> 404 resource_not_found
 
-3. otherwise obtain/build READY immutable MigrationPlan
-       for exact SOURCE -> TARGET
+    target_version == VS
+        -> 204 semantic no-op
+        -> no MigrationPlan
+        -> no revision refresh
 
-4. if MigrationPlan contains categorically unsupported component relation
-       -> semantic migration failure
-       -> no child/membership read
+STEP 2 — immutable semantic preparation
+    SOURCE = T@VS
+    TARGET = T@VT
 
-5. apply supported property rules to generation R
-       -> target_properties
+    obtain/build READY MigrationPlan(T, VS, VT)
 
-6. carry supported current-slot delta from MigrationPlan
+    categorically unsupported component relation
+        -> semantic migration failure
+        -> no child/membership read
 
-7. build PreparedSchemaChange(expected_revision=R)
+    otherwise apply MigrationPlan to properties from generation R
+        -> property add/remove/requiredness rules
+        -> SCALAR <-> LIST transformations
+        -> exact TARGET DTV validation/canonicalization
+        -> conditional LIST -> SCALAR cardinality admission
+        -> complete target_properties
+        -> component_slot_delta
+
+    build PreparedSchemaChange(expected_revision=R)
+
+STEP 3 — real migration UoW only
+    final TARGET admission
+    + expected_revision freshness
+    + relational slot arbitration
+    + atomic Object/slot/lifecycle transition
 ```
 
-No normal current child read, ownership-edge scan, effective-schema reread or ancestry reread occurs after the plan is READY.
+There is no separate lightweight binding read followed by a second intrinsic snapshot. The first authoritative Object generation already contains the exact SOURCE identity and properties needed for concrete preparation.
 
-The required freshness invariant is:
+Normal preparation reads no:
 
 ```text
-candidate prepared from intrinsic Object generation R
-    -> may commit only if R is still current
+current child Objects
+object_components membership
+current object_component_slots for semantic reconstruction
+Relationship state
+lifecycle state
 ```
 
-Exact retry/reprepare behavior belongs to the next revision-alignment block.
+The slot delta comes from immutable SOURCE/TARGET semantics. Current ownership affects only final relational REMOVE/replacement arbitration through the edge -> slot dependency.
+
+## 10.1 Semantic failure from generation R
+
+A semantic migration failure proved from one coherent current generation may return immediately without an additional revision read solely to see whether concurrent state later changed the answer.
+
+Examples include:
+
+```text
+LIST -> SCALAR with current multi-item list
+existing property value incompatible with TARGET exact DTV
+categorically unsupported component target relation
+```
+
+A later concurrent intrinsic mutation may make a new caller attempt succeed, but the current failure remains serially explainable at generation R and commits no stale state.
+
+Canonical rule:
+
+```text
+expected-revision CAS is required for writes
+not for conservative semantic failures that persist nothing
+```
+
+This mirrors the already-ratified DATA_CHANGE stale-failure boundary.
 
 # 11. PreparedSchemaChange
 
@@ -938,7 +985,6 @@ Current conceptual candidate:
 ```text
 PreparedSchemaChange
     object_id
-    canonical_name
 
     template_id
     source_version
@@ -957,23 +1003,15 @@ PreparedSchemaChange
 
 It should be mechanically applicable once final mutable protections/admissions succeed. Expensive schema comparison, property transformation and TARGET value validation are not repeated merely because the mutation UoW begins.
 
-Categorically unsupported component relations never produce an executable PreparedSchemaChange.
+Categorically unsupported component relations and concrete property migration failures never produce an executable PreparedSchemaChange.
 
-# 12. Intrinsic Object freshness — fingerprint source material superseded by revision
+# 12. Intrinsic Object freshness — revision is the only intrinsic authority
 
-Older SCHEMA_CHANGE WIPs used a deterministic intrinsic Object fingerprint over:
+Older SCHEMA_CHANGE WIPs used a deterministic intrinsic Object fingerprint over intrinsic state and, in earlier variants, outgoing ownership membership.
 
-```text
-id
-canonical_name
-template_id
-template_version
-properties
-```
+That historical mechanism is no longer current authority.
 
-That historical mechanism is no longer current authority for intrinsic-row freshness.
-
-[`object-revision.md`](object-revision.md) now owns the universal rule:
+[`object-revision.md`](object-revision.md) owns the universal rule:
 
 ```text
 prepare from intrinsic generation R
@@ -982,9 +1020,11 @@ stale revision -> no mutation/lifecycle -> bounded retry/reprepare
 successful intrinsic mutation -> revision := R + 1 atomically
 ```
 
+A successful `revision == R` check proves that the exact binding and complete intrinsic properties used for preparation still belong to the current Object generation. No second binding fingerprint, canonical JSON encoding or SHA comparison is required for the same intrinsic interval.
+
 Revision proves freshness only for the intrinsic `objects` row. It does not replace relational admission/protection for current component-slot/ownership facts outside that row.
 
-Historical SHA/canonical-JSON fingerprint details remain source evidence only and should be removed during final SCHEMA_CHANGE lossless cleanup once the focused execution block is closed.
+Historical SHA/canonical-JSON fingerprint details remain source evidence only and should be removed during final SCHEMA_CHANGE lossless cleanup.
 
 # 13. Final TARGET admission
 
@@ -1018,47 +1058,56 @@ Unexpected exact TARGET absence at final protected admission remains a failure-c
 
 The final lookup must semantically distinguish existing-but-inadmissible TARGET from absent TARGET; exact textual SQL/lock mode/order is architecture work.
 
-# 14. Short mutation-UoW logical responsibilities
+# 14. Ratified short mutation-UoW responsibilities
 
-The old fixed four-statement realization is not retained as current authority.
-
-Current logical requirements for a real SOURCE != TARGET migration:
+For a real SOURCE != TARGET migration, the short final UoW owns:
 
 ```text
 A. protect current TARGET PUBLISHED admission through commit
 
-B. verify expected intrinsic Object revision/generation
+B. verify expected_revision = R against the current intrinsic Object generation
 
-C. on fresh generation, atomically commit:
-       Object target template_version
-       canonical target properties
-       revision := expected_revision + 1
+C. apply the prepared current-slot delta subject to relational FK arbitration
+
+D. on fresh/admissible state, atomically commit:
+       Object template_version := target_version
+       Object properties       := target_properties
+       Object revision         := R + 1
        current object_component_slots delta
        exactly one SCHEMA_CHANGE lifecycle event
 
-D. keep object_components membership unchanged for supported successful deltas,
+E. keep object_components membership unchanged for supported successful deltas,
    while referenced old semantic slots may block REMOVE/replacement
 ```
 
-The Object remains the intrinsic mutation concurrency owner. Parent Object locking solely to serialize ATTACH/DETACH for slot continuity is superseded by the narrower slot-FK boundary for supported component cases.
+No model-plane cache fill, MigrationPlan compilation, property transformation, TARGET value validation or lifecycle semantic reconstruction belongs inside the final protected write path.
 
-Architecture decides:
+If expected revision is stale:
 
 ```text
-exact expected-revision SQL/row protection realization
-TARGET/Object/slot lock ordering
+no Object mutation
+no slot mutation
+no lifecycle event
+```
+
+The attempt is discarded and handled by the bounded retry protocol below.
+
+Architecture decides only the physical realization:
+
+```text
+exact expected-revision SQL / row protection
+TARGET/Object/slot lock and wait ordering
 slot-delta statement decomposition/fusion
-final FK behavior/failure translation
+final FK timing/actions and failure translation
 ```
 
-## Final-write invariants retained
+Final invariants that realization must preserve:
 
 ```text
-final Object transition must apply to the expected Object/source generation
-no SCHEMA_CHANGE lifecycle event may commit unless the owning Object/slot transition commits
+prepared candidate can never overwrite a newer intrinsic generation
+Object binding/properties/revision + current slot set + lifecycle become visible atomically
+no SCHEMA_CHANGE lifecycle commits without its owning state transition
 ```
-
-No model-plane cache fill, MigrationPlan compilation, property transformation, TARGET value validation or lifecycle reconstruction belongs inside the final protected write path.
 
 # 15. ATTACH / DETACH interaction
 
@@ -1084,31 +1133,103 @@ ordinary ATTACH/DETACH on preserved slot
 
 Narrowing/unrelated component relations never enter this concurrency path because they are rejected from immutable plan classification before child/membership admission is considered.
 
-# 16. Bounded intrinsic-generation retry — details still to revalidate
+# 16. Ratified bounded intrinsic-generation retry
 
-The universal Object revision rule replaces fingerprint mismatch as the intrinsic stale-attempt signal.
-
-Required generic behavior is already fixed cross-operation:
+The automatic retry trigger for SCHEMA_CHANGE intrinsic preparation is exactly the universal stale-generation condition:
 
 ```text
 expected_revision = R
 current revision != R
-    -> no Object/slot/lifecycle mutation for that stale attempt
-    -> bounded retry from a fresh Object generation
 ```
 
-SCHEMA_CHANGE still has to close route-specific details such as:
+A stale attempt commits nothing and starts a complete fresh attempt from STEP 1.
+
+The retry is **bounded**, but discovery does not freeze the exact retry count or backoff policy. Those are architecture realization choices. The semantic protocol is:
 
 ```text
-retry budget/backoff
-when a fresh SOURCE binding permits MigrationPlan reuse
-when changed SOURCE requires a new exact-pair plan
-how a retry that now observes TARGET == current becomes 204 no-op
-final retry-exhaustion public mapping
-interaction with TARGET admission and slot blockers
+stale expected_revision
+    -> no Object/slot/lifecycle mutation
+    -> fresh current intrinsic generation read
+    -> rederive every mutable conclusion from that generation
 ```
 
-Older `2 total attempts` / fingerprint-specific `409 schema_change_blocked` material is retained only as source evidence until this block is explicitly revalidated; it is not current authority over [`object-revision.md`](object-revision.md).
+Immutable work may be reused only when its identities still apply.
+
+## 16.1 Fresh retry with unchanged SOURCE
+
+```text
+fresh template_id/source_version == previous SOURCE
+    -> existing READY MigrationPlan(T, SOURCE, TARGET) remains reusable
+    -> apply it to fresh properties
+    -> recompute concrete property migrability
+       including LIST -> SCALAR cardinality
+    -> build a fresh candidate with fresh expected_revision
+```
+
+## 16.2 Fresh retry with changed SOURCE
+
+```text
+fresh SOURCE != previous SOURCE
+```
+
+The old exact-pair plan is not the plan for the new current state. The retry resolves/builds:
+
+```text
+MigrationPlan(T, fresh_source_version, requested_target_version)
+```
+
+and reruns semantic candidate preparation against the fresh properties.
+
+The retry may therefore produce a different normal outcome, including a semantic migration failure that was not true on the first attempt.
+
+## 16.3 Fresh retry finds TARGET already current
+
+If another SCHEMA_CHANGE committed the requested exact target while this request was preparing:
+
+```text
+fresh source_version == requested target_version
+    -> 204 semantic no-op
+    -> no new mutation
+    -> no revision increment
+    -> no SCHEMA_CHANGE lifecycle event
+```
+
+This is the convergent exact-target semantics applied to the fresh generation.
+
+## 16.4 Retry exhaustion
+
+Inability to stabilize one current intrinsic Object generation within the bounded internal retry policy is not a stable business/domain conflict.
+
+Canonical public mapping:
+
+```text
+bounded retry exhausted
+    -> 500 internal_error
+```
+
+There is no route-specific normal:
+
+```text
+409 concurrent_modification
+409 schema_change_blocked / blocker_type=concurrent_object_change
+```
+
+The stale expected-revision result itself is internal control flow and is never exposed directly.
+
+This aligns SCHEMA_CHANGE with the universal intrinsic-generation policy already used by RENAME and DATA_CHANGE rather than preserving a fingerprint-era exception.
+
+## 16.5 Failures that do not consume retry solely by themselves
+
+The intrinsic retry budget exists to handle stale prepared generations. Other outcomes are classified by their own route semantics rather than being converted into stale retries merely because they occur during the same request:
+
+```text
+semantic migration failure
+TARGET absent/inadmissible
+slot REMOVE/replacement blocker
+unexpected persistence/invariant failure
+```
+
+A fresh retry caused by a preceding stale revision may naturally encounter one of those outcomes, but they are not independent retry triggers.
 
 # 17. Lifecycle — pending focused revalidation
 
@@ -1136,7 +1257,7 @@ Therefore the exact lifecycle payload is **OPEN for the dedicated lifecycle bloc
 
 Technical `revision` is not automatically semantic lifecycle payload.
 
-# 18. Cost interpretation
+# 18. Cost interpretation after execution/retry revalidation
 
 The previous totals:
 
@@ -1149,92 +1270,61 @@ are superseded because they assumed:
 
 ```text
 numeric-forward preclassification
+separate lightweight binding read + later Object aggregate read
 Object + outgoing-edge preparation snapshot
 parent-lock ATTACH/DETACH rendezvous
 mandatory fresh Object+edge fingerprint statement
 Object+lifecycle-only final mutation
 ```
 
-Current route-total counts remain OPEN until the expected-revision/slot-delta realization is closed.
-
-Retained cost properties:
+Retained cost properties now are:
 
 ```text
-MigrationPlan comparison/compilation is amortized per worker + exact pair
-semantic cold fill is bounded and bulk
-property migration happens outside critical section
-normal preparation does not scan outgoing edges
+one authoritative intrinsic Object generation read per attempt
+MigrationPlan comparison/compilation amortized per worker + exact pair
+semantic cold fill bounded and bulk
+property migration in application outside the critical section
+normal preparation does not scan outgoing edges or children
 slot delta adds bounded SCHEMA_CHANGE DML
-equal-target no-op requires no MigrationPlan or mutation UoW
-LIST -> SCALAR adds no extra PostgreSQL read beyond the current property generation already required for candidate construction
-component narrowing/unrelated rejection adds no current-child or ownership read
+equal-target no-op stops after the one Object generation read
+LIST -> SCALAR adds no extra PostgreSQL read
+component narrowing/unrelated rejection adds no child/ownership read
+stale retry repeats only bounded attempt work and may reuse applicable immutable cache state
 ```
 
-Qualitative shift:
+Warm real-migration route statement count remains an architecture handoff because final TARGET admission, expected-revision write, slot delta and lifecycle may be fused/decomposed in multiple equivalent ways. Discovery does not restore the obsolete 6/9 totals merely to produce a fixed number.
 
-```text
-LESS
-    ownership rows transferred/hashed for optimistic generation
-    retry coupling to preserved-slot ATTACH/DETACH
-    generic ownership lock coupling
-    child-compatibility work for categorically unsupported component relations
-
-MORE
-    object_component_slots delta writes for supported real migrations
-```
+Cold semantic preparation may add at most one bounded bulk load per missing immutable semantic class under the cache rules in section 6.
 
 # 19. Current open points
 
-## Migration-matrix closure
-
-The exact-target command boundary and complete current migration matrix are now ratified:
+## Closed in the current full sweep so far
 
 ```text
-target == current
-    -> 204 no-op
-
-target != current
-    -> evaluate exact SOURCE -> TARGET migrability
-    -> numeric version relation is irrelevant to admission
-
-property LIST -> SCALAR
-    absent
-        -> absence/default according to TARGET requiredness
-    exactly one item
-        -> [x] -> x -> TARGET exact validation/canonicalization
-    more than one item
-        -> migration failure for this Object
-
-component target narrowing
-    -> categorically unsupported
-
-component targets unrelated
-    -> categorically unsupported
+exact-target command semantics
+migration matrix
+single-generation Object preparation boundary
+revision-based stale-success protection
+bounded retry/reprepare semantics
+retry exhaustion -> 500 internal_error
 ```
 
-No per-Object child compatibility rescue path exists for unsupported component relations.
+## Active next review — final failure and lifecycle semantics
 
-## Active execution/retry review
-
-The next full-sweep block must close:
+The next full-sweep blocks must close:
 
 ```text
-current intrinsic Object generation read/preparation
-expected-revision retry/reprepare details
-MigrationPlan reuse/rebuild across retries
 final TARGET absence classification
-slot blocker failure mapping
-```
-
-## Subsequent lifecycle/failure/cost review
-
-After execution/retry, the full sweep still must close:
-
-```text
+categorically unsupported migration-pair failure class/detail
+concrete property migration-failure class/detail
+slot REMOVE/replacement blocker failure mapping
 SCHEMA_CHANGE lifecycle payload
 route failure precedence
-warm/no-op/cold cost targets
 ```
+
+## Subsequent cost/closure review
+
+After failure/lifecycle semantics, the full sweep still must close the final warm/no-op/cold cost profile and architecture handoff wording before lossless absorption/cleanup.
 
 ## Architecture handoff after semantic closure
 
@@ -1243,15 +1333,15 @@ Architecture still must close:
 ```text
 final PostgreSQL statement decomposition
 exact Object expected-revision/row-protection realization
+bounded retry count/backoff
 TARGET/Object/slot wait-for ordering
 deadlock freedom with ATTACH/DETACH/DELETE/intrinsic mutations
 exact object_component_slots delta DML/fusion
 FK timing/actions
-constraint failure -> public error mapping
+constraint failure -> public error realization
 final physical DDL/indexes
 EXPLAIN/BUFFERS evidence
 storage/write measurements
-bounded retry verification
 ```
 
 # 20. Lossless comparison / supersession map
@@ -1306,27 +1396,35 @@ equal target -> 422
 
 LIST -> SCALAR categorically outside normal migration contract
     -> superseded by conditional lossless per-Object admission
-    -> absent or exactly-one-item value may migrate
-    -> multi-item value remains non-migrable without destructive policy
 
 conditional current-child compatibility admission for component narrowing/unrelated
     -> explicitly rejected
-    -> unsupported relation is determined from immutable SOURCE/TARGET semantics
+    -> unsupported relation determined from immutable SOURCE/TARGET semantics
+
+separate initial binding read + second preparation Object read
+    -> superseded by one coherent intrinsic generation read per attempt
 
 preparatory outgoing-edge blocker authority
     -> superseded for REMOVE/replacement by final slot-FK arbitration
 
 whole Object + outgoing-edge fingerprint
-    -> superseded by intrinsic revision for Object-row freshness
+intrinsic canonical-JSON/SHA fingerprint
+    -> superseded by `objects.revision` for intrinsic freshness
 
 parent Object lock as mandatory ATTACH/DETACH slot-continuity rendezvous
     -> superseded for supported slot cases
 
 separate post-lock Object+edge fingerprint statement
-    -> old justification removed; realization reopened around revision CAS
+    -> removed from current protocol
+
+fixed two-total-attempt fingerprint retry
+    -> superseded by bounded retry with exact count/backoff deferred to architecture
+
+retry exhaustion -> 409 schema_change_blocked/concurrent_object_change
+    -> superseded by 500 internal_error
 
 Object+lifecycle-only final write
-    -> reopened because current slot delta and revision must commit atomically
+    -> superseded because current slot delta and revision must commit atomically too
 
 standalone preliminary TARGET admission
     -> removed
@@ -1337,6 +1435,4 @@ old 6/9 route totals
 
 ### Historical evidence retained
 
-The legacy component discovery correctly warned that numeric allocation/publication order could expose semantically restrictive SOURCE/TARGET relations. The reviewed baseline now generalizes that finding: numeric version order never encoded migration order in the first place.
-
-Older micro-WIPs remain source material for now. Cleanup should occur only after the active SCHEMA_CHANGE full sweep is complete and the consolidated owners are losslessly self-consistent; Git history remains the historical record afterward.
+The legacy source family remains useful for rationale and lossless comparison, but statements inside those files marked `FROZEN` do not override the revalidated owner above. Git history remains the historical record after later cleanup.
