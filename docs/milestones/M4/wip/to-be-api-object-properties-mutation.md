@@ -1,8 +1,8 @@
 # M4 TO-BE API — Object properties mutation
 
-Status: ROUTE-LOCAL ACTIVE REVALIDATION / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: ROUTE-LOCAL FULL-SWEEP CLOSED / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This file is the current route-local owner for the active M4 full sweep of Object property mutation.
+This file records the completed route-local M4 full sweep of Object property mutation before lossless absorption into the consolidated Object owner.
 
 Everything under `wip/` remains globally non-normative and does not authorize implementation. Exact SQL, lock modes, indexes and measured physical plans remain architecture work unless explicitly frozen here.
 
@@ -193,7 +193,9 @@ REMOVE an already-absent optional property
 SET optional LIST to [] when already canonically absent
 ```
 
-If every requested operation is a no-op, the command can return after the application-side derivation step with no final mutation statement. A concurrent intrinsic mutation occurring after the coherent generation read does not make that response incorrect: the no-op is serially explainable before that later mutation because this command committed no state transition.
+If every requested operation is a no-op, the command can return after the application-side derivation step with no final mutation statement and no revision recheck.
+
+A concurrent intrinsic mutation occurring after the coherent generation read does not make that response incorrect: the no-op is serially explainable before that later mutation because this command committed no state transition.
 
 ---
 
@@ -393,6 +395,8 @@ Unknown property, REMOVE-required, JSON null, invalid SCALAR/LIST shape, invalid
 
 A certified persisted semantic dependency unexpectedly missing/corrupt is an internal invariant failure rather than caller semantic failure.
 
+A semantic failure proven from the coherent generation observed in STEP 1 may be returned immediately. DATA_CHANGE does not perform a revision recheck solely to discover whether a concurrent mutation made a later retry valid. This is an accepted conservative stale-failure policy because no state transition is being committed.
+
 ## 7.3 Untouched properties are trusted current state
 
 Untouched persisted properties are preserved exactly without semantic revalidation:
@@ -546,6 +550,18 @@ The logical target is one final PostgreSQL business statement for the real-chang
 
 The final database statement does not own JSON mutation semantics. It persists the already-derived complete candidate and uses the revision predicate to reject stale candidates.
 
+If the final CAS mutates no generation, DATA_CHANGE does not issue a diagnostic query merely to distinguish concurrent DELETE from a revision change. It returns to the normal retry STEP 1:
+
+```text
+fresh STEP 1 finds Object absent
+    -> 404 resource_not_found
+
+fresh STEP 1 finds Object present at newer revision
+    -> continue bounded retry
+```
+
+Thus absence-vs-staleness classification reuses the normal retry read and introduces no special diagnostic round trip.
+
 ---
 
 # 9. Universal revision consequence
@@ -582,7 +598,7 @@ This accepted false-positive retry is the price of one uniform intrinsic Object 
 
 ---
 
-# 10. Retry behavior
+# 10. Retry behavior and exhaustion
 
 Revision mismatch is an internal stale-attempt outcome, never permission to commit a candidate derived from an older generation.
 
@@ -620,7 +636,15 @@ T@V -> T@W
 
 No cache fill occurs while holding a final commit lock/CAS boundary.
 
-Exact retry count/backoff and the final public classification of retry exhaustion remain to be closed.
+If bounded revision retries are exhausted:
+
+```text
+500 internal_error
+```
+
+The exhaustion is not exposed as `409 concurrent_modification` or another caller state conflict. It is failure of the internal optimistic-generation protocol to stabilize within its bounded attempt budget.
+
+Exact retry count/backoff remains architecture/implementation work.
 
 ---
 
@@ -953,18 +977,20 @@ ObjectTemplate current lifecycle status
 
 The shared lifecycle persistence must support the ratified changed-property delta. Exact JSON/typed carrier, constraints and indexes remain lifecycle/persistence architecture work.
 
+No route-specific index is semantically required by DATA_CHANGE. STEP 1 is Object PK access; STEP 3 selects one Object identity and checks its revision as the generation predicate. Architecture must evaluate the physical plan and may choose supporting structures only from measured whole-workload evidence.
+
 ---
 
-# 16. Public failure direction
+# 16. Final public failure mapping and precedence
 
-Already-ratified/publicly implied failures:
+Public failure set:
 
 ```text
 400 invalid_request
     malformed/static request shape
 
 404 resource_not_found
-    selected Object absent
+    selected Object absent on the authoritative observed/retry generation
 
 422 semantic_validation_failed
     unknown property
@@ -977,19 +1003,54 @@ Already-ratified/publicly implied failures:
 
 500 internal_error
     impossible persisted semantic/reference/invariant failure encountered on required path
+    unexpected persistence/lifecycle failure
+    bounded revision retry exhaustion
 ```
 
-Revision mismatch itself is an internal stale-attempt condition and is not directly exposed as a public conflict while bounded retry remains possible.
+There is no normal public `409` for DATA_CHANGE. Revision mismatch is an internal stale-attempt condition, not a business state conflict.
 
-Still open before full-sweep closure:
+Precedence on the normal path:
 
 ```text
-bounded retry exhaustion public/internal mapping
-precise precedence when absence is observed during a retry race
-any remaining persistence-failure classification details
+1. static request invalid
+       -> 400 invalid_request
+       -> no DB work
+
+2. STEP 1 finds Object absent
+       -> 404 resource_not_found
+
+3. coherent generation exists but request is semantically invalid
+       -> 422 semantic_validation_failed
+       -> no revision recheck solely to refresh the failure
+
+4. application derives semantic no-op
+       -> 204 No Content
+       -> no revision recheck
+       -> no UPDATE / lifecycle / revision increment
+
+5. application derives real mutation
+       -> STEP 3 expected-revision CAS
+
+6. CAS succeeds
+       -> complete properties + revision+1 + lifecycle commit atomically
+       -> 204 No Content
+
+7. CAS is stale / mutates no generation
+       -> no state/lifecycle committed by this attempt
+       -> normal bounded retry from STEP 1
+
+8. retry STEP 1 finds Object absent
+       -> 404 resource_not_found
+
+9. retry observes changed exact binding
+       -> revalidate original requested effects under new exact semantics
+       -> resulting current semantic outcome may be 422 / no-op 204 / real mutation
+
+10. retry budget exhausted
+       -> 500 internal_error
 ```
 
-No normal `409` state-conflict class has been identified for caller-caused DATA_CHANGE semantics so far.
+This precedence deliberately permits conservative semantic failures/no-op results from one coherent observed generation without paying an extra freshness round trip when no state transition is being committed.
 
 ---
 
@@ -1019,13 +1080,16 @@ real write is guarded by expected_revision
 stale candidate can never overwrite newer intrinsic state
 real DATA_CHANGE atomically writes properties + revision+1 + exact lifecycle delta
 cheap semantic no-op performs no write/revision/lifecycle
+revision contention is retried internally and is not exposed as normal 409
 ```
+
+No unresolved route-local relational or cache denormalization is required before architecture. The remaining physical choices above do not reopen the ratified DATA_CHANGE semantic/data-path contract unless measurement proves the application-side full-JSON replacement materially unsuitable.
 
 ---
 
-# 18. Revalidation status
+# 18. Route-local full-sweep closure
 
-Ratified in the current full-sweep pass:
+Ratified for this route:
 
 - `POST /api/v1/core/objects/{object_id}/properties`;
 - non-empty unordered atomic SET/REMOVE operation set;
@@ -1036,6 +1100,7 @@ Ratified in the current full-sweep pass:
 - semantic no-op elision only when recognition adds no material work;
 - no second whole-map comparison solely for no-op detection;
 - semantic validation/canonicalization applies only to requested effects;
+- semantic failure may return from the coherent observed generation without a revision refresh;
 - untouched persisted properties are preserved without semantic revalidation;
 - no complete property-map recanonicalization or whole-Object consistency sweep;
 - DATA_CHANGE lifecycle is the exact delta of only actually changed semantic properties;
@@ -1047,17 +1112,18 @@ Ratified in the current full-sweep pass:
 - revision mismatch emits no mutation/lifecycle and causes bounded retry;
 - revision freshness subsumes a separate final exact-binding freshness mechanism;
 - conservative false-positive retries after unrelated intrinsic mutations are accepted;
-- **the complete current `properties` map is read in STEP 1**;
-- **SET/REMOVE application, no-op detection, lifecycle-delta derivation and complete candidate construction occur in the application/domain layer**;
-- **real DATA_CHANGE persists the complete application-derived `properties` value rather than using PostgreSQL JSONB mutation primitives as the normal semantic path**;
-- warm real-change target remains 2 PostgreSQL business statements + COMMIT;
-- warm application-detected no-op target is 1 PostgreSQL business statement.
+- the complete current `properties` map is read in STEP 1;
+- SET/REMOVE application, no-op detection, lifecycle-delta derivation and complete candidate construction occur in the application/domain layer;
+- real DATA_CHANGE persists the complete application-derived `properties` value rather than using PostgreSQL JSONB mutation primitives as the normal semantic path;
+- warm real-change target is 2 PostgreSQL business statements + COMMIT;
+- warm application-detected no-op target is 1 PostgreSQL business statement;
+- no-op returns without revision CAS because it commits no transition;
+- stale CAS classification reuses normal STEP 1 rather than a diagnostic query;
+- retry with same exact binding reuses immutable prepared operations;
+- retry with changed exact binding revalidates the original request;
+- retry exhaustion maps to `500 internal_error`;
+- DATA_CHANGE introduces no normal public `409`;
+- no route-specific relational denormalization or index is required by discovery;
+- physical SQL/fusion/index/EXPLAIN/retry-count and JSONB storage measurements remain architecture handoffs.
 
-Still to revalidate before full-sweep closure:
-
-```text
-bounded retry exhaustion / final failure mapping
-remaining failure precedence edge cases
-architecture persistence/index handoff confirmation
-final lossless absorption into object.md and cleanup
-```
+The route-local sweep is complete. Next maintenance step: perform a lossless comparison/absorption into [`object.md`](object.md), update navigation, and remove route-only source files when safe. Git history remains the historical record.
