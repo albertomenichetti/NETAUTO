@@ -1,6 +1,6 @@
 # M4 WIP — Object SCHEMA_CHANGE consolidated discovery
 
-**Status:** SCHEMA_CHANGE OWNER / EXACT-TARGET COMMAND SEMANTICS REVALIDATED / MIGRATION MATRIX ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** SCHEMA_CHANGE OWNER / EXACT-TARGET COMMAND SEMANTICS REVALIDATED / PROPERTY MIGRATION MATRIX REVALIDATED / COMPONENT MATRIX ACTIVE REVALIDATION / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
@@ -59,9 +59,14 @@ SUPERSEDE / REOPEN
     final business write touching only objects + lifecycle
     old route-total warm/full-cold counts 6 / 9
 
-ACTIVE MIGRATION-MATRIX REVALIDATION
+RATIFIED PROPERTY-MATRIX REVALIDATION
+    LIST -> SCALAR may be conditionally admissible for a concrete Object
+    only when the current semantic LIST value is absent or has exactly one item
+    and the resulting scalar satisfies complete TARGET exact semantics
+
+ACTIVE COMPONENT-MATRIX REVALIDATION
     exact SOURCE -> TARGET pairs may expose
-    LIST -> SCALAR or component-target narrowing/unrelated relation
+    component-target narrowing/unrelated relation
     regardless of numeric version ordering
 ```
 
@@ -239,7 +244,7 @@ Effective deltas caused by different exact parent-version pins are classified fr
 
 # 4. Delta taxonomy and exact-pair migrability revalidation
 
-## 4.1 Property rules already defined for SCHEMA_CHANGE
+## 4.1 Property rules revalidated for SCHEMA_CHANGE
 
 The current reusable plan has defined runtime behavior for:
 
@@ -251,15 +256,18 @@ REMOVE required
 optional -> required
 required -> optional
 SCALAR -> LIST
+LIST -> SCALAR with concrete lossless-admission rule
 exact DataTypeVersion change within the same datatype_id lineage
 migration_default change as part of TARGET semantics
 position-only change
 semantic-identity replacement
 ```
 
-Those rules remain candidates for exact SOURCE -> TARGET pairs that exhibit the corresponding deltas. Their validity does not depend on the relative numeric version numbers.
+Those rules apply to exact SOURCE -> TARGET pairs that exhibit the corresponding deltas. Their validity does not depend on the relative numeric version numbers.
 
 The model-plane publication contract remains separate from runtime migrability. A valid published exact version does not imply that every concrete Object can migrate to it from every other exact version.
+
+`LIST -> SCALAR` is intentionally Object-dependent: immutable schema comparison identifies the shape delta, while the concrete current Object value decides whether the transformation can preserve all information.
 
 ## 4.2 Component rules already defined for SCHEMA_CHANGE
 
@@ -297,35 +305,29 @@ whether the target version number is greater or smaller than the source version 
 
 The earlier warning about out-of-order publication remains useful evidence, but it is no longer needed as an exception to a forward-only rule: the general rule is simply that exact-pair migrability must be evaluated independently of version-number ordering.
 
-## 4.4 OPEN exact-pair migration policy
+## 4.4 Remaining OPEN exact-pair component policy
 
-The current migration semantics intentionally do not yet define every possible exact SOURCE -> TARGET delta.
+The property `LIST -> SCALAR` policy is now ratified and no longer part of the open migration matrix.
 
-At minimum the still-open cases are:
+The still-open exact-pair cases are component-slot relations:
 
 ```text
-continuous property:
-    SOURCE LIST -> TARGET SCALAR
-
 continuous component slot:
     SOURCE target ancestor -> TARGET target descendant
     SOURCE/TARGET targets unrelated
 ```
 
-Candidate policy families to evaluate in the next review block include:
+Candidate policy families to evaluate next include:
 
 ```text
 A. reject such exact migration pairs categorically
-   because normal Object SCHEMA_CHANGE supports only the currently defined
-   information-preserving transformations
 
-B. define additional controlled per-Object migration/admission semantics
-   where safe
+B. define conditional per-Object child-compatibility admission where safe
 ```
 
-No choice is made by the exact-target command decision itself.
+No component choice is made by the property decision.
 
-This matters operationally: if conditional component narrowing were ever allowed, current child compatibility would become mutable admission state again and the preparation/concurrency boundary would need to account for it. Until this semantic point is closed, claims of "no child compatibility read" apply only to exact pairs classified as equal-target/widening or otherwise already-covered slot deltas.
+This matters operationally: if conditional component narrowing were allowed, current child compatibility would become mutable admission state again and the preparation/concurrency boundary would need to account for it. Until this semantic point is closed, claims of "no child compatibility read" apply only to exact pairs classified as equal-target/widening or otherwise already-covered slot deltas.
 
 # 5. Immutable reusable MigrationPlan
 
@@ -358,6 +360,7 @@ The plan may contain/point to compiled immutable rules for:
 property semantic continuity/replacement
 add/remove/requiredness behavior
 shape transformation
+conditional LIST -> SCALAR cardinality rule
 TARGET exact-DTV validation/canonicalization
 TARGET migration_default behavior
 component semantic continuity/replacement
@@ -376,7 +379,9 @@ ownership membership
 current TARGET lifecycle status
 ```
 
-Unsupported/open exact-pair deltas are plan classification outcomes whose runtime policy remains OPEN; they must not be silently normalized into a supported widening/transformation.
+For `LIST -> SCALAR`, the plan contains the immutable transformation/admission rule but not the concrete cardinality outcome. That outcome is selected when the plan is applied to the current Object generation.
+
+Unsupported/open component exact-pair deltas are plan classification outcomes whose runtime policy remains OPEN; they must not be silently normalized into a supported widening/transformation.
 
 # 6. MigrationPlan cache-resolution model
 
@@ -551,7 +556,7 @@ A cold TARGET closure load may incidentally discover absent/non-certifiable targ
 
 Cached TARGET semantics/MigrationPlan may remain semantically valid if TARGET later becomes DEPRECATED. Cache presence never proves current new-binding admissibility.
 
-# 8. Property migration semantics retained
+# 8. Property migration semantics retained and revalidated
 
 The target property map is built **from TARGET semantic properties**, not by replaying JSON-key edits over SOURCE state.
 
@@ -663,20 +668,75 @@ ADD new semantic property
 
 The old value is not carried forward because the JSON name happens to match.
 
-## 8.7 LIST -> SCALAR remains explicitly OPEN
+## 8.7 Ratified conditional LIST -> SCALAR
 
-The existing migration semantics intentionally do not define information-losing LIST -> SCALAR conversion.
+A continuous semantic property may change from LIST in SOURCE to SCALAR in TARGET. SCHEMA_CHANGE admits this shape change only when it can preserve the complete concrete Object information.
 
-Under exact-target semantics this is simply one possible SOURCE/TARGET delta, independent of whether the target version number is greater or smaller than the source version number.
+Canonical rule for the current semantic SOURCE value:
+
+```text
+SOURCE value absent
+    -> TARGET remains absent
+       unless independent TARGET requiredness supplies
+       the canonical TARGET migration_default
+
+SOURCE value = [x]
+    -> TARGET candidate scalar = x
+    -> validate/canonicalize x under the complete TARGET exact-DTV semantics
+
+SOURCE value contains more than one item
+    -> migration not admissible for this Object
+    -> no arbitrary collapse
+```
+
+The exact cardinality condition is literal:
+
+```text
+len(current_list) == 1
+```
 
 Therefore:
 
 ```text
-LIST -> SCALAR observed in SOURCE/TARGET pair
-    -> current SCHEMA_CHANGE migration policy OPEN
+[x, x]
+    -> still two items
+    -> not lossless as LIST -> SCALAR
 ```
 
-No silent first-item selection, list collapse, default substitution or other conversion is inferred.
+LIST order and multiplicity are information in the current runtime model; duplicate values are allowed unless independently forbidden. SCHEMA_CHANGE must not deduplicate merely to make the conversion succeed.
+
+The route never performs:
+
+```text
+first-item selection
+last-item selection
+arbitrary item choice
+deduplication then collapse
+drop-to-absence because TARGET is optional
+migration_default replacement for incompatible existing information
+```
+
+The transformation is only one stage of the complete target-oriented rule. Simultaneous TARGET changes still apply. In particular:
+
+```text
+[x]
+    -> x
+    -> complete TARGET exact-DTV validation/canonicalization
+```
+
+If `x` is incompatible with TARGET constraints, the migration fails even though the list cardinality was one.
+
+This decision deliberately separates:
+
+```text
+schema-pair classification
+    -> immutable plan knows LIST -> SCALAR rule
+
+concrete Object migrability
+    -> current value cardinality + TARGET value validity
+```
+
+No additional PostgreSQL statement is introduced solely for LIST -> SCALAR admission because SCHEMA_CHANGE already needs the current property map to construct the complete TARGET candidate.
 
 # 9. Component-slot migration after current-slot materialization
 
@@ -840,7 +900,7 @@ PreparedSchemaChange
 
 It should be mechanically applicable once final mutable protections/admissions succeed. Expensive schema comparison, property transformation and TARGET value validation are not repeated merely because the mutation UoW begins.
 
-A plan that contains an OPEN exact-pair delta must not produce an executable PreparedSchemaChange until the policy for that delta is deliberately closed.
+A plan that contains an OPEN component exact-pair delta must not produce an executable PreparedSchemaChange until the policy for that delta is deliberately closed.
 
 # 12. Intrinsic Object freshness — fingerprint source material superseded by revision
 
@@ -1049,6 +1109,7 @@ property migration happens outside critical section
 normal covered preparation no longer scans outgoing edges
 slot delta adds bounded SCHEMA_CHANGE DML
 equal-target no-op requires no MigrationPlan or mutation UoW
+LIST -> SCALAR adds no extra PostgreSQL read beyond the current property generation already required for candidate construction
 ```
 
 Qualitative shift for covered deltas:
@@ -1063,13 +1124,13 @@ MORE
     object_component_slots delta writes
 ```
 
-Additional exact-pair migration policies may change this cost and must be accounted for after the migration matrix is closed.
+Additional component exact-pair migration policy may change this cost and must be accounted for after the component matrix is closed.
 
 # 19. Current open points
 
-## Active semantic review — exact-pair migration matrix
+## Active semantic review — component exact-pair migration matrix
 
-The exact-target command boundary is now ratified:
+The exact-target command boundary and property `LIST -> SCALAR` rule are now ratified:
 
 ```text
 target == current
@@ -1078,13 +1139,21 @@ target == current
 target != current
     -> evaluate exact SOURCE -> TARGET migrability
     -> numeric version relation is irrelevant to admission
+
+LIST -> SCALAR
+    absent
+        -> absence/default according to TARGET requiredness
+    exactly one item
+        -> [x] -> x -> TARGET exact validation/canonicalization
+    more than one item
+        -> migration failure for this Object
 ```
 
-Before SCHEMA_CHANGE can be route-semantically closed, M4 must explicitly choose behavior for still-unsupported exact-pair deltas including:
+Before SCHEMA_CHANGE can be route-semantically closed, M4 must explicitly choose behavior for still-unsupported component exact-pair deltas:
 
 ```text
-LIST -> SCALAR
-component target narrowing/unrelated relation
+component target narrowing
+component targets unrelated
 ```
 
 That choice must state:
@@ -1092,13 +1161,13 @@ That choice must state:
 ```text
 admitted vs rejected
 failure class/detail when rejected
-whether any per-Object data transformation or child compatibility check exists
+whether any per-Object child compatibility check exists
 concurrency consequences if conditional admission uses mutable membership
 ```
 
 ## Subsequent execution/lifecycle/failure review
 
-After the migration matrix, the full sweep still must close:
+After the component migration matrix, the full sweep still must close:
 
 ```text
 current intrinsic Object generation read/preparation
@@ -1177,6 +1246,11 @@ forward-only target-version semantics
 
 equal target -> 422
     -> superseded by 204 semantic no-op
+
+LIST -> SCALAR categorically outside normal migration contract
+    -> superseded by conditional lossless per-Object admission
+    -> absent or exactly-one-item value may migrate
+    -> multi-item value remains non-migrable without destructive policy
 
 preparatory outgoing-edge blocker authority
     -> superseded for REMOVE/replacement by final slot-FK arbitration
