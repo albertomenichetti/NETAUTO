@@ -4,7 +4,7 @@ Status: WIP / NON-NORMATIVE
 
 ## Scope
 
-This note records the M4 discovery around `GET /objects/{id}/lifecycle-events` after the public `GET /objects/{id}` representation was reopened to include direct component children and after lifecycle payload responsibility was revalidated during the Object.RENAME full sweep.
+This note records the M4 discovery around `GET /objects/{id}/lifecycle-events` after the public `GET /objects/{id}` representation was reopened to include direct component children and after lifecycle payload responsibility was revalidated during the Object.RENAME and Object.DATA_CHANGE full sweeps.
 
 This is discovery only. It does not freeze the complete lifecycle public contract and does not authorize implementation.
 
@@ -78,6 +78,48 @@ with Object identity already carried by the lifecycle event itself.
 
 This is an **exact** historical transition, not an approximate one.
 
+## Concrete DATA_CHANGE consequence
+
+DATA_CHANGE owns only the runtime-property transition actually produced by the accepted request effects.
+
+Its ratified historical payload is therefore an exact changed-property delta, not complete Object snapshots.
+
+Event context includes:
+
+```text
+object_id
+exact ObjectTemplate binding:
+    template_id
+    template_version
+```
+
+Each changed property is identified by:
+
+```text
+(declaring_template_id, property_name)
+```
+
+and records:
+
+```text
+before = canonical value | ABSENT
+after  = canonical value | ABSENT
+```
+
+Only properties whose semantic state actually changed are included. No-op requested effects are omitted from the event, and a request with zero actual changes emits no DATA_CHANGE event when no-op recognition is available on the normal apply path without material extra work.
+
+DATA_CHANGE does not duplicate:
+
+```text
+canonical_name
+unchanged properties
+components
+ownership
+Relationships
+```
+
+The exact JSON/DTO carrier remains Lifecycle API/persistence work; the semantic delta above is already fixed by the Object mutation owner.
+
 ## Components remain outside intrinsic mutation payloads
 
 Enriching current `GET /objects/{id}` with direct components still does not imply embedding component state in intrinsic lifecycle payloads.
@@ -120,7 +162,8 @@ RENAME
     -> exact old/new canonical_name only
 
 DATA_CHANGE
-    -> payload boundary to be revalidated during DATA_CHANGE full sweep
+    -> exact changed-property delta
+       + exact ObjectTemplate binding context
 
 SCHEMA_CHANGE
     -> payload boundary to be revalidated during SCHEMA_CHANGE full sweep
@@ -150,6 +193,10 @@ LifecycleEventDetail
 RENAME payload
     before.canonical_name
     after.canonical_name
+
+DATA_CHANGE payload
+    exact binding context
+    changed property deltas keyed by semantic property identity
 
 ObjectSnapshotDto
     retained only for event kinds whose semantic contract genuinely requires
@@ -208,7 +255,8 @@ This keeps audit data semantically complete without making every mutation/event 
 
 - Lifecycle payloads are operation-specific, not universally full Object snapshots.
 - RENAME stores/returns only the exact old/new canonical-name transition.
+- DATA_CHANGE stores/returns the exact changed-property delta plus exact binding context.
 - Components remain outside intrinsic event payloads; ATTACH/DETACH own ownership history.
-- DATA_CHANGE and SCHEMA_CHANGE payload boundaries remain to be revalidated by their own full sweeps.
+- SCHEMA_CHANGE payload boundary remains to be revalidated by its own full sweep.
 - Collection reads should use bounded summaries; complete kind-specific payload belongs to event detail.
 - No cache or new read-side denormalization is justified by this decision.
