@@ -74,6 +74,14 @@ Object.DATA_CHANGE
     -> exact ObjectTemplate binding context
     -> each property identified by (declaring_template_id, property_name)
     -> before/after distinguish canonical value from ABSENT
+
+Object.SCHEMA_CHANGE
+    -> exact binding transition (template_id, source_version, target_version)
+    -> exact delta of runtime properties that actually changed
+    -> each property identified by (declaring_template_id, property_name)
+    -> before/after distinguish canonical value from ABSENT
+    -> no full intrinsic Object snapshots
+    -> no duplicated materialized slot or ownership payload
 ```
 
 Conceptual RENAME detail fragment:
@@ -99,11 +107,21 @@ changes = [
 ]
 ```
 
-The exact JSON shape for `ABSENT`, property-delta arrays/maps and binding placement remains open for Lifecycle API design; the semantic information is already fixed by the DATA_CHANGE owner.
+Conceptual SCHEMA_CHANGE semantics:
 
-Other event kinds may have broader payloads when their semantic transition genuinely requires them. CREATE/DELETE may legitimately preserve broader resource state; SCHEMA_CHANGE remains subject to its own full-sweep payload review.
+```text
+binding_transition = T@VS -> T@VT
+changes = [
+    (declaring_template_id, "environment"): ABSENT -> "production",
+    (declaring_template_id, "tag"): ["core"] -> "core"
+]
+```
 
-Factual Relationship and ownership event families analogously retain only the complete transition required by their own contracts.
+A SCHEMA_CHANGE detail remains meaningful even when `changes = []`, because the exact binding transition itself is historical state.
+
+The exact JSON shape for `ABSENT`, property-delta arrays/maps and binding placement remains open for Lifecycle API design; the semantic information is already fixed by the owning Object operations.
+
+Other event kinds may have broader payloads when their semantic transition genuinely requires them. CREATE/DELETE may legitimately preserve broader resource state. Factual Relationship and ownership event families analogously retain only the complete transition required by their own contracts.
 
 ## Concrete summary examples
 
@@ -164,7 +182,9 @@ LifecycleEventDetail
 
 A generic `ObjectSnapshotDto` may still be useful for event kinds that genuinely own a complete intrinsic Object snapshot, but it is not the universal `before` / `after` type for all intrinsic events.
 
-DATA_CHANGE detail specifically must be able to express exact value-vs-ABSENT deltas without expanding untouched Object state.
+DATA_CHANGE and SCHEMA_CHANGE detail specifically must be able to express exact value-vs-ABSENT property deltas without expanding untouched Object state.
+
+SCHEMA_CHANGE detail must additionally carry the exact source/target binding transition independently of whether any property value changed.
 
 Enriching current `GET Object` with direct components does not imply adding components to lifecycle payloads. Ownership history remains represented through ATTACH/DETACH events.
 
@@ -174,8 +194,8 @@ This WIP intentionally does **not** decide yet:
 
 - exact summary fields for every lifecycle event family;
 - exact detail DTO discriminated-union shape;
-- exact JSON/typed carrier for DATA_CHANGE `ABSENT` and property deltas;
-- exact payload boundary for Object SCHEMA_CHANGE;
+- exact JSON/typed carrier for DATA_CHANGE/SCHEMA_CHANGE `ABSENT` and property deltas;
+- exact field naming/placement for SCHEMA_CHANGE binding transition;
 - whether a summary should carry small family-specific metadata beyond current identifiers/names;
 - exact ordering/cursor contract changes, if any;
 - whether the object-scoped lifecycle list has any summary field different from the global list;
@@ -187,3 +207,5 @@ Those points belong to detailed operation-level API/read analysis.
 ## Candidate first-phase conclusion
 
 Treat lifecycle-event collection endpoints as paginated discovery/history summaries whose response size is primarily bounded by page cardinality. Treat one lifecycle event as the resource whose detail read returns its complete persisted **operation-owned semantic transition**, not an automatically expanded aggregate snapshot.
+
+SCHEMA_CHANGE now has a closed semantic payload boundary for later detail-DTO design: exact binding transition plus changed runtime-property delta, with no full Object snapshot or duplicated slot/ownership state.
