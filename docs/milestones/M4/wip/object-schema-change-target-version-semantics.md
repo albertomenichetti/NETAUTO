@@ -1,16 +1,20 @@
 # M4 WIP — Object SCHEMA_CHANGE target-version semantics
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: SUPERSEDED SOURCE MATERIAL / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This note records the target-version classification frozen for:
+> **Superseded by current owner:** [`object-schema-change.md`](object-schema-change.md).
+>
+> The current reviewed direction no longer treats numeric version order as migration order. SCHEMA_CHANGE is an exact SOURCE -> TARGET migration; `target_version == current_version` is a `204` semantic no-op, while any distinct exact target is evaluated by SOURCE/TARGET migrability independently of whether its number is greater or smaller.
+>
+> The content below is retained only as historical discovery evidence and must not be used as current authority.
+
+This note records the earlier target-version classification that was frozen before the cross-domain version semantics were revalidated.
 
 ```http
 POST /api/v1/core/objects/{object_id}/schema
 ```
 
-The route is a forward schema-migration command. It is not a generic setter for the Object's exact schema version.
-
-## Forward-only rule
+## Historical forward-only rule — SUPERSEDED
 
 Given the Object aggregate snapshot used for preparation:
 
@@ -19,19 +23,17 @@ current_version = S.template_version
 target_version  = request.target_version
 ```
 
-normal M4 schema migration requires:
+the earlier candidate required:
 
 ```text
 target_version > current_version
 ```
 
-Intermediate versions are not traversed; a valid forward request may skip versions and is planned directly SOURCE effective schema -> TARGET effective schema.
+Intermediate versions were not traversed; a request was planned directly SOURCE effective schema -> TARGET effective schema.
 
-Schema downgrade/rollback remains outside the normal M4 contract.
+## Historical equal-target rule — SUPERSEDED
 
-## Equal target is not a no-op
-
-The route does not define idempotent convergence for an already-current exact version.
+The earlier candidate classified:
 
 ```text
 target_version == current_version
@@ -41,53 +43,43 @@ target_version == current_version
     -> no mutation UoW
 ```
 
-The caller requested a schema migration but did not identify a forward target.
+Current owner supersedes this with:
 
-This intentionally differs from mutation commands whose domain contract explicitly defines convergence/no-op success.
+```text
+target_version == current_version
+    -> 204 semantic no-op
+    -> no mutation
+    -> no revision increment
+    -> no SCHEMA_CHANGE lifecycle
+```
 
-## Lower target is invalid
+## Historical lower-target rule — SUPERSEDED
+
+The earlier candidate classified:
 
 ```text
 target_version < current_version
     -> semantic failure
-    -> downgrade is not a normal migration
-    -> no lifecycle event
-    -> no mutation UoW
+    -> downgrade unsupported
 ```
 
-## Public failure mapping
+Current owner supersedes this because numeric order encodes creation/allocation order only, not migration direction. A numerically lower distinct target is an exact migration candidate whose admissibility depends on SOURCE/TARGET semantics and concrete Object state where required.
 
-Both equal and lower target versions map to the existing semantic-validation class:
+## Historical public failure mapping — SUPERSEDED
+
+Both equal and lower target versions previously mapped to:
 
 ```text
 HTTP 422
 code = semantic_validation_failed
+rule = must_be_greater_than_current_version
 ```
 
-Canonical bounded diagnostic shape:
+That diagnostic is no longer part of the current SCHEMA_CHANGE contract.
 
-```json
-{
-  "code": "semantic_validation_failed",
-  "message": "The requested target version is not a valid forward schema migration target.",
-  "details": {
-    "violations": [
-      {
-        "path": "target_version",
-        "rule": "must_be_greater_than_current_version"
-      }
-    ],
-    "current_version": 5,
-    "target_version": 5
-  }
-}
-```
+## Historical early classification — SUPERSEDED
 
-The stable public branching contract remains the top-level `code`; no dedicated new error code is introduced solely for non-forward target selection.
-
-## Early classification
-
-This classification is performed from the preparatory Object snapshot before expensive MigrationPlan application and before entering the mutation UoW.
+Earlier:
 
 ```text
 target_version <= observed current_version
@@ -97,65 +89,29 @@ target_version > observed current_version
     -> continue preparation
 ```
 
-For `target <= current`, the negative decision is stronger than the generally accepted conservative-failure rule: because normal Object schema migration itself is forward-only, another concurrent schema migration can only leave the current version unchanged or increase it. It cannot make a target already less-than-or-equal to the observed current version become a valid forward target.
+This depended on the now-superseded assumption that Object schema migration could only increase version numbers.
 
-## Concurrent forward migrations
-
-A request initially observed as forward may become stale before commit.
-
-Example:
+Current classification is:
 
 ```text
-T1 preparation
-    current = 4
-    requested target = 6
+target_version == observed current_version
+    -> 204 semantic no-op
 
-T2 commits
-    4 -> 5
+target_version != observed current_version
+    -> identify exact SOURCE/TARGET pair
+    -> evaluate migrability independently of numeric ordering
 ```
 
-T1's protected aggregate fingerprint no longer matches and its prepared success cannot commit. After bounded restart:
+## Historical concurrency example — SOURCE EVIDENCE ONLY
+
+The earlier candidate reasoned about concurrent migrations exclusively as increasing numeric versions and used an aggregate fingerprint retry mechanism. Both assumptions have since been superseded:
 
 ```text
-current = 5
-target = 6
-    -> still forward
-    -> prepare MigrationPlan(5,6)
+numeric order
+    -> not migration order
+
+intrinsic Object fingerprint
+    -> superseded by universal objects.revision generation semantics
 ```
 
-If instead another transaction commits:
-
-```text
-4 -> 7
-```
-
-then on retry:
-
-```text
-current = 7
-target = 6
-    -> non-forward
-    -> 422 semantic_validation_failed
-```
-
-The strong false-success protection therefore composes naturally with the forward-only target rule.
-
-## Frozen decision
-
-```text
-target_version < current_version
-    -> 422 semantic_validation_failed
-    -> no downgrade
-    -> no UoW
-    -> no lifecycle
-
-target_version == current_version
-    -> 422 semantic_validation_failed
-    -> NOT an idempotent no-op
-    -> no UoW
-    -> no lifecycle
-
-target_version > current_version
-    -> valid forward candidate
-    -> continue target existence/lifecycle admission and migration preparation
-```
+The current retry/reprepare behavior is owned by `object-schema-change.md` together with [`object-revision.md`](object-revision.md) and remains under focused SCHEMA_CHANGE revalidation.
