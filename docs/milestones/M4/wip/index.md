@@ -73,6 +73,10 @@ cross-version migrability
 
 REVISE/PUBLISH own only the invariants required by their own contracts;
 they do not speculate about future runtime migrations
+
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+    != automatic full aggregate before/after snapshots
 ```
 
 This file is expected to grow as new general principles are ratified.
@@ -144,6 +148,7 @@ Current full-sweep checkpoints inside this owner:
 POST /objects
 GET /objects
 GET /objects/{id}
+PUT /objects/{id}/canonical-name
 DELETE /objects/{id}
 ```
 
@@ -280,18 +285,13 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 
 - [`to-be-api-object-attach-batch-cost.md`](to-be-api-object-attach-batch-cost.md)
 - [`to-be-api-object-attach-batch.md`](to-be-api-object-attach-batch.md)
-- [`to-be-api-object-canonical-name.md`](to-be-api-object-canonical-name.md)
 - [`to-be-api-object-detach-batch.md`](to-be-api-object-detach-batch.md)
 - [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md)
-- [`to-be-api-object-rename.md`](to-be-api-object-rename.md)
 - [`to-be-api-object-schema.md`](to-be-api-object-schema.md)
 - [`object-data-change-discovery.md`](object-data-change-discovery.md)
-- [`object-rename-discovery.md`](object-rename-discovery.md)
-- [`object-rename-same-name-semantics.md`](object-rename-same-name-semantics.md)
-- [`object-rename-approximate-lifecycle.md`](object-rename-approximate-lifecycle.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after lossless absorption.
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after lossless absorption.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
