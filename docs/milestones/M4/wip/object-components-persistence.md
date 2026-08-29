@@ -1,6 +1,6 @@
 # M4 WIP — Object component persistence consolidated discovery
 
-**Status:** CROSS-OPERATION OWNER CONSOLIDATED / SCHEMA_CHANGE OWNER PENDING / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** CROSS-OPERATION OWNER CONSOLIDATED / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
@@ -28,15 +28,13 @@ migration/backfill direction
 physical-design architecture handoff
 ```
 
-Public Object routes are owned by [`object.md`](object.md).
-
-Detailed Object schema-migration mechanics are intentionally separate and will be consolidated into `object-schema-change.md`.
+Public Object routes, including the full-swept SCHEMA_CHANGE route, are owned by [`object.md`](object.md).
 
 This document does **not** freeze the final physical relational schema. Exact DDL, PRIMARY KEY vs UNIQUE realization, final index set/order, constraint names/actions, migration mechanics, `EXPLAIN` evidence and storage/write measurements belong to the later M4 architecture phase.
 
 Everything under `wip/` remains non-normative. This file is only a discovery checkpoint.
 
-The lossless comparison pass against the current materialization, runtime-schema, physical-schema, FK-arbitration, read-projection and physical-index WIPs is complete. Older source WIPs remain temporarily in the tree until `object-schema-change.md` is consolidated and references can be cleaned safely.
+The lossless comparison pass against the current materialization, runtime-schema, physical-schema, FK-arbitration, read-projection and physical-index WIPs is complete. The focused SCHEMA_CHANGE route closure has since been losslessly absorbed into `object.md`; Git history remains the historical record for superseded route-local and micro-WIP material.
 
 # 1. Baseline and materialization challenge
 
@@ -696,7 +694,7 @@ REMOVE/replacement
 
 A concurrent DETACH may therefore allow a slot removal/replacement to succeed if it removes the last reference before final arbitration rather than forcing a conservative failure derived from an older ownership snapshot.
 
-The exact intrinsic fingerprint and UoW/statement realization belong to `object-schema-change.md`.
+The full SCHEMA_CHANGE route semantics, intrinsic freshness protocol, lifecycle, failure and cost closure are owned by `object.md`; exact SQL/UoW realization remains architecture work.
 
 Slot-delta row work is proportional to changed slots rather than total slots:
 
@@ -1031,7 +1029,7 @@ storage/write measurements
 final PostgreSQL plan evidence
 ```
 
-Downstream `object-schema-change.md` must specifically revalidate the old outgoing-ownership fingerprint and parent-lock assumptions against this persistence boundary.
+The full-swept SCHEMA_CHANGE section in `object.md` has already revalidated the former outgoing-ownership fingerprint and parent-lock assumptions against this persistence boundary; architecture must preserve the resulting relational arbitration semantics.
 
 # 17. Consolidation sources
 
@@ -1047,7 +1045,3 @@ object-components-reads-discovery.md
 ```
 
 Route-specific consequences are summarized here only to explain cross-operation value; `object.md` remains the route owner.
-
-The source WIPs remain temporarily in the tree until `object-schema-change.md` is consolidated and a final reference/cleanup sweep confirms that no active WIP still depends on them as a current owner.
-
-After cleanup, Git history remains the historical record for superseded discovery checkpoints.
