@@ -102,8 +102,8 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
 | `POST /objects` | public contract retained; slot persistence revalidated | current binding admission + READY semantic cache + Object/slot materialization |
-| `GET /objects` | route-local closed | one statement on `objects` |
-| `GET /objects/{id}` | route-local revalidated after slot materialization | one current data-plane statement, no component-schema cache |
+| `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
+| `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
 | `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
 | `POST /objects/{id}/properties` | route-local closed | binding read + READY semantic cache + short protected UoW |
 | `GET /objects/{id}/schema` | route-local closed | one Object -> ObjectTemplate PK-to-PK statement |
@@ -292,7 +292,7 @@ Warm route statement direction remains approximately:
 
 Additional materialization work is proportional to effective slot count `S`, without touching `object_components` because a new Object starts with no ownership edges.
 
-# 2. LIST Objects
+# 2. LIST Objects — full sweep complete
 
 ## Public contract
 
@@ -300,21 +300,27 @@ Additional materialization work is proportional to effective slot count `S`, wit
 GET /api/v1/core/objects
 ```
 
+Request body: none.
+
 Supported query parameters:
 
 ```text
 object_template_id: UUID | optional
 object_template_version: positive integer | optional
 canonical_name: string | optional
-cursor: string | optional
-limit: positive integer | optional, default 100
+cursor: opaque string | optional
+limit: integer 1..500 | optional, default 100
 ```
+
+Unknown or repeated query parameters are invalid request input.
 
 Validation:
 
 ```text
 object_template_version requires object_template_id
 ```
+
+The M4 public names intentionally differ from the current AS-IS `template_id` / `template_version` query names. The caller-facing M4 surface uses the explicit `object_template_*` namespace consistently with the nested ObjectTemplate reference in the response.
 
 Filters are exact and non-polymorphic:
 
@@ -329,9 +335,11 @@ canonical_name
     -> exact equality
 ```
 
+No ObjectTemplate ancestry expansion is implied. A filter for one lineage does not include Objects pinned to descendant lineages.
+
 Unknown filter values return an empty `200` page rather than `404`.
 
-Response:
+Success representation:
 
 ```json
 {
@@ -349,6 +357,21 @@ Response:
 }
 ```
 
+Conceptual wire model:
+
+```text
+ObjectSummaryDto
+    id: UUID
+    canonical_name: string
+    object_template:
+        id: UUID
+        version: positive integer
+
+ObjectPageDto
+    items: ObjectSummaryDto[]
+    next_cursor: string | null
+```
+
 Collection items intentionally exclude:
 
 ```text
@@ -359,24 +382,76 @@ relationships
 ObjectTemplate mutable metadata
 ```
 
-Pagination remains deterministic keyset pagination by Object id:
+LIST is a bounded search/navigation surface. It does not reuse the richer exact-resource DTO solely for representation uniformity.
+
+## Pagination
+
+Pagination is deterministic keyset pagination by Object id:
 
 ```text
 ORDER BY objects.id ASC
-cursor position = last Object id
-cursor identity = complete active filter set
+cursor position = last returned Object id
 ```
+
+The cursor is opaque and bound to:
+
+```text
+route identity
+complete active filter set:
+    object_template_id
+    object_template_version
+    canonical_name
+canonical ordering
+```
+
+`limit` is not part of semantic cursor identity and may change between pages.
+
+Therefore:
+
+```text
+same route + same filters + same cursor + different limit
+    -> valid continuation
+
+same cursor + different active filters
+    -> invalid_cursor
+```
+
+The route exposes no:
+
+```text
+offset
+page number
+total_count
+has_more
+previous_cursor
+sort
+order_by
+direction
+```
+
+`next_cursor != null` is the only continuation signal.
+
+Each page is independently snapshot-consistent. Cross-request pagination does not promise a repeatable dataset snapshot:
+
+```text
+page 1
+-> concurrent committed mutations
+-> page 2
+```
+
+may observe changed membership according to the new committed state. The cursor is a continuation token, not a snapshot/export/CDC token.
 
 ## Data path
 
+The route is a pure current mutable data-plane read.
+
+Required logical source:
+
 ```text
-1 PostgreSQL statement on objects
-0 cache
-0 locks
-0 model-plane reads
+objects only
 ```
 
-The query projects only:
+One PostgreSQL statement projects only:
 
 ```text
 id
@@ -385,7 +460,116 @@ template_id
 template_version
 ```
 
-Physical index review remains architecture-wide.
+with:
+
+```text
+optional exact equality filters
+optional id > :cursor_id predicate
+ORDER BY id ASC
+LIMIT :limit_plus_one
+```
+
+The application then:
+
+```text
+reads at most limit + 1 rows
+returns the first limit rows
+emits next_cursor from the last returned id when an extra row exists
+reshapes template_id/template_version into object_template {id, version}
+```
+
+Current target profile:
+
+```text
+PostgreSQL statements     1
+tables                    objects only
+projected columns         4
+cache                     0
+model-plane reads         0
+component reads           0
+relationship reads        0
+lifecycle reads           0
+explicit locks            0
+multi-statement coherence 0
+denormalization required  0
+```
+
+The route must not read:
+
+```text
+properties JSONB
+object_component_slots
+object_components
+ObjectTemplate rows/effective-schema materializations
+DataType state
+Relationship state
+Lifecycle state
+worker-local semantic caches
+```
+
+The persisted `(template_id, template_version)` is already the Object's current exact binding and is reported as current state. LIST does not re-admit or reinterpret that binding against current ObjectTemplate lifecycle/default state.
+
+An Object may therefore remain visible with a binding to an exact ObjectTemplateVersion that is now DEPRECATED; LIST reports the current Object state and does not ask whether the same exact version would be admissible for a new binding today.
+
+## Consistency and concurrency
+
+One authoritative PostgreSQL statement is the complete public projection. Its statement snapshot is the complete read-consistency boundary.
+
+No explicit row locks, optimistic fingerprints, retries, coherent multi-statement read protocol or REPEATABLE READ transaction are required.
+
+Concurrent Object mutations are observed according to ordinary statement visibility:
+
+```text
+CREATE
+    -> row absent before commit / visible after commit
+
+DELETE
+    -> row visible before commit / absent after commit
+
+RENAME
+    -> old or new canonical_name from one row version in one statement snapshot
+
+SCHEMA_CHANGE
+    -> old or new exact binding from one row version in one statement snapshot
+```
+
+The page cannot mix fields from multiple independently observed Object generations because every summary is read by the same statement.
+
+## Complexity and weight
+
+Application/result work is bounded by page size:
+
+```text
+O(page size)
+```
+
+plus PostgreSQL filtering/keyset access cost.
+
+The route does not scale with:
+
+```text
+Object property count
+component count
+ownership depth
+ObjectTemplate inheritance depth
+Relationship count
+lifecycle-event count
+```
+
+No M4 denormalization/materialization is required for this route.
+
+## Architecture handoff
+
+The logical route is full-sweep complete.
+
+Deferred only to the later architecture-wide physical-design phase:
+
+```text
+final physical index set
+final PostgreSQL plan/EXPLAIN evidence
+```
+
+No route-local physical index is ratified during discovery. Architecture must evaluate Object LIST together with the complete Object workload and preserve the one-statement bounded-summary path above.
 
 # 3. GET Object
 
