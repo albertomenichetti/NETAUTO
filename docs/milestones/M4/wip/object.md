@@ -10,25 +10,31 @@ It replaces route-local fragmentation with one readable checkpoint for the curre
 
 Everything under `wip/` remains non-normative. Local closure wording is only a discovery checkpoint and does not authorize implementation.
 
-The route-owner comparison pass has been completed against the current route-local Object owners. Older route-local and micro-step files remain temporarily in the tree only until the two cross-cutting consolidations are complete and references can be cleaned safely.
+The route-owner comparison pass has been completed against the current route-local Object owners. Older route-local and micro-step files remain temporarily in the tree only until the relevant lossless consolidations are complete and references can be cleaned safely.
 
-Detailed cross-operation component persistence is intentionally kept outside this file and will be consolidated into:
+Detailed cross-operation component persistence is intentionally kept outside this file and is owned by:
 
 ```text
 object-components-persistence.md
 ```
 
-Detailed Object schema-migration mechanics are intentionally kept outside this file and will be consolidated into:
+Detailed Object schema-migration mechanics are intentionally kept outside this file and are owned by:
 
 ```text
 object-schema-change.md
+```
+
+Cross-operation intrinsic Object generation semantics are owned by:
+
+```text
+object-revision.md
 ```
 
 Git history is the historical record for superseded discovery checkpoints after cleanup.
 
 # Shared Object runtime candidate
 
-Current intrinsic Object state remains:
+Current intrinsic Object state is:
 
 ```text
 objects
@@ -37,7 +43,10 @@ objects
     template_id
     template_version
     properties JSONB
+    revision BIGINT NOT NULL
 ```
+
+`revision` is the internal technical generation token for the intrinsic `objects` row. It starts at `1` on CREATE and every persisted intrinsic Object mutation derived from a previously observed generation uses `expected_revision`; a successful persisted mutation advances the generation atomically. It is not ObjectTemplate version, business/domain version, lifecycle sequence, ownership generation or public Object state. Detailed cross-operation semantics are owned by [`object-revision.md`](object-revision.md).
 
 Current component/ownership candidate is:
 
@@ -101,13 +110,13 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
-| `POST /objects` | **full-sweep complete** | non-abstract lineage + exact target PUBLISHED admission + READY validation cache with opportunistic component warming + atomic Object/slot/lifecycle materialization |
+| `POST /objects` | **full-sweep complete** | non-abstract lineage + exact target PUBLISHED admission + READY validation cache + explicit `revision=1` + atomic Object/slot/lifecycle materialization |
 | `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
 | `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
-| `PUT /objects/{id}/canonical-name` | **full-sweep complete** | exact current-name protection + canonical-name-only update + exact minimal RENAME lifecycle |
-| `POST /objects/{id}/properties` | route-local closed | binding read + READY semantic cache + short protected UoW |
+| `PUT /objects/{id}/canonical-name` | **full-sweep complete** | read old name + revision, expected-revision CAS, `revision+1`, exact minimal RENAME lifecycle |
+| `POST /objects/{id}/properties` | **full-sweep complete** | read full Object generation, READY requested-effect validation, application-side complete properties candidate, cheap no-op or expected-revision replacement + exact DATA_CHANGE delta |
 | `GET /objects/{id}/schema` | route-local closed | one Object -> ObjectTemplate PK-to-PK statement |
-| `POST /objects/{id}/schema` | public surface retained; execution active revalidation | immutable migration plan + intrinsic revalidation + slot-delta maintenance |
+| `POST /objects/{id}/schema` | public surface retained; execution active revalidation | immutable migration plan + universal expected-revision intrinsic freshness + slot-delta maintenance |
 | `GET /objects/{parent}/components/{slot}` | route-local checkpoint | one current data-plane statement |
 | `POST /objects/{parent}/components/{slot}/attach` | public semantics retained; execution revalidated | current slot materialization + ancestry cache + graph admission + FK arbitration |
 | `POST /objects/{parent}/components/{slot}/detach` | public semantics retained; execution revalidated | set-based current-edge delete + lifecycle |
@@ -360,7 +369,7 @@ STEP 2 — stable direct-creation eligibility + semantic preparation / property 
 
 STEP 3 — short mutation UoW
     final exact PUBLISHED admission/protection
-    + INSERT Object
+    + INSERT Object generation 1
     + materialize all current component slots
     + CREATED lifecycle
 ```
@@ -478,6 +487,7 @@ ObjectCandidate
     template_id = T
     template_version = V
     canonical properties
+    revision = 1
 ```
 
 No cache fill, semantic reconstruction or property validation belongs inside the mutation UoW.
@@ -489,7 +499,7 @@ BEGIN
 
 S1
     final exact T@V PUBLISHED admission/protection
-    + INSERT objects row
+    + INSERT objects row with revision = 1 explicitly
     + bounded DB-internal copy of all certified exact effective component slots
       from object_template_effective_components(T,V)
       into object_component_slots
@@ -502,7 +512,7 @@ COMMIT
 
 The component materialization path is intentionally DB-internal. CREATE does not need to transfer exact component semantics DB -> worker -> DB merely to create `object_component_slots` rows.
 
-Object state, exact binding, complete materialized current slot set and CREATED lifecycle transition must become visible atomically.
+Object state, exact binding, intrinsic generation `1`, complete materialized current slot set and CREATED lifecycle transition must become visible atomically.
 
 CREATE writes:
 
@@ -570,7 +580,7 @@ STEP 2
     CPU-only abstract check + property validation/canonicalization
 
 STEP 3
-    1 final admission + Object + slot materialization candidate statement
+    1 final admission + Object generation-1 + slot materialization candidate statement
     1 CREATED lifecycle statement
     COMMIT
 
@@ -592,7 +602,7 @@ These counts are discovery cost targets, not a frozen SQL realization. Exact sta
 
 ### Relational/materialization implication
 
-CREATE introduces no additional route-specific denormalization beyond already identified M4 candidates:
+CREATE introduces no route-specific denormalization beyond already identified M4 candidates and the shared cross-operation Object revision column:
 
 ```text
 object_template_effective_properties
@@ -603,9 +613,11 @@ object_template_effective_components
 
 object_component_slots
     -> current per-Object derived slot contract
-```
 
-No CREATE-specific additional table or copied component payload on `objects` is required.
+objects.revision
+    -> shared intrinsic generation token
+    -> CREATE explicitly initializes it to 1
+```
 
 ## Failure mapping and precedence
 
@@ -691,6 +703,7 @@ Object candidate properties
 
 new persisted Object state
     -> exact binding
+    -> intrinsic revision = 1
     -> complete current effective slot materialization
     -> zero ownership edges
     -> CREATED lifecycle transition
@@ -735,12 +748,13 @@ final cache class/layout/eviction and local fill coordination
 exact STEP-3 SQL statement fusion
 final lock mode / rendezvous against DEPRECATE and DELETE_LINEAGE
 final PK/UNIQUE/FK realization
+final physical revision type/default/check details preserving explicit CREATE revision=1
 final indexes
 EXPLAIN/BUFFERS and measured row/payload evidence
 constraint/SQLSTATE realization preserving the ratified public failure classes
 ```
 
-Those choices must preserve the public contract, bounded three-stage data path, no-consistency-sweep boundary, failure precedence, exact new-binding admission, opportunistic component warming policy and atomic Object/slot/lifecycle state defined above.
+Those choices must preserve the public contract, bounded three-stage data path, no-consistency-sweep boundary, failure precedence, exact new-binding admission, explicit initial intrinsic generation, opportunistic component warming policy and atomic Object/slot/lifecycle state defined above.
 
 # 2. LIST Objects — full sweep complete
 
@@ -830,6 +844,7 @@ components
 owner
 relationships
 ObjectTemplate mutable metadata
+revision
 ```
 
 LIST is a bounded search/navigation surface. It does not reuse the richer exact-resource DTO solely for representation uniformity.
@@ -948,6 +963,7 @@ The route must not read:
 
 ```text
 properties JSONB
+revision
 object_component_slots
 object_components
 ObjectTemplate rows/effective-schema materializations
@@ -965,7 +981,7 @@ An Object may therefore remain visible with a binding to an exact ObjectTemplate
 
 One authoritative PostgreSQL statement is the complete public projection. Its statement snapshot is the complete read-consistency boundary.
 
-No explicit row locks, optimistic fingerprints, retries, coherent multi-statement read protocol or REPEATABLE READ transaction are required.
+No explicit row locks, optimistic fingerprints, revision checks, retries, coherent multi-statement read protocol or REPEATABLE READ transaction are required.
 
 Concurrent Object mutations are observed according to ordinary statement visibility:
 
@@ -1096,6 +1112,7 @@ slot_declaring_template_id
 child properties
 recursive child components
 ObjectTemplate mutable metadata
+revision
 ```
 
 Child arrays are deterministic by `child_object_id ASC`. JSON object-key order is not contractual.
@@ -1246,6 +1263,8 @@ DELETE
     -> existing Object representation or 404 according to snapshot visibility
 ```
 
+The GET does not expose or use `revision` merely to provide a current representation. The statement snapshot is already the complete read-consistency boundary.
+
 The GET does not re-certify the materialized slot invariant against model-plane schema. Invariant verification belongs to write constraints, migration verification, tests/evidence or diagnostic tooling, not to the normal hot read path.
 
 ## Architecture handoff
@@ -1352,7 +1371,9 @@ No equality precheck is introduced solely to classify same-name requests. A succ
 old_name == new_name
 ```
 
-This is intentionally distinct from DATA_CHANGE, where a semantic no-op currently emits no fake lifecycle transition.
+Same-name assignment is a persisted intrinsic mutation and therefore advances technical `revision` like any other successful RENAME.
+
+This is intentionally distinct from DATA_CHANGE, where a cheap semantic no-op can commit no state transition and therefore no revision/lifecycle.
 
 ## Semantic responsibility boundary
 
@@ -1372,6 +1393,8 @@ Object.properties
 ownership/component facts
 factual Relationships
 ```
+
+`revision` advances as technical intrinsic-generation metadata; that does not widen RENAME's business semantic responsibility.
 
 Normal RENAME therefore requires no:
 
@@ -1431,70 +1454,69 @@ Equivalent generic JSON-carrier direction:
 }
 ```
 
-The event must not duplicate unchanged state merely for payload uniformity:
+The event must not duplicate unchanged/technical state merely for payload uniformity:
 
 ```text
 id inside before/after when object_id already identifies the event subject
 template_id
 template_version
 properties
+revision
 ownership/components
 Relationships
 ```
 
 The historical transition remains exact. What is removed is irrelevant unchanged state, not precision.
 
-This supersedes both earlier candidates:
-
-```text
-best-effort / approximate complete Object snapshots
-exact complete Object snapshots
-```
-
-Neither is needed for the semantic transition RENAME owns.
-
 ## Ratified logical execution/data path
 
-Only current existence, the exact old canonical name and the requested new canonical name are required.
+RENAME uses the universal intrinsic-generation rule from [`object-revision.md`](object-revision.md).
 
 ```text
 validate canonical_name
     -> CPU only
 
-BEGIN
-
 Q1
-    obtain/protect current Object identity + exact old canonical_name
+    read one current Object generation:
+        id
+        canonical_name = old_name
+        revision = R
 
     absent
         -> 404 resource_not_found
 
 Q2
-    UPDATE canonical_name only
-    + INSERT exactly one RENAME lifecycle event
+    commit only against expected_revision = R
 
-    lifecycle before:
-        canonical_name = old_name
-
-    lifecycle after:
-        canonical_name = requested_name
-
-COMMIT
+    canonical_name := requested_name
+    revision       := R + 1
+    append exactly one RENAME lifecycle event:
+        old_name -> requested_name
 ```
 
-Preferred logical successful cost:
+If Q2 observes that revision `R` is no longer current:
+
+```text
+stale attempt
+    -> no Object mutation
+    -> no lifecycle
+    -> bounded retry from a fresh Object generation
+```
+
+The universal generation CAS replaces a separate canonical-name-specific logical freshness mechanism. Exact SQL/lock/wait realization remains architecture work.
+
+Preferred uncontended successful cost:
 
 ```text
 2 PostgreSQL business statements + COMMIT
 
 Q1
-    exact old-name acquisition/protection
+    exact old-name + revision read
 
 Q2
-    canonical_name UPDATE + RENAME lifecycle INSERT
+    expected-revision canonical_name + revision UPDATE
+    + RENAME lifecycle INSERT
 ```
-
-The second statement is a logical fused write direction: the row actually updated can feed the lifecycle append inside PostgreSQL without transferring unrelated Object state through the application.
 
 There is no warm/cold distinction.
 
@@ -1504,6 +1526,7 @@ Data/cache profile:
 current Object columns needed
     id
     canonical_name
+    revision
 
 properties JSONB read
     0
@@ -1523,38 +1546,35 @@ semantic cache
 
 ## Concurrency outcomes
 
-Lifecycle narrowing removes any RENAME-owned need to serialize with unrelated Object fields merely to capture a full aggregate snapshot.
-
-Required outcomes:
+All intrinsic Object writers use the same expected-revision generation protocol.
 
 ```text
-RENAME x RENAME on same Object
-    -> each successful assignment records its exact old -> new transition
-    -> transitions are serially explainable
-    -> final canonical_name is one complete committed assignment
+RENAME x RENAME
+    -> one writer advances R -> R+1
+    -> the other stale attempt retries
+    -> each successful assignment records exact old -> new
 
-RENAME x DATA_CHANGE on same Object
-    -> neither operation may overwrite the other's field ownership
-    -> RENAME does not require a properties snapshot
+RENAME x DATA_CHANGE
+    -> one commits first and advances revision
+    -> other stale attempt retries even though fields are semantically independent
+    -> conservative retry is intentional
 
-RENAME x SCHEMA_CHANGE on same Object
-    -> neither operation may overwrite the other's field ownership
-    -> RENAME does not require exact binding/properties for its lifecycle
+RENAME x SCHEMA_CHANGE
+    -> same universal generation ordering/retry
 
-RENAME x DELETE on same Object
-    -> RENAME commits before DELETE
-       OR DELETE wins and RENAME cannot commit against/resurrect the absent Object
+RENAME x DELETE
+    -> RENAME commits first and DELETE may remove the resulting generation
+       OR DELETE wins and a fresh retry observes absence
+    -> no mutation-after-delete / resurrection
 ```
 
 RENAME is semantically independent from ATTACH/DETACH ownership state. If ownership or factual Relationship mutations require coherent historical display names, that observation belongs to those mutations' own lifecycle responsibility; RENAME does not load or validate their state.
 
-PostgreSQL may still physically serialize operations touching the same `objects` row. Physical contention does not enlarge RENAME's semantic responsibility.
-
-Exact lock modes, wait-for behavior and statement realization remain architecture work.
+The accepted conservative false-positive retries keep one intrinsic generation mechanism instead of operation-specific freshness exceptions. If measured same-Object contention later proves the trade-off unacceptable, the cross-operation revision decision may be reopened.
 
 ## Failure mapping
 
-Bounded public failures:
+Bounded public failures remain:
 
 ```text
 400 invalid_request
@@ -1562,11 +1582,14 @@ Bounded public failures:
     invalid canonical_name carrier/value
 
 404 resource_not_found
-    selected Object does not exist at mutation admission
+    selected Object absent on the authoritative generation read/retry
 
 500 internal_error
     unexpected persistence/lifecycle/invariant failure
+    bounded generation retry cannot stabilize
 ```
+
+Revision mismatch itself is internal stale-attempt control flow, not a public `409` conflict.
 
 The route introduces no:
 
@@ -1582,20 +1605,19 @@ ownership admission
 
 No cache is useful or required.
 
-No route-specific table, denormalization, materialization or index is introduced. The operation uses current `objects` state and Object lifecycle persistence.
+No route-specific table, denormalization, materialization or index is introduced. The operation uses current `objects.revision`, current canonical name and Object lifecycle persistence.
 
 ## Architecture handoff and full-sweep closure
 
-The logical `PUT /objects/{id}/canonical-name` route is full-sweep complete.
+The logical `PUT /objects/{id}/canonical-name` route is full-sweep complete, including the focused revision revalidation.
 
 Deferred only to architecture-wide realization:
 
 ```text
-exact PostgreSQL current-name protection mechanism
-exact SQL / SQLAlchemy carrier
-exact lock / wait-for realization
+exact expected-revision SQL / SQLAlchemy carrier
+exact PostgreSQL lock / wait behavior under CAS contention
+bounded retry count/backoff
 final UPDATE + lifecycle statement fusion
-whether a future PostgreSQL baseline permits safe further one-statement fusion
 lifecycle physical JSON/typed carrier and constraints
 physical index / EXPLAIN evidence
 ```
@@ -1605,16 +1627,16 @@ No PostgreSQL-major-specific `OLD/NEW` facility is part of the M4 semantic contr
 Architecture must preserve:
 
 ```text
-exact old canonical_name
+exact old canonical_name from generation R
 exact requested/new canonical_name
-canonical_name-only current write
-atomic Object + RENAME lifecycle transition
-serially explainable same-Object RENAME assignments
+expected_revision stale-success protection
+atomic canonical_name + revision R+1 + RENAME lifecycle
+serially explainable same-Object intrinsic generations
 no lost same-field rename transition
 no mutation-after-delete / resurrection
 ```
 
-# 5. Mutate Object properties
+# 5. Mutate Object properties — full sweep complete
 
 ## Public contract
 
@@ -1622,6 +1644,14 @@ no mutation-after-delete / resurrection
 POST /api/v1/core/objects/{object_id}/properties
 Content-Type: application/json
 ```
+
+Path:
+
+```text
+object_id UUID
+```
+
+Query parameters: none.
 
 Request:
 
@@ -1634,24 +1664,59 @@ Request:
 }
 ```
 
-Rules:
+Conceptual transport model:
+
+```text
+ObjectPropertiesMutationBody
+    operations: PropertyOperation[1..N]
+
+PropertyOperation
+    SET
+        property: string
+        value: JsonValue
+
+    REMOVE
+        property: string
+```
+
+Static/request-shape rules:
 
 ```text
 operations required and non-empty
 same property at most once per request
 SET requires value
-REMOVE has no value
+REMOVE forbids value
 array order has no semantic mutation-order meaning
+request is atomic; no partial success
 ```
 
-Sparse semantics:
+No new wire-level property-name regex is introduced. `property` is structurally a string; property existence belongs to exact-schema semantic validation.
+
+Malformed body/carriers, empty/missing operations, unknown `op`, duplicate operations for one property, SET without value, REMOVE with value and unknown body fields are:
 
 ```text
-REMOVE optional          -> key absent
-SET optional LIST = []   -> prepared REMOVE/key absence
-JSON null                -> invalid
-REMOVE required          -> semantic failure
-SET required LIST = []   -> semantic failure
+400 invalid_request
+```
+
+A SET `value: null` is structurally interpretable JSON but semantically invalid runtime property state; it is never REMOVE/omission.
+
+Sparse property semantics:
+
+```text
+REMOVE optional
+    -> key absent
+
+SET optional LIST = []
+    -> canonical absence / prepared REMOVE
+
+SET runtime JSON null
+    -> semantic validation failure
+
+REMOVE required
+    -> semantic validation failure
+
+SET required LIST = []
+    -> semantic validation failure
 ```
 
 Success:
@@ -1660,78 +1725,584 @@ Success:
 204 No Content
 ```
 
-A semantic no-op also returns `204` but performs no UPDATE and emits no fake DATA_CHANGE event.
+The canonical current Object representation remains the responsibility of `GET /objects/{id}`.
 
-This operation mutates only runtime properties. It does not directly change Object identity/name, exact schema binding, ownership/components or Relationships.
+DATA_CHANGE semantically changes only runtime properties. It does not directly change/re-certify Object id, canonical name, ObjectTemplate lineage/exact version, components/ownership or Relationships. A persisted real DATA_CHANGE also advances technical intrinsic `revision` according to the shared generation contract.
 
-## Candidate execution
+## Semantic no-op and cost rule
 
-```text
-STEP 1
-    minimal objects PK lookup
-    -> existence + exact (template_id, template_version)
-    -> no properties load
+A semantic no-op returns:
 
-STEP 2
-    ensure READY immutable exact-version validation semantics
-    -> validate/canonicalize requested operations in worker
-    -> no Object lock
-
-STEP 3
-    short protected mutation UoW
-    -> fresh complete Object row
-    -> exact binding must still match prepared binding
-    -> apply prepared effects to fresh properties
+```http
+204 No Content
 ```
 
-An existing Object may remain pinned to a DEPRECATED exact ObjectTemplateVersion. Property mutation is not a new model-plane binding admission and therefore does not require current PUBLISHED status or current default resolution.
+and may elide all persistence/history work when recognizing it falls naturally out of the normal application-side operation application.
 
-Untouched persisted properties remain valid by construction while the exact binding remains unchanged; the route validates only the requested semantic effects rather than re-certifying the complete Object.
-
-Binding mismatch causes no mutation and a bounded restart from STEP 1/2. Cache fill never occurs while holding the Object lock.
-
-Real change:
+Canonical rule:
 
 ```text
-protected complete Object read
-UPDATE complete properties JSONB
-INSERT DATA_CHANGE lifecycle
-COMMIT
+cheaply recognized no-op
+    -> no Object UPDATE
+    -> no revision increment
+    -> no DATA_CHANGE lifecycle
+
+recognizing no-op would require material extra work
+    -> normal persisted mutation is allowed
+    -> throughput is preferred over artificial no-op classification work
 ```
 
-No-op:
+No-op classification must not introduce solely for that purpose:
 
 ```text
-protected complete Object read
-no UPDATE
-no lifecycle INSERT
+additional PostgreSQL statement
+additional lock / lock round trip
+additional semantic cache/model lookup
+second whole-property-map equality pass
+whole-Object recertification
 ```
 
-Warm candidate costs:
+With the current application-layer mutation direction, the route already examines each requested key while applying prepared operations to the current full property map:
 
 ```text
-real change = 4 PostgreSQL statements + COMMIT
-no-op      = 2 PostgreSQL statements
+SET p = canonical V
+    current p == V
+        -> operation contributes no change
+
+REMOVE p
+    p absent
+        -> operation contributes no change
 ```
 
-Cold semantic-cache fill happens before the protected UoW.
+A `changed` flag and lifecycle delta are accumulated in that same requested-operation pass; no later `candidate == before` whole-map comparison is required merely to classify the result.
 
-Concurrency direction:
+If all requested effects are no-ops, STEP 3 is skipped entirely. A concurrent intrinsic mutation after the coherent generation read does not invalidate the response because this no-op command persisted no state and is serially explainable before the later mutation.
+
+## Execution/data-path direction
+
+The ratified logical path has three stages:
 
 ```text
-property mutation x property mutation
-    -> protected fresh-state application prevents lost JSONB updates
+STEP 1 — read one current intrinsic Object generation
+    PostgreSQL
 
-property mutation x SCHEMA_CHANGE
-    -> property mutation commits on current binding first
-       OR sees binding mismatch and restarts on the new binding
+STEP 2 — READY semantic preparation + application-side complete candidate derivation
+    worker-local immutable cache + application/domain layer
 
-property mutation x DELETE
-    -> mutation commits first OR later mutation observes absence
+STEP 3 — expected-revision commit UoW for real changes only
+    PostgreSQL
+```
+
+Authority split:
+
+```text
+PostgreSQL
+    -> authoritative current state
+    -> expected-revision generation arbitration
+    -> atomic current-state + lifecycle persistence
+
+application/domain layer
+    -> SET/REMOVE semantics
+    -> requested-effect validation/canonicalization
+    -> complete property-map transformation
+    -> semantic no-op detection
+    -> exact DATA_CHANGE lifecycle-delta derivation
+```
+
+PostgreSQL JSONB mutation primitives are **not** the normal M4 DATA_CHANGE semantic mutation layer. A real mutation persists the complete application-derived `properties` candidate. DB-side JSON mutation remains only a future evidence-driven optimization possibility.
+
+### STEP 1 — current mutation generation
+
+One current-state read supplies:
+
+```text
+ObjectMutationGeneration
+    object_id
+    template_id
+    template_version
+    revision = R
+    complete properties
+```
+
+Conceptually:
+
+```sql
+SELECT template_id, template_version, revision, properties
+FROM objects
+WHERE id = :object_id;
+```
+
+Exact SQL/transaction realization remains architecture work.
+
+Absent Object:
+
+```text
+404 resource_not_found
+```
+
+The exact persisted binding selects immutable validation semantics. Existing Objects pinned to a DEPRECATED exact OTV remain mutable; DATA_CHANGE is not new model-plane binding admission and does not require current PUBLISHED/default/latest status.
+
+### STEP 2 — READY semantics and requested-effect validation
+
+Missing immutable semantic knowledge is completed outside the commit UoW. Normal DATA_CHANGE must not traverse ObjectTemplate/DataType persistence ad hoc per property.
+
+Required immutable knowledge includes:
+
+```text
+effective property declaration
+    declaring_template_id
+    property name
+    value_mode
+    required
+    exact datatype_id/version pin
+
+exact DataTypeVersion semantics
+    primitive/base type
+    canonical constraints
+
+compiled/runtime validators where useful
+```
+
+No Object lock is held during cache fill, validation, canonicalization or application-side candidate construction.
+
+DATA_CHANGE validates/canonicalizes **only requested effects**:
+
+```text
+SET p
+    p exists
+    correct SCALAR/LIST shape
+    exact PrimitiveType validation/canonicalization
+    exact DTV constraints
+    required LIST is non-empty
+    optional LIST=[] -> canonical absence
+    JSON null invalid
+
+REMOVE p
+    p exists
+    p.required == false
+```
+
+Consequent semantic failures are:
+
+```text
+unknown property
+REMOVE required
+SET null
+SCALAR/LIST mismatch
+primitive validation failure
+exact DTV constraint failure
+required LIST=[]
+    -> 422 semantic_validation_failed
+```
+
+Untouched persisted properties are trusted as already-admitted current state and preserved without:
+
+```text
+PrimitiveType reparse
+DTV constraint recheck
+recanonicalization
+whole-map semantic recertification
+```
+
+This local proof depends on the current property model having no independent cross-property invariant that must be recomputed after every SET/REMOVE. Introducing such an invariant reopens DATA_CHANGE.
+
+Semantic validation cost is therefore:
+
+```text
+O(requested operation count + supplied-value size)
+```
+
+Complete candidate materialization is separately proportional to current property-map size because the application intentionally builds a complete replacement value; that is persistence/application work, not full-map semantic recertification.
+
+Prepared operations retain lifecycle semantic identity:
+
+```text
+PropertySemanticKey
+    = (declaring_template_id, property_name)
+```
+
+Application application against generation `R` derives in one requested-operation pass:
+
+```text
+candidate_properties
+changed yes/no
+for each requested semantic property:
+    old canonical value | ABSENT
+    new canonical value | ABSENT
+```
+
+Untouched keys are copied/preserved exactly, not revalidated.
+
+A semantic failure proved against coherent generation `R` may be returned immediately without a revision refresh solely to see whether a concurrent mutation removed the failure. Such a conservative stale failure cannot commit invalid state; a later caller retry naturally evaluates the newer generation.
+
+### STEP 3 — real-change expected-revision replacement
+
+STEP 3 runs only when application-side derivation found at least one actual property transition.
+
+Prepared commit input:
+
+```text
+object_id
+expected_revision = R
+complete candidate_properties
+exact binding context T@V
+exact changed-property lifecycle delta
+```
+
+The final write may commit only if generation `R` is still current:
+
+```text
+current revision == R
+    -> properties := complete candidate_properties
+    -> revision   := R + 1
+    -> append exactly one DATA_CHANGE lifecycle delta
+    -> COMMIT
+
+current revision != R
+    -> stale attempt
+    -> no Object mutation
+    -> no lifecycle
+    -> bounded retry
+```
+
+A successful revision check also proves that no committed intrinsic SCHEMA_CHANGE altered the binding since STEP 1; no second binding-freshness mechanism is needed for the same generation.
+
+Properties replacement, revision increment and lifecycle append are atomic. If lifecycle persistence fails, the new Object generation must not commit.
+
+Logical target for a real mutation is one final PostgreSQL business statement for CAS/write+lifecycle where practical. Exact DML/CTE/RETURNING realization is architecture work and must not move JSON semantic mutation into SQL merely for fusion.
+
+## Retry behavior
+
+Revision mismatch is internal stale-attempt control flow, not a public business conflict.
+
+On stale CAS:
+
+```text
+persist nothing
+emit no lifecycle
+return to normal STEP 1
+```
+
+The fresh STEP 1 naturally distinguishes:
+
+```text
+Object absent
+    -> 404 resource_not_found
+
+Object present at newer revision
+    -> continue retry
+```
+
+No diagnostic query is added solely to classify a zero-row CAS result.
+
+After re-read:
+
+```text
+same exact binding T@V
+    -> immutable prepared/canonical requested operations remain reusable
+    -> re-apply them to fresh complete properties
+    -> derive fresh candidate/delta/no-op
+
+different exact binding T@W
+    -> resolve READY T@W semantics
+    -> revalidate/canonicalize original requested effects
+    -> apply to fresh properties
+```
+
+No cache fill occurs while holding a final commit boundary.
+
+Retry is bounded. If revision cannot stabilize within the bounded policy:
+
+```text
+500 internal_error
+```
+
+No route-local `409 concurrent_modification` / state-conflict response is introduced.
+
+## DATA_CHANGE lifecycle — exact operation-owned delta
+
+Lifecycle records the complete exact semantic transition DATA_CHANGE owns, not whole Object snapshots.
+
+Event context:
+
+```text
+object_id
+exact ObjectTemplate binding:
+    template_id
+    template_version
+```
+
+Each actually changed property is identified by:
+
+```text
+PropertySemanticKey
+    declaring_template_id
+    property_name
+```
+
+and records:
+
+```text
+before
+    canonical value | ABSENT
+
+after
+    canonical value | ABSENT
+```
+
+`ABSENT` is a semantic state distinct from JSON `null`; runtime null is invalid property state.
+
+Examples:
+
+```text
+SET previously absent p = V
+    ABSENT -> canonical V
+
+SET p = V2
+    canonical V1 -> canonical V2
+
+REMOVE existing optional p
+    canonical V -> ABSENT
+```
+
+Only actual state changes appear. No-op requested operations in a mixed request are omitted from lifecycle history.
+
+DATA_CHANGE lifecycle does not duplicate:
+
+```text
+canonical_name
+revision
+unchanged properties
+components / ownership
+Relationships
+complete Object before snapshot
+complete Object after snapshot
+```
+
+The delta is semantic history, not a raw request audit log. `revision` remains technical generation metadata and is not automatically lifecycle payload.
+
+Exact persistence/detail DTO carrier remains Lifecycle architecture/API work, but must preserve exact binding context, semantic property identity, value-vs-ABSENT and only changed properties.
+
+## Concurrency outcomes
+
+All intrinsic Object writers use the universal revision protocol.
+
+```text
+DATA_CHANGE x DATA_CHANGE
+    both read R
+    first real writer -> complete properties replacement + R+1 + lifecycle
+    second CAS on R -> stale, retries from R+1
+    -> no lost full-JSON replacement
+
+DATA_CHANGE x RENAME
+    one advances revision
+    other stale attempt retries
+    -> conservative retry is intentional despite independent business fields
+
+DATA_CHANGE x SCHEMA_CHANGE
+    DATA_CHANGE first -> SCHEMA_CHANGE prepared on old generation must retry
+    SCHEMA_CHANGE first -> DATA_CHANGE old-binding candidate cannot CAS
+                         -> retry/revalidate on new binding
+
+DATA_CHANGE x DELETE
+    DATA_CHANGE first -> DELETE may remove resulting generation
+    DELETE first -> fresh retry observes absence
     -> no resurrection
 ```
 
-This route introduces no new Object denormalization.
+Exact PostgreSQL wait/lock behavior remains architecture work.
+
+## Cache behavior
+
+Warm exact binding:
+
+```text
+STEP 1
+    full current Object generation read
+
+STEP 2
+    READY cache HIT
+    validate/canonicalize requested effects
+    application-side candidate + delta
+
+no-op
+    -> return immediately
+
+real change
+    -> STEP 3 expected-revision replacement + lifecycle
+```
+
+Cold/partial exact binding adds only bounded immutable semantic-cache fill outside the commit UoW.
+
+A stale retry with unchanged exact binding reuses READY semantics and prepared canonical operations, but always re-reads/re-applies against fresh full current properties.
+
+## Cost and physical trade-off
+
+Warm real change target:
+
+```text
+S1
+    one Object PK read:
+        template_id
+        template_version
+        revision
+        full properties
+
+STEP 2
+    cache HIT + requested-effect validation
+    application full candidate construction
+    lifecycle delta derivation
+
+S2
+    expected-revision complete properties replacement
+    + revision R+1
+    + DATA_CHANGE lifecycle append
+
+COMMIT
+```
+
+Target:
+
+```text
+2 PostgreSQL business statements + COMMIT
+```
+
+Warm semantic no-op target:
+
+```text
+S1 full current generation read
+STEP 2 detects zero changes
+return 204
+
+= 1 PostgreSQL business statement
+= 0 UPDATE / lifecycle / revision increment
+```
+
+Application-side complete replacement intentionally pays:
+
+```text
+full properties DB -> worker
+application decode/copy/mutation
+full candidate encode
+full candidate worker -> DB on real change
+```
+
+in exchange for keeping JSON semantic mutation in application/domain code and keeping the database focused on current-state authority, generation CAS, referential integrity and atomic persistence.
+
+M4 does not assume DB-side JSONB patching would remove PostgreSQL MVCC/WAL/TOAST write cost. Architecture must benchmark realistic property-map sizes/frequencies/contention/network/Python CPU/PostgreSQL CPU/WAL/TOAST/p50-p99 latency before physical freeze. Evidence may reopen the physical realization, but PostgreSQL JSON mutation primitives are not the current baseline.
+
+Invariant/audit tooling may separately verify persisted canonical/current Object state; removal of hot-path recertification does not require every consistency diagnostic to disappear from the system.
+
+## Failure mapping and precedence
+
+Public set:
+
+```text
+400 invalid_request
+    malformed/static request
+
+404 resource_not_found
+    Object absent on authoritative STEP 1 / retry
+
+422 semantic_validation_failed
+    unknown property
+    REMOVE required
+    SET null
+    wrong SCALAR/LIST shape
+    primitive validation failure
+    exact DTV constraint violation
+    required LIST=[]
+
+500 internal_error
+    required persisted semantic dependency unexpectedly missing/corrupt
+    persistence/lifecycle invariant failure
+    bounded revision retry exhaustion
+```
+
+No normal `409` is introduced for revision contention.
+
+Precedence:
+
+```text
+static transport validation
+    -> coherent Object generation read
+    -> requested-effect semantic validation
+    -> candidate/no-op derivation
+
+semantic failure
+    -> return 422; no revision refresh solely to eliminate conservative stale failure
+
+no-op
+    -> return 204; no revision refresh because no state is committed
+
+real mutation
+    -> expected_revision CAS
+       stale -> bounded retry from STEP 1
+       fresh success -> atomic properties + revision + lifecycle
+```
+
+A fresh retry determines the current outcome; for example a SCHEMA_CHANGE between attempts may turn a formerly valid property operation into a new `422`, or DELETE may turn the retry into `404`.
+
+## Data structures / architecture handoff and closure
+
+DATA_CHANGE adds no route-specific table or denormalization.
+
+Mutable state:
+
+```text
+objects
+    read exact binding + revision + full properties
+    replace complete properties on real change
+    advance revision atomically
+
+object_lifecycle_events
+    exactly one DATA_CHANGE delta event on real change
+```
+
+Immutable semantic dependencies:
+
+```text
+worker-local ObjectTemplate effective-property validation facet
+worker-local exact DataTypeVersion semantics/validators
+bounded certified semantic loader for cold fills
+```
+
+Normal DATA_CHANGE does not require:
+
+```text
+object_components
+Relationship runtime state
+ObjectTemplate current default
+ObjectTemplate current lifecycle status
+```
+
+Deferred physical architecture work:
+
+```text
+exact SQL/SQLAlchemy generation-read carrier
+exact CAS UPDATE + lifecycle fusion carrier
+exact PostgreSQL wait/locking realization
+bounded retry count/backoff
+physical indexes / EXPLAIN evidence
+JSONB/TOAST/WAL measured costs
+lifecycle physical detail carrier/constraints
+```
+
+Architecture must preserve:
+
+```text
+application owns JSON mutation semantics
+one coherent generation supplies source full properties
+requested effects only are semantically validated
+untouched values are preserved without recertification
+real write is guarded by expected_revision
+stale candidate can never overwrite newer intrinsic state
+real DATA_CHANGE atomically writes complete properties + revision+1 + exact lifecycle delta
+cheap semantic no-op performs no write/revision/lifecycle
+no diagnostic-only DB reads for stale classification
+```
+
+The logical `POST /objects/{id}/properties` route is **full-sweep complete**.
 
 # 6. GET current Object schema binding
 
@@ -1757,7 +2328,7 @@ The route answers only:
 which exact ObjectTemplate binding governs this Object now?
 ```
 
-It does not expose effective schema, properties, components, namespace, description, lifecycle status, default state or other ObjectTemplate metadata.
+It does not expose effective schema, properties, components, namespace, description, lifecycle status, default state, revision or other ObjectTemplate metadata.
 
 `template_id` is authoritative lineage identity. `template_name` is stable human-readable convenience and does not participate in identity.
 
@@ -1823,7 +2394,7 @@ GET /objects/{id}/schema
 
 ## Current high-level candidate
 
-The public surface is retained while the execution model remains actively revalidated after `object_component_slots`.
+The public surface is retained while the execution model remains actively revalidated after `object_component_slots` and the universal Object revision decision.
 
 Current component-side direction:
 
@@ -1833,10 +2404,11 @@ immutable MigrationPlan SOURCE -> TARGET
 prepare/migrate intrinsic Object state outside the short UoW where safe
 
 short SCHEMA_CHANGE UoW
-    -> protect/revalidate mutable intrinsic Object state
+    -> use expected_revision for intrinsic Object generation freshness
+    -> protect final TARGET mutable admission
     -> maintain object_component_slots delta atomically
     -> use edge->slot FK as final REMOVE/replacement blocker authority
-    -> update Object exact binding + migrated properties
+    -> update Object exact binding + migrated properties + revision
     -> append SCHEMA_CHANGE lifecycle
     -> COMMIT
 ```
@@ -1863,9 +2435,9 @@ position-only change
 
 Existing `object_components` edges remain unchanged on a successful normal migration.
 
-The new materialization reopens the earlier assumption that outgoing ownership membership must participate in the optimistic Object fingerprint. Preferred direction is now intrinsic Object fingerprinting plus final relational slot/edge arbitration, but exact fingerprint/UoW decomposition remains OPEN.
+The universal persisted `revision` supersedes the earlier intrinsic Object fingerprint as the preferred stale-success guard for `objects`-row state. Structural slot/ownership facts remain outside revision scope and still rely on their own relational admission/arbitration.
 
-Detailed migration semantics, cache inputs, property rules, fingerprint and final UoW belong to the dedicated `object-schema-change.md` consolidation.
+Detailed migration semantics, cache inputs, property rules, expected-revision retry behavior and final UoW belong to the dedicated `object-schema-change.md` consolidation and must be revalidated there before SCHEMA_CHANGE full-sweep closure.
 
 # 8. GET one component slot
 
@@ -2533,6 +3105,8 @@ before_state   = {
 after_state    = null
 ```
 
+Technical `revision` is not added to the semantic DELETED payload merely because it exists on the persistence row.
+
 Current ownership, component slots, owner projection and factual Relationships are not embedded in the intrinsic DELETED snapshot. Their structural history remains represented by their own lifecycle families.
 
 Required atomicity:
@@ -2666,6 +3240,8 @@ no mutation-after-delete
 no resurrection
 serially explainable current state
 ```
+
+The intrinsic writer's expected-revision CAS is one side of this guarantee; the root DELETE/lifetime arbitration remains the deletion authority.
 
 For SCHEMA_CHANGE, Object exact binding and materialized slot set remain one atomic Object generation: either the schema transition commits first and DELETE removes the new generation, or DELETE commits first and SCHEMA_CHANGE cannot publish replacement current state afterward.
 
@@ -2847,16 +3423,23 @@ Current consequences already ratified during Object route discovery:
 RENAME
     -> exact canonical_name old -> new only
 
+DATA_CHANGE
+    -> exact delta of actually changed semantic properties
+    -> event binding context T@V
+    -> semantic key (declaring_template_id, property_name)
+    -> before/after value | ABSENT
+
 DELETE
     -> broad intrinsic before snapshot remains justified because the Object ceases to exist
 
 CREATE
     -> broad created-state after snapshot may remain justified by whole-resource creation
 
-DATA_CHANGE / SCHEMA_CHANGE
-    -> payload shape must be revalidated during their own full sweeps;
-       no full-snapshot requirement is inherited merely from historical uniformity
+SCHEMA_CHANGE
+    -> payload boundary remains to be revalidated by its own full sweep
 ```
+
+Technical `revision` is not automatically lifecycle semantic payload.
 
 Ownership history remains represented by explicit `ATTACH_TO` / `DETACH_FROM` events rather than being embedded into unrelated intrinsic events.
 
@@ -2872,6 +3455,30 @@ Object-relative Relationship detail capability
 These remain owned by the later factual Relationship top-down pass because public DTO/perspective semantics are still open. They are not folded into this Object operation owner merely because the URL is Object-rooted.
 
 # Cross-operation observations
+
+## Intrinsic Object generation boundary
+
+[`object-revision.md`](object-revision.md) owns one universal intrinsic-generation protocol:
+
+```text
+CREATE
+    -> revision = 1
+
+prepared/derived intrinsic mutation
+    -> observe revision R
+    -> commit only against expected_revision = R
+
+persisted intrinsic mutation
+    -> revision R + 1 atomically
+
+stale expected_revision
+    -> no stale state/lifecycle commit
+    -> bounded retry
+```
+
+The deliberate result is that RENAME, DATA_CHANGE and SCHEMA_CHANGE use one generation token even when this creates conservative retries between otherwise-independent fields. Revision proves only `objects`-row freshness; it does not cover ownership/Relationship facts outside the intrinsic row.
+
+Pure reads do not need to expose or CAS on revision merely because the column exists.
 
 ## Component-schema cache boundary
 
@@ -2912,7 +3519,7 @@ final indexes
 final query plans
 EXPLAIN evidence
 storage/write measurements
-final global LockPlan/deadlock realization
+final global lock/wait/deadlock realization
 ```
 
 Those belong to the later M4 architecture-wide persistence/concurrency phase.
@@ -2926,7 +3533,7 @@ CREATE
 LIST
 GET
 canonical-name mutation
-properties mutation
+properties mutation / DATA_CHANGE
 Object schema GET/public POST surface
 component-slot navigation + cursor/data-path checkpoints
 ATTACH
@@ -2935,6 +3542,8 @@ GET owner working projection
 DELETE
 ```
 
+The current Object DATA_CHANGE full sweep has been losslessly absorbed here, including public contract, requested-effects-only validation, application-side complete JSON mutation, semantic no-op cost rule, universal revision CAS/retry, exact changed-property lifecycle delta, failure mapping, warm/cold cost direction and architecture handoff. The older first-phase DATA_CHANGE discovery is superseded where it proposed full-candidate semantic recertification; its still-relevant cache/authority and hot-path no-recertification findings are preserved above.
+
 Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
-For routes already marked `full-sweep complete`, dedicated route-only legacy WIPs may be removed after an explicit lossless absorption/reference check; Git history remains the historical record. Cross-operation owners and source families needed by routes that are not yet full-swept remain in the working set until their own revalidation/cleanup passes.
+For routes marked `full-sweep complete`, dedicated route-only legacy WIPs may be removed after this explicit lossless absorption/reference check; Git history remains the historical record. Cross-operation owners and source families needed by routes that are not yet full-swept remain in the working set until their own revalidation/cleanup passes.
