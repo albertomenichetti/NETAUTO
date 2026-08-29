@@ -354,9 +354,9 @@ Revision mismatch on the real-write branch is an internal stale-attempt conditio
 
 ---
 
-# 10. SCHEMA_CHANGE focused alignment
+# 10. SCHEMA_CHANGE full-sweep alignment
 
-The SCHEMA_CHANGE execution/retry block has now absorbed the universal revision protocol into its current owner [`object-schema-change.md`](object-schema-change.md).
+SCHEMA_CHANGE is full-swept and its execution/retry contract is losslessly absorbed into [`object.md`](object.md) under the universal revision protocol.
 
 Each attempt begins from one coherent intrinsic generation:
 
@@ -436,9 +436,8 @@ POST /objects/{id}/properties
     -> aligned with universal expected-revision rule
 
 POST /objects/{id}/schema
-    -> active full sweep
-    -> exact-target/migration-matrix/execution-retry blocks aligned with revision
-    -> remaining route work is lifecycle/failure/cost closure
+    -> full-sweep complete and absorbed into object.md
+    -> exact-target/migration-matrix/execution-retry/lifecycle/failure/cost closure aligned with revision
 
 DELETE /objects/{id}
     -> deletes current revisioned generation
