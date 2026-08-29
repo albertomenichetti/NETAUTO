@@ -10,47 +10,29 @@ The question emerged while reviewing the Object read surface and comparing colle
 
 ## Concrete problem
 
-The current lifecycle collection endpoints return complete lifecycle events, including complete `before` / `after` snapshots where the event family carries them:
+The current lifecycle collection endpoints return complete lifecycle events, including `before_state` / `after_state` payloads where the event family carries them:
 
 ```text
 GET /api/v1/core/lifecycle-events
 GET /api/v1/core/objects/{object_id}/lifecycle-events
 ```
 
-For intrinsic Object events, a snapshot currently contains:
+Some event kinds may legitimately carry large historical property payloads. A collection page can therefore become large for reasons unrelated to page cardinality.
 
-```text
-id
-canonical_name
-template_id
-template_version
-properties
-```
-
-For factual Relationship events, factual state contains:
-
-```text
-relationship_definition_version
-properties
-```
-
-The property objects are not bounded by the collection page size. A page of 100 DATA_CHANGE events can therefore carry 100 complete `before` snapshots plus 100 complete `after` snapshots, each with potentially large property maps.
-
-Example:
+Example candidate problem:
 
 ```text
 GET /objects/server-1/lifecycle-events?limit=100
 
-100 DATA_CHANGE events
-x 2 complete snapshots
-x N properties per snapshot
+many DATA_CHANGE-like events
+x potentially large historical transition payloads
 ```
 
-This makes collection response size depend on both event count and arbitrary historical state size.
+Collection response size should not depend on complete historical payload size when the caller is only navigating events.
 
-## Agreed direction
+## Agreed collection/detail direction
 
-Use collection endpoints as paginated event summaries and introduce a single-event detail read for the complete historical payload.
+Use collection endpoints as paginated event summaries and use a single-event detail read for the complete persisted transition payload of one event.
 
 Conceptually:
 
@@ -58,30 +40,56 @@ Conceptually:
 GET /lifecycle-events
 GET /objects/{object_id}/lifecycle-events
     -> paginated event summaries
-    -> no complete before/after snapshots by default
+    -> no before_state / after_state payloads by default
 
 GET /lifecycle-events/{event_id}
     -> one complete lifecycle event
-    -> before/after included where the event family defines them
+    -> complete kind-specific historical transition payload
 ```
 
-This follows the same collection/detail separation currently favored for other M4 public reads:
+This follows the same collection/detail separation favored for other M4 public reads.
+
+## Lifecycle payloads are kind-specific
+
+M4 has ratified that lifecycle payload responsibility follows the owning operation:
 
 ```text
-GET /objects
-    -> Object summaries
-GET /objects/{id}
-    -> complete Object first-level representation
+lifecycle payload
+    = complete exact semantic transition owned by the operation
 
-GET /objects/{id}/relationships
-    -> Object-relative Relationship summaries
-GET one specific Relationship detail
-    -> complete factual properties
+not automatically
+    = complete aggregate before + after snapshots
 ```
+
+Therefore single-event detail must not assume one universal full-snapshot shape for every intrinsic Object event.
+
+Concrete ratified example:
+
+```text
+Object.RENAME
+    -> exact canonical_name old -> new only
+```
+
+Conceptual detail fragment:
+
+```json
+{
+  "before": {
+    "canonical_name": "server-1"
+  },
+  "after": {
+    "canonical_name": "web-01"
+  }
+}
+```
+
+Other event kinds may have broader payloads when their semantic transition genuinely requires them. CREATE/DELETE may legitimately preserve broader resource state; DATA_CHANGE and SCHEMA_CHANGE remain subject to their own full-sweep payload review.
+
+Factual Relationship and ownership event families analogously retain only the complete transition required by their own contracts.
 
 ## Concrete summary examples
 
-The exact summary DTO is intentionally still OPEN, but it should carry enough information to understand and select an event without carrying the complete historical state.
+The exact summary DTO is intentionally still OPEN, but it should carry enough information to understand and select an event without carrying the complete historical transition payload.
 
 Example intrinsic summary candidate:
 
@@ -89,10 +97,10 @@ Example intrinsic summary candidate:
 {
   "id": "event-id",
   "occurred_at": "...",
-  "kind": "DATA_CHANGE",
+  "kind": "RENAME",
   "object": {
     "id": "object-id",
-    "canonical_name": "server-1"
+    "canonical_name": "web-01"
   }
 }
 ```
@@ -116,11 +124,11 @@ Example ownership summary candidate:
 }
 ```
 
-Relationship summaries can analogously expose the historical object/destination names and relationship name needed to identify the event without duplicating complete factual property state.
+Relationship summaries can analogously expose historical identity/display metadata needed to select the event without carrying complete factual transition state.
 
 ## Single-event detail
 
-A single-event detail API is the natural place for complete historical state.
+A single-event detail API is the natural place for the complete **kind-specific** historical transition.
 
 Conceptually:
 
@@ -128,28 +136,17 @@ Conceptually:
 GET /lifecycle-events/{event_id}
 ```
 
-For intrinsic events this may include:
+Candidate public modeling direction:
 
-```json
-{
-  "before": {
-    "id": "...",
-    "canonical_name": "server-1",
-    "template_id": "...",
-    "template_version": 4,
-    "properties": { "...": "..." }
-  },
-  "after": {
-    "id": "...",
-    "canonical_name": "server-1",
-    "template_id": "...",
-    "template_version": 4,
-    "properties": { "...": "..." }
-  }
-}
+```text
+LifecycleEventDetail
+    common event metadata
+    + discriminated kind-specific payload
 ```
 
-The already-agreed historical snapshot boundary remains unchanged: enriching current `GET Object` with direct components does **not** imply adding components to lifecycle snapshots. Ownership history remains represented through ATTACH/DETACH events.
+A generic `ObjectSnapshotDto` may still be useful for event kinds that genuinely own a complete intrinsic Object snapshot, but it is not the universal `before` / `after` type for all intrinsic events.
+
+Enriching current `GET Object` with direct components does not imply adding components to lifecycle payloads. Ownership history remains represented through ATTACH/DETACH events.
 
 ## Important non-decisions
 
@@ -157,14 +154,15 @@ This WIP intentionally does **not** decide yet:
 
 - exact summary fields for every lifecycle event family;
 - exact detail DTO discriminated-union shape;
-- whether a summary should carry small family-specific metadata beyond the current identifiers/names;
+- exact payload boundary for Object DATA_CHANGE and SCHEMA_CHANGE;
+- whether a summary should carry small family-specific metadata beyond current identifiers/names;
 - exact ordering/cursor contract changes, if any;
 - whether the object-scoped lifecycle list has any summary field different from the global list;
 - exact 404 semantics for `GET /lifecycle-events/{event_id}`;
 - physical SQL projection changes and indexes.
 
-Those points belong to the detailed operation-level API/read analysis.
+Those points belong to detailed operation-level API/read analysis.
 
 ## Candidate first-phase conclusion
 
-Treat lifecycle-event collection endpoints as paginated discovery/history summaries whose response size is primarily bounded by page cardinality. Treat one lifecycle event as the resource whose detail read returns the complete persisted historical `before` / `after` state.
+Treat lifecycle-event collection endpoints as paginated discovery/history summaries whose response size is primarily bounded by page cardinality. Treat one lifecycle event as the resource whose detail read returns its complete persisted **operation-owned semantic transition**, not an automatically expanded aggregate snapshot.
