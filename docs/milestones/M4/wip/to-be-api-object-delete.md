@@ -415,46 +415,225 @@ The candidate does, however, impose two architecture-wide relational requirement
 
 The preferred lifetime realization is an immediate `RESTRICT` / `NO ACTION` FK to `objects.id` where the relation is naturally relational, or another globally proven mechanism with equivalent arbitration semantics.
 
-## Concurrency guarantees required
+## Ratified concurrency outcomes
 
-This discovery candidate does not require preservation of the AS-IS preliminary `OBJ@U` lock as a route-local mechanism.
+`Object.DELETE` requires serially explainable lifetime outcomes but does not freeze the physical PostgreSQL lock realization during discovery.
 
-The later M4 architecture phase must compose the candidate with the complete mutation set and prove at least:
+General rule:
 
 ```text
-OS  DELETE vs intrinsic Object mutations
-RL  DELETE vs ATTACH
-RL  DELETE vs DETACH
-RL  DELETE vs Relationship CREATE
-RL  DELETE vs Relationship DELETE
-RL  DELETE vs Relationship mutations retaining Object endpoint references
-RL  Object exact-OTV reference removal vs ObjectTemplate deletion
-ATOMIC  Object deletion + DELETED lifecycle
+Object.DELETE may commit
+iff
+no current external fact still requires the Object lifetime
+at the database lifetime-arbitration point
 ```
 
-Required final outcomes include:
+### DELETE vs DELETE on the same Object
 
 ```text
-reference commits first
+first DELETE commits
+    -> 204
+    -> exactly one DELETED lifecycle event
+
+second concurrent/later DELETE observes absence
+    -> 404 resource_not_found
+    -> no second DELETED event
+```
+
+Two concurrent DELETE commands must never both report successful deletion of the same current Object generation.
+
+### DELETE vs intrinsic Object mutation
+
+This family includes at least:
+
+```text
+canonical-name mutation
+properties mutation
+SCHEMA_CHANGE
+```
+
+Required outcomes:
+
+```text
+intrinsic mutation commits first
+    -> DELETE removes that resulting current Object generation
+    -> DELETED.before_state corresponds to the row actually deleted
+
+DELETE commits first
+    -> intrinsic mutation cannot later commit against or recreate the deleted Object
+```
+
+Required invariants:
+
+```text
+no mutation-after-delete
+no resurrection
+serially explainable current state
+```
+
+For SCHEMA_CHANGE specifically, Object exact binding and materialized slot set are one atomic Object generation: either SCHEMA_CHANGE commits first and DELETE removes the new generation, or DELETE commits first and SCHEMA_CHANGE cannot later publish a replacement current state.
+
+### DELETE vs ATTACH
+
+ATTACH creates a new current Object lifetime reference whether the selected Object participates as child or parent.
+
+Required outcomes:
+
+```text
+ATTACH lifetime reference commits first
     -> Object DELETE cannot commit
+    -> DELETE returns 409 delete_blocked
 
 Object DELETE commits first
-    -> a new current reference cannot commit
-
-reference removal commits first
-    -> Object DELETE may become admissible
-
-intrinsic Object mutation vs DELETE
-    -> serially explainable current-state/lifetime result
-
-no dangling references
-no mutation-after-delete/resurrection
-no false success
-no partial lifecycle transition
-no unsupported-path deadlock
+    -> ATTACH cannot commit a new current reference to the deleted Object
 ```
 
-The final architecture may retain, replace or redesign the delivered LockPlan realization if these guarantees are globally proven.
+The route does not need a blocker precheck to produce this result; database lifetime arbitration is the authority.
+
+### DELETE vs DETACH
+
+DETACH removes a current ownership lifetime reference.
+
+Required outcomes:
+
+```text
+DETACH removal commits first
+    -> that blocker no longer exists
+    -> Object DELETE may succeed if no other blocker remains
+
+Object DELETE reaches lifetime arbitration while the edge still blocks
+    -> DELETE may return 409 delete_blocked
+```
+
+DELETE has no contract to wait for a concurrent DETACH, auto-retry until the edge disappears or perform DETACH implicitly. A later caller retry may succeed after the blocker removal commits.
+
+A successful Object DELETE while the blocking current ownership edge remains committed is forbidden.
+
+### DELETE vs factual Relationship.CREATE
+
+Relationship.CREATE creates current runtime endpoint references that require endpoint Object lifetime.
+
+Required outcomes:
+
+```text
+Relationship.CREATE endpoint reference commits first
+    -> Object DELETE cannot commit
+    -> DELETE returns 409 delete_blocked
+
+Object DELETE commits first
+    -> Relationship.CREATE cannot commit a runtime endpoint reference to the deleted Object
+```
+
+No committed state may contain a factual Relationship runtime closure referencing an absent Object.
+
+### DELETE vs factual Relationship.DELETE
+
+Relationship.DELETE removes the factual root and its owned runtime closure, thereby removing its endpoint lifetime references.
+
+Required outcomes:
+
+```text
+Relationship.DELETE commits first
+    -> its endpoint blocker disappears
+    -> Object DELETE may succeed if no other blocker remains
+
+Object DELETE reaches lifetime arbitration while the Relationship reference still exists
+    -> DELETE may return 409 delete_blocked
+```
+
+As with DETACH, Object DELETE does not promise waiting or internal retries merely because a concurrent operation is removing the blocker.
+
+### DELETE vs Relationship mutation retaining endpoints
+
+A Relationship mutation that preserves the factual Relationship endpoint references does not release Object lifetime.
+
+Therefore:
+
+```text
+current factual Relationship still references Object
+    -> Object remains delete_blocked
+```
+
+Object DELETE does not inspect or re-certify Relationship schema semantics to determine this; the persisted current endpoint reference is sufficient.
+
+### DELETE vs ObjectTemplate whole-lineage deletion
+
+The dependency direction is outgoing from Object:
+
+```text
+Object O
+    -> exact ObjectTemplateVersion T@V
+```
+
+Therefore the Object is a blocker for whole-lineage deletion, not the reverse.
+
+```text
+Object O still exists
+    -> ObjectTemplate.DELETE_LINEAGE(T) remains blocked by O
+
+Object.DELETE commits first
+    -> O -> T@V reference disappears
+    -> whole-lineage deletion may subsequently become admissible
+```
+
+Object DELETE does not need to re-admit, lifecycle-check or stabilize T@V merely to remove its outgoing exact binding reference.
+
+ObjectTemplate lifecycle/default mutations such as DEPRECATE, SET_DEFAULT and CLEAR_DEFAULT are not Object.DELETE admission predicates.
+
+### Concurrency outcome summary
+
+```text
+DELETE vs DELETE
+    -> one 204 + exactly one DELETED event; loser observes 404
+
+DELETE vs intrinsic Object mutation
+    -> mutation first then delete that generation
+       OR delete first and mutation cannot commit
+
+DELETE vs new lifetime reference
+    ATTACH / Relationship.CREATE
+    -> reference first => DELETE blocked
+    -> DELETE first => new reference cannot commit
+
+DELETE vs lifetime-reference removal
+    DETACH / Relationship.DELETE
+    -> removal first => DELETE may become admissible
+    -> blocker still effective at arbitration => DELETE may return 409
+
+DELETE vs Relationship mutation retaining endpoints
+    -> Object remains blocked
+
+DELETE vs ObjectTemplate.DELETE_LINEAGE
+    -> Object lifetime blocks lineage deletion until Object is removed
+```
+
+The discovery contract deliberately does not ratify:
+
+```text
+FOR UPDATE / FOR KEY SHARE / other exact row-lock modes
+specific advisory gates
+final lock ordering
+retry count
+wait strategy
+deadlock realization
+```
+
+Those are architecture responsibilities.
+
+Architecture must realize the above outcomes while preserving:
+
+```text
+no dangling current references
+no mutation-after-delete
+no resurrection
+no double DELETE success
+exactly one DELETED event for the deleted Object generation
+no false-success DELETE
+atomic Object disappearance + DELETED lifecycle
+serially explainable outcomes
+```
+
+The previously ratified revalidation trigger applies to this concurrency proof too: a material change to the database-enforced Object lifetime-reference graph invalidates the assumptions behind these outcomes and reopens Object.DELETE.
 
 ## Supersession / consolidation map
 
@@ -533,6 +712,7 @@ All source WIPs remain non-normative discovery history.
 - server-side historical snapshot construction;
 - candidate one-statement PostgreSQL success cost;
 - no cache use;
+- serially explainable concurrency outcomes across Object mutations, ownership, factual Relationships and model-plane lineage deletion;
 - explicit relational/concurrency architecture handoffs.
 
 The later M4 architecture phase must deliberately adopt, modify, supersede or discard this candidate when performing global relational, transaction, LockPlan, wait-for and verification closure.
