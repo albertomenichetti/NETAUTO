@@ -28,13 +28,13 @@ migration/backfill direction
 physical-design architecture handoff
 ```
 
-Public Object routes, including the full-swept SCHEMA_CHANGE route, are owned by [`object.md`](object.md).
+Public Object routes, including the full-swept SCHEMA_CHANGE and ATTACH routes, are owned by [`object.md`](object.md).
 
 This document does **not** freeze the final physical relational schema. Exact DDL, PRIMARY KEY vs UNIQUE realization, final index set/order, constraint names/actions, migration mechanics, `EXPLAIN` evidence and storage/write measurements belong to the later M4 architecture phase.
 
 Everything under `wip/` remains non-normative. This file is only a discovery checkpoint.
 
-The lossless comparison pass against the current materialization, runtime-schema, physical-schema, FK-arbitration, read-projection and physical-index WIPs is complete. The focused SCHEMA_CHANGE route closure has since been losslessly absorbed into `object.md`; Git history remains the historical record for superseded route-local and micro-WIP material.
+The lossless comparison pass against the current materialization, runtime-schema, physical-schema, FK-arbitration, read-projection and physical-index WIPs is complete. Focused route closures, including SCHEMA_CHANGE and ATTACH, are owned losslessly by `object.md`; Git history remains the historical record for superseded route-local and micro-WIP material.
 
 # 1. Baseline and materialization challenge
 
@@ -646,9 +646,16 @@ component-schema cache lookup/fill
 parent exact-binding recheck solely for semantic slot continuity
 ```
 
-Stable child-lineage ancestry validation remains independently useful.
+Stable child Object-lineage and ancestry validation remain independently useful and are now prepared cache-first as owned by `object.md` / `object-template-ancestry-cache.md`.
 
-Current route-level cost candidate is owned by `object.md`; this persistence boundary is what enables the `7/9 -> 6/7` ATTACH revalidation.
+Current route-level semantics and cost are owned only by `object.md`. The full-sweep logical baseline is:
+
+```text
+warm      = 6 PostgreSQL statements + COMMIT
+full-cold = 8 PostgreSQL statements + COMMIT
+```
+
+This persistence materialization is one enabling input to that profile; the complete route cost also reflects the stable Object-lineage cache and the post-edge lifecycle display-name read. The cross-operation persistence owner must not be used as a competing route-cost authority.
 
 ## 10.6 DETACH
 
@@ -725,14 +732,16 @@ DETACH
 
 Immutable exact schema and validation caches remain appropriate where a route genuinely performs semantic validation or migration.
 
+The route-local ATTACH `ObjectLineageCache[object_id] -> template_id` and its current-existence boundary are owned by `object.md`, not by this persistence WIP. The reusable complete stable ObjectTemplate ancestry-cache contract is owned by `object-template-ancestry-cache.md`.
+
 General boundary:
 
 ```text
 current mutable/materialized runtime fact
     -> PostgreSQL data plane
 
-immutable semantic interpretation/certification
-    -> certified model materialization + worker-local cache where useful
+immutable/stable semantic interpretation knowledge
+    -> certified materialization + worker-local cache where useful
 ```
 
 A normal data-plane read should not recertify a current fact against model-plane schema merely to reconstruct information already materialized relationally.
@@ -799,14 +808,16 @@ The supplied approximate ratio is an explicit discovery assumption, not a produc
 1 SCHEMA_CHANGE
 ```
 
-Using only the previously identified statement-count candidates:
+For warm ATTACH, the historical pre-materialization route candidate used `7` PostgreSQL statements while the current full-swept logical route baseline is `6`:
 
 ```text
 old warm ATTACH      7
-new warm ATTACH      6
+current warm ATTACH  6
 ```
 
-100 ATTACHes save approximately 100 PostgreSQL business statements before counting reads.
+The current full-cold ATTACH baseline is separately owned by `object.md` and is `8` statements + COMMIT; it includes both bounded stable Object-lineage and ancestry fills and must not be inferred from this materialization alone.
+
+Using the warm counts only, 100 ATTACHes save approximately 100 PostgreSQL business statements before counting reads.
 
 Even an illustrative conservative SCHEMA_CHANGE increase from `6` to `9` statements would produce:
 
@@ -1029,7 +1040,7 @@ storage/write measurements
 final PostgreSQL plan evidence
 ```
 
-The full-swept SCHEMA_CHANGE section in `object.md` has already revalidated the former outgoing-ownership fingerprint and parent-lock assumptions against this persistence boundary; architecture must preserve the resulting relational arbitration semantics.
+The full-swept SCHEMA_CHANGE and ATTACH sections in `object.md` have revalidated route-local assumptions against this persistence boundary; architecture must preserve the resulting relational arbitration semantics and route-level failure classes.
 
 # 17. Consolidation sources
 
