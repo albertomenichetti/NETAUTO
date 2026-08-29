@@ -101,7 +101,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
-| `POST /objects` | public contract + semantic admission ratified; execution revalidation pending | exact target PUBLISHED admission + certified exact semantics + Object/slot materialization |
+| `POST /objects` | public contract + semantic admission ratified; execution revalidation pending | non-abstract lineage + exact target PUBLISHED admission + certified exact semantics + Object/slot materialization |
 | `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
 | `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
 | `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
@@ -236,12 +236,17 @@ object_template = { id: T }
 
 If `default_version` is absent, implicit CREATE fails even if other PUBLISHED versions of the lineage exist. Once the exact binding `T@V` has been resolved, the in-flight CREATE remains pinned to it; a concurrent later default change must not retarget the command.
 
-The **only model-plane admission predicate owned by Object CREATE** is:
+Object CREATE owns exactly two direct model-plane admission predicates:
 
 ```text
+selected ObjectTemplate lineage T
+    -> abstract == false
+
 selected exact ObjectTemplateVersion T@V
     -> status == PUBLISHED through the new Object binding commit
 ```
+
+`abstract == false` is stable direct-creation eligibility owned by the selected ObjectTemplate lineage. A PUBLISHED exact version of an abstract lineage is still not a valid target for Object CREATE.
 
 Object CREATE does not independently re-admit, re-certify or lifecycle-check any other model-plane dependency.
 
@@ -265,9 +270,9 @@ prevents that exact parent from becoming DEPRECATED while the active PUBLISHED d
 
 Transitive lifecycle consistency follows from these direct active-model invariants. CREATE therefore does not recursively inspect parent/ancestor ObjectTemplateVersion status or the status of exact DataTypeVersions used by effective properties.
 
-This is not permission to consume a lifecycle-inconsistent graph. The graph is required to remain lifecycle-consistent by the model-plane itself; Object CREATE consumes that already-certified active state and owns only the target `T@V == PUBLISHED` admission predicate.
+This active-model guarantee does not subsume direct-creation eligibility. `abstract` is a stable lineage semantic property and remains an explicit CREATE admission predicate.
 
-CREATE also performs no cross-version reasoning. It does not infer admission from numeric order, creation order, genealogy, widening/narrowing, compatibility or migrability. The selected exact version is either currently PUBLISHED for the new binding or it is not.
+CREATE also performs no cross-version reasoning. It does not infer admission from numeric order, creation order, genealogy, widening/narrowing, compatibility or migrability. The selected lineage/exact pair either satisfies `abstract == false` and `T@V == PUBLISHED`, or it is not admissible for a new Object.
 
 After resolving exact `T@V`, caller properties are validated against the complete effective property schema certified for that exact version, including inherited properties.
 
@@ -350,8 +355,8 @@ Three stages remain preferred:
 STEP 1 — current binding resolution / early PUBLISHED admission
     PostgreSQL
 
-STEP 2 — semantic preparation / property validation
-    worker-local READY immutable semantic cache
+STEP 2 — stable direct-creation eligibility + semantic preparation / property validation
+    worker-local READY immutable/stable semantic cache
 
 STEP 3 — short mutation UoW
     final exact PUBLISHED admission/protection
@@ -381,9 +386,11 @@ Once STEP 1 resolves an exact binding, the command stays pinned to it. A concurr
 
 STEP 1 must not load effective schema, parent chains, DataType semantics, component declarations or unrelated model metadata.
 
-STEP 2 validates only from complete READY exact-version semantic cache state. The cache may contain effective property semantics, exact DataTypeVersion semantics and compiled validators, but not mutable PUBLISHED/default state and not independent lifecycle-admission proofs for transitive dependencies.
+STEP 2 consumes only complete READY stable/immutable semantic cache state. It must include stable direct-creation eligibility (`abstract`) plus the effective property semantics, exact DataTypeVersion semantics and compiled validators required to validate/canonicalize the Object candidate. It does not contain mutable PUBLISHED/default authority and does not independently re-admit transitive dependency lifecycle state.
 
-Missing or partial immutable knowledge is completed before validation and outside the mutation UoW. No model-plane PostgreSQL lock is held during cache fill, compilation, property validation or canonicalization.
+Because `abstract` is stable lineage semantics, it does not require a second mutable-state protection at commit. The current exact-version `PUBLISHED` predicate is the lifecycle-sensitive admission that must be revalidated/protected through the binding commit.
+
+Missing or partial immutable/stable knowledge is completed before validation and outside the mutation UoW. No model-plane PostgreSQL lock is held during cache fill, compilation, direct-creation eligibility evaluation, property validation or canonicalization.
 
 Current STEP 3 candidate:
 
