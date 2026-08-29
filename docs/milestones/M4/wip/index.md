@@ -144,6 +144,7 @@ Current full-sweep checkpoints inside this owner:
 POST /objects
 GET /objects
 GET /objects/{id}
+DELETE /objects/{id}
 ```
 
 The dedicated legacy WIPs that existed only for these full-swept routes have been removed after lossless absorption; Git history remains the historical record.
@@ -280,7 +281,6 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`to-be-api-object-attach-batch-cost.md`](to-be-api-object-attach-batch-cost.md)
 - [`to-be-api-object-attach-batch.md`](to-be-api-object-attach-batch.md)
 - [`to-be-api-object-canonical-name.md`](to-be-api-object-canonical-name.md)
-- [`to-be-api-object-delete.md`](to-be-api-object-delete.md)
 - [`to-be-api-object-detach-batch.md`](to-be-api-object-detach-batch.md)
 - [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md)
 - [`to-be-api-object-rename.md`](to-be-api-object-rename.md)
@@ -291,7 +291,7 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`object-rename-approximate-lifecycle.md`](object-rename-approximate-lifecycle.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `POST /objects`, `GET /objects` and `GET /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after lossless absorption.
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after lossless absorption.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
@@ -343,16 +343,7 @@ Some of these files already explicitly mark themselves superseded/incorporated. 
 
 This family contains successive and sometimes contradictory exploration steps. Use `object.md` for the current route direction; consult these files only to reconstruct why that direction exists or to perform an explicit revalidation.
 
-## 6.5 DELETE micro-WIP family — SOURCE MATERIAL
-
-- [`object-delete-discovery.md`](object-delete-discovery.md)
-- [`object-delete-direct-dml.md`](object-delete-direct-dml.md)
-- [`object-delete-fk-failure-mapping.md`](object-delete-fk-failure-mapping.md)
-- [`object-delete-public-contract.md`](object-delete-public-contract.md)
-
-Use `object.md` as the current route owner.
-
-## 6.6 Object component persistence source family — SOURCE MATERIAL / architecture input where noted
+## 6.5 Object component persistence source family — SOURCE MATERIAL / architecture input where noted
 
 - [`object-component-slots-data-plane-materialization.md`](object-component-slots-data-plane-materialization.md)
 - [`object-component-slots-fk-arbitration.md`](object-component-slots-fk-arbitration.md)
@@ -365,7 +356,7 @@ The lossless persistence comparison has been consolidated into `object-component
 
 The physical schema/index files remain useful **architecture inputs only**. Their presence does not ratify final DDL, PK/UNIQUE choices or indexes during discovery.
 
-## 6.7 SCHEMA_CHANGE source family — SOURCE MATERIAL / active revalidation evidence
+## 6.6 SCHEMA_CHANGE source family — SOURCE MATERIAL / active revalidation evidence
 
 - [`object-schema-change-ancestry-cache-fill.md`](object-schema-change-ancestry-cache-fill.md)
 - [`object-schema-change-bounded-retry.md`](object-schema-change-bounded-retry.md)
