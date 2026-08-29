@@ -109,52 +109,73 @@ Relationship reads
 semantic cache
 ```
 
-## Exact lifecycle semantics — revalidated
+## Ratified lifecycle semantics — exact minimal transition
 
-The earlier M4 candidate that accepted best-effort/approximate RENAME lifecycle snapshots is superseded.
+The lifecycle contract follows the general M4 principle that an event records the complete exact semantic transition owned by its operation, not automatically a complete before/after aggregate snapshot.
 
-The delivered Object semantic contract requires RENAME to produce exact complete intrinsic snapshots of the Object generation on which the rename is actually performed:
+For RENAME, the complete semantic transition is only:
 
 ```text
-RENAME.before
-    = exact complete intrinsic Object state immediately before this rename transition
-
-RENAME.after
-    = exact complete intrinsic Object state immediately after this rename transition
-
-allowed semantic difference
-    = canonical_name only
+canonical_name: old -> new
 ```
 
-Intrinsic snapshot fields remain:
+Therefore the RENAME lifecycle payload must record the exact old and new canonical-name values, but it must **not** duplicate unchanged intrinsic or structural Object state merely for payload uniformity.
+
+Conceptually:
 
 ```text
-id
-canonical_name
+RENAME event
+    object_id = O
+
+    before:
+        canonical_name = old_name
+
+    after:
+        canonical_name = requested_name
+```
+
+Equivalent generic JSON-carrier direction:
+
+```json
+{
+  "before": {
+    "canonical_name": "server-1"
+  },
+  "after": {
+    "canonical_name": "server-2"
+  }
+}
+```
+
+The exact final persistence/DTO carrier remains lifecycle-architecture work. The semantic requirement is the exact old/new name transition.
+
+The RENAME event does not need to copy:
+
+```text
+id inside before/after payloads when object_id is already event identity
 template_id
 template_version
 properties
+ownership/components
+Relationships
 ```
 
-Therefore a concurrent DATA_CHANGE or SCHEMA_CHANGE must not cause the RENAME event to mix a stale preliminary intrinsic generation with a later row mutation.
+because RENAME cannot modify those facts.
 
-Example requirement:
+This supersedes both earlier RENAME lifecycle candidates:
 
 ```text
-SCHEMA_CHANGE commits first
-    -> RENAME before/after use the post-SCHEMA_CHANGE exact binding/properties
-
-RENAME commits first
-    -> RENAME before/after use the pre-SCHEMA_CHANGE exact binding/properties
+full intrinsic before/after snapshots
+best-effort / approximate full intrinsic snapshots
 ```
 
-A hybrid historical event whose `before`/`after` do not describe the Object generation actually renamed is not accepted.
+The former is unnecessary duplication and creates artificial coupling to unrelated intrinsic mutations; the latter weakens historical precision without need.
 
-The reason to keep the stronger guarantee is also proportional: RENAME is not expected to be a high-frequency operation, so M4 does not weaken historical correctness merely to avoid bounded synchronization work.
+Current-state mutation and RENAME lifecycle event remain atomic. What becomes narrower is only the historical payload responsibility.
 
 ## Logical execution requirement
 
-The logical mutation flow is:
+The logical route needs only the exact current name and the new requested name:
 
 ```text
 validate canonical_name
@@ -162,90 +183,138 @@ validate canonical_name
 
 BEGIN
 
-obtain/protect exact current intrinsic Object state S
+obtain/protect current Object existence + exact old canonical_name
     absent -> 404 resource_not_found
 
-perform canonical_name-only update against that protected generation
-
-construct exact after state:
-    S with canonical_name = requested_name
+perform canonical_name-only update
 
 insert exactly one RENAME lifecycle event
-    before_state = S
-    after_state  = after
+    old canonical_name -> requested canonical_name
 
 COMMIT
 ```
 
-Current Object transition and its RENAME event commit or rollback atomically.
+A same-name request follows the same path and may record:
 
-The route requirement is exactness and serialization, not a frozen statement count or PostgreSQL lock mode.
+```text
+old_name == new_name
+```
+
+No complete Object snapshot is needed for RENAME lifecycle construction.
 
 ## Physical realization handoff
 
-M4 discovery does not yet freeze whether architecture realizes the logical flow using:
+M4 discovery does not freeze whether architecture realizes the logical flow using:
 
 ```text
-protected SELECT + UPDATE + lifecycle INSERT
+protected current-name read + UPDATE + lifecycle INSERT
 
-UPDATE with an adequate old/new carrier + lifecycle INSERT
+one safe PostgreSQL old/new-name carrier + lifecycle INSERT
 
-or another safe fused PostgreSQL realization
+or another equivalent fused realization
 ```
 
-The exact SQL shape, row-lock mode, statement fusion and PostgreSQL-version-specific facilities are architecture concerns.
+Exact SQL, statement fusion and row-lock mode remain architecture concerns.
 
 Any realization must preserve:
 
 ```text
-exact before/after intrinsic snapshots
+exact old canonical_name
+exact requested/new canonical_name
 canonical_name-only current write
-atomic Object + lifecycle transition
-no lost intrinsic Object changes
+atomic Object + RENAME lifecycle transition
+no lost same-field rename transition
 no mutation-after-delete / resurrection
 ```
 
-A PostgreSQL-version-specific optimization must not become an unstated semantic dependency of the route.
+No PostgreSQL-version-specific optimization is part of the semantic contract.
 
 ## Concurrency direction
 
-RENAME participates in the complete-Object-state (`OS`) concurrency contract when racing with intrinsic mutations of the same Object.
+The lifecycle narrowing removes the need for RENAME to serialize semantically with unrelated intrinsic fields merely to obtain a complete aggregate snapshot.
 
-Required outcomes are serially explainable:
+Required route-level outcomes:
 
 ```text
-RENAME x RENAME
-    -> both real transitions serialize
-    -> each lifecycle event describes its own exact transition
-    -> final canonical_name follows the serial commit order
+RENAME x RENAME on same Object
+    -> each real assignment has an exact old -> new name transition
+    -> transitions are serially explainable
+    -> final canonical_name is one complete committed assignment
 
-RENAME x DATA_CHANGE
-    -> one complete transition before the other
-    -> RENAME never overwrites properties
+RENAME x DATA_CHANGE on same Object
+    -> neither operation overwrites the other's field ownership
+    -> RENAME lifecycle needs no properties snapshot
 
-RENAME x SCHEMA_CHANGE
-    -> one complete transition before the other
-    -> RENAME never overwrites exact binding/properties
+RENAME x SCHEMA_CHANGE on same Object
+    -> neither operation overwrites the other's field ownership
+    -> RENAME lifecycle needs no exact binding/properties snapshot
 
-RENAME x DELETE
+RENAME x DELETE on same Object
     -> RENAME commits before DELETE
        OR DELETE wins and RENAME cannot commit against/resurrect the absent Object
 ```
 
-RENAME is semantically independent from ownership mutations merely because the same Object participates; it does not read or change ownership state.
+PostgreSQL may still physically serialize updates to the same `objects` row. Such physical contention does not enlarge RENAME's semantic responsibility.
+
+RENAME is semantically independent from ATTACH/DETACH current ownership state. Relationship/ownership event display-name coherence, where required by those operations, belongs to those operations' own lifecycle contracts rather than causing RENAME to load or validate their state.
 
 Exact locking/wait-for realization remains architecture work.
+
+## Failure mapping
+
+Bounded public failures:
+
+```text
+400 invalid_request
+    malformed/static transport input
+    invalid canonical_name carrier/value
+
+404 resource_not_found
+    selected Object does not exist at mutation admission
+
+500 internal_error
+    unexpected persistence/lifecycle/invariant failure
+```
+
+The operation introduces no semantic `409`, `422`, name-conflict, schema-admission or ownership-admission failure class.
 
 ## Cost/cache/schema direction
 
 There is no warm/cold cache distinction and no route-specific cache.
 
-Logical required work is bounded to one Object row plus one lifecycle event. Exact successful PostgreSQL statement count remains an architecture optimization target after the exact-lifecycle requirement is satisfied.
+Logical required data is bounded to:
+
+```text
+current Object existence
+old canonical_name
+requested canonical_name
+one RENAME lifecycle transition
+```
+
+A straightforward safe realization may use:
+
+```text
+1 protected current-name read
+1 canonical_name UPDATE
+1 lifecycle INSERT
++ COMMIT
+```
+
+but exact statement count remains an architecture optimization target rather than a discovery contract.
 
 No route-specific table, denormalization, materialization or index is introduced.
 
 ## Revalidation status
 
-Public contract, same-name assignment semantics, semantic responsibility boundary and exact lifecycle requirement are ratified during the current full-sweep pass.
+Ratified during the current full-sweep pass:
 
-The remaining route-local sweep work is limited to confirming final failure/concurrency closure and then absorbing this direction into the consolidated Object route owner before marking `PUT /objects/{id}/canonical-name` full-sweep complete.
+- public contract;
+- `204` / `404` / `400` direction;
+- same-name assignment semantics;
+- semantic responsibility boundary;
+- exact minimal RENAME lifecycle payload;
+- no schema/model/cache recertification;
+- bounded current-name mutation path;
+- route-level concurrency/failure direction.
+
+The remaining work is consolidation into the main Object route owner and final full-sweep closure/cleanup.
