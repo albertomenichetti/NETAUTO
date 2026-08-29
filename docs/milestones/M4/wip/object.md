@@ -101,7 +101,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 
 | Operation | Current discovery state | Main runtime direction |
 |---|---|---|
-| `POST /objects` | public contract + semantic admission ratified; execution revalidation pending | non-abstract lineage + exact target PUBLISHED admission + certified exact semantics + Object/slot materialization |
+| `POST /objects` | public contract + semantic admission + execution/data-path ratified; final failure/closure sweep pending | non-abstract lineage + exact target PUBLISHED admission + READY validation cache with opportunistic component warming + Object/slot materialization |
 | `GET /objects` | **full-sweep complete** | one statement on `objects`; bounded summary; no cache/model reads |
 | `GET /objects/{id}` | **full-sweep complete** | one current data-plane statement, no component-schema cache |
 | `PUT /objects/{id}/canonical-name` | route-local closed | bounded Object read/update + lifecycle |
@@ -347,9 +347,9 @@ required property omitted
 
 A newly created Object starts with the complete effective component-slot contract of the selected exact `T@V` and zero current ownership edges. No child attachment is part of Object CREATE. The Object exact binding and its current effective slot contract must correspond to the same exact `T@V`; the persistence/materialization realization is handled by the execution/data-path block.
 
-## Candidate execution
+## Ratified execution/data-path direction
 
-Three stages remain preferred:
+CREATE is split into three deliberately separate stages:
 
 ```text
 STEP 1 — current binding resolution / early PUBLISHED admission
@@ -364,6 +364,8 @@ STEP 3 — short mutation UoW
     + materialize all current component slots
     + CREATED lifecycle
 ```
+
+### STEP 1 — minimal current binding resolution
 
 STEP 1 always consults PostgreSQL. Cache state must never resolve a mutable current default or prove current PUBLISHED status.
 
@@ -382,25 +384,114 @@ T
     -> exact (T,V) must currently be PUBLISHED
 ```
 
-Once STEP 1 resolves an exact binding, the command stays pinned to it. A concurrent later `SET_DEFAULT` does not retarget the in-flight CREATE.
+Once STEP 1 resolves an exact binding, the command stays pinned to it. A concurrent later `SET_DEFAULT` or `CLEAR_DEFAULT` does not retarget or invalidate the in-flight CREATE merely by changing the lineage default pointer.
 
-STEP 1 must not load effective schema, parent chains, DataType semantics, component declarations or unrelated model metadata.
+STEP 1 must remain current-state oriented and must not load effective property/component schema, parent chains, DataType semantic payload or transitive dependency lifecycle state.
 
-STEP 2 consumes only complete READY stable/immutable semantic cache state. It must include stable direct-creation eligibility (`abstract`) plus the effective property semantics, exact DataTypeVersion semantics and compiled validators required to validate/canonicalize the Object candidate. It does not contain mutable PUBLISHED/default authority and does not independently re-admit transitive dependency lifecycle state.
+### STEP 2 — READY semantic cache and opportunistic cross-facet warming
 
-Because `abstract` is stable lineage semantics, it does not require a second mutable-state protection at commit. The current exact-version `PUBLISHED` predicate is the lifecycle-sensitive admission that must be revalidated/protected through the binding commit.
+STEP 2 consumes complete READY stable/immutable semantic cache state for the facets CREATE actually requires.
 
-Missing or partial immutable/stable knowledge is completed before validation and outside the mutation UoW. No model-plane PostgreSQL lock is held during cache fill, compilation, direct-creation eligibility evaluation, property validation or canonicalization.
+Required CREATE knowledge includes:
 
-Current STEP 3 candidate:
+```text
+stable direct-creation eligibility
+    abstract
+
+complete effective property semantics
+    declaring_template_id
+    name
+    value_mode
+    required
+    exact datatype_id/version pin
+
+exact immutable DataTypeVersion semantics required by those properties
+    primitive/base type
+    canonical constraints
+
+compiled/runtime validation structures
+    RuntimePropertySpec or equivalent
+    reusable compiled validators where beneficial
+```
+
+The cache is not authority for:
+
+```text
+current default_version
+current T@V PUBLISHED/DEPRECATED status
+transitive dependency lifecycle admission
+```
+
+Because `abstract` is stable lineage semantics, it may be consumed from the semantic cache and does not require a second mutable-state protection at commit. The current exact-version `PUBLISHED` predicate is the lifecycle-sensitive admission that must be revalidated/protected through the binding commit.
+
+A missing or partial required facet is completed before validation and outside the mutation UoW. The cold-load capability must remain bounded and must not regress to recursive ObjectTemplate parent traversal, per-property reads or N+1 exact DataTypeVersion loads.
+
+The exact component-semantic facet is **not** a correctness prerequisite for Object CREATE. CREATE does not need worker-side component semantics to validate the new Object or to persist its initial empty ownership state.
+
+However, the same exact ObjectTemplateVersion is useful to other consumers, and the component facet is immutable. Therefore a CREATE-driven cold load should opportunistically warm exact effective component semantics when the same bounded load already carries them or can include them without an otherwise unnecessary PostgreSQL round trip.
+
+Conceptually:
+
+```text
+CREATE requires
+    stable direct-creation facet READY
+    validation/property facet READY
+
+CREATE cold fill may additionally publish
+    component semantic facet READY
+        declaring_template_id
+        name
+        target_template_id
+
+component-facet READY
+    != CREATE semantic prerequisite
+```
+
+Cross-facet warming policy:
+
+```text
+same bounded load naturally provides component semantics
+    -> warm component facet too
+
+component semantics can be included with bounded marginal work
+and no additional DB round trip
+    -> warm component facet too
+
+an additional PostgreSQL round trip would exist solely for speculative warming
+    -> not required by Object.CREATE
+```
+
+This keeps CREATE correctness dependent only on the facets it consumes while allowing later operations to benefit from work already paid during the cold load.
+
+No model-plane PostgreSQL lock is held during cache fill, compilation, direct-creation eligibility evaluation, property validation or canonicalization.
+
+### STEP 3 — short mutation UoW
+
+STEP 3 begins only after the complete canonical Object candidate is ready.
+
+Conceptually:
+
+```text
+ObjectCandidate
+    id
+    canonical_name
+    template_id = T
+    template_version = V
+    canonical properties
+```
+
+No cache fill, semantic reconstruction or property validation belongs inside the mutation UoW.
+
+Current logical mutation direction:
 
 ```text
 BEGIN
 
 S1
-    final exact PUBLISHED admission/protection
+    final exact T@V PUBLISHED admission/protection
     + INSERT objects row
-    + bounded INSERT ... SELECT of all exact effective component slots
+    + bounded DB-internal copy of all certified exact effective component slots
+      from object_template_effective_components(T,V)
       into object_component_slots
 
 S2
@@ -409,28 +500,99 @@ S2
 COMMIT
 ```
 
-Object state, exact binding, materialized slot set and CREATED lifecycle transition must be atomic.
+The component materialization path is intentionally DB-internal. CREATE does not need to transfer exact component semantics DB -> worker -> DB merely to create `object_component_slots` rows.
 
-Required concurrency outcome:
+Object state, exact binding, complete materialized current slot set and CREATED lifecycle transition must become visible atomically.
+
+CREATE writes:
 
 ```text
-DEPRECATE wins before final admission
+objects
+object_component_slots
+object lifecycle persistence
+```
+
+and does not create or otherwise touch current ownership edges:
+
+```text
+object_components
+    -> no CREATE write
+```
+
+### Concurrency boundary
+
+The direct lifecycle race owned by CREATE is:
+
+```text
+Object.CREATE against T@V
+vs
+ObjectTemplate.DEPRECATE(T@V)
+```
+
+Required outcome:
+
+```text
+DEPRECATE makes T@V non-PUBLISHED before final admission
     -> CREATE cannot commit the new binding
 
 CREATE final admission/protection wins first
-    -> CREATE may commit
-    -> DEPRECATE waits/proceeds afterward
+    -> CREATE may commit the new binding
+    -> DEPRECATE may proceed afterward
 ```
 
-Warm route statement direction remains approximately:
+A successful Object may later remain pinned to that exact version after it becomes DEPRECATED; the lifecycle-sensitive predicate applies to the creation of the new binding, not to historical binding validity.
+
+CREATE does not independently close races against parent/ancestor OTV or exact DTV deprecation. Those transitions are already constrained by the active PUBLISHED model graph while the target T@V remains PUBLISHED.
+
+### Cost direction
+
+Warm target:
 
 ```text
-1 minimal binding/PUBLISHED lookup
-1 final admission + Object + slot materialization statement
-1 CREATED lifecycle insert
+STEP 1
+    1 minimal current binding/PUBLISHED lookup
+
+STEP 2
+    required cache facets HIT
+    CPU-only abstract check + property validation/canonicalization
+
+STEP 3
+    1 final admission + Object + slot materialization candidate statement
+    1 CREATED lifecycle statement
+    COMMIT
+
+~3 PostgreSQL business statements + COMMIT
 ```
 
-Additional materialization work is proportional to effective slot count `S`, without touching `object_components` because a new Object starts with no ownership edges.
+Cold target:
+
+```text
+warm path
++ 1 bounded stable/immutable semantic cold-load statement where physically feasible
++ local compilation/cache fill
++ opportunistic component-facet warming under the no-extra-round-trip rule
+
+~4 PostgreSQL business statements + COMMIT
+```
+
+These counts are discovery cost targets, not a frozen SQL realization. Exact statement fusion, lock mode, physical loader query shape, indexes and final PostgreSQL arbitration belong to architecture. The route-level requirement is bounded work, no recursive/N+1 semantic reconstruction, and no cache fill while holding final model-plane admission protection.
+
+### Relational/materialization implication
+
+CREATE introduces no additional route-specific denormalization beyond already identified M4 candidates:
+
+```text
+object_template_effective_properties
+    -> certified exact property source for semantic cold loading
+
+object_template_effective_components
+    -> certified exact component source for DB-internal slot materialization
+
+object_component_slots
+    -> current per-Object derived slot contract
+```
+
+No CREATE-specific additional table or copied component payload on `objects` is required.
 
 # 2. LIST Objects — full sweep complete
 
@@ -1913,6 +2075,8 @@ DETACH
 ```
 
 Immutable exact schema/validation caches remain useful where semantic validation or migration genuinely needs model-plane knowledge, including CREATE properties validation, properties mutation and SCHEMA_CHANGE preparation.
+
+CREATE may also opportunistically warm the exact component-semantic cache facet when its cold semantic load can do so with bounded marginal work and no additional PostgreSQL round trip solely for warming. That warming is a reusable performance side effect, not a CREATE correctness prerequisite.
 
 ## Current read boundary
 
