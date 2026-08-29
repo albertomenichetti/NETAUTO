@@ -4,7 +4,7 @@ Status: SUPERSEDED DISCOVERY CHECKPOINT / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Supersession
 
-The approximate-lifecycle candidate recorded by the earlier version of this file is **superseded**.
+Every earlier lifecycle candidate in this file is superseded.
 
 Current ratified Object.RENAME direction is owned by:
 
@@ -12,27 +12,57 @@ Current ratified Object.RENAME direction is owned by:
 to-be-api-object-rename.md
 ```
 
-and requires exact complete intrinsic lifecycle snapshots for the Object generation actually renamed.
-
-The earlier candidate allowed an unlocked preliminary Object snapshot to become stale relative to a concurrent intrinsic mutation before the canonical-name UPDATE. That would permit a RENAME lifecycle event whose `before_state` / `after_state` did not describe the exact Object generation on which the rename was performed.
-
-That relaxation is no longer accepted.
-
-Current requirement:
+The final current direction is neither:
 
 ```text
-RENAME.before
-    = exact complete intrinsic Object state immediately before the rename transition
-
-RENAME.after
-    = exact complete intrinsic Object state immediately after the rename transition
-
-only semantic difference
-    = canonical_name
+approximate complete intrinsic snapshots
 ```
 
-The Object current-state transition and RENAME lifecycle event remain atomic.
+nor:
 
-Exact PostgreSQL statement fusion, lock mode and old/new-row carrier are deferred to architecture. RENAME is not expected to be sufficiently frequent to justify weakening historical correctness solely to save bounded synchronization work.
+```text
+exact complete intrinsic snapshots
+```
 
-This file remains only as traceability for the superseded optimization hypothesis and must not be used as current semantic authority.
+Instead RENAME records the **exact minimal semantic transition it owns**:
+
+```text
+canonical_name: old -> new
+```
+
+Conceptually:
+
+```text
+RENAME event
+    object_id = O
+    before.canonical_name = exact old name
+    after.canonical_name  = requested/new name
+```
+
+Unchanged Object state is not duplicated merely to make the event look like another intrinsic mutation family:
+
+```text
+template_id       not part of RENAME transition
+template_version  not part of RENAME transition
+properties        not part of RENAME transition
+ownership         not part of RENAME transition
+Relationships     not part of RENAME transition
+```
+
+This follows the ratified M4 lifecycle principle:
+
+```text
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+
+not automatically
+    = complete aggregate before + after snapshots
+```
+
+The historical transition remains exact; only irrelevant unchanged state is omitted.
+
+The Object current-name mutation and its RENAME lifecycle event still commit or rollback atomically.
+
+Exact PostgreSQL statement fusion, current-name protection and lock mode remain architecture work.
+
+This file remains only as traceability for superseded optimization/snapshot hypotheses and must not be used as current semantic authority.
