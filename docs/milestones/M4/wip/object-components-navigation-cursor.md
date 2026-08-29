@@ -1,10 +1,10 @@
 # M4 WIP — Object component-slot navigation cursor
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / ALWAYS NON-NORMATIVE
+Status: CURSOR CONTRACT REVALIDATED / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Scope
 
-This note records the current route-local cursor candidate for:
+This note records the ratified route-local cursor semantics for:
 
 ```http
 GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
@@ -12,7 +12,7 @@ GET /api/v1/core/objects/{parent_object_id}/components/{slot_name}
     &limit=...
 ```
 
-It is a discovery checkpoint only. It does not authorize implementation and does not modify the global AS-IS cursor contract.
+It is an M4 discovery checkpoint only. It does not authorize implementation and does not modify the global AS-IS cursor contract.
 
 Public route ownership remains in:
 
@@ -26,55 +26,15 @@ The one-statement runtime path is owned by:
 object-components-navigation-data-path.md
 ```
 
-The semantic slot materialization used by this candidate is owned by:
+## Ratified cursor rule
 
-```text
-object-component-slots-data-plane-materialization.md
-```
-
-## Revalidated cursor rule
-
-The consolidated AS-IS rule remains the baseline:
-
-```text
-cursor query identity
-    = route identity
-    + every membership-affecting path target
-    + every membership-affecting query filter
-    + required semantic identity/presence material
-
-cursor position
-    = complete canonical ordering tuple
-
-limit
-    = not semantic identity
-```
-
-The M4 route changes one important detail relative to the AS-IS generic Object-components route: the public path identifies one current semantic slot collection.
-
-A public path pair:
-
-```text
-(parent_object_id, slot_name)
-```
-
-is not sufficient to identify that collection across Object `SCHEMA_CHANGE`, because the same path can later resolve to a semantically different slot declaration.
-
-The semantic slot key remains:
-
-```text
-(slot_declaring_template_id, slot_name)
-```
-
-Therefore the cursor must also bind the current internal `slot_declaring_template_id`.
-
-## Candidate query identity and position
+The cursor identifies one semantic slot collection and one keyset position. It is not a snapshot of the parent Object generation or of cross-request membership.
 
 ```text
 codec route identity
     object_component_slot_children
 
-semantic query identity
+semantic collection identity
     parent_object_id
     slot_name
     slot_declaring_template_id
@@ -86,38 +46,26 @@ limit
     excluded from semantic identity
 ```
 
-`slot_declaring_template_id` remains internal semantic identity material. Its presence in an opaque cursor does not justify exposing it as a normal public response field or request parameter.
+`slot_declaring_template_id` remains internal opaque cursor material. Its presence in the cursor does not justify exposing it as a public path/query parameter or response field.
 
-## Why `slot_declaring_template_id` is required
+The public pair `(parent_object_id, slot_name)` is not sufficient across `SCHEMA_CHANGE`, because the same public path can later resolve to a different semantic slot declaration. Binding `slot_declaring_template_id` prevents continuation against a replacement collection.
 
-Consider a first page produced from:
-
-```text
-parent_object_id = P
-slot_name = interfaces
-slot_declaring_template_id = A
-last child = C100
-```
-
-A later `SCHEMA_CHANGE` may replace the current slot so that the same public path now resolves to:
+Example:
 
 ```text
-parent_object_id = P
-slot_name = interfaces
-slot_declaring_template_id = B
+issued cursor
+    parent = P
+    slot_name = interfaces
+    slot_declaring_template_id = A
+
+current same-name slot after SCHEMA_CHANGE
+    parent = P
+    slot_name = interfaces
+    slot_declaring_template_id = B
+
+A != B
+    -> 400 invalid_cursor
 ```
-
-If the cursor carried only `P + interfaces`, the old token could continue with:
-
-```text
-child_object_id > C100
-```
-
-against a different semantic slot collection.
-
-That is not ordinary cross-request membership churn. It is continuation of a keyset position against a different nested semantic resource.
-
-Binding `slot_declaring_template_id` makes the replacement detectable and yields `400 invalid_cursor`.
 
 ## Deliberately excluded identity material
 
@@ -125,23 +73,35 @@ The cursor does not bind:
 
 ```text
 parent template_version
+parent revision
 target_template_id
-effective_ordinal / position
+effective ordinal / position
 child canonical_name
 ```
 
 Rationale:
 
-- parent `template_version` may change while preserving the same semantic slot;
-- `target_template_id` is intentionally non-key in the current slot/FK candidate and target widening must not invalidate pagination by itself;
-- effective ordinal/position is not currently materialized and is not part of route ordering;
-- child `canonical_name` is projected display state and does not affect collection identity or keyset ordering.
+- the parent exact version may change while preserving the same semantic slot;
+- `revision` is intrinsic Object-row freshness metadata, not collection identity;
+- target widening preserves semantic slot identity and must not invalidate pagination merely because the accepted target lineage broadens;
+- component position is not route ordering or semantic slot identity;
+- child `canonical_name` is projected display state and does not affect membership identity or keyset position.
 
-This preserves cursor compatibility across changes that do not replace the semantic slot identity.
+Therefore these changes preserve cursor compatibility when `(slot_declaring_template_id, slot_name)` remains unchanged:
 
-## Opaque encoding candidate
+```text
+parent SCHEMA_CHANGE preserving the semantic slot
+component target widening
+ATTACH
+DETACH
+child RENAME
+```
 
-The existing cursor envelope remains sufficient:
+## Public opacity and encoding direction
+
+The public contract exposes only an opaque cursor string. Callers must not inspect or construct its internal representation.
+
+The existing cursor envelope remains an acceptable M4 realization candidate:
 
 ```json
 {
@@ -152,56 +112,48 @@ The existing cursor envelope remains sufficient:
     "slot_name": "interfaces",
     "slot_declaring_template_id": "<uuid>"
   },
-  "key": [
-    "<child-object-uuid>"
-  ]
+  "key": ["<child-object-uuid>"]
 }
 ```
 
-The candidate retains:
+Current implementation-direction properties remain:
 
 ```text
 canonical JSON
 URL-safe Base64
 stripped Base64 padding
 no server-side cursor state
-no cursor signing requirement introduced by this checkpoint
+no route-specific signing requirement
+new route identity
+no global envelope-version bump
 ```
 
-A new codec route identity is preferred over reusing AS-IS `object_components` because the public collection semantics changed from a generic cross-slot route with an optional slot filter to one exact slot collection.
-
-No global cursor envelope version bump is justified by this local semantic change. `v = 1` remains suitable while the envelope structure and decoding rules remain unchanged.
-
-A future change to envelope semantics, canonical ordering or position shape must reopen codec/version compatibility explicitly.
+Those carrier details are implementation/codec direction, not caller-visible semantics.
 
 ## Failure precedence
 
-Transport/request validation remains separate from current-resource classification.
+Static cursor validation occurs before database access.
 
-### Before database access
-
-Any cursor that is structurally malformed or statically incompatible with the request is rejected as:
+Any cursor that is malformed or statically incompatible with the request returns:
 
 ```text
 400 invalid_cursor
 ```
 
-This includes:
+including:
 
 ```text
-invalid Base64/JSON/envelope version
+invalid Base64 / JSON / envelope version
 wrong codec route identity
 different parent_object_id
 different slot_name
-missing/wrong-type slot_declaring_template_id carrier
+missing/wrong-type slot_declaring_template_id
 wrong-length/wrong-type/malformed child_object_id position key
 ```
 
-`limit` may change between pages and does not make the cursor incompatible.
+Changing `limit` does not invalidate the cursor.
 
-### In the authoritative PostgreSQL statement snapshot
-
-A cursor can be structurally valid and still need comparison with current slot state. The single route statement must classify in this order:
+A structurally valid cursor is then compared with current slot state inside the same authoritative PostgreSQL statement that reads the page:
 
 ```text
 parent absent
@@ -219,77 +171,62 @@ parent exists + slot exists
     -> normal keyset continuation
 ```
 
-This ordering intentionally treats current resource absence as current-resource absence, while semantic replacement of an existing path target is an incompatible continuation token.
+No preliminary or diagnostic-only database lookup is introduced solely for cursor validation.
 
-No diagnostic-only query is introduced.
+## Cross-request semantics
 
-## Single-statement validation
+The cursor is a continuation token, not a repeatable dataset snapshot, export token or CDC token.
 
-The cursor's internal semantic identity must not create a preliminary lookup.
-
-The route statement already reads the current materialized slot row:
+Between pages:
 
 ```text
-object_component_slots
-    object_id
-    slot_declaring_template_id
-    slot_name
-```
+DETACH of a future child
+    -> that child may disappear from later pages
 
-Therefore it can compare:
+ATTACH with child_object_id > cursor position
+    -> may appear in a later page
 
-```text
-current slot_declaring_template_id
-    vs
-cursor slot_declaring_template_id
-```
+ATTACH with child_object_id <= cursor position
+    -> may not be observed by that continuation
 
-inside the same PostgreSQL statement snapshot that supplies current membership and child names.
-
-The bounded membership branch may additionally be gated by the matching semantic identity so that a stale/replaced-slot cursor does not scan a page that will be rejected.
-
-## Concurrency interpretation
-
-The cursor is not a transaction snapshot and does not promise repeatable membership across requests.
-
-Concurrent:
-
-```text
-ATTACH
-DETACH
 child RENAME
+    -> later page may expose the new canonical_name
 ```
 
-may change later pages according to normal keyset semantics.
+This is ordinary keyset behavior over current state.
 
-A target widening or parent schema-version transition that preserves:
+Semantic slot replacement is different from membership churn and invalidates the token. Current slot removal yields `404 object_component_slot` because the nested resource is absent in that request snapshot.
+
+If a slot with the same semantic identity is later present again, an older cursor may again be semantically compatible. M4 does not add parent revision/version solely to encode temporal continuity that the cursor contract does not promise.
+
+## next_cursor generation
+
+The route reads at most:
 
 ```text
-(slot_declaring_template_id, slot_name)
+limit + 1 children
 ```
 
-keeps the cursor semantically compatible.
-
-A semantic slot replacement that changes `slot_declaring_template_id` invalidates the old cursor.
-
-A current slot removal yields `404 object_component_slot` because the nested resource does not exist in that request's statement snapshot.
-
-If a slot with the same semantic identity is later present again, an older cursor can again be semantically compatible. This is consistent with the global rule that cursors are not cross-request snapshots and membership stability is not guaranteed.
-
-## Cost model
-
-Cursor generation does not add a database statement or model-plane lookup.
-
-All required values are already available from the page request:
+Then:
 
 ```text
-parent_object_id
-slot_name
-slot_declaring_template_id
-last child_object_id
+returned row count <= limit
+    -> next_cursor = null
+
+returned row count > limit
+    -> return first limit children
+    -> next_cursor built from:
+         parent_object_id
+         slot_name
+         current slot_declaring_template_id
+         last returned child_object_id
 ```
 
-Candidate runtime delta:
+No additional database statement, model-plane lookup or cache lookup is required to generate the token.
+
+## Cost consequence
+
+Cursor support adds:
 
 ```text
 PostgreSQL statements          +0
@@ -298,60 +235,44 @@ cache lookups                  +0
 recursive traversal            +0
 explicit locks                 +0
 server-side cursor storage     +0
-
-application work
-    small canonical-JSON serialization
-    small URL-safe Base64 encode/decode
-
-continuation DB work
-    one UUID semantic-identity equality check
-    normal child_object_id keyset predicate
 ```
 
-The token becomes modestly larger because it carries one additional UUID. This is intentionally preferred over an extra runtime read or weakening semantic isolation.
+Only small encode/decode work and the normal current semantic-id equality/keyset predicates are added.
 
-## Required downstream verification matrix
+## Required verification matrix
 
 Positive cases:
 
 ```text
-same codec route + parent + slot + semantic slot identity
+same route + parent + slot + semantic slot identity
     -> continuation accepted
 
 limit changed
-    -> continuation accepted
+    -> accepted
 
 ATTACH/DETACH between requests
-    -> cursor remains structurally compatible
+    -> cursor structurally remains valid
 
-child RENAME between requests
-    -> cursor remains structurally compatible
+child RENAME
+    -> remains valid
 
 target widening preserving semantic slot identity
-    -> cursor remains compatible
+    -> remains valid
 
 parent schema-version change preserving semantic slot identity
-    -> cursor remains compatible
+    -> remains valid
 ```
 
 Negative/static cases:
 
 ```text
-AS-IS object_components cursor on new route
-    -> invalid_cursor
-
-different route
-    -> invalid_cursor
-
-different parent
-    -> invalid_cursor
-
-different slot name
-    -> invalid_cursor
-
+old AS-IS generic object_components cursor
+wrong route
+wrong parent
+wrong slot name
 malformed semantic-id carrier
-malformed/wrong-length/wrong-type position key
-    -> invalid_cursor
+malformed position key
+    -> 400 invalid_cursor
 ```
 
 Current-state cases:
@@ -360,22 +281,18 @@ Current-state cases:
 parent absent
     -> 404 object
 
-parent exists + slot absent
+slot absent
     -> 404 object_component_slot
 
-same public parent/slot path but current declaring-template id changed
-    -> invalid_cursor
+same public parent/slot path but declaring-template identity changed
+    -> 400 invalid_cursor
 ```
 
-The semantic-replacement case requires explicit API-level regression evidence; codec-only tests are insufficient because current slot identity is a database fact.
-
-## Frozen discovery takeaway
+## Ratified discovery takeaway
 
 ```text
-Object component-slot cursor
-
-codec route
-    object_component_slot_children
+cursor identifies semantic slot collection,
+not parent generation and not membership snapshot
 
 identity
     parent_object_id
@@ -388,26 +305,19 @@ position
 limit
     not identity
 
-semantic replacement
-    -> 400 invalid_cursor
-
-current slot removal
+slot removal
     -> 404 object_component_slot
 
-target widening / same semantic slot
-    -> cursor remains compatible
+same-name semantic replacement
+    -> 400 invalid_cursor
 
-encoding
-    existing v1 canonical-JSON + base64url envelope
-    new route identity
-    no global version bump
+same semantic slot across SCHEMA_CHANGE/widening
+    -> cursor remains valid
 
-runtime cost
-    +0 PostgreSQL statements
-    +0 model-plane reads
-    +0 cache lookups
-    small serialization/transport overhead only
+ATTACH / DETACH / child RENAME
+    -> do not structurally invalidate cursor
 
-validation
-    current semantic slot comparison remains inside the same authoritative one-statement snapshot
+public cursor remains opaque
+runtime DB/model/cache overhead for cursor generation
+    -> zero additional reads
 ```
