@@ -1,60 +1,65 @@
 # M4 WIP — Object SCHEMA_CHANGE consolidated discovery
 
-**Status:** ACTIVE CONSOLIDATION / CURRENT LOGICAL CANDIDATE RECONCILED / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** SCHEMA_CHANGE OWNER CONSOLIDATED / SOURCE→TARGET MONOTONICITY POLICY REOPENED / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
-This document is the consolidated working owner for the detailed M4 `Object.SCHEMA_CHANGE` discovery.
+This document is the consolidated working owner for detailed M4 `Object.SCHEMA_CHANGE` discovery.
 
-Public route shape and Object-family navigation remain owned by [`object.md`](object.md). The cross-operation runtime component persistence boundary is owned by [`object-components-persistence.md`](object-components-persistence.md).
+Public route shape and Object-family navigation are owned by [`object.md`](object.md). Cross-operation current component persistence is owned by [`object-components-persistence.md`](object-components-persistence.md).
 
-This file owns the current detailed candidate for:
+Everything under `wip/` remains non-normative and does not authorize implementation.
+
+The lossless comparison pass against the current `object-schema-change-*` WIPs is complete. It preserved the non-superseded semantic/cache findings, removed old realization assumptions invalidated by `object_component_slots`, and exposed one genuine semantic inconsistency that remains OPEN: numeric forward version order does not necessarily imply semantic monotonicity in the same direction as ObjectTemplate publication history.
+
+Current ownership of this file includes:
 
 ```text
-forward target-version semantics
-source/target effective-schema delta taxonomy
+forward target-version command semantics
+SOURCE/TARGET exact-effective-schema comparison
+semantic member identity
+delta classification
 immutable reusable MigrationPlan
-MigrationPlan/cache resolution
-property migration semantics
-component-slot migration semantics
-optimistic Object preparation
-intrinsic concurrency fingerprint
-final target admission
+bounded immutable cache fills
+property migration rules
+component-slot migration rules
+optimistic intrinsic Object preparation/fingerprint
+final TARGET admission
 slot-delta maintenance
 bounded retry
 SCHEMA_CHANGE lifecycle
 architecture handoff
 ```
 
-Everything under `wip/` remains non-normative. This file does not authorize implementation.
-
-A major purpose of this consolidation is to separate two classes of earlier findings:
+## Retained vs superseded findings
 
 ```text
 RETAIN
-    immutable SOURCE/TARGET delta semantics
+    exact SOURCE/TARGET effective-schema comparison
     semantic member identity
     property migration rules
-    MigrationPlan reuse/cache direction
-    forward-only target semantics
-    final current target PUBLISHED admission
-    prepared-candidate pattern
-    bounded intrinsic-state stale-success protection
+    immutable reusable MigrationPlan
+    READY-cache execution model
+    final current TARGET PUBLISHED admission
+    PreparedSchemaChange pattern
+    bounded stale-success protection
     intrinsic lifecycle snapshots
 
-REOPEN / SUPERSEDE
-    outgoing ownership edges in the optimistic fingerprint
-    component blocker admission from preparatory edge snapshot
-    ATTACH/DETACH rendezvous through parent Object lock solely for slot continuity
-    mandatory post-lock aggregate reread justified by non-locked ownership rows
-    final write touching only objects + lifecycle
-    old route-total 6-warm / 9-full-cold statement counts
-    standalone preliminary target-admission query
+SUPERSEDE / REOPEN
+    standalone preliminary TARGET admission query
+    outgoing ownership edges in normal optimistic fingerprint
+    preparatory edge snapshot as REMOVE/replacement blocker authority
+    ATTACH/DETACH parent-lock rendezvous solely for slot continuity
+    mandatory post-lock Object+edge reread justified by unprotected edges
+    final business write touching only objects + lifecycle
+    old route-total warm/full-cold counts 6 / 9
+
+NEWLY REOPENED BY LOSSLESS COMPARISON
+    assumption that numeric-forward Object migration can never expose
+    LIST -> SCALAR or component-target narrowing/unrelated relation
 ```
 
 # 1. Public command boundary
-
-Detailed public surface is summarized in `object.md`:
 
 ```http
 POST /api/v1/core/objects/{object_id}/schema
@@ -69,28 +74,26 @@ Request:
 }
 ```
 
-The command changes only the exact ObjectTemplateVersion inside the Object's existing stable ObjectTemplate lineage.
+The command keeps the stable `template_id` and changes only the exact ObjectTemplateVersion binding.
 
-It does not select another `template_id`.
-
-Successful execution returns:
+Success:
 
 ```http
 204 No Content
 ```
 
-There is no response representation; callers read current state through:
+The resulting state is read through:
 
 ```text
 GET /objects/{id}
 GET /objects/{id}/schema
 ```
 
-# 2. Forward-only target semantics
+# 2. Forward target-version command semantics
 
-`SCHEMA_CHANGE` is a forward migration command, not a generic exact-version setter.
+The route is a forward numeric migration command, not a generic version setter.
 
-Given current source version `VS` and requested target version `VT`:
+For current version `VS` and requested `VT`:
 
 ```text
 VT > VS
@@ -105,36 +108,33 @@ VT < VS
     -> downgrade unsupported
 ```
 
-Canonical semantic rule:
+Intermediate versions are not executed:
 
 ```text
-target_version must be greater than current_version
+v3 -> v7
+    = compare effective(v3) directly with effective(v7)
+    != execute v3->v4->v5->v6->v7
 ```
 
-A valid request may skip intermediate versions:
+Important distinction after the comparison pass:
 
 ```text
-Server v3 -> Server v7
+numeric-forward
+    != automatically semantic-monotone-forward
 ```
 
-The migration algorithm does not execute:
-
-```text
-v3 -> v4 -> v5 -> v6 -> v7
-```
-
-It compares SOURCE exact effective schema directly with TARGET exact effective schema.
+That distinction is detailed in section 4.
 
 # 3. Exact effective-schema comparison and semantic identity
 
-Source and target are:
+For:
 
 ```text
 SOURCE = (template_id, source_version)
 TARGET = (template_id, target_version)
 ```
 
-The planner compares only:
+the planner compares:
 
 ```text
 EffectiveSchema(SOURCE)
@@ -142,11 +142,11 @@ vs
 EffectiveSchema(TARGET)
 ```
 
-It does not derive runtime rules from:
+It does not derive migration behavior from:
 
 ```text
 version adjacency
-intermediate-version history
+intermediate version traversal
 local declarations alone
 name equality alone
 current defaults
@@ -168,13 +168,13 @@ SlotSemanticKey
 
 Same effective name under a different declaring lineage is semantic replacement, not continuity.
 
-Inheritance provenance does not create a special runtime delta class. A delta caused by a different exact parent-version pin is classified from the two complete effective schemas exactly like an equivalent local effective delta.
+Effective deltas caused by different exact parent-version pins are classified from the resolved SOURCE and TARGET effective schemas exactly like equivalent locally-originated deltas. Declaration provenance is not a separate runtime migration class.
 
-# 4. Delta taxonomy retained
+# 4. Delta taxonomy and publication-order revalidation
 
-## 4.1 Property deltas admitted by normal model evolution
+## 4.1 Property rules already defined for SCHEMA_CHANGE
 
-MigrationPlan must understand at least:
+The current reusable plan has defined runtime behavior for:
 
 ```text
 ADD optional
@@ -184,56 +184,135 @@ REMOVE required
 optional -> required
 required -> optional
 SCALAR -> LIST
-exact DataTypeVersion change within same stable datatype_id
-migration_default change
-position change
+exact DataTypeVersion change within the same datatype_id lineage
+migration_default change as part of TARGET semantics
+position-only change
 semantic-identity replacement
 ```
 
-Normal evolution does not admit:
+The model-plane historical rule forbids a newly published declaration from changing `datatype_id`, changing PrimitiveType lineage, renaming a historical property, or evolving latest-published LIST state back to SCALAR.
 
-```text
-LIST -> SCALAR
-datatype_id change
-PrimitiveType change
-property rename
-```
+## 4.2 Component rules already defined for SCHEMA_CHANGE
 
-Remove/re-add under the same declaring lineage and same name retains the same historical semantic identity; it cannot reset stable DataType lineage or monotonic evolution rules.
-
-## 4.2 Component-slot deltas admitted by normal model evolution
-
-MigrationPlan must understand:
+The current plan has defined runtime behavior for:
 
 ```text
 ADD
 REMOVE
-continuous target widening toward an ancestor lineage
-position change
+same semantic slot + equal target
+same semantic slot + target widening toward ancestor
+position-only change
 semantic-identity replacement
 ```
 
-Normal evolution does not admit:
+The model-plane historical rule allows component target evolution only by widening from the latest immutable declaration; it forbids a newly published declaration from narrowing or moving to an unrelated target relative to that publication-history predecessor.
+
+## 4.3 Critical finding: publication order can differ from numeric version order
+
+The comparison pass revalidated an older component-discovery finding against current ObjectTemplate behavior.
+
+`CREATE_NEXT` may clone any eligible PUBLISHED/DEPRECATED source, not only the highest version, while allocating the new version as `max(existing)+1`. Therefore multiple DRAFT versions can coexist and be published later in a different order from their numeric version numbers.
+
+ObjectTemplate historical validation compares a candidate declaration with the **latest published declaration**, not with every numerically lower/higher version.
+
+Consequently, this sequence is possible in principle:
 
 ```text
-target narrowing toward a descendant
-unrelated target-lineage change
-slot rename
+v3 DRAFT exists
+v4 is published first
+v3 is later revised and published
 ```
 
-Remove/re-add by the same declaring lineage/name retains historical semantic identity and target-evolution history.
+If `v4` has:
+
+```text
+property mode = SCALAR
+```
+
+then later publication of `v3` as:
+
+```text
+property mode = LIST
+```
+
+is a valid publication-history widening (`SCALAR -> LIST`). But an Object migration:
+
+```text
+v3 -> v4
+```
+
+is numerically forward and semantically:
+
+```text
+LIST -> SCALAR
+```
+
+Likewise for a component slot:
+
+```text
+v4 published target = Server
+v3 later published target = Device
+Device is ancestor of Server
+```
+
+The later `v3` publication is a history-valid widening from `Server` to `Device`, while Object migration:
+
+```text
+v3 -> v4
+```
+
+is a target narrowing from `Device` to `Server`.
+
+Therefore the former blanket statements:
+
+```text
+forward Object migration can never contain LIST -> SCALAR
+forward Object migration can never contain component target narrowing/unrelated change
+```
+
+are not justified by the current model-plane publication contract.
+
+## 4.4 OPEN source→target policy
+
+This comparison intentionally does **not** invent the missing policy.
+
+For an exact numeric-forward pair whose resolved SOURCE/TARGET schemas contain a reverse-monotonic delta, M4 still has to decide explicitly what `Object.SCHEMA_CHANGE` does.
+
+At minimum the open cases are:
+
+```text
+continuous property:
+    SOURCE LIST -> TARGET SCALAR
+
+continuous component slot:
+    SOURCE target ancestor -> TARGET target descendant
+    SOURCE/TARGET targets unrelated
+```
+
+Candidate policy families to evaluate later include:
+
+```text
+A. reject such migration pairs categorically
+   because normal Object SCHEMA_CHANGE supports only information-preserving
+   monotone transformations
+
+B. define additional controlled per-Object migration/admission semantics
+   where safe
+```
+
+No choice is made here.
+
+This matters operationally: if conditional component narrowing were ever allowed, current child compatibility would become mutable admission state again and the intrinsic-only preparation/fingerprint boundary would need to be revalidated. Until this semantic point is closed, claims of "no child compatibility read" apply only to pairs classified as equal-target/widening or otherwise already-covered slot deltas.
 
 # 5. Immutable reusable MigrationPlan
 
-For one exact migration pair:
+For one exact pair:
 
 ```text
 (template_id, source_version, target_version)
 ```
 
-both SOURCE and TARGET semantic schemas are immutable exact snapshots once certified.
-
-Therefore:
+SOURCE and TARGET certified semantics are immutable. Therefore:
 
 ```text
 MigrationPlan(source,target)
@@ -242,7 +321,7 @@ MigrationPlan(source,target)
 
 is immutable and Object-independent.
 
-Conceptual cache key:
+Conceptual cache:
 
 ```text
 ObjectTemplateMigrationPlanCache[
@@ -250,106 +329,209 @@ ObjectTemplateMigrationPlanCache[
 ]
 ```
 
-The plan may precompile Object-independent semantic work such as:
+The plan may contain/point to compiled immutable rules for:
 
 ```text
-PROPERTY
-    continuity / replacement
-    add/remove rules
-    requiredness transition
-    SCALAR -> LIST transformation
-    target exact-DTV validation/canonicalization
-    canonical TARGET migration_default behavior
-
-COMPONENT SLOT
-    continuity / replacement
-    ADD / REMOVE
-    target widening
-    position-only classification
-    current object_component_slots delta to apply
+property semantic continuity/replacement
+add/remove/requiredness behavior
+shape transformation
+TARGET exact-DTV validation/canonicalization
+TARGET migration_default behavior
+component semantic continuity/replacement
+slot ADD/REMOVE
+actual SOURCE->TARGET target-lineage relation
+position-only classification
+current object_component_slots delta
 ```
 
-The plan does not contain one Object's mutable state.
-
-It must not contain:
+It must not contain one Object's mutable:
 
 ```text
-current Object properties
-current Object canonical_name
-current ownership membership
-current target lifecycle status
+properties
+canonical_name
+ownership membership
+current TARGET lifecycle status
 ```
+
+The newly reopened reverse-monotonic cases are plan classification outcomes whose runtime policy remains OPEN; they must not be silently normalized into widening.
 
 # 6. MigrationPlan cache-resolution model
 
-Normal execution consumes a READY immutable plan regardless of whether it was already cached or became READY during the request.
+Normal execution consumes a READY plan regardless of whether it was already cached or became READY during the request.
 
 ```text
 MigrationPlan HIT
     -> consume plan
 
 MigrationPlan MISS
-    -> ensure every immutable input READY
+    -> make every required immutable input READY
     -> compile plan in memory
     -> cache plan
-    -> consume same plan path
+    -> consume the same plan path
 ```
 
-Required immutable inputs include:
+Required semantic inputs:
 
 ```text
-complete SOURCE exact effective ObjectTemplate closure
-complete TARGET exact effective ObjectTemplate closure
-all exact DataTypeVersion semantics referenced by SOURCE union TARGET
-stable ObjectTemplate ancestry needed for component target-widening classification
+SOURCE exact effective ObjectTemplate closure
+TARGET exact effective ObjectTemplate closure
+all exact DataTypeVersion semantics referenced by SOURCE ∪ TARGET
+stable ObjectTemplate lineage ancestry needed for target-relation classification
 ```
 
-Cold fill rules retained:
+General cold-fill rules:
 
 ```text
 load only missing immutable entries
-bulk-load homogeneous misses
-no N+1 exact-DTV queries
-no runtime inheritance reconstruction merely because MigrationPlan is absent
-no alternate one-off semantic execution path from raw DB rows
+bulk homogeneous misses
+no N+1 semantic loading
+no inheritance reconstruction fallback
+no one-off planner path consuming uncached raw DB structures
 ```
 
-Once READY, plan work is reusable across all Objects migrating through the same exact pair on that worker.
+## 6.1 Exact ObjectTemplate closure cold fill
 
-The cold semantic cost is therefore principally per:
+The closure consumer uses certified immutable materializations:
+
+```text
+object_template_effective_properties
+object_template_effective_components
+```
+
+anchored by:
+
+```text
+object_template_versions
+```
+
+When SOURCE and TARGET closures are both missing, the loader should retrieve the requested exact versions together through one bounded loader/query boundary where practical. Round-trip growth must be independent of inheritance depth and effective-member count; payload naturally grows with the returned effective schema.
+
+This SCHEMA_CHANGE consumer does **not** require an exact-version ancestry materialization. Exact parent-chain interpretation was already paid when the effective schemas were certified/materialized.
+
+The exact-version anchor is required to distinguish:
+
+```text
+existing exact version + zero effective members
+    -> valid empty closure
+
+absent exact version
+    -> missing exact version
+```
+
+For a certified PUBLISHED/DEPRECATED exact version, an unexpectedly missing/incomplete effective materialization is an internal invariant failure. Runtime must not fall back to recursive inheritance reconstruction.
+
+The DB result fills the immutable closure cache; MigrationPlan compilation resumes from READY cache state.
+
+## 6.2 Exact DataTypeVersion cold fill
+
+Required exact pins are:
+
+```text
+DISTINCT(
+    SOURCE effective-property pins
+    UNION
+    TARGET effective-property pins
+)
+```
+
+Subtract already READY entries before DB access.
+
+```text
+0 missing
+    -> 0 DB statements
+
+1..N missing
+    -> one bounded bulk exact-DTV load for the missing set
+```
+
+The same bulk load should include stable DataType lineage payload required by runtime semantics (including stable base/primitive type) rather than issuing a second lookup per DTV.
+
+This is semantic payload loading, not current lifecycle/default admission. PUBLISHED -> DEPRECATED does not invalidate exact immutable DataType semantics referenced by a certified ObjectTemplate closure.
+
+If a certified exact DTV pin unexpectedly has no persisted row, that is an internal reference/invariant failure. The loader must never substitute:
+
+```text
+default_version
+latest version
+another PUBLISHED version
+```
+
+## 6.3 Stable ObjectTemplate ancestry fill
+
+Component target relation requires stable lineage ancestry such as:
+
+```text
+EthernetInterface descendant-of NetworkInterface ?
+```
+
+Durable source:
+
+```text
+object_template_ancestry(
+    descendant_template_id,
+    ancestor_template_id,
+    depth
+)
+```
+
+with reflexive lineage facts.
+
+No exact-version ancestry is required.
+
+```text
+all required ancestry READY
+    -> 0 DB statements
+
+one or more missing ancestry sources
+    -> one bounded bulk ancestry load
+```
+
+No query-per-slot/target/pair path is allowed.
+
+## 6.4 Amortization
+
+Once:
+
+```text
+MigrationPlanCache[(T, source, target)] = READY
+```
+
+subsequent Objects on that worker reuse all immutable comparison/compilation work for the same pair.
+
+Cold semantic cost is therefore primarily per:
 
 ```text
 (worker, template_id, source_version, target_version)
 ```
 
-rather than per Object, subject to worker restart/eviction.
+not per Object, subject to cache eviction/process restart.
 
-# 7. Standalone preliminary target admission is removed
+The old route-total `9`-statement full-cold number is not retained because the mutable/UoW realization has changed. What remains retained is the bounded semantic fill: at most one bulk load per missing semantic class in the current candidate.
 
-An earlier route-local candidate performed an unlocked exact target existence/status lookup before immutable preparation.
+# 7. Standalone preliminary TARGET admission is removed
 
-That extra normal round trip is superseded.
+An earlier candidate issued an unconditional unlocked exact TARGET existence/status read before semantic preparation. That standalone round trip is superseded.
 
-Current sequence does **not** require a dedicated preliminary target-lifecycle query.
+Current sequence:
 
 ```text
 initial Object binding
--> forwardness check
+-> numeric forwardness check
 -> obtain/build immutable MigrationPlan
--> prepare Object candidate
--> enter UoW
--> final exact TARGET admission is the current lifecycle authority
+-> prepare concrete Object candidate
+-> enter mutation UoW
+-> final protected exact TARGET admission is current lifecycle authority
 ```
 
-On a cold exact TARGET closure load, the same bounded loader may incidentally discover that the exact target is absent or has no certified immutable closure; no additional preliminary admission statement is introduced solely for that purpose.
+A cold TARGET closure load may incidentally discover absent/non-certifiable target state as part of the same bounded semantic loader; no extra query is issued solely as preliminary lifecycle admission.
 
-A cached immutable TARGET schema or MigrationPlan may remain semantically valid after TARGET becomes DEPRECATED. Cache presence never proves current new-binding admission.
+Cached TARGET semantics/MigrationPlan may remain semantically valid if TARGET later becomes DEPRECATED. Cache presence never proves current new-binding admissibility.
 
 # 8. Property migration semantics retained
 
-The complete TARGET property map is built from TARGET semantic properties, not by replaying textual JSON-key edits over SOURCE state.
+The target property map is built **from TARGET semantic properties**, not by replaying JSON-key edits over SOURCE state.
 
-For each TARGET semantic property the compiled rule yields one of:
+For each TARGET semantic property the plan/application yields:
 
 ```text
 preserved/transformed SOURCE information
@@ -357,37 +539,34 @@ canonical TARGET migration_default
 absence
 ```
 
-SOURCE-only semantic properties are omitted from target state.
+SOURCE-only semantic properties are omitted.
 
-## 8.1 ADD / REMOVE
+## 8.1 Add/remove
 
 ```text
 ADD optional
-    -> target key absent
+    -> absent
 
 ADD required
     -> canonical TARGET migration_default
 
-REMOVE optional
-    -> existing value dropped if present
-
-REMOVE required
-    -> existing value dropped
+REMOVE optional/required
+    -> SOURCE value is not selected into target state
 ```
 
-Removed information is not moved to an archive/extras bucket and is not replaced by a default.
+Removed information is not archived or moved to an extras bucket.
 
-## 8.2 Requiredness transitions
+## 8.2 Requiredness
 
 ```text
 optional -> required
-    SOURCE value present
-        -> preserve existing information
-        -> apply all other TARGET transformations/validation
+    value present
+        -> preserve information
+        -> apply all TARGET transformations/validation
         -> incompatibility = migration failure
         -> never fallback to migration_default
 
-    SOURCE value absent
+    value absent
         -> canonical TARGET migration_default
 
 required -> optional
@@ -397,93 +576,87 @@ required -> optional
     -> never drop merely because TARGET permits absence
 ```
 
-`migration_default` fills absence only. It is never remediation for incompatible existing information.
+`migration_default` fills absence only; it is never remediation for incompatible existing information.
 
 ## 8.3 SCALAR -> LIST
-
-For a continuous semantic property:
 
 ```text
 SOURCE value present
     x -> [x]
-    -> TARGET exact-DTV validation/canonicalization
+    -> validate/canonicalize under complete TARGET semantics
 
 SOURCE optional value absent
-    -> remains absent unless TARGET requiredness independently supplies its canonical migration_default
+    -> remains absent unless TARGET requiredness supplies its canonical default
 ```
-
-`LIST -> SCALAR` is not a normal admitted evolution.
 
 ## 8.4 Exact DataTypeVersion change
 
-A continuous property may change exact DataTypeVersion only inside the same stable `datatype_id` lineage.
-
-PrimitiveType remains stable.
+For continuous semantic identity and the same stable `datatype_id`:
 
 ```text
 existing value
-    -> preserve information
-    -> validate/canonicalize against TARGET exact DTV
+    -> preserve
+    -> validate/canonicalize under TARGET exact DTV
 
 TARGET incompatible
     -> migration failure
 
 LIST value
-    -> preserve order
-    -> validate every element
+    -> preserve item order
+    -> validate all elements
 ```
 
-No cross-DataType-lineage conversion and no primitive conversion are performed.
+No cross-DataType-lineage or cross-PrimitiveType conversion is performed.
 
-## 8.5 Combined property deltas
+## 8.5 Combined deltas
 
-Multiple simultaneous differences on one continuous property are compiled as **one target-oriented rule**, not an artificial ordered script.
+One continuous semantic property compiles one target-oriented rule rather than an artificial script of independent mutations.
 
-Conceptual rule:
-
-```text
-ContinuousPropertyMigrationRule
-    semantic_key
-    source semantics
-    target semantics
-    compiled target validation/canonicalization
-    canonical target migration_default where applicable
-```
-
-Object application order is logically:
+Logical application:
 
 ```text
 1. establish semantic continuity
-2. inspect SOURCE value presence
+2. inspect SOURCE presence
 3. preserve existing information when present
-4. apply allowed information-preserving shape change
-5. validate/canonicalize against complete TARGET exact-DTV semantics
+4. apply supported information-preserving shape transformation
+5. validate/canonicalize under complete TARGET exact-DTV semantics
 6. materialize canonical sparse TARGET state
 ```
 
-## 8.6 Same name, different semantic identity
-
-For example:
+## 8.6 Same name, different semantic key
 
 ```text
 SOURCE (Device, hostname)
 TARGET (Server, hostname)
 ```
 
-means:
+is:
 
 ```text
 REMOVE old semantic property
 ADD new semantic property
 ```
 
-The old value is not carried forward by name coincidence.
+The old value is not carried forward because the JSON name happens to match.
 
-# 9. Component-slot migration semantics after materialization
+## 8.7 LIST -> SCALAR now explicitly OPEN for numeric-forward pair
 
-`object_component_slots` changes the **runtime realization**, not the SOURCE/TARGET semantic classification.
+The existing migration semantics intentionally do not define information-losing LIST -> SCALAR conversion.
 
-Current slot delta applied during successful migration:
+The comparison pass proves this delta can nevertheless appear between two numerically forward exact versions because publication order may differ from version order.
+
+Therefore:
+
+```text
+LIST -> SCALAR observed in SOURCE/TARGET pair
+    -> current SCHEMA_CHANGE policy OPEN
+```
+
+No silent first-item selection, list collapse, default substitution or other conversion is inferred.
+
+# 9. Component-slot migration after current-slot materialization
+
+For already-covered slot deltas:
 
 ```text
 ADD
@@ -493,78 +666,80 @@ ADD
 REMOVE
     -> DELETE current slot row
     -> no implicit DETACH
-    -> existing edge reference is final blocker authority
+    -> referenced old edge is final blocker
 
-continuous target widening
+same semantic slot + equal target
+    -> preserve slot/edges
+
+same semantic slot + target widening
     -> UPDATE target_template_id
-    -> existing ownership edges preserved
+    -> preserve edges
     -> no per-child runtime compatibility revalidation
 
 semantic replacement
     -> old semantic identity removed/replaced
-    -> key-changing slot_declaring_template_id transition
-       + target_template_id as required
-    -> no implicit rebinding
-    -> existing old semantic edge is final blocker
+    -> key-changing declaring-lineage transition + target as required
+    -> no implicit rebind
+    -> referenced old edge is final blocker
     -> new semantic slot starts empty
 
-position-only change
-    -> no slot-row DML
-    -> ownership edges unchanged
+position-only
+    -> no current-slot DML
+    -> ownership unchanged
 ```
 
-Normal successful SCHEMA_CHANGE does not mutate `object_components`.
+Normal successful migration does not rewrite `object_components` membership.
 
-## 9.1 REMOVE / replacement blocker authority moved
+## 9.1 REMOVE / semantic replacement blocker authority
 
-Earlier WIPs read current outgoing edges during optimistic preparation and returned a conservative failure when a removed/replaced semantic slot had children.
+The earlier preparatory outgoing-edge blocker scan is superseded.
 
-That is no longer the preferred current candidate.
-
-With:
-
-```text
-object_components semantic-slot FK
-    -> object_component_slots current semantic key
-```
-
-final slot DELETE/key-changing transition becomes the authoritative blocker boundary.
-
-Therefore:
+With the edge-to-current-slot relational dependency:
 
 ```text
 DETACH removes last old edge before final slot transition
-    -> SCHEMA_CHANGE may succeed
+    -> REMOVE/replacement may succeed
 
-old edge still references slot at final transition
-    -> slot REMOVE/replacement cannot commit
-    -> SCHEMA_CHANGE fails/rolls back
+old edge still references semantic slot at transition
+    -> slot DELETE/key change cannot commit
+    -> SCHEMA_CHANGE rolls back/fails
 ```
 
-This removes the need to force a conservative false failure from an earlier ownership snapshot.
+Thus REMOVE/replacement admission occurs at the final relational slot boundary rather than from a potentially stale preparatory edge snapshot.
 
-## 9.2 Continuous widening remains monotonic
+## 9.2 Widening
 
-For:
+When the actual exact pair is classified:
 
 ```text
-SOURCE target = descendant
+SOURCE target = descendant-or-self
 TARGET target = ancestor
 ```
 
-all SOURCE-admissible child lineages remain TARGET-admissible by model-plane certification.
+all SOURCE-admitted children remain TARGET-admissible. No current child read is required for that delta.
 
-Existing ownership therefore remains valid without rereading child Objects or checking each current child lineage.
+`target_template_id` is not part of the semantic FK key, so a target widening need not conflict solely because ATTACH references the slot identity.
 
-`target_template_id` is a non-semantic-key field in the current persistence candidate, so target widening need not conflict merely because ATTACH references the slot key.
+## 9.3 Narrowing/unrelated exact-pair relation is OPEN
 
-# 10. Current optimistic preparation boundary
+Because publication order can differ from numeric order, an exact forward pair may classify as:
 
-The earlier whole-Object snapshot/fingerprint included all outgoing ownership edges.
+```text
+SOURCE target ancestor
+TARGET target descendant
+```
 
-That scope is superseded by the current slot-materialization/FK candidate.
+or potentially another unsupported relation even though each exact version was valid when published.
 
-The preferred mutable preparation input now focuses on intrinsic Object state:
+Current policy is OPEN.
+
+Until closed, this document does not claim that every numeric-forward schema change can preserve membership without child compatibility admission.
+
+If M4 chooses categorical rejection, no current-child admission is needed. If M4 chooses conditional admission, the mutable preparation/concurrency design must be reopened because the current edge FK protects slot existence/semantic identity, not child compatibility with a narrowed `target_template_id`.
+
+# 10. Optimistic Object preparation boundary
+
+For currently covered migration pairs, the preferred Object-specific mutable preparation is intrinsic-only:
 
 ```text
 id
@@ -574,45 +749,51 @@ template_version
 properties
 ```
 
-Current preferred per-attempt sequence:
+Current per-attempt sequence:
 
 ```text
-1. minimal Object binding lookup
-       -> object existence
-       -> template_id
-       -> source_version
+1. minimal Object binding read
+       -> existence, template_id, source_version
 
-2. classify target_version > source_version
+2. require target_version > source_version
 
 3. obtain/build READY immutable MigrationPlan
 
-4. read one current intrinsic Object snapshot S
-       id
-       canonical_name
-       template_id
-       template_version
-       properties
+4. read current intrinsic Object snapshot S
+       id, canonical_name, template_id, template_version, properties
 
-5. require S binding still matches the source identity used by the plan
+5. require S binding == source identity used by the plan
 
-6. compute intrinsic expected fingerprint F(S)
+6. compute expected intrinsic fingerprint F(S)
 
-7. apply MigrationPlan.property_rules to S.properties
-       -> complete target_properties
+7. apply supported property rules
+       -> target_properties
 
-8. carry/reference MigrationPlan component slot delta
-       -> final object_component_slots maintenance
+8. carry supported current-slot delta from MigrationPlan
 
-9. build complete PreparedSchemaChange
+9. build PreparedSchemaChange
 ```
 
-No current child Object read, ownership-edge scan, effective-schema reread or ancestry reread is required during normal Object-specific candidate construction.
+No normal current child read, ownership-edge scan, effective-schema reread or ancestry reread occurs in this covered path.
 
-A component blocker is no longer certified from preparatory ownership membership.
+### Binding drift before protected UoW
 
-# 11. PreparedSchemaChange current candidate
+If the second intrinsic read no longer matches the binding used to select the plan:
 
-Conceptually:
+```text
+binding differs
+    -> fail current request conservatively
+    -> do not use fingerprint for stale plan
+    -> do not automatically re-plan/restart inside this attempt
+```
+
+This is distinct from the protected fingerprint retry described later. A new caller request naturally resolves a plan from the new source binding.
+
+If M4 later chooses conditional support for reverse-monotonic component target migration, this intrinsic-only boundary must be revalidated.
+
+# 11. PreparedSchemaChange
+
+Current conceptual candidate:
 
 ```text
 PreparedSchemaChange
@@ -628,21 +809,19 @@ PreparedSchemaChange
     target_properties
 
     component_slot_delta
-        or immutable reference to the corresponding MigrationPlan rules
+        or immutable MigrationPlan reference
 
     lifecycle_before
     lifecycle_after
 ```
 
-The candidate is mechanically applicable after final mutable protections succeed.
+It should be mechanically applicable once final mutable protections/admissions succeed. Expensive schema comparison, property transformation and TARGET value validation are not repeated merely because the mutation UoW begins.
 
-No expensive semantic migration or TARGET property validation should be repeated merely because the mutation UoW begins.
+A plan that contains an OPEN reverse-monotonic delta must not produce an executable PreparedSchemaChange until the policy for that delta is deliberately closed.
 
 # 12. Intrinsic Object fingerprint
 
-The optimistic fingerprint remains useful, but its current preferred scope shrinks to intrinsic Object state.
-
-Logical state:
+Current preferred logical scope:
 
 ```text
 id
@@ -652,45 +831,47 @@ template_version
 properties
 ```
 
-Explicitly excluded from the current preferred scope:
+Excluded for currently covered pairs:
 
 ```text
 outgoing object_components membership
 child canonical names
-public GET components projection
+public components projection
 Relationship state
 lifecycle history
 ```
 
-The existing deterministic realization remains a useful retained candidate:
+Why membership can be excluded for the covered component cases:
 
 ```text
-canonical logical Object representation
+preserved/equal/widened membership
+    -> does not invalidate property migration candidate
+
+REMOVE/replacement
+    -> final slot FK arbitrates old references
+```
+
+The retained deterministic encoding candidate is:
+
+```text
+canonical intrinsic Object logical representation
 -> canonical JSON
 -> UTF-8
 -> SHA-256
--> 32-byte digest
+-> raw 32-byte digest
 ```
 
-The same canonical encoder must be used during preparation and protected comparison.
+The same canonical encoder/hash is used at preparation and protected comparison. The earlier ownership-array portion of the old fingerprint representation is superseded for this route candidate.
 
-Why membership may leave the fingerprint:
+Current discovery does not require PostgreSQL-specific hashing, `pgcrypto`, a persisted Object revision/hash column, Python `repr`, pickle or implementation-specific binary serialization merely to realize this fingerprint.
 
-```text
-preserved/widened slot membership
-    -> ATTACH/DETACH does not invalidate property migration candidate
+If reverse-monotonic component migration is later conditionally admitted based on current membership, this fingerprint scope may need to expand or a different relational admission/protection mechanism must be proven.
 
-REMOVE/replacement
-    -> final slot FK arbitrates old semantic edge existence
-```
+# 13. Final TARGET admission
 
-This reduces row volume, hashing work, lock coupling and false retry pressure relative to the earlier Object+all-outgoing-edges fingerprint.
+The exact TARGET ObjectTemplateVersion is a lifecycle-sensitive **new binding**.
 
-# 13. Final target admission
-
-TARGET exact ObjectTemplateVersion is a lifecycle-sensitive **new binding**.
-
-A successful mutation must protect the exact target current lifecycle authority through commit and require:
+A successful mutation must require current exact TARGET:
 
 ```text
 same template_id
@@ -698,17 +879,11 @@ exact target_version
 status == PUBLISHED
 ```
 
-Conceptually:
+and protect that admission through binding/slot/lifecycle commit with a SHARE-equivalent semantic hold or another architecture-proven mechanism.
 
-```text
-exact TARGET ObjectTemplateVersion @ SHARE-equivalent protection
-    -> require PUBLISHED
-    -> retain protection through Object binding + slot delta + lifecycle commit
-```
+SOURCE is an already-existing exact binding and may be PUBLISHED or DEPRECATED; it does not require a new PUBLISHED admission merely because the Object is leaving it.
 
-SOURCE exact ObjectTemplateVersion is an already-existing binding. It may be PUBLISHED or DEPRECATED and does not require new-binding PUBLISHED admission merely because the Object is migrating away from it.
-
-Current final outcomes retained where unambiguous:
+Retained outcomes:
 
 ```text
 TARGET exists + PUBLISHED
@@ -718,100 +893,85 @@ TARGET exists + DRAFT/DEPRECATED
     -> 409 dependency_not_admissible
 ```
 
-The exact classification of an unexpectedly absent target at final protected admission remains to be reconciled with final model-plane lifetime/delete-lineage architecture.
+Unexpected exact TARGET absence at final protected admission remains an OPEN lifetime/failure-classification question. It must not silently consume the Object fingerprint retry budget; automatic retry is reserved for protected Object fingerprint mismatch.
 
-It must **not** silently consume the Object fingerprint retry budget: the bounded retry policy reserves automatic retry for protected Object-fingerprint mismatch only.
+The final lookup must semantically distinguish existing-but-inadmissible TARGET from absent TARGET; exact textual SQL/lock mode/order is architecture work.
 
 # 14. Short mutation-UoW logical responsibilities
 
-The old four-statement UoW shape is reopened because two of its reasons changed:
+The old fixed four-statement realization is not retained as current authority.
+
+Current logical requirements:
 
 ```text
-old Q3
-    mandatory new post-lock statement to reread non-locked outgoing ownership
+A. protect current TARGET PUBLISHED admission through commit
 
-old Q4
-    fused Object UPDATE + lifecycle only
-```
+B. protect/revalidate current intrinsic Object generation
 
-Outgoing ownership is no longer part of the preferred fingerprint and final mutation now maintains `object_component_slots`.
+C. compare protected intrinsic state with expected fingerprint
 
-Current logical responsibilities are instead:
-
-```text
-A. protect final TARGET PUBLISHED admission through commit
-
-B. protect/revalidate the current intrinsic Object generation
-   before applying PreparedSchemaChange
-
-C. reject/retry if protected intrinsic state no longer matches
-   expected_intrinsic_fingerprint
-
-D. atomically apply:
+D. on match, atomically commit:
        Object target template_version
-       canonical migrated properties
+       canonical target properties
        current object_component_slots delta
        exactly one SCHEMA_CHANGE lifecycle event
 
-E. preserve object_components membership unchanged
-   except that referenced old semantic slots may block REMOVE/replacement
+E. keep object_components membership unchanged for covered successful deltas,
+   while referenced old semantic slots may block REMOVE/replacement
 ```
 
-The Object remains the concurrency owner for intrinsic mutation. The old parent-Object lock role as a generic ATTACH/DETACH rendezvous solely for ownership-slot continuity is superseded by the narrower slot-FK arbitration boundary.
+The Object remains the intrinsic mutation concurrency owner. Parent Object locking solely to serialize ATTACH/DETACH for slot continuity is superseded by the narrower slot-FK boundary for the covered component cases.
 
-The exact PostgreSQL realization is deliberately not frozen here:
+Architecture decides:
 
 ```text
-exact Object row-lock mode
-whether lock acquisition and intrinsic fingerprint read can be fused safely
-exact target-vs-Object lock order in the final global wait-for plan
-number of slot-delta statements
-whether Object UPDATE + slot delta + lifecycle can be fused partly or fully
-constraint handling and retry/error mapping
+exact Object row protection/lock mode
+whether protection + intrinsic fingerprint read can be fused safely
+TARGET/Object/slot lock ordering
+slot-delta statement decomposition/fusion
+final FK behavior/failure translation
 ```
 
-These are architecture-phase realization questions as long as the logical responsibilities above are preserved.
+## Final-write invariants retained
 
-# 15. ATTACH / DETACH interaction after slot materialization
-
-## ATTACH
-
-ATTACH no longer has to fail merely because the parent exact `template_version` changed.
-
-Relevant cases:
+Even though old Q4 is reopened, two logical properties remain useful:
 
 ```text
-SCHEMA_CHANGE REMOVE/replacement reaches slot key transition first
-    -> old-slot ATTACH cannot satisfy/reference the old current key
+final Object transition must apply to the expected Object/source binding
+no SCHEMA_CHANGE lifecycle event may commit unless the owning Object/slot transition commits
+```
 
-ATTACH edge references old semantic slot first
-    -> REMOVE/replacement cannot remove/change referenced key
+Defensive expected-source predicates may realize the first property cheaply; exact SQL remains architecture work.
+
+No model-plane cache fill, MigrationPlan compilation, property transformation, TARGET value validation or lifecycle reconstruction belongs inside the final protected write path.
+
+# 15. ATTACH / DETACH interaction
+
+For currently covered slot cases:
+
+```text
+ATTACH old semantic slot commits first
+    -> REMOVE/replacement cannot remove/change referenced slot key
+
+REMOVE/replacement commits first
+    -> later old-slot ATTACH cannot satisfy current semantic-slot FK
 
 target widening
     -> non-key target update
-    -> child admitted under old narrower target remains valid
-```
+    -> old-admitted child remains valid
 
-Therefore ATTACH/SCHEMA_CHANGE synchronization should be as narrow as the actual semantic slot transition.
-
-## DETACH
-
-DETACH removes the referencing edge.
-
-```text
 DETACH first
-    -> may remove final blocker
-    -> REMOVE/replacement may then succeed
+    -> may remove last REMOVE/replacement blocker
 
-slot transition while edge remains
-    -> FK blocks invalid transition
+ordinary ATTACH/DETACH on preserved slot
+    -> need not invalidate intrinsic property candidate merely because membership changed
 ```
 
-DETACH does not need to invalidate a prepared SCHEMA_CHANGE property candidate merely because ordinary preserved-slot membership changed.
+If conditional component narrowing is later supported, these guarantees are insufficient by themselves because child compatibility becomes relevant mutable state.
 
-# 16. Bounded optimistic retry retained
+# 16. Bounded optimistic retry
 
-Automatic internal retry is allowed only for:
+Automatic internal retry trigger:
 
 ```text
 protected_intrinsic_fingerprint
@@ -819,17 +979,14 @@ protected_intrinsic_fingerprint
 PreparedSchemaChange.expected_intrinsic_fingerprint
 ```
 
-Retry budget:
+Budget:
 
 ```text
 2 total attempts
-=
-1 initial attempt
-+
-1 complete fresh retry
+= 1 initial attempt + 1 fresh retry
 ```
 
-Attempt 1 mismatch:
+Attempt 1 protected mismatch:
 
 ```text
 no Object/slot/lifecycle DML
@@ -837,9 +994,9 @@ rollback
 start one complete fresh attempt
 ```
 
-The second attempt rederives all mutable Object conclusions. Immutable cache entries and a MigrationPlan may be reused only when their identities still match the newly observed source/target pair.
+The new attempt re-discovers mutable source state and may resolve a different MigrationPlan if the source binding changed. Immutable cache entries are reusable only when their identities still apply.
 
-Attempt 2 mismatch:
+Attempt 2 protected mismatch:
 
 ```text
 rollback
@@ -849,31 +1006,43 @@ code = schema_change_blocked
 blocker_type = concurrent_object_change
 ```
 
-No other failure consumes this retry budget.
+No other result consumes this retry budget.
 
 In particular:
 
 ```text
+preparation-time binding drift
 non-forward target
-semantic property migration failure
+unsupported/open SOURCE->TARGET delta
+property migration failure
 slot REMOVE/replacement FK blocker
-final target non-PUBLISHED admission
+TARGET non-PUBLISHED admission
 persistence failure
 ```
 
-are not Object-fingerprint retry triggers.
+are not fingerprint retry triggers.
 
-# 17. Lifecycle retained
+This distinction is deliberate:
 
-One successful real schema migration produces exactly one intrinsic lifecycle event:
+```text
+pre-UoW binding mismatch
+    -> conservative request failure; no automatic re-plan
+
+protected fingerprint mismatch
+    -> one internal full retry
+```
+
+# 17. Lifecycle
+
+Exactly one successful real schema migration produces:
 
 ```text
 kind = SCHEMA_CHANGE
 ```
 
-Failed/rolled-back migration produces no event.
+Failed/rolled-back migration produces no lifecycle event.
 
-Historical before/after snapshots contain exactly intrinsic Object state:
+Historical snapshots contain only intrinsic Object state:
 
 ```text
 id
@@ -890,158 +1059,177 @@ components
 owner
 relationships
 effective schema
-template_name
-ObjectTemplate lifecycle/display metadata
+template display/lifecycle metadata
 ```
 
-Preparation constructs:
+Preparation builds:
 
 ```text
 lifecycle_before
     -> SOURCE intrinsic snapshot
 
 lifecycle_after
-    -> same Object identity/display name
+    -> same identity/canonical_name
     -> target_version
     -> target_properties
 ```
 
-If protected intrinsic fingerprint matches, the prepared historical snapshots remain applicable; they do not need to be semantically rebuilt inside the UoW.
+A successful protected intrinsic fingerprint match permits reuse of those prepared snapshots without semantic reconstruction. Object binding/properties, current slot materialization and lifecycle must commit atomically.
 
-Object binding/properties, current slot materialization and SCHEMA_CHANGE lifecycle must commit atomically.
+# 18. Cost interpretation
 
-# 18. Cost and cache interpretation after revalidation
-
-The old route-local totals:
+The previous totals:
 
 ```text
-warm successful first attempt = 6 DB statements
-full cold first Object         = 9 DB statements
+warm first-attempt success = 6 PostgreSQL business statements
+full cold first Object     = 9 PostgreSQL business statements
 ```
 
-were derived from the previous realization:
+are superseded because they assumed:
 
 ```text
 Object + outgoing-edge preparation snapshot
-parent Object ATTACH/DETACH rendezvous
-separate fresh Object+edge fingerprint statement
-final Object+lifecycle-only write
+parent-lock ATTACH/DETACH rendezvous
+mandatory fresh Object+edge fingerprint statement
+Object+lifecycle-only final mutation
 ```
 
-They are therefore **superseded as current route-total costs**.
+Current route-total counts remain OPEN until architecture fixes the intrinsic protection/fingerprint and slot-delta realization.
 
-The current design still preserves the valuable amortization property:
+Retained cost properties:
 
 ```text
-MigrationPlan semantic compilation
-    -> once per worker cache residency per exact migration pair
-
-subsequent Objects using same pair
-    -> reuse immutable plan
+MigrationPlan comparison/compilation is amortized per worker + exact pair
+semantic cold fill is bounded and bulk
+property migration happens outside critical section
+normal covered preparation no longer scans outgoing edges
+slot delta adds bounded SCHEMA_CHANGE DML
 ```
 
-But final current warm/cold statement count must be derived only after architecture chooses the intrinsic Object protection/fingerprint and slot-delta statement realization.
-
-Current qualitative cost shift:
+Qualitative shift for covered deltas:
 
 ```text
 LESS
-    outgoing-edge rows in preparation/protected fingerprint
-    hashing of membership
-    false retry coupling to preserved-slot ATTACH/DETACH
-    generic parent-lock ownership coordination
+    ownership rows transferred/hashed for optimistic generation
+    retry coupling to preserved-slot ATTACH/DETACH
+    generic ownership lock coupling
 
 MORE
-    object_component_slots delta DML on SCHEMA_CHANGE
-
-UNCHANGED IN PRINCIPLE
-    immutable MigrationPlan reuse
-    property migration outside critical section
-    final target PUBLISHED protection
-    one intrinsic SCHEMA_CHANGE lifecycle transition
+    object_component_slots delta writes
 ```
 
-# 19. Current open points / architecture handoff
+Reverse-monotonic policy may change this cost again and must be accounted for after it is closed.
 
-The logical candidate above is the current discovery direction. Later architecture must close at least:
+# 19. Current open points
+
+## Discovery semantic blocker found by comparison
+
+Before this SCHEMA_CHANGE owner can be considered route-semantically closed, M4 must explicitly choose behavior for numeric-forward pairs containing reverse-monotonic deltas caused by out-of-order publication:
+
+```text
+LIST -> SCALAR
+component target narrowing/unrelated relation
+```
+
+That choice must state:
+
+```text
+admitted vs rejected
+failure class/detail when rejected
+whether any per-Object data transformation or child compatibility check exists
+concurrency consequences if conditional admission uses mutable membership
+```
+
+Do not assume publication-history monotonicity implies numeric-version monotonicity.
+
+## Architecture handoff after semantic closure
+
+Architecture still must close:
 
 ```text
 final PostgreSQL statement decomposition
-exact Object row-lock/protection mode
-final target/Object/slot lock ordering and wait-for graph
-deadlock freedom with ATTACH / DETACH / DELETE / intrinsic mutations
-whether Object lock + fresh intrinsic fingerprint can be safely combined
+exact Object protection/lock mode
+TARGET/Object/slot wait-for ordering
+deadlock freedom with ATTACH/DETACH/DELETE/intrinsic mutations
+whether Object protection + fresh intrinsic fingerprint can be fused
 exact object_component_slots delta DML/fusion
-FK constraint timing/actions
-slot blocker constraint -> public error mapping
+FK timing/actions
+constraint failure -> public error mapping
 unexpected final TARGET absence classification
 final warm/cold route statement count
-final physical indexes / DDL
-EXPLAIN / BUFFERS evidence
+final physical DDL/indexes
+EXPLAIN/BUFFERS evidence
 storage/write measurements
-bounded retry verification under final realization
+bounded retry verification
 ```
 
-Discovery must not restore outgoing ownership to the fingerprint merely to preserve an older UoW shape. Any broader fingerprint or parent-lock coupling must be re-justified against the final persistence/concurrency model.
+# 20. Lossless comparison / supersession map
 
-# 20. Consolidation / supersession map
-
-This first consolidated owner absorbs retained findings from at least:
+This owner has now been compared against and absorbs the non-superseded findings from the active legacy set, including:
 
 ```text
-object-schema-change-delta-taxonomy.md
-object-schema-change-property-migration.md
-object-schema-change-dtv-migration.md
-object-schema-change-property-rule-composition.md
-object-schema-change-immutable-migration-plan.md
-object-schema-change-cache-resolution.md
-object-schema-change-migration-plan-amortization.md
-object-schema-change-target-version-semantics.md
-object-schema-change-target-admission.md
-object-schema-change-remove-preliminary-target-admission.md
-object-schema-change-preparation-properties.md
-object-schema-change-prepared-candidate.md
-object-schema-change-lifecycle.md
+object-schema-change-ancestry-cache-fill.md
 object-schema-change-bounded-retry.md
+object-schema-change-cache-resolution.md
+object-schema-change-component-admission-from-snapshot.md
+object-schema-change-component-migration.md
+object-schema-change-components-discovery.md
+object-schema-change-delta-taxonomy.md
+object-schema-change-dtv-cache-fill.md
+object-schema-change-dtv-cold-fill.md
+object-schema-change-dtv-migration.md
+object-schema-change-exact-closure-cold-load.md
+object-schema-change-immutable-migration-plan.md
+object-schema-change-lifecycle.md
+object-schema-change-migration-plan-amortization.md
+object-schema-change-preparation-aggregate-read.md
+object-schema-change-preparation-properties.md
+object-schema-change-preparation-snapshot.md
+object-schema-change-prepared-candidate.md
+object-schema-change-property-migration.md
+object-schema-change-property-rule-composition.md
+object-schema-change-protected-fingerprint-read.md
 object-schema-change-q3-fingerprint-outcome.md
+object-schema-change-q4-final-mutation.md
+object-schema-change-remove-preliminary-target-admission.md
+object-schema-change-target-admission.md
+object-schema-change-target-version-semantics.md
+object-schema-change-uow-object-lock.md
+object-schema-change-uow-target-admission.md
 object-schema-change-uow.md
 object-schema-change-warm-cost.md
-object-schema-change-component-migration.md
-object-schema-change-component-admission-from-snapshot.md
 object-optimistic-preparation-fingerprint.md
 object-aggregate-fingerprint-canonical-json.md
 object-aggregate-fingerprint-sha256.md
 ```
 
-Current supersession direction caused by `object_component_slots`:
+### Superseded realization directions
 
 ```text
-old component preparation
-    current outgoing-edge scan used as blocker authority
-        -> superseded
+preparatory outgoing-edge blocker authority
+    -> superseded for REMOVE/replacement by final slot-FK arbitration
 
-old aggregate fingerprint
-    intrinsic Object + all outgoing ownership edges
-        -> superseded by preferred intrinsic-only scope
+whole Object + outgoing-edge fingerprint
+    -> superseded by intrinsic-only preferred scope for currently covered deltas
 
-old parent lock role
-    ATTACH/DETACH rendezvous required for slot continuity
-        -> superseded by preferred slot-FK arbitration
+parent Object lock as mandatory ATTACH/DETACH slot-continuity rendezvous
+    -> superseded for covered slot cases
 
-old mandatory separate protected aggregate statement
-    required because ownership rows were not protected by Object row lock
-        -> justification removed; final realization reopened
+separate post-lock Object+edge Q3 as mandatory statement
+    -> old justification removed; realization reopened
 
-old final Q4
-    Object UPDATE + lifecycle only
-        -> reopened because slot delta must be maintained atomically
+Object+lifecycle-only Q4
+    -> reopened because current slot delta must commit atomically
 
-old warm/cold route totals
-    6 / 9
-        -> superseded until final realization is chosen
+standalone preliminary TARGET admission
+    -> removed
 
-old standalone preliminary target query
-        -> superseded / removed
+old 6/9 route totals
+    -> superseded
 ```
 
-Older source WIPs remain temporarily in the repository until a lossless comparison pass is completed. Git history remains the historical record after cleanup.
+### Historical finding restored rather than discarded
+
+`object-schema-change-components-discovery.md` contained the warning that a numeric-forward pair can semantically narrow when versions are published out of numeric order. Later WIPs effectively assumed that this could not occur. The comparison against current ObjectTemplate creation/publication logic shows the warning is still material, so this owner restores it as the explicit OPEN source→target monotonicity policy above.
+
+Older micro-WIPs remain in the tree for now. Cleanup should occur only after this newly exposed semantic point is deliberately resolved and the three consolidated Object owners are made self-consistent; Git history remains the historical record afterward.
