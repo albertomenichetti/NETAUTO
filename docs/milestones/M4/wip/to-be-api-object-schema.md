@@ -1,42 +1,46 @@
 # M4 TO-BE API — Object schema binding
 
-Status: GET ROUTE-LOCAL CLOSED / POST ACTIVE REVALIDATION / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: GET FULL-SWEEP REVALIDATION — BLOCKS 1-2 RATIFIED / POST ACTIVE REVALIDATION / M4 WIP / NON-NORMATIVE GLOBALLY
+
+## Current GET review status
+
+`GET /objects/{object_id}/schema` is being revalidated against the current reviewed M4 baseline before absorption into [`object.md`](object.md).
+
+Ratified in the current review pass:
+
+```text
+BLOCK 1 — public contract
+    route remains GET /api/v1/core/objects/{object_id}/schema
+    response remains exactly template_id + template_name + version
+    template_name remains stable human-readable convenience, not identity
+    revision remains internal and is not exposed
+    effective schema/model metadata remain excluded
+
+BLOCK 2 — read path + coherence/concurrency
+    one PostgreSQL statement
+    bounded Object PK -> ObjectTemplate PK path
+    no exact ObjectTemplateVersion read merely to re-admit the persisted binding
+    no revision read
+    no cache
+    no locks
+    no retries
+    no diagnostic-only consistency query
+    statement snapshot is the complete coherence boundary
+```
+
+Still to close before current full-sweep absorption:
+
+```text
+BLOCK 3 — final failure mapping + architecture handoff/closure
+```
 
 ## POST revalidation notice — materialized current component slots
 
-The GET `/objects/{object_id}/schema` checkpoint remains unchanged by the current finding.
+The POST schema-mutation realization remains actively revalidated by [`object-schema-change.md`](object-schema-change.md) and the current component-persistence owner [`object-components-persistence.md`](object-components-persistence.md).
 
-The POST schema-mutation realization is actively revalidated by [`object-component-slots-data-plane-materialization.md`](object-component-slots-data-plane-materialization.md).
+The current candidate maintains `object_component_slots` atomically with the Object exact binding and uses edge->slot relational arbitration for REMOVE/replacement races. Existing `object_components` edges still remain unchanged on successful normal schema migration.
 
-The new candidate materially reopens supporting schema-change WIPs that assumed effective slots remained model-plane-only and that outgoing ownership edges had to participate in the whole-Object optimistic fingerprint.
-
-Current reopened assumptions include:
-
-```text
-ADD slot creates no runtime slot row
-REMOVE/replacement admission decided from preparatory ownership snapshot
-outgoing ownership edges belong to SCHEMA_CHANGE fingerprint
-ATTACH/DETACH must rendezvous through the parent Object lock
-final SCHEMA_CHANGE business write touches only objects + lifecycle
-successful SCHEMA_CHANGE performs no component-related data-plane DML
-```
-
-The current candidate instead maintains `object_component_slots` atomically with the Object exact binding and uses edge->slot FK arbitration for REMOVE/replacement races. Existing `object_components` edges still remain unchanged on successful normal schema migration.
-
-Supporting WIPs affected transitively include at least:
-
-```text
-object-schema-change-component-migration.md
-object-schema-change-component-admission-from-snapshot.md
-object-schema-change-preparation-aggregate-read.md
-object-schema-change-protected-fingerprint-read.md
-object-aggregate-fingerprint-canonical-json.md
-object-aggregate-fingerprint-sha256.md
-object-schema-change-q4-final-mutation.md
-object-schema-change-warm-cost.md
-```
-
-They remain discovery evidence, but their ownership-edge fingerprint/final-DML conclusions must not be treated as current without revalidation against the new materialization candidate.
+Earlier supporting SCHEMA_CHANGE WIPs remain discovery evidence, but fingerprint/final-DML conclusions from them must not be treated as current without revalidation against the reviewed Object revision and component-persistence baseline.
 
 This file records the caller-facing contract for the Object-relative schema surface during the M4 top-down TO-BE sweep.
 
@@ -65,6 +69,8 @@ object_id: UUID
 ```
 
 Query parameters: none.
+
+Request body: none.
 
 ### Success response
 
@@ -103,7 +109,21 @@ effective components
 DataType semantics
 ```
 
-`template_id` is the authoritative template-lineage identity. `template_name` is a stable human-readable convenience for the caller and does not participate in identity.
+`template_id` is the authoritative template-lineage identity. `version` identifies the exact ObjectTemplateVersion currently persisted on the Object.
+
+`template_name` is a stable human-readable convenience for the caller and does not participate in identity:
+
+```text
+binding identity
+    = (template_id, version)
+
+template_name
+    = stable display/convenience metadata
+```
+
+Keeping `template_name` avoids forcing a second caller round trip merely to render a readable binding while the route can obtain it through the same bounded database statement.
+
+`revision` is deliberately excluded. `objects.revision` is the internal technical intrinsic-row generation token owned by [`object-revision.md`](object-revision.md); this GET does not turn it into public Object or CAS state.
 
 The route therefore complements rather than replaces:
 
@@ -113,11 +133,11 @@ GET /api/v1/core/object-templates/{template_id}/versions/{version}/effective-sch
 
 which remains the detailed model-plane schema surface.
 
-### GET TO-BE read path
+### GET ratified read path
 
-The read must return the Object's current exact binding plus the stable template name in one coherent database statement.
+The read returns the Object's current exact binding plus the stable template name in one coherent PostgreSQL statement.
 
-Preferred simple SQL shape:
+Preferred conceptual SQL shape:
 
 ```sql
 SELECT
@@ -130,7 +150,7 @@ JOIN object_templates ot
 WHERE o.id = :object_id;
 ```
 
-The frozen requirement is not the textual join order but the physical access path:
+The SQL text and planner join order are not frozen. The required logical/physical direction is bounded:
 
 ```text
 objects PK lookup by object_id
@@ -138,57 +158,127 @@ objects PK lookup by object_id
     -> obtain template_id/template_version
 
 object_templates PK lookup by template_id
-    -> at most one ObjectTemplate row
+    -> at most one ObjectTemplate lineage row
     -> obtain stable name
 ```
 
-PostgreSQL may reorder/push predicates during planning. The simple join form is acceptable only while physical verification proves the intended bounded path rather than broad join work followed by filtering.
+Architecture-wide physical review must later verify that the realized plan preserves this bounded access path with `EXPLAIN (ANALYZE, BUFFERS)` or equivalent evidence. Discovery does not freeze the exact SQL/SQLAlchemy carrier or final index set.
 
-Architecture-wide physical review must verify this with `EXPLAIN (ANALYZE, BUFFERS)` or equivalent evidence.
+### No exact ObjectTemplateVersion read/re-admission
+
+Normal GET schema does not join/read `object_template_versions` merely to re-admit the binding.
+
+It does not ask whether the persisted exact version is currently:
+
+```text
+PUBLISHED
+DEPRECATED
+current default
+latest/highest
+otherwise admissible for a new binding today
+```
+
+The route reports the Object's current persisted exact binding. An Object legitimately pinned to a now-DEPRECATED exact ObjectTemplateVersion therefore remains a normal `200` result.
+
+The existence of the exact version is already a persistence invariant of the current Object row through the Object -> exact ObjectTemplateVersion foreign-key relationship. The exact version in turn belongs to its ObjectTemplate lineage.
+
+Normal GET schema therefore does not spend another read to recertify persisted reference integrity.
 
 ### GET cache/denormalization decision
 
 No cache is used for this route.
 
-Although `ObjectTemplate.name` is stable and cacheable, PostgreSQL must already be consulted for current Object existence and current mutable exact binding. A PK-to-PK join adds no extra round-trip and is simpler than splitting the result across DB plus cache lookup/fill.
+Although `ObjectTemplate.name` is stable and cacheable, PostgreSQL must already be consulted for current Object existence and current mutable exact binding. A PK-to-PK join adds no extra round trip and is simpler than splitting one public result across DB current state plus worker-local cache lookup/fill.
 
-No denormalized template name is copied into `objects`.
+No denormalized template name is copied into `objects` solely for this read.
+
+### GET revision decision
+
+`objects.revision` is not read.
+
+The route neither exposes revision nor requires optimistic mutation freshness. One PostgreSQL statement already provides the complete coherent read snapshot, so reading the technical generation token would add no public correctness guarantee.
 
 ### GET concurrency/coherence
 
-One SQL statement gives one coherent database snapshot of:
+One PostgreSQL statement snapshot is the complete coherence boundary for:
 
 ```text
 Object existence
 current template_id/template_version
-matching stable template name
+matching stable template_name
 ```
 
-No lock is required.
+No explicit lock, retry, revision check or multi-statement read protocol is required.
 
-A concurrent schema mutation is observed either before or after its commit; the GET does not expose an intermediate binding.
-
-Missing Object:
+Concurrent SCHEMA_CHANGE:
 
 ```text
-0 rows -> 404
+GET snapshot before SCHEMA_CHANGE commit
+    -> old exact version
+
+GET snapshot after SCHEMA_CHANGE commit
+    -> new exact version
 ```
 
-### GET cost target
+The GET never exposes an intermediate binding generation.
+
+Concurrent DELETE:
 
 ```text
-1 PostgreSQL statement
-    objects PK lookup
-    object_templates PK lookup
+GET snapshot sees Object
+    -> 200 current binding
 
+GET snapshot no longer sees Object
+    -> 404 resource_not_found
+```
+
+RENAME, DATA_CHANGE, ATTACH, DETACH and factual Relationship mutations require no synchronization with this read because they do not change the public binding facts projected by this route.
+
+### GET no diagnostic-only consistency query
+
+The normal read path is not a persistence consistency audit.
+
+Current database reference integrity is expected to make an Object row with a missing exact ObjectTemplateVersion or missing ObjectTemplate lineage unrepresentable through normal admitted writes.
+
+Therefore the route does not split the read into multiple queries merely to distinguish hypothetical out-of-band corruption from normal Object absence.
+
+Canonical hot-path principle:
+
+```text
+normal current read
+    -> consume admitted persisted invariants
+
+normal current read
+    != proactive consistency sweep
+```
+
+If architecture later weakens/removes the database reference invariants on which this one-statement shape relies, this route must be revalidated rather than silently retaining the same failure interpretation.
+
+### GET current cost target
+
+```text
+1 PostgreSQL business statement
+
+bounded reads
+    objects PK(object_id)
+    object_templates PK(template_id)
+
+public projection
+    template_id
+    template_version -> version
+    template_name
+
+0 exact-OTV semantic/status reads
 0 cache lookups
 0 locks
-0 model-plane semantic reconstruction
-0 denormalized template name
+0 retries
+0 revision reads
+0 model-plane effective-schema reconstruction
 0 lifecycle work
+0 diagnostic-only consistency reads
 ```
 
-`GET /objects/{id}/schema` remains ROUTE-LOCAL CLOSED, subject to architecture-wide physical-plan/index verification.
+The route has no warm/cold distinction.
 
 ## POST change Object schema binding
 
@@ -264,17 +354,20 @@ This separation avoids exposing complete model-plane effective schema in the Obj
 
 ## Current POST candidate direction after revalidation
 
-The full POST path is still not closed, but the component side now has a stronger candidate:
+The full POST path is still not closed. Its current detailed owner is [`object-schema-change.md`](object-schema-change.md), interpreted through the reviewed baseline in [`object-revision.md`](object-revision.md) and [`object-components-persistence.md`](object-components-persistence.md).
+
+Current high-level component-side direction remains:
 
 ```text
 MigrationPlan SOURCE -> TARGET
     -> immutable model-plane component delta
 
 Object SCHEMA_CHANGE UoW
-    -> protect/revalidate mutable intrinsic Object state
+    -> use universal intrinsic expected_revision for intrinsic freshness
     -> maintain current object_component_slots delta atomically
-    -> existing edge FK is final REMOVE/replacement blocker authority
+    -> use relational slot/edge arbitration for REMOVE/replacement blockers
     -> update Object exact binding/properties
+    -> advance intrinsic revision on committed new Object generation
     -> append SCHEMA_CHANGE lifecycle
     -> COMMIT
 ```
@@ -301,30 +394,35 @@ position-only change
 
 The Object binding and slot materialization must become visible atomically.
 
-Candidate fingerprint revalidation now questions whether outgoing `object_components` membership belongs in the optimistic fingerprint at all. The preferred direction is intrinsic Object fingerprinting plus final relational slot/edge arbitration, but exact UoW/statement decomposition remains OPEN.
+Old intrinsic fingerprint conclusions in earlier SCHEMA_CHANGE source WIPs are not current authority where they conflict with the universal `objects.revision` baseline.
 
 ## Route-local state
 
-Frozen for the shared public schema surface:
+Ratified in the current GET revalidation pass:
 
 - Object-relative schema resource path is `/api/v1/core/objects/{object_id}/schema`;
 - `GET` returns exactly `template_id`, `template_name`, `version`;
+- `template_name` remains stable human-readable convenience and not identity;
+- `GET` does not expose technical `revision`;
 - `GET` does not expose effective schema or other ObjectTemplate metadata;
-- `POST` replaces the former `/schema-change` public route;
-- `POST` request remains `{ "target_version": <positive integer> }`;
-- schema mutation changes version only within the Object's existing template lineage;
-- successful `POST` returns `204 No Content`;
-- ObjectTemplate effective-schema API remains the detailed model-plane schema surface.
-
-GET route-local closure retains:
-
-- one coherent PostgreSQL statement;
+- one coherent PostgreSQL statement is the complete read boundary;
+- no exact ObjectTemplateVersion read/status re-admission is required merely to report the persisted binding;
 - no cache;
 - no locks;
+- no retries;
+- no revision read;
 - no denormalized template name on Object;
-- required bounded `Object PK -> ObjectTemplate PK` physical path;
-- `0 rows -> 404`;
-- architecture-wide EXPLAIN verification handoff.
+- bounded `Object PK -> ObjectTemplate PK` access path;
+- no diagnostic-only consistency read;
+- architecture-wide EXPLAIN/index verification remains a later handoff.
+
+Still to close for the current GET full sweep:
+
+```text
+final failure mapping
+architecture handoff / full-sweep closure wording
+lossless absorption into object.md
+```
 
 Still to close for POST schema mutation:
 
@@ -334,10 +432,10 @@ current intrinsic Object state needed before preparation
 source/target validation cache requirements
 property migration and migration_default semantics
 current object_component_slots maintenance
-final intrinsic fingerprint scope
+universal revision-aligned final freshness/retry path
 short mutation UoW / slot-delta statement decomposition
 constraint failure mapping for slot blockers
-concurrency with properties mutation, ATTACH/DETACH, DELETE and another schema mutation
+concurrency with DATA_CHANGE, ATTACH/DETACH, DELETE and another schema mutation
 lifecycle SCHEMA_CHANGE persistence
 no-op target-version semantics
 TO-BE warm/cold cost
