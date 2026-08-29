@@ -1,6 +1,6 @@
 # M4 WIP — TO-BE Object canonical-name mutation
 
-Status: ROUTE-LOCAL ACTIVE REVALIDATION / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: ROUTE-LOCAL FULL-SWEEP COMPLETE / M4 WIP / NON-NORMATIVE GLOBALLY
 
 ## Public signature
 
@@ -173,7 +173,7 @@ The former is unnecessary duplication and creates artificial coupling to unrelat
 
 Current-state mutation and RENAME lifecycle event remain atomic. What becomes narrower is only the historical payload responsibility.
 
-## Logical execution requirement
+## Ratified logical execution/data path
 
 The logical route needs only the exact current name and the new requested name:
 
@@ -183,13 +183,21 @@ validate canonical_name
 
 BEGIN
 
-obtain/protect current Object existence + exact old canonical_name
-    absent -> 404 resource_not_found
+Q1
+    obtain/protect current Object identity + exact old canonical_name
 
-perform canonical_name-only update
+    absent
+        -> 404 resource_not_found
 
-insert exactly one RENAME lifecycle event
-    old canonical_name -> requested canonical_name
+Q2
+    perform canonical_name-only UPDATE
+    + INSERT exactly one RENAME lifecycle event
+
+    before:
+        canonical_name = old_name
+
+    after:
+        canonical_name = requested_name
 
 COMMIT
 ```
@@ -202,19 +210,36 @@ old_name == new_name
 
 No complete Object snapshot is needed for RENAME lifecycle construction.
 
-## Physical realization handoff
-
-M4 discovery does not freeze whether architecture realizes the logical flow using:
+Preferred logical successful cost:
 
 ```text
-protected current-name read + UPDATE + lifecycle INSERT
+2 PostgreSQL business statements + COMMIT
 
-one safe PostgreSQL old/new-name carrier + lifecycle INSERT
+Q1
+    exact old-name acquisition/protection
 
-or another equivalent fused realization
+Q2
+    canonical_name UPDATE + RENAME lifecycle INSERT
 ```
 
-Exact SQL, statement fusion and row-lock mode remain architecture concerns.
+The UPDATE + lifecycle fusion is a logical direction, not frozen SQL syntax. A data-modifying PostgreSQL statement may carry the row actually updated into the lifecycle append without returning unrelated Object state to the application.
+
+M4 does not require a PostgreSQL-major-specific `OLD/NEW` feature. If a later architecture baseline makes a safe one-statement realization available, that is an optimization and does not change this route contract.
+
+## Physical realization handoff
+
+M4 discovery does not freeze the exact SQL, row-lock mode or old/new-name carrier.
+
+Architecture may realize the logical flow using:
+
+```text
+protected current-name read
++ fused UPDATE/lifecycle write
+
+or
+
+another equivalent safe realization
+```
 
 Any realization must preserve:
 
@@ -223,7 +248,7 @@ exact old canonical_name
 exact requested/new canonical_name
 canonical_name-only current write
 atomic Object + RENAME lifecycle transition
-no lost same-field rename transition
+serially explainable same-Object RENAME transitions
 no mutation-after-delete / resurrection
 ```
 
@@ -278,7 +303,7 @@ Bounded public failures:
 
 The operation introduces no semantic `409`, `422`, name-conflict, schema-admission or ownership-admission failure class.
 
-## Cost/cache/schema direction
+## Cache and relational-schema direction
 
 There is no warm/cold cache distinction and no route-specific cache.
 
@@ -291,22 +316,11 @@ requested canonical_name
 one RENAME lifecycle transition
 ```
 
-A straightforward safe realization may use:
-
-```text
-1 protected current-name read
-1 canonical_name UPDATE
-1 lifecycle INSERT
-+ COMMIT
-```
-
-but exact statement count remains an architecture optimization target rather than a discovery contract.
-
 No route-specific table, denormalization, materialization or index is introduced.
 
-## Revalidation status
+## Full-sweep closure
 
-Ratified during the current full-sweep pass:
+The route-local `PUT /objects/{id}/canonical-name` sweep is complete for:
 
 - public contract;
 - `204` / `404` / `400` direction;
@@ -314,7 +328,18 @@ Ratified during the current full-sweep pass:
 - semantic responsibility boundary;
 - exact minimal RENAME lifecycle payload;
 - no schema/model/cache recertification;
-- bounded current-name mutation path;
-- route-level concurrency/failure direction.
+- bounded two-statement logical data path;
+- route-level concurrency and failure direction;
+- cache and relational-schema implications.
 
-The remaining work is consolidation into the main Object route owner and final full-sweep closure/cleanup.
+Deferred only to architecture-wide realization:
+
+```text
+exact PostgreSQL SQL/carrier
+exact lock/wait-for realization
+whether the preferred two-statement logical path can be safely fused further
+physical index review / measured plan evidence
+lifecycle physical carrier/constraint details
+```
+
+The next documentation step is lossless absorption into the consolidated Object route owner and cleanup of superseded RENAME-only source WIPs.
