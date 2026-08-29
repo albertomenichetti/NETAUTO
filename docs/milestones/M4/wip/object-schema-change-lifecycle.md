@@ -1,210 +1,300 @@
 # M4 WIP — Object SCHEMA_CHANGE lifecycle payload
 
-Status: FROZEN DISCOVERY INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
+Status: RATIFIED SCHEMA_CHANGE LIFECYCLE INPUT / M4 WIP / NON-NORMATIVE GLOBALLY
 
-This note freezes the lifecycle payload construction for:
+This note records the lifecycle payload semantics ratified for:
 
 ```http
 POST /api/v1/core/objects/{object_id}/schema
 ```
 
+It supersedes the earlier full-intrinsic-before/after snapshot direction for SCHEMA_CHANGE.
+
+Everything under `wip/` remains globally non-normative and does not authorize implementation.
+
+## Governing principle
+
+M4 uses the general lifecycle rule:
+
+```text
+lifecycle payload
+    = complete exact semantic transition owned by the operation
+
+not automatically
+    = complete aggregate before snapshot
+      + complete aggregate after snapshot
+```
+
+SCHEMA_CHANGE owns the transition from one exact ObjectTemplate binding to another and the concrete runtime-property changes produced by that migration.
+
+It does not own unrelated unchanged intrinsic fields, ownership membership, Relationship state or a duplicated copy of the derived current slot materialization.
+
 ## Event cardinality
 
-A successful Object schema migration produces exactly one intrinsic lifecycle event:
+Exactly one successful real schema migration produces:
 
 ```text
 kind = SCHEMA_CHANGE
 ```
 
-A failed or rolled-back migration produces no lifecycle event.
-
-## Historical snapshot shape
-
-`SCHEMA_CHANGE` stores the complete canonical intrinsic Object snapshot before and after the migration.
-
-The historical snapshot contains exactly:
+No lifecycle event is emitted for:
 
 ```text
-id
-canonical_name
-template_id
-template_version
-properties
+equal-target semantic no-op
+semantic migration failure
+TARGET admission failure
+slot blocker failure
+stale expected_revision attempt
+rolled-back persistence failure
 ```
 
-It deliberately excludes enriched/current projections and unrelated aggregates:
+A successful real migration emits one event even when no runtime property value changes, because the exact binding itself changed.
+
+## Canonical semantic payload
+
+Conceptually:
 
 ```text
-components
-owner
-relationships
-effective schema
+SCHEMA_CHANGE event
+    object_id = O
+
+    binding transition
+        template_id = T
+        source_version = VS
+        target_version = VT
+
+    changed runtime properties only
+        PropertySemanticKey
+            declaring_template_id
+            property_name
+
+        before
+            canonical value | ABSENT
+
+        after
+            canonical value | ABSENT
+```
+
+The exact JSON/typed persistence carrier remains Lifecycle architecture/API work. The semantic information above is fixed by the SCHEMA_CHANGE owner.
+
+`template_id` is stable across this route because SCHEMA_CHANGE changes only the exact version inside the Object's existing ObjectTemplate lineage.
+
+## Binding transition is always historical state
+
+For every successful real migration:
+
+```text
+source_version != target_version
+```
+
+and the lifecycle event records that exact binding transition even when:
+
+```text
+target_properties == source_properties
+```
+
+or no property transition needs to be listed.
+
+Example:
+
+```text
+T@4 -> T@5
+property_changes = []
+```
+
+is still a real SCHEMA_CHANGE event.
+
+The exact SOURCE/TARGET versions identify the immutable schema semantics that governed the transition historically.
+
+## Property delta contains actual runtime changes only
+
+SCHEMA_CHANGE candidate construction already transforms the current SOURCE property map into the complete canonical TARGET property map.
+
+During that same preparation, lifecycle material should retain only semantic properties whose runtime state actually changes.
+
+Examples:
+
+```text
+ADD required with migration_default
+    ABSENT -> canonical default
+
+REMOVE existing property
+    canonical value -> ABSENT
+
+SCALAR -> LIST
+    x -> [x]
+
+lossless LIST -> SCALAR
+    [x] -> x
+
+exact DTV change with different canonical representation
+    old canonical value -> new canonical value
+```
+
+If one continuous property has exactly the same canonical runtime value before and after migration, it is omitted from the property delta.
+
+The lifecycle event is not a raw MigrationPlan dump and does not list schema rules that produced no runtime property-state change.
+
+## Property semantic identity
+
+Property history uses:
+
+```text
+PropertySemanticKey
+    = (declaring_template_id, property_name)
+```
+
+Textual name equality alone does not establish continuity.
+
+Therefore semantic replacement is represented as two distinct state transitions when runtime values exist.
+
+Example:
+
+```text
+SOURCE
+    (Device, hostname) = "srv01"
+
+TARGET
+    (Server, hostname) = "unknown"
+```
+
+records conceptually:
+
+```text
+(Device, hostname)
+    "srv01" -> ABSENT
+
+(Server, hostname)
+    ABSENT -> "unknown"
+```
+
+It must not be collapsed into a false single-property transition merely because both properties use the JSON key `hostname`.
+
+`ABSENT` is distinct from JSON `null`; runtime null is not a valid Object property state.
+
+## Component-slot delta is not duplicated in SCHEMA_CHANGE lifecycle
+
+SCHEMA_CHANGE atomically maintains current:
+
+```text
+object_component_slots
+```
+
+so that:
+
+```text
+MaterializedSlots(O)
+    == EffectiveComponentSlots(T@V)
+```
+
+for the new exact binding.
+
+Those rows are derived current-state materialization, not an independent semantic history authority.
+
+The lifecycle event therefore does not duplicate a slot diff such as:
+
+```text
+slot added
+slot removed
+target widened
+position changed
+semantic slot replacement
+```
+
+The exact immutable binding transition:
+
+```text
+T@VS -> T@VT
+```
+
+is sufficient historical schema context to determine the SOURCE/TARGET effective-slot contract when model-plane history is inspected.
+
+SCHEMA_CHANGE also does not modify current `object_components` membership on successful normal migration. REMOVE or semantic replacement with an existing edge fails instead of implicitly DETACHing/rebinding children.
+
+Ownership history remains owned by `ATTACH_TO` / `DETACH_FROM` lifecycle events.
+
+## Explicit exclusions
+
+SCHEMA_CHANGE lifecycle does not duplicate:
+
+```text
+canonical_name
+revision
+complete properties before snapshot
+complete properties after snapshot
+unchanged properties
+object_component_slots materialized rows
+object_components / ownership membership
+owner projection
+Relationships
 template_name
-ObjectTemplate status/revision/description/default
+ObjectTemplate status/default/description/revision
+effective-schema snapshots
 ```
 
-Ownership history remains represented by ATTACH/DETACH lifecycle events rather than being copied into intrinsic SCHEMA_CHANGE snapshots.
+`object_id` already identifies the event subject.
 
-## before_state
+`canonical_name` is unchanged by SCHEMA_CHANGE and is not required merely for payload uniformity.
 
-`before_state` is derived directly from the coherent preparatory Object aggregate snapshot `S`:
+Technical `objects.revision` is concurrency/persistence metadata and is not semantic lifecycle state.
+
+## Preparation and freshness
+
+Lifecycle delta construction happens while applying the immutable MigrationPlan to one coherent current intrinsic Object generation:
 
 ```text
-before_state
-    id               = S.id
-    canonical_name   = S.canonical_name
-    template_id      = S.template_id
-    template_version = S.template_version
-    properties       = S.properties
+SOURCE properties from revision R
++ MigrationPlan(T, VS, VT)
+    -> target_properties
+    -> changed-property semantic delta
 ```
 
-Conceptual example:
-
-```json
-{
-  "id": "server-id",
-  "canonical_name": "server-1",
-  "template_id": "server-template-id",
-  "template_version": 4,
-  "properties": {
-    "hostname": "srv01"
-  }
-}
-```
-
-## after_state
-
-`after_state` is constructed during preparation from the same stable identity/display metadata plus the already-prepared target binding and canonical target properties:
+The prepared lifecycle material may commit only if the final intrinsic mutation succeeds against:
 
 ```text
-after_state
-    id               = S.id
-    canonical_name   = S.canonical_name
-    template_id      = S.template_id
-    template_version = target_version
-    properties       = target_properties
+expected_revision = R
 ```
 
-Conceptual example:
-
-```json
-{
-  "id": "server-id",
-  "canonical_name": "server-1",
-  "template_id": "server-template-id",
-  "template_version": 5,
-  "properties": {
-    "hostname": "srv01",
-    "environment": "production"
-  }
-}
-```
-
-## Preparation-time construction
-
-Both historical snapshots are fully materialized before entering the short mutation UoW:
+If revision is stale:
 
 ```text
-S
-    -> lifecycle_before
-
-S + target_version + target_properties
-    -> lifecycle_after
+no Object mutation
+no slot mutation
+no lifecycle event
 ```
 
-No lifecycle-state reconstruction is performed after the protected fingerprint check.
+and a fresh attempt rebuilds any Object-dependent lifecycle delta from the new current generation.
 
-A successful preparation therefore conceptually carries:
+No fingerprint/canonical-JSON/SHA mechanism is part of the current lifecycle freshness contract.
+
+## Atomicity
+
+For one successful real migration, these become durable atomically:
 
 ```text
-PreparedSchemaChange
-    object_id
-    canonical_name
-
-    template_id
-    source_version
-    target_version
-
-    expected_object_fingerprint
-
-    target_properties
-
-    lifecycle_before
-    lifecycle_after
+Object exact target binding
+canonical target properties
+revision := R + 1
+current object_component_slots delta
+exactly one SCHEMA_CHANGE lifecycle event
 ```
 
-`canonical_name` is included explicitly because it is also persisted as historical display metadata on the lifecycle row.
+If lifecycle persistence fails, the Object/slot migration must not commit.
 
-## Why preparation-time snapshots are safe
+If the Object/slot migration fails, no SCHEMA_CHANGE event may commit.
 
-The agreed whole-Object aggregate fingerprint covers intrinsic Object state including:
-
-```text
-id
-canonical_name
-template_id
-template_version
-properties
-```
-
-plus the complete outgoing ownership facts used by SCHEMA_CHANGE admission.
-
-Therefore a concurrent intrinsic mutation such as:
-
-```text
-RENAME server-1 -> server-prod-1
-```
-
-changes the protected aggregate fingerprint.
-
-If the current protected fingerprint differs from the prepared fingerprint:
-
-```text
-prepared lifecycle snapshots are stale
--> rollback
--> optional bounded retry according to the dedicated retry policy
--> no Object/lifecycle DML
-```
-
-If the fingerprint matches, the UoW may consume the already-prepared `lifecycle_before` and `lifecycle_after` without rereading or rebuilding them.
-
-## Final write consumption
-
-After target admission, Object-owner locking and protected fingerprint equality, the fused final statement consumes the prepared lifecycle data directly:
-
-```text
-WITH mutated AS (
-    UPDATE objects ...
-)
-INSERT object_lifecycle_events
-    kind           = SCHEMA_CHANGE
-    object_id      = prepared.object_id
-    canonical_name = prepared.canonical_name
-    before_state   = prepared.lifecycle_before
-    after_state    = prepared.lifecycle_after
-FROM mutated
-```
-
-The lifecycle insert is driven by the successfully mutated Object row, so zero Object rows mutated means zero lifecycle rows inserted.
-
-The lifecycle row identity and timestamp remain PostgreSQL-authoritative according to the common lifecycle persistence contract:
-
-```text
-id
-    -> PostgreSQL-generated UUID row identity
-
-occurred_at
-    -> transaction timestamp semantics
-```
-
-## Frozen rule
+## Ratified rule
 
 ```text
 SCHEMA_CHANGE lifecycle
-    -> exactly one intrinsic event on successful real transition
-    -> complete canonical intrinsic before/after Object snapshots
-    -> snapshots prepared outside UoW
-    -> fingerprint protects their freshness
-    -> no components/owner/relationships/effective schema in snapshots
-    -> no lifecycle reconstruction after fingerprint match
+    -> exactly one event for a successful real SOURCE != TARGET migration
+    -> exact binding transition T@VS -> T@VT
+    -> exact delta of runtime properties that actually changed
+    -> property identity uses (declaring_template_id, property_name)
+    -> value-vs-ABSENT preserved exactly
+    -> no full intrinsic Object snapshots
+    -> no derived component-slot delta duplication
+    -> no ownership membership duplication
+    -> no revision/canonical_name duplication
+    -> equal-target no-op and failed/rolled-back attempts emit no event
 ```
