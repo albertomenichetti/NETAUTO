@@ -4,6 +4,8 @@ Status: ROUTE-LOCAL ACTIVE REVALIDATION / M4 WIP / NON-NORMATIVE GLOBALLY
 
 This file records the caller-facing contract and current TO-BE execution direction for the Object property-mutation route during the M4 top-down sweep. The route has been reopened for a full-sweep pass; later sections that have not yet been explicitly revalidated remain discovery input rather than frozen current authority. Physical SQL/index design remains an explicit handoff to the subsequent architecture phase.
 
+Cross-operation intrinsic-generation semantics are owned by [`object-revision.md`](object-revision.md) and take precedence over older route-local freshness/fingerprint mechanisms.
+
 ## Signature
 
 ```http
@@ -132,6 +134,7 @@ if no-op recognition falls out of work already required
 for applying the requested operations
     -> no UPDATE
     -> no DATA_CHANGE lifecycle event
+    -> no revision increment
 
 if distinguishing no-op would require material extra work
     -> perform the normal mutation path
@@ -148,7 +151,7 @@ a second full-property-map comparison pass
 an additional whole-Object recertification
 ```
 
-The intended cheap case is per-operation detection while the route already applies requested effects to the fresh current property state:
+The intended cheap case is per-operation detection while the route already applies requested effects to the current property state of the generation being committed:
 
 ```text
 SET p = canonical V
@@ -185,47 +188,49 @@ components / ownership
 Relationships
 ```
 
-Only Object runtime property state is in scope.
+Only Object runtime property state is in scope semantically. A persisted DATA_CHANGE also advances the technical intrinsic `objects.revision` generation token.
 
 # TO-BE execution model — active revalidation
 
 The three-stage model remains the current working direction:
 
 ```text
-STEP 1 — current Object existence + exact binding
+STEP 1 — current Object generation identity + exact binding
     PostgreSQL
 
 STEP 2 — operation preparation
     worker-local READY semantic cache
 
-STEP 3 — short mutation Unit of Work
-    PostgreSQL + application merge
+STEP 3 — short expected-revision mutation Unit of Work
+    PostgreSQL
 ```
 
-The current full-sweep pass must still confirm final hot/cold data path, binding-change behavior and concurrency/failure consequences before this route returns to closed/full-sweep status.
+The current full-sweep pass must still confirm final hot/cold SQL/data-carrier shape, statement-cost direction and failure closure before this route returns to closed/full-sweep status.
 
-## STEP 1 — minimal Object binding lookup candidate
+## STEP 1 — minimal Object generation/binding lookup
 
 Before semantic preparation the command needs only:
 
 ```text
 Object exists
 current exact ObjectTemplate binding
+current intrinsic revision
 ```
 
 Required output:
 
 ```text
-ObjectBinding
+ObjectBindingGeneration
     object_id
     template_id
     template_version
+    revision
 ```
 
 Conceptual persistence shape:
 
 ```sql
-SELECT template_id, template_version
+SELECT template_id, template_version, revision
 FROM objects
 WHERE id = :object_id;
 ```
@@ -235,6 +240,14 @@ Important negative requirement:
 > STEP 1 does not load current `properties`.
 
 An existing Object may remain pinned to a `DEPRECATED` exact ObjectTemplateVersion. Property mutation is not a new model-plane binding admission and therefore does not require current `PUBLISHED` status or current default resolution.
+
+The observed revision becomes:
+
+```text
+expected_revision = R
+```
+
+for the final mutation attempt.
 
 STEP 1 should remain a cheap primary-key lookup. Exact physical indexing is deferred to the architecture-wide index review.
 
@@ -344,12 +357,13 @@ The proof obligation is deliberately narrow:
 
 ```text
 current Object properties were admitted under exact binding T@V
-prepared binding remains T@V at mutation time
+prepared generation is identified by revision R
 requested effects are independently valid/canonical under T@V
-untouched values are not changed
+final commit requires current revision == R
 
 therefore
-    applying the requested effects preserves the property-state contract
+    no committed intrinsic mutation changed binding/properties/name
+    between observation and this successful mutation generation
 ```
 
 This relies on the current Object property model having no independent cross-property invariant that must be recomputed after every SET/REMOVE. If such a cross-property invariant is introduced later, DATA_CHANGE must be revalidated rather than silently retaining this local-validation proof.
@@ -369,68 +383,74 @@ not
     -> O(total persisted property count)
 ```
 
-## STEP 3 — short protected mutation UoW candidate
+## STEP 3 — universal expected-revision mutation boundary
 
-The route obtains a fresh protected Object generation after operation preparation.
+The final mutation attempt is governed by the cross-operation Object revision contract.
 
-Conceptually the required current facts include:
+Logical rule:
 
 ```text
-fresh exact binding
-fresh current sparse properties
+current revision == expected_revision R
+    -> this is still the intrinsic Object generation observed in STEP 1
+    -> final operation may proceed
+
+current revision != R
+    -> stale attempt
+    -> no Object mutation
+    -> no DATA_CHANGE lifecycle event for this failed attempt
+    -> rollback/end attempt
+    -> bounded retry from STEP 1
+```
+
+This universal generation check replaces the former separate route-local binding-stability protocol.
+
+Because every committed SCHEMA_CHANGE changes the intrinsic `objects` row and increments revision:
+
+```text
+revision still R
+    -> exact binding is still the T@V used for preparation
+```
+
+No second independent binding freshness check is required for the same attempt.
+
+The revision token also intentionally invalidates DATA_CHANGE after a concurrent RENAME or another DATA_CHANGE, even when that mutation touched an otherwise independent intrinsic field. Those conservative false-positive retries are accepted in exchange for one simple intrinsic-generation protocol.
+
+No semantic cache fill occurs inside a stale/retry commit boundary; retry returns to STEP 1 and then reuses or resolves the appropriate READY exact semantics outside the final mutation UoW.
+
+### Current-state application and hot-path carrier — still open physically
+
+A successful expected-revision attempt must apply the prepared effects against the properties of exactly generation `R`, preserve untouched keys, derive the actually changed-property delta, and atomically write the next generation when needed.
+
+Required logical inputs at the final mutation boundary are only:
+
+```text
+expected_revision R
+prepared exact binding T@V
+prepared SET/REMOVE effects
+semantic property identities
+current values/existence of the requested properties in generation R
 ```
 
 DATA_CHANGE does not need `canonical_name` or unrelated Object state solely for lifecycle construction.
 
-### Binding-stability candidate
+Preferred performance direction remains to avoid transferring/revalidating the complete property map merely to apply a small operation set. Whether PostgreSQL performs a DB-internal JSONB patch/delta derivation or architecture chooses another equivalent carrier is still open until the hot-path statement analysis is completed.
 
-The exact binding in the protected current Object must match the binding whose semantics prepared the requested operations:
+The final realization must not lose concurrent updates: a writer can commit only from the expected intrinsic generation, and a revision mismatch retries against the newer generation.
 
-```text
-protected binding == prepared binding
-    -> proceed
+### No-op under expected revision
 
-protected binding != prepared binding
-    -> do not apply operations prepared against stale semantics
-    -> release/end current UoW
-    -> bounded re-resolution/restart candidate
-```
-
-No semantic cache fill should occur while holding the final Object mutation protection.
-
-### Fresh-state application
-
-With unchanged binding, requested prepared effects are applied to the fresh current property state while preserving untouched keys exactly.
-
-Example:
-
-```json
-before = {
-  "hostname": "srv01",
-  "serial": "ABC",
-  "location": "rome"
-}
-```
-
-Prepared effects:
+If the normal application of requested effects against generation `R` discovers zero actual property changes:
 
 ```text
-SET hostname = srv02
-REMOVE location
+expected revision matched
+zero changed properties
+    -> 204
+    -> no Object UPDATE
+    -> no revision increment
+    -> no DATA_CHANGE lifecycle event
 ```
 
-Result:
-
-```json
-after = {
-  "hostname": "srv02",
-  "serial": "ABC"
-}
-```
-
-`serial` is copied/preserved from current state; it is not semantically revalidated because DATA_CHANGE did not change it.
-
-No-op recognition, when retained, follows the ratified zero-material-extra-work rule above. The route must not add a second complete-map comparison pass solely to decide whether to skip persistence.
+If revision does not match, the attempt is stale and follows the universal bounded retry rule before classifying the fresh request as no-op or real change.
 
 ## Ratified DATA_CHANGE lifecycle — exact changed-property delta
 
@@ -447,7 +467,7 @@ exact ObjectTemplate binding:
     template_version
 ```
 
-The exact binding is already required by DATA_CHANGE validation/stability and gives the historical schema context under which the delta was admitted.
+The exact binding gives the historical schema context under which the delta was validated and committed.
 
 Each changed property is identified semantically by:
 
@@ -504,6 +524,7 @@ DATA_CHANGE lifecycle must not duplicate merely for uniformity:
 
 ```text
 canonical_name
+revision
 unchanged properties
 components / ownership
 Relationships
@@ -511,7 +532,9 @@ complete Object before snapshot
 complete Object after snapshot
 ```
 
-The delta is naturally derivable while STEP 3 already examines each requested operation against fresh current property state. Lifecycle-delta construction must not introduce a second full-property-map pass solely for history.
+`revision` is technical generation metadata and is not automatically part of the semantic lifecycle payload.
+
+The delta is naturally derivable while the final mutation path already examines each requested operation against current generation `R`. Lifecycle-delta construction must not introduce a second full-property-map pass solely for history.
 
 The exact persistence/DTO carrier remains lifecycle architecture/API work. Equivalent realizations may use kind-specific JSON carriers or another typed representation, but they must preserve:
 
@@ -524,60 +547,102 @@ only actually changed properties
 
 ### Real mutation
 
-For a real property change the current logical persistence direction is:
+For a real property change the logical persistence transition is:
 
 ```text
-update current Object property state
+expected revision R matches
++
+apply actual property delta
++
+revision := R + 1
 +
 append exactly one DATA_CHANGE event carrying the exact changed-property delta
 +
 COMMIT
 ```
 
-Current property mutation and the DATA_CHANGE event are atomic. If lifecycle persistence fails, the property mutation must not commit.
+Current property mutation, generation increment and DATA_CHANGE event are atomic. If lifecycle persistence fails, the new Object generation must not commit.
 
-A request for which the normal apply path discovers zero changed properties may return `204` without current-state UPDATE and without DATA_CHANGE event under the ratified no-op cost rule.
+## Concurrency direction under universal revision
 
-## Concurrency guarantees — pending current full-sweep revalidation
+All intrinsic Object writers participate in the same generation protocol.
 
-The previous candidate established the important current-state guarantees:
+### DATA_CHANGE × DATA_CHANGE
 
 ```text
-DATA_CHANGE x DATA_CHANGE
-    -> no lost property updates
+both observe revision R
+first successful writer
+    -> commits properties + revision R+1 + lifecycle
 
-DATA_CHANGE x SCHEMA_CHANGE
-    -> operations validated under one exact binding must not commit under another
-
-DATA_CHANGE x DELETE
-    -> no mutation-after-delete / no resurrection
+second writer still expects R
+    -> stale mismatch
+    -> no mutation/lifecycle
+    -> bounded retry against R+1
 ```
 
-The ratified lifecycle delta removes any DATA_CHANGE-owned need to stabilize `canonical_name` or unrelated Object fields merely for history. Any remaining concurrency interaction follows actual property/binding/lifetime ownership.
+The retried operation is re-applied to the newer current generation, so no JSONB update is lost.
 
-Exact lock/wait/restart realization remains architecture work.
+### DATA_CHANGE × RENAME
 
-## Cache behavior — current candidate
+```text
+one commits first and increments revision
+other stale attempt fails expected_revision
+    -> bounded retry
+```
+
+This retry is deliberately conservative even though name and properties are semantically independent. The simplicity of one intrinsic-generation rule is preferred over operation-specific freshness exceptions unless measured contention later disproves the trade-off.
+
+### DATA_CHANGE × SCHEMA_CHANGE
+
+```text
+DATA_CHANGE commits first
+    -> revision advances
+    -> SCHEMA_CHANGE prepared from older generation must retry/reprepare as required
+
+SCHEMA_CHANGE commits first
+    -> revision advances
+    -> DATA_CHANGE prepared under prior exact binding cannot commit
+    -> DATA_CHANGE retries from new generation/binding
+```
+
+No operation prepared under one exact binding can commit its property effects under another exact binding.
+
+### DATA_CHANGE × DELETE
+
+```text
+DATA_CHANGE commits first
+    -> DELETE may subsequently remove that resulting generation
+
+DELETE wins first
+    -> expected Object row is absent
+    -> DATA_CHANGE cannot commit or resurrect it
+```
+
+DELETE remains governed by its database lifetime arbitration in addition to intrinsic-generation semantics.
+
+Exact SQL locking/waiting and bounded retry realization remain architecture work.
+
+## Cache behavior
 
 Warm exact binding:
 
 ```text
 STEP 1
-    PK Object binding lookup
+    PK Object generation/binding lookup
 
 STEP 2
     READY cache hit
     CPU-only requested-operation validation/canonicalization
 
 STEP 3
-    short mutation UoW
+    expected-revision mutation attempt
 ```
 
 Cold/partial exact binding:
 
 ```text
 STEP 1
-    same PK binding lookup
+    same PK generation/binding lookup
 
 STEP 2
     complete READY cache using the shared efficient ObjectTemplate exact-version loader
@@ -585,31 +650,30 @@ STEP 2
     prepare operations
 
 STEP 3
-    identical short mutation UoW
+    identical expected-revision mutation attempt
 ```
+
+A revision mismatch restarts from STEP 1. If the exact binding remains the same, the already-READY immutable semantics remain reusable; if SCHEMA_CHANGE changed the binding, the new exact semantics are resolved outside the final mutation UoW.
 
 The route depends on the shared bounded ObjectTemplate semantic loader/cache capability. Exact loader/fill architecture remains a cross-domain handoff.
 
-## Cost direction — reopened
+## Cost direction — still open for final hot-path closure
 
-The old cost target was:
+The former 4-statement real-change candidate is no longer the preferred baseline.
 
-```text
-warm real change
-    4 PostgreSQL business statements + COMMIT
-
-warm no-op
-    2 PostgreSQL statements
-```
-
-Those counts are not re-ratified yet because final mutation statement fusion and persistence strategy are being revisited.
-
-The current ratified performance requirements are:
+Current ratified performance requirements are:
 
 ```text
+STEP 1
+    one minimal generation/binding PK lookup
+
 requested-effect validation
     -> proportional to requested operations/supplied values
     -> no untouched-property recertification
+
+final mutation
+    -> expected-revision guarded
+    -> no separate binding-freshness query
 
 lifecycle delta construction
     -> derived from requested-operation application
@@ -622,17 +686,33 @@ no-op classification itself
     -> no extra whole-state equality pass solely for classification
 ```
 
-If architecture later finds that preserving no-op elision would materially worsen the preferred hot mutation path, the elision requirement must be reconsidered rather than forcing extra work into every DATA_CHANGE.
+A strong current target remains:
 
-## Data structures touched — current direction
+```text
+warm normal attempt
+    S1 generation/binding lookup
+    STEP 2 cache/CPU
+    S2 expected-revision guarded property mutation + revision advance + lifecycle delta
+    COMMIT
+
+~2 PostgreSQL business statements + COMMIT
+```
+
+but the exact final S2 SQL/carrier is not yet ratified. Architecture/discovery must confirm that the fused direction can derive requested old values, no-op/real-change outcome, JSONB mutation and lifecycle delta without introducing a worse hot path.
+
+Retry adds another bounded attempt only when a concurrent intrinsic mutation changed revision.
+
+## Data structures touched
 
 Authoritative data-plane state:
 
 ```text
 objects
     current exact binding
+    current revision
     current properties
     property mutation
+    atomic revision increment on persisted change
 
 object_lifecycle_events
     one DATA_CHANGE event for a real change
@@ -658,9 +738,7 @@ ObjectTemplate current lifecycle status
 
 ## Relational/schema implications
 
-No new Object relational column or route-specific denormalization has been identified.
-
-The current Object shape remains:
+The Object row now follows the shared M4 intrinsic-generation direction:
 
 ```text
 objects
@@ -669,11 +747,14 @@ objects
     template_id
     template_version
     properties JSONB
+    revision BIGINT NOT NULL
 ```
 
-Whether final DATA_CHANGE uses complete JSONB replacement or a narrower PostgreSQL JSONB update realization remains an architecture/data-path question to re-evaluate after the semantic/lifecycle blocks close; current-state authority remains the canonical `properties` value on the Object.
+`revision` is cross-operation technical state, not a DATA_CHANGE-specific denormalization.
 
 The shared lifecycle persistence carrier must become capable of representing the ratified DATA_CHANGE property delta. Exact JSON/typed columns, constraints and indexes remain lifecycle/persistence architecture work.
+
+Whether final DATA_CHANGE uses a DB-internal JSONB patch or another equivalent physical realization remains open; current-state authority remains the canonical `properties` value on the Object.
 
 ## Revalidation status
 
@@ -695,14 +776,21 @@ Ratified in the current full-sweep pass so far:
 - lifecycle context includes the exact ObjectTemplate binding used for validation;
 - changed property identity is `(declaring_template_id, property_name)`;
 - lifecycle before/after distinguish canonical value from semantic `ABSENT`;
-- unchanged properties and `canonical_name` are omitted from DATA_CHANGE history;
-- lifecycle delta construction must fall out of the normal per-operation apply path rather than add a full-map pass.
+- unchanged properties, `canonical_name` and technical `revision` are omitted from DATA_CHANGE history;
+- lifecycle delta construction must fall out of the normal per-operation apply path rather than add a full-map pass;
+- STEP 1 resolves exact binding + universal intrinsic `revision`;
+- final mutation attempts use `expected_revision` as the universal intrinsic-generation freshness predicate;
+- revision mismatch cannot mutate state or emit lifecycle and causes bounded retry;
+- successful expected-revision check subsumes separate exact-binding freshness for the observed generation;
+- persisted DATA_CHANGE advances revision atomically with properties + lifecycle;
+- cheap no-op elision does not advance revision;
+- conservative false-positive retries after concurrent RENAME/other intrinsic mutation are intentionally accepted.
 
 Still to revalidate before full-sweep closure:
 
 ```text
-final hot/cold data path and statement-cost direction
-binding-change/retry behavior
-concurrency matrix/failure mapping
-physical persistence handoff
+final fused hot-path SQL/data-carrier feasibility and exact statement-cost direction
+bounded retry exhaustion/failure mapping
+remaining public failure precedence
+physical persistence/index handoff
 ```
