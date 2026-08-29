@@ -142,17 +142,57 @@ high-level SCHEMA_CHANGE boundary
 
 The document is consolidated but not final or normative.
 
-Current full-sweep checkpoints inside this owner:
+Current full-sweep checkpoints that remain closed without revalidation:
 
 ```text
 POST /objects
 GET /objects
 GET /objects/{id}
-PUT /objects/{id}/canonical-name
 DELETE /objects/{id}
 ```
 
-The dedicated legacy WIPs that existed only for these full-swept routes have been removed after lossless absorption; Git history remains the historical record.
+Focused revalidation currently required:
+
+```text
+PUT /objects/{id}/canonical-name
+    -> public/lifecycle semantics retained
+    -> execution/persistence revalidation after Object revision introduction
+```
+
+The dedicated legacy WIPs that existed only for already-absorbed full-swept routes have been removed after lossless absorption; Git history remains the historical record.
+
+### [`object-revision.md`](object-revision.md) — SPINE / cross-operation intrinsic Object generation
+
+Current owner for the ratified M4 `objects.revision` direction.
+
+Use it for:
+
+```text
+revision as internal intrinsic-row generation token
+CREATE explicitly inserts revision = 1
+persisted intrinsic row mutation increments revision atomically
+RENAME focused revalidation trigger
+DATA_CHANGE integration during its active full sweep
+SCHEMA_CHANGE future handoff from intrinsic fingerprint to expected revision
+revision scope excludes ownership/Relationship facts outside objects
+```
+
+The revision is technical persistence/concurrency state and is not automatically exposed in public Object or lifecycle DTOs.
+
+### [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md) — ACTIVE INPUT / DATA_CHANGE full-sweep revalidation
+
+Current route-local owner for the active `POST /objects/{id}/properties` full sweep.
+
+Already-ratified current points include:
+
+```text
+atomic unordered SET/REMOVE operation set
+requested-effects-only semantic validation
+cheap/no-material-extra-work no-op elision rule
+exact changed-property lifecycle delta
+```
+
+The hot mutation data path, revision integration, binding-change behavior and final concurrency/failure closure remain under active revalidation.
 
 ### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / cross-operation Object component persistence
 
@@ -164,9 +204,9 @@ Physical DDL/index choices remain architecture work.
 
 Primary current working owner for detailed `Object.SCHEMA_CHANGE` discovery.
 
-**Important:** this owner is currently being revalidated step by step following newly ratified general domain principles. Its current contents must therefore not be interpreted as semantically closed merely because earlier comparison/consolidation passes were completed.
+**Important:** this owner is currently being revalidated step by step following newly ratified general domain principles and the newly introduced Object intrinsic revision direction. Its current fingerprint-related contents must therefore not be interpreted as semantically closed merely because earlier comparison/consolidation passes were completed.
 
-When a legacy SCHEMA_CHANGE source file conflicts with this owner or with a newly ratified general principle, do not silently choose one: revalidate the point explicitly and update the owner.
+When a legacy SCHEMA_CHANGE source file conflicts with this owner, [`object-revision.md`](object-revision.md), or a newly ratified general principle, do not silently choose one: revalidate the point explicitly and update the owner.
 
 ### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / reusable stable-lineage cache
 
@@ -286,12 +326,11 @@ If a useful fact exists only here, it should be revalidated and then absorbed in
 - [`to-be-api-object-attach-batch-cost.md`](to-be-api-object-attach-batch-cost.md)
 - [`to-be-api-object-attach-batch.md`](to-be-api-object-attach-batch.md)
 - [`to-be-api-object-detach-batch.md`](to-be-api-object-detach-batch.md)
-- [`to-be-api-object-properties-mutation.md`](to-be-api-object-properties-mutation.md)
 - [`to-be-api-object-schema.md`](to-be-api-object-schema.md)
 - [`object-data-change-discovery.md`](object-data-change-discovery.md)
 - [`object-get-components-api-discovery.md`](object-get-components-api-discovery.md)
 
-The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their full sweeps are now owned by `object.md`, and the superseded files were deleted after lossless absorption.
+The dedicated legacy files for `POST /objects`, `GET /objects`, `GET /objects/{id}`, `PUT /objects/{id}/canonical-name` and `DELETE /objects/{id}` are intentionally absent: their historical full-sweep contents are owned by `object.md`; canonical-name execution is currently reopened only for the focused `revision` revalidation described above. Git history remains the historical record for the removed route-only files.
 
 ## 6.2 Component navigation / ownership route sources — SOURCE MATERIAL
 
@@ -392,9 +431,9 @@ The physical schema/index files remain useful **architecture inputs only**. Thei
 - [`object-aggregate-fingerprint-canonical-json.md`](object-aggregate-fingerprint-canonical-json.md)
 - [`object-aggregate-fingerprint-sha256.md`](object-aggregate-fingerprint-sha256.md)
 
-These files have already fed a consolidation/comparison pass, but remain important evidence while `object-schema-change.md` is being revalidated against newly clarified domain principles.
+These files have already fed a consolidation/comparison pass, but remain important evidence while `object-schema-change.md` is being revalidated against newly clarified domain principles and the Object revision direction.
 
-Do not promote a statement from one of these files to current state merely because the file says `FROZEN`; compare it against the current owner and the general principles first.
+Do not promote a statement from one of these files to current state merely because the file says `FROZEN`; compare it against the current owner, [`object-revision.md`](object-revision.md), and the general principles first.
 
 ---
 
@@ -446,6 +485,9 @@ general-domain-principles.md
 
 version-allocation.md
     -> cross-domain numeric version allocation semantics
+
+object-revision.md where intrinsic Object generation/freshness is relevant
+    -> cross-operation Object row-generation semantics
 
 current SPINE owner for the relevant family/topic
     -> current working direction
