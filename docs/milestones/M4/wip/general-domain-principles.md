@@ -20,55 +20,69 @@ Only principles that have been explicitly discussed and ratified during the curr
 
 ---
 
-# GP-01 — Version number is exact identity, not a global monotonic order
+# GP-01 — Version number orders creation, not semantics
 
-For every versioned domain object, `version` identifies an **exact version**.
+For every versioned domain lineage, `version` identifies an **exact version**.
 
-The domain does **not** define a global invariant of strict monotonicity between version number and:
-
-```text
-creation time
-derivation/generation order
-semantic evolution
-compatibility
-migrability
-```
-
-Therefore, from version numbers alone, it is invalid to infer any of the following:
+The domain guarantees one generic ordering property:
 
 ```text
-V2 > V1
-    => V2 was necessarily created after V1
-
-V2 > V1
-    => V2 was necessarily generated from V1
-
-V2 > V1
-    => V2 is semantically wider / newer / more permissive than V1
-
-V2 > V1
-    => migration V1 -> V2 is necessarily admissible
-
-V2 < V1
-    => V2 must necessarily predate or be an ancestor of V1
+if exact version VX is created after exact version VY
+for the same lineage,
+then X > Y
 ```
 
-In particular, the general domain model does not forbid a version created at a later point in time from having a numerically lower `version` than another version from which, according to the specific operation/history, it may have been derived.
+Therefore numeric version order is monotonic with exact-version **creation/allocation order inside one lineage**.
 
-Any stronger ordering rule belongs exclusively to the contract of the specific versioned object or operation that defines it. It must never be inferred as a generic versioning property.
+This guarantee exists to preserve a simple and intuitive caller-facing rule: creating a new exact version can never produce a number lower than one already allocated for the same lineage.
+
+The guarantee is deliberately narrow.
+
+From version numbers alone it remains invalid to infer:
+
+```text
+V2 > V1
+    => V2 was generated from V1
+
+V2 > V1
+    => V2 is the semantic successor of V1
+
+V2 > V1
+    => V2 is semantically wider / more permissive than V1
+
+V2 > V1
+    => V1 and V2 are compatible
+
+V2 > V1
+    => migration V1 -> V2 is admissible
+
+V2 > V1
+    => V2 was published after V1
+
+V2 > V1
+    => V2 is current/default/preferred
+```
 
 Canonical rule:
 
 ```text
 version number
     = exact-version identity
+    + creation/allocation order within one lineage
 
 version number
-    != generic temporal order
-    != generic genealogy
-    != generic semantic order
-    != generic migration order
+    != genealogy
+    != semantic evolution order
+    != compatibility order
+    != migration order
+    != publication order
 ```
+
+A later-created exact version may be derived, cloned or otherwise produced from an older exact version according to the specific operation contract; the version number does not encode that derivation relationship.
+
+The temporal monotonicity guarantee also implies that version numbers are never reused inside one lineage after allocation, even if an exact version is later deleted.
+
+The current cross-domain persistence direction used to realize this guarantee is owned by [`version-allocation.md`](version-allocation.md).
 
 ---
 
