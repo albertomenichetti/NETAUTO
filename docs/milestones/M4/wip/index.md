@@ -121,9 +121,13 @@ The next data-plane construct in the top-down sequence is:
 factual Relationship
 ```
 
-Current distributed inputs are the factual Relationship files listed in section 5 below.
+The factual Relationship pass now has one active WIP owner:
 
-No reviewed factual-Relationship route owner comparable to `object.md` exists yet. Selecting the first public route and its exact review order is the first step of that focused pass; this navigation index does not invent that sequencing decision in advance.
+```text
+relationship.md
+```
+
+It absorbs the previously distributed factual Relationship route/data-path micro-WIPs while remaining an ACTIVE REVIEW FRONTIER rather than a reviewed baseline. Route decisions must continue to be revalidated explicitly inside that owner.
 
 # 2. Current M4 spine
 
@@ -379,24 +383,28 @@ relationshipdefinition-clear-default-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-# 5. Factual Relationship — ACTIVE REVIEW FRONTIER / ACTIVE INPUT
+# 5. Factual Relationship — ACTIVE REVIEW FRONTIER
 
-Current distributed factual Relationship discovery:
+### [`relationship.md`](relationship.md) — ACTIVE REVIEW FRONTIER / single factual Relationship WIP owner
+
+This file is now the only live factual Relationship WIP owner. It absorbs the former route/data-path micro-WIPs for CREATE, runtime closure/conflicts, global GET, Object-scoped Relationship collection, DATA_CHANGE, SCHEMA_CHANGE, DELETE and the Object-relative Relationship API exploration.
+
+The absorbed files were removed after consolidation; Git history remains their historical source. New factual Relationship micro-points should be recorded in `relationship.md` rather than creating additional route-specific WIP documents.
+
+Current ratified capability checkpoint inside the owner:
 
 ```text
-relationship-create-discovery.md
-relationship-create-runtime-closure-discovery.md
-relationship-get-discovery.md
-relationship-list-for-object-discovery.md
-relationship-data-change-discovery.md
-relationship-delete-discovery.md
-relationship-schema-change-discovery.md
+GET /relationships/{relationship_id}
+    -> global factual Relationship detail
 
-object-relationship-list-api-discovery.md
-object-relationship-detail-api-discovery.md
+GET /objects/{object_id}/relationships
+    -> required Object-scoped navigation/collection
+
+NO Object-scoped single-Relationship detail for now
+    -> introduce only if a concrete caller need later proves the two reads above insufficient
 ```
 
-These are the current inputs for the next top-down family pass. They are not yet reviewed public-contract owners, and their internal assumptions must be revalidated route by route rather than promoted wholesale.
+The exact Object-scoped collection item is the current open micro-point and must be decided explicitly before the deeper route optimization sweep continues.
 
 # 6. Lifecycle — ACTIVE INPUT with reviewed mutation payload inputs
 
