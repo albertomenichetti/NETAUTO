@@ -4666,10 +4666,10 @@ If the prepared semantic slot is removed or semantically replaced before Q3 can 
 
 ```text
 -> semantic-slot FK failure
--> 409 stale_state
+-> 409 ownership_slot_unavailable
 ```
 
-Candidate bounded public details use only already-known public context:
+Bounded public details use only already-known public context:
 
 ```text
 resource_type = object_component_slot
@@ -4677,7 +4677,7 @@ parent_object_id
 slot_name
 ```
 
-No diagnostic reread is performed to distinguish REMOVE from same-name semantic replacement, and discovery does not automatically reprepare/retry after this stale failure. Architecture may later evaluate an explicit bounded retry policy, but ambiguous failure alone never authorizes additional backend work.
+No diagnostic reread is performed to distinguish REMOVE from same-name semantic replacement, and discovery does not automatically reprepare/retry after this `ownership_slot_unavailable` failure. Ambiguous failure alone never authorizes additional backend work.
 
 If Q3 establishes the FK reference first, slot removal or referenced-key replacement cannot commit while the edge remains. `target_template_id` is deliberately non-key, so monotonic target widening may race without creating a false ATTACH failure.
 
@@ -4815,7 +4815,7 @@ Normal path:
         -> 422 referenced_resource_not_found
 
     semantic-slot FK failure
-        -> 409 stale_state
+        -> 409 ownership_slot_unavailable
 
     unexpected child PK violation after successful Q2
         -> 500 internal_error
@@ -4837,7 +4837,7 @@ A stale positive ObjectLineageCache entry for a deleted child may cause an incom
 
 No failure-only diagnostic SELECT is allowed. Public details must use request/prepared context or the known failed constraint class and must not expose raw PostgreSQL text, SQL, table/column names or constraint names.
 
-`stale_state` is a new M4 route-level public error-code candidate and must be reconciled with the finite global public error catalog during milestone closure.
+`ownership_slot_unavailable` reuses the existing finite public error code for an ATTACH slot that becomes unavailable after valid current selection. In M4, a slot already absent during S1 is instead `404 resource_not_found / object_component_slot`; this `409` is reserved for the later persistence/arbitration conflict above. No new global public error code is introduced.
 
 ## Cost profile
 
@@ -4915,7 +4915,7 @@ strict non-convergent atomic edge insert
 child FK as final current child-existence authority
 semantic-slot FK as final slot continuity/arbitration boundary
 no diagnostic-only backend work after decisive failure
-no automatic discovery-default retry of stale_state
+no automatic discovery-default retry after ownership_slot_unavailable
 required historical parent/child names read only after successful edge insertion
 one lifecycle row per edge, atomic with ownership state
 ```
@@ -4938,7 +4938,7 @@ protected ownerlessness + root-only cycle admission
 no mutable root materialization
 strict bulk edge persistence
 child lifetime FK / semantic-slot FK / PK / CHECK failure classification
-stale_state boundary with no diagnostic reread or default retry
+ownership_slot_unavailable boundary with no diagnostic reread or default retry
 post-edge required canonical-name read
 edge-oriented required ATTACH_TO lifecycle metadata/atomicity
 execution-path failure precedence
@@ -4946,7 +4946,7 @@ warm 6 / full-cold 8 logical cost baseline
 architecture cache/SQL/FK/lock/index handoff
 ```
 
-The retained `object-attach-*` / `to-be-api-object-attach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including mandatory preliminary child reads, parent exact-binding lock/recheck, `ownership_slot_unavailable`, `concurrent_object_change`, old 7/9 or 6/7 costs and PK-as-normal-residual-race behavior — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
+The retained `object-attach-*` / `to-be-api-object-attach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including mandatory preliminary child reads, parent exact-binding lock/recheck, entry-time `ownership_slot_unavailable` for a slot already absent during initial current-state resolution, `concurrent_object_change`, old 7/9 or 6/7 costs and PK-as-normal-residual-race behavior — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
 
 # 10. DETACH children from one slot — full sweep complete
 
@@ -5288,7 +5288,7 @@ The following public distinctions are intentionally absent because the one-state
 422 referenced_resource_not_found for child
 ownerless vs wrong parent vs wrong slot
 missing child vs absent edge
-stale_state
+ownership_slot_unavailable
 ownership_cycle
 concurrent_object_change
 ```
