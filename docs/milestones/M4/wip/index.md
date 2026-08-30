@@ -74,7 +74,7 @@ GET /objects/{parent_object_id}/components/{slot_name}
 POST /objects/{parent_object_id}/components/{slot_name}/attach
 ```
 
-including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. Former dedicated route-owner/source files may be removed only after the corresponding lossless absorption/reference cleanup; Git history remains the historical record.
+including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. The former ATTACH route-local micro-WIP/source family has now been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
 
 Cross-operation responsibilities remain intentionally separate:
 
@@ -404,18 +404,18 @@ Retained ownership-route source shared with upcoming mutations:
 object-ownership-command-routes.md
 ```
 
-## ATTACH source family
+## ATTACH source-family cleanup
 
-All existing files matching:
+The former route-specific files matching:
 
 ```text
 object-attach-*.md
 to-be-api-object-attach-*.md
 ```
 
-are SOURCE MATERIAL behind the reviewed ATTACH section in `object.md` and the cross-operation persistence/cache owners. They do not override `object.md`, including where they still contain superseded mandatory child reads, parent exact-binding locks/rechecks, old failure codes or old cost profiles.
+were removed after the ATTACH full sweep, explicit lossless absorption into `object.md` / reviewed cross-operation owners, and reference cleanup. They are no longer part of the live M4 working set and cannot compete with the reviewed ATTACH owner.
 
-The ATTACH route has completed its lossless full sweep. These route-specific source files may be removed after explicit reference cleanup confirms no remaining current owner depends on them; Git history remains the historical reasoning record.
+Git history is the historical source for the earlier rationale and superseded mechanisms.
 
 ## DETACH source family
 
