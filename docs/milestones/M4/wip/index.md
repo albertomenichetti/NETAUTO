@@ -64,18 +64,21 @@ object-components-persistence.md
 object-template-ancestry-cache.md
 ```
 
-Interpretation of `object.md` is section-sensitive: routes/sections explicitly marked full-sweep complete and already-revalidated cross-operation findings are baseline; later Object sections still marked checkpoint/open remain subject to their own review frontiers.
+The route-level Object sweep is now complete. `object.md` directly owns the reviewed Object public routes, while cross-operation responsibilities remain intentionally separate in their dedicated owners.
 
-The Object family owner has now been refreshed losslessly after the focused SCHEMA_CHANGE, component-slot GET, ATTACH and DETACH closures. `object.md` directly owns the complete reviewed route-level findings for:
+The focused SCHEMA_CHANGE, component-slot GET, ATTACH, DETACH and GET-owner closures are all losslessly represented in `object.md`, including:
 
 ```text
 POST /objects/{id}/schema
 GET /objects/{parent_object_id}/components/{slot_name}
 POST /objects/{parent_object_id}/components/{slot_name}/attach
 POST /objects/{parent_object_id}/components/{slot_name}/detach
+GET /objects/{child_object_id}/owner
 ```
 
-including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. The former ATTACH and DETACH route-local micro-WIP/source families have now been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
+including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs.
+
+The former ATTACH/DETACH route-local source families and the dedicated component read-projection source have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
 
 Cross-operation responsibilities remain intentionally separate:
 
@@ -87,36 +90,21 @@ object-components-persistence.md
     -> current component-slot / ownership persistence boundary
 ```
 
-The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was already removed after its earlier lossless consolidation; its non-superseded findings are now represented by `object.md`, the cross-operation owners above and lifecycle discovery consumers.
+The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was already removed after its earlier lossless consolidation; its non-superseded findings are represented by `object.md`, the cross-operation owners above and lifecycle discovery consumers.
+
+Object-relative factual Relationship and Lifecycle surfaces are not reopened as Object routes merely because their URLs are Object-rooted; they remain owned by their later top-down family passes.
 
 ## ACTIVE REVIEW FRONTIER
 
-The next Object route in the top-down sequence is:
+The next data-plane construct in the top-down sequence is:
 
 ```text
-GET /api/v1/core/objects/{child_object_id}/owner
+factual Relationship
 ```
 
-Current owner/frontier:
+Current distributed inputs are the factual Relationship files listed in section 5 below.
 
-```text
-object.md
-    -> section: GET current owner
-```
-
-Primary retained source evidence for this frontier is:
-
-```text
-object-components-reads-discovery.md
-```
-
-Cross-operation dependencies already reviewed and reusable for GET owner include:
-
-```text
-object-components-persistence.md
-```
-
-The existing `object.md` GET-owner section remains a working current-fact candidate until this focused full sweep closes its public DTO, failure semantics, data path, concurrency behavior, cost profile and architecture handoff.
+No reviewed factual-Relationship route owner comparable to `object.md` exists yet. Selecting the first public route and its exact review order is the first step of that focused pass; this navigation index does not invent that sequencing decision in advance.
 
 # 2. Current M4 spine
 
@@ -172,6 +160,7 @@ POST /objects/{id}/schema
 GET /objects/{parent}/components/{slot}
 POST /objects/{parent}/components/{slot}/attach
 POST /objects/{parent}/components/{slot}/detach
+GET /objects/{child}/owner
 DELETE /objects/{id}
 ```
 
@@ -244,6 +233,22 @@ conditional fused DETACH_FROM lifecycle, one event per committed removed edge
 no lifecycle work for inadmissible batches
 one PostgreSQL business-statement + COMMIT success baseline
 route-local lock-order policy deferred to architecture/core LockPlanner
+```
+
+For `GET /objects/{child}/owner`, use the GET-owner section in `object.md` for:
+
+```text
+strict no-query/no-body GET surface
+child absent -> 404 resource_not_found
+child present + ownerless -> 200 null
+owned DTO = parent ObjectReference {id, canonical_name} + slot_name
+slot_declaring_template_id excluded from public DTO
+one child-rooted current-state PostgreSQL statement
+no object_component_slots/model/cache/revision/lock/lifecycle work
+ordinary statement-snapshot concurrency semantics
+constant bounded one-statement cost profile
+no new relational/materialization/cache requirement
+physical plan/index handoff
 ```
 
 Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`; reusable stable ObjectTemplate ancestry-cache semantics by `object-template-ancestry-cache.md`.
@@ -348,7 +353,7 @@ relationshipdefinition-clear-default-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-# 5. Factual Relationship — ACTIVE INPUT
+# 5. Factual Relationship — ACTIVE REVIEW FRONTIER / ACTIVE INPUT
 
 Current distributed factual Relationship discovery:
 
@@ -365,7 +370,7 @@ object-relationship-list-api-discovery.md
 object-relationship-detail-api-discovery.md
 ```
 
-These remain active inputs, not reviewed public-contract owners.
+These are the current inputs for the next top-down family pass. They are not yet reviewed public-contract owners, and their internal assumptions must be revalidated route by route rather than promoted wholesale.
 
 # 6. Lifecycle — ACTIVE INPUT with reviewed mutation payload inputs
 
@@ -416,12 +421,14 @@ Source material is evidence only. If it conflicts with a reviewed owner/general 
 
 ## Component navigation / ownership route sources
 
-The former dedicated navigation cursor/data-path files, broad Object-components brainstorming files and the focused component-slot GET route owner were removed after lossless consolidation into:
+The former dedicated navigation cursor/data-path files, broad Object-components brainstorming files, focused component-slot GET route owner and dedicated component read-projection source were removed after lossless consolidation into:
 
 ```text
 object.md / Object family route semantics
 object-components-persistence.md / shared persistence boundary
 ```
+
+`object-components-reads-discovery.md` was removed after the GET-owner full sweep confirmed that its route-local owner projection was fully absorbed by `object.md` and its still-relevant persistence/read consequences were already represented by `object-components-persistence.md`.
 
 Git history is their historical source.
 
@@ -464,7 +471,6 @@ Git history is the historical source for the earlier rationale and superseded me
 ```text
 object-component-slots-data-plane-materialization.md
 object-component-slots-fk-arbitration.md
-object-components-reads-discovery.md
 object-components-runtime-schema-discovery.md
 ```
 
