@@ -89,7 +89,7 @@ This answers:
 which factual Relationships are visible from this Object?
 ```
 
-Its role is navigation/query in Object context. It remains paginated/filterable as appropriate for a collection surface.
+Its role is navigation/query in Object context. Exact response shape, fields, filters, pagination contract and physical data path are deliberately deferred until the functional capability coverage gate is closed.
 
 ## REL-API-03 — no Object-scoped single-Relationship detail for now
 
@@ -110,45 +110,93 @@ Reasons:
 
 The earlier candidate direction that proposed an Object-relative single-Relationship detail is therefore **superseded by this checkpoint** and must not be treated as current direction.
 
-## REL-API-04 — do not invent unrelated Relationship capabilities
+## REL-API-04 — functional coverage precedes route-detail design
 
-This checkpoint does not add:
+The current phase is a functional capability coverage audit. Before reviewing DTO fields, payload weight, exact filters, SQL shape or route-level optimization, determine whether the factual Relationship family exposes every caller capability that M4 needs.
 
-- a root collection `GET /relationships`;
-- endpoint mutation/reversal operations;
-- other theoretical routes without a demonstrated caller need.
+Therefore:
+
+```text
+absence from AS-IS != automatic rejection
+candidate capability != automatic new endpoint
+```
+
+A missing capability must be evaluated from a concrete caller/domain need and ratified explicitly. Conversely, no route or operation is introduced merely because it is theoretically possible.
+
+In particular, the following are currently **coverage questions**, not ratified additions and not ratified exclusions:
+
+```text
+global Relationship collection/discovery independent of one Object
+endpoint reassignment/reversal as a first-class mutation vs delete+create
+any other factual-Relationship capability surfaced by concrete callers
+```
 
 ---
 
-# 3. Current open API micro-point — Object-scoped collection item
+# 3. Current functional capability coverage gate
 
-The capability is ratified; the exact item representation is **not**.
-
-Current AS-IS item state is approximately:
+The AS-IS surface already covers these user-level needs:
 
 ```text
-relationship_id
-relationship_definition_id
-relationship_definition_version
-object_id
-destination_object_id
-name
-properties
+CREATE
+    create/admit a factual Relationship between Objects
+
+GET global detail
+    retrieve one known factual Relationship by its lifetime identity
+
+GET Object-scoped collection
+    discover factual Relationships visible from one Object
+
+DATA_CHANGE
+    mutate factual Relationship property data while preserving identity/binding
+
+SCHEMA_CHANGE
+    migrate the factual Relationship exact schema-version binding
+
+DELETE
+    remove the factual Relationship
 ```
 
-Current evidence/questions:
+Two read-capability decisions are already ratified:
 
-- `object_id` is potentially redundant because the collection path already scopes the requested Object;
-- `destination_object_id` alone may force consumers to issue N+1 Object GETs merely to display destination names;
-- adding current destination `canonical_name` can be done in the authoritative PostgreSQL statement without denormalizing mutable names;
-- `properties` can be arbitrarily large and make collection-page cost depend on the full data/schema size of every Relationship in the page;
-- conversely, removing `properties` changes the current public capability and is not justified merely because a lighter summary is aesthetically cleaner;
-- `relationship_definition_version` may or may not be useful enough to retain in a navigation summary;
-- exact wire naming (`id` vs `relationship_id`, nested `destination`, etc.) remains open.
+```text
+known specific Relationship -> global GET by relationship_id
+Object-context navigation -> Object-scoped Relationship collection
+```
 
-No decision in this owner currently says that the collection **must** be a lightweight summary or that `properties` **must** be removed.
+and one candidate has been rejected for now:
 
-This is the next capability/design micro-point to resolve explicitly before deeper route optimization.
+```text
+Object-scoped single-Relationship detail
+```
+
+The coverage gate is **not yet closed** because the current six operations may still omit a caller capability.
+
+## Current first open coverage question
+
+The first missing-AS-IS capability to evaluate is:
+
+```text
+global discovery/listing of factual Relationships
+without starting from a specific Object
+```
+
+Conceptually this would answer a different functional question from both ratified reads:
+
+```text
+GET /relationships/{id}
+    -> I already know the Relationship identity; give me that fact
+
+GET /objects/{object_id}/relationships
+    -> starting from this Object, which Relationship facts are visible?
+
+global Relationship discovery
+    -> which Relationship facts exist/match criteria independently of one Object?
+```
+
+At this stage do **not** decide route spelling, response DTO, fields, pagination, filters or data path. First decide only whether that third caller capability is needed at all.
+
+The exact representation of the Object-scoped collection, including whether it carries `properties`, destination names or other fields, is explicitly deferred until this functional coverage gate is closed.
 
 ---
 
@@ -381,9 +429,7 @@ No additional M4 index is justified by the current route evidence.
 
 No worker cache is justified for the authoritative collection read. Stable endpoint/resolution assignment is already durably materialized, while other useful public fields are current mutable state.
 
-If the final item includes destination Object canonical name, obtain it from PostgreSQL in the same statement snapshot rather than denormalizing mutable names into runtime closure rows.
-
-The exact selected columns remain dependent on the open collection-item decision in section 3.
+Exact selected columns and DTO content are deliberately deferred until the functional capability coverage gate in section 3 is closed. The technical findings in this section are retained only because they are independent of that later representation decision.
 
 ---
 
@@ -561,32 +607,35 @@ Do not reinterpret first-phase read/DML simplifications as final concurrency pro
 
 # 13. Current review order
 
-Before deep-optimizing mutation paths, close the factual Relationship public-capability/read-shape gate.
+Before any route-level payload/read-shape or deep mutation optimization work, close the factual Relationship **functional capability coverage gate**.
 
-Current next micro-point:
+Current sequence:
 
 ```text
-exact item representation for
-GET /objects/{object_id}/relationships
+1. enumerate caller/domain capabilities already covered by AS-IS
+2. examine plausible missing capabilities one at a time against concrete caller need
+3. explicitly ratify required capabilities or reject/defer them
+4. only when functional coverage is closed, review exact public contracts/read shapes
+5. then continue the route-by-route data-path/concurrency/physical sweep
 ```
 
-After that API/read capability point is explicitly decided, continue the family sweep through the actual public operations rather than inventing theoretical endpoints:
+Current next coverage question:
 
 ```text
-CREATE
-GET global detail
-GET Object-scoped collection
-DATA_CHANGE
-SCHEMA_CHANGE
-DELETE
+do callers need global Relationship discovery/listing
+independently of a specific Object?
 ```
 
-For each decision:
+Do not discuss Object-scoped collection fields, `properties`, destination display data, pagination details or SQL realization until the coverage gate is closed.
+
+After functional coverage is explicitly closed, continue the family sweep through the ratified public operations rather than inventing theoretical endpoints.
+
+For each coverage decision:
 
 ```text
-state problem
-state concrete AS-IS/evidence
-compare alternatives and costs
+state functional problem
+state concrete AS-IS/caller evidence
+compare capability alternatives and semantic cost
 ratify explicitly
 update this owner
 re-read diff/current owner for consistency
