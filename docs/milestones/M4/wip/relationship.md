@@ -123,13 +123,39 @@ candidate capability != automatic new endpoint
 
 A missing capability must be evaluated from a concrete caller/domain need and ratified explicitly. Conversely, no route or operation is introduced merely because it is theoretically possible.
 
-In particular, the following are currently **coverage questions**, not ratified additions and not ratified exclusions:
+Current open coverage questions include:
 
 ```text
-global Relationship collection/discovery independent of one Object
 endpoint reassignment/reversal as a first-class mutation vs delete+create
 any other factual-Relationship capability surfaced by concrete callers
 ```
+
+## REL-API-05 — global Relationship discovery is recognized but deferred to M5 Search API
+
+There is a real caller need to discover/query factual Relationships without already knowing either a `relationship_id` or a starting Object.
+
+That need is **not** rejected. However, it is not an M4 requirement for a generic root list operation.
+
+The distinction is intentional:
+
+```text
+list Objects
+    -> useful direct inventory capability in the current REST surface
+
+global Relationship discovery
+    -> materially more query/search-oriented
+    -> useful criteria naturally span endpoints, RelationshipDefinition and factual data
+```
+
+Therefore M4 does not add a generic root Relationship collection merely for REST symmetry:
+
+```text
+NO M4 requirement for generic GET /relationships collection
+```
+
+The functional need is handed forward to M5, where the Search API can own global Relationship discovery/query semantics together with the broader search model.
+
+This is a milestone-scope decision, not a claim that global Relationship discovery is unnecessary.
 
 ---
 
@@ -157,46 +183,42 @@ DELETE
     remove the factual Relationship
 ```
 
-Two read-capability decisions are already ratified:
+Read-capability decisions already ratified are:
 
 ```text
-known specific Relationship -> global GET by relationship_id
-Object-context navigation -> Object-scoped Relationship collection
-```
+known specific Relationship
+    -> global GET by relationship_id
 
-and one candidate has been rejected for now:
+Object-context navigation
+    -> Object-scoped Relationship collection
 
-```text
 Object-scoped single-Relationship detail
+    -> not required for now
+
+global Relationship discovery/query
+    -> real need, deferred to M5 Search API
+    -> no generic root Relationship list required in M4
 ```
 
-The coverage gate is **not yet closed** because the current six operations may still omit a caller capability.
+The exact representation of the Object-scoped collection, including whether it carries `properties`, destination names or other fields, remains explicitly deferred until this functional coverage gate is closed.
 
-## Current first open coverage question
+The coverage gate is **not yet closed** because mutation/lifetime capabilities still require review.
 
-The first missing-AS-IS capability to evaluate is:
+## Current next open coverage question
+
+Evaluate whether callers need to change the endpoint binding of an existing factual Relationship while preserving its `relationship_id`, for example by replacing one endpoint or reversing/repointing the fact.
+
+The AS-IS has no such operation. Today the available composition is conceptually:
 
 ```text
-global discovery/listing of factual Relationships
-without starting from a specific Object
+DELETE old factual Relationship
++
+CREATE new factual Relationship
 ```
 
-Conceptually this would answer a different functional question from both ratified reads:
+The coverage question is only whether that composition is functionally sufficient for M4 or whether endpoint reassignment is itself a required identity-preserving capability.
 
-```text
-GET /relationships/{id}
-    -> I already know the Relationship identity; give me that fact
-
-GET /objects/{object_id}/relationships
-    -> starting from this Object, which Relationship facts are visible?
-
-global Relationship discovery
-    -> which Relationship facts exist/match criteria independently of one Object?
-```
-
-At this stage do **not** decide route spelling, response DTO, fields, pagination, filters or data path. First decide only whether that third caller capability is needed at all.
-
-The exact representation of the Object-scoped collection, including whether it carries `properties`, destination names or other fields, is explicitly deferred until this functional coverage gate is closed.
+Do **not** decide route shape, request DTO, locking or persistence realization before the capability decision.
 
 ---
 
@@ -550,22 +572,20 @@ Current ownership via cascade supports:
     -> runtime_relationship_resolutions CASCADE
 ```
 
-Historical event metadata must be captured before root deletion because the runtime closure disappears by cascade.
+Historical event metadata must be captured before deleting the factual root because the runtime closure disappears by cascade.
 
 Conceptual path:
 
 ```text
-lock/load current factual Relationship
--> one authoritative pre-delete projection
--> DELETE factual root
--> closure cascades
--> bulk INSERT complete RELATIONSHIP_DELETED event set
--> COMMIT
+capture factual before-state + current display metadata
+DELETE factual root (closure cascades)
+INSERT complete DELETE event set
+COMMIT
 ```
 
-No RDV/DataType/ObjectTemplate cache is useful for DELETE. Mutable display names must come from current PostgreSQL state.
+No M4 cache is useful for this operation. RDV/DataType semantics, ObjectTemplate ancestry, and stable RelationshipDefinition topology are not needed. Resolution names and Object canonical names are mutable current metadata and must come from PostgreSQL.
 
-Exact synchronization with concurrent renames remains a concurrency-phase question.
+Exact synchronization needed to make lifecycle display metadata coherent with concurrent Object/RelationshipDefinition renames remains open for the global concurrency phase.
 
 ---
 
@@ -619,11 +639,21 @@ Current sequence:
 5. then continue the route-by-route data-path/concurrency/physical sweep
 ```
 
+Coverage checkpoint already closed:
+
+```text
+global Relationship discovery/query
+    -> real functional need
+    -> deferred to M5 Search API
+    -> no generic root Relationship collection required in M4
+```
+
 Current next coverage question:
 
 ```text
-do callers need global Relationship discovery/listing
-independently of a specific Object?
+do callers need endpoint reassignment/reversal
+as an identity-preserving mutation of an existing Relationship,
+or is DELETE + CREATE the correct functional composition?
 ```
 
 Do not discuss Object-scoped collection fields, `properties`, destination display data, pagination details or SQL realization until the coverage gate is closed.
