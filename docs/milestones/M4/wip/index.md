@@ -78,6 +78,25 @@ GET /objects/{child_object_id}/owner
 
 including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs.
 
+Additional reviewed Object-family decisions now explicitly represented in `object.md` are:
+
+```text
+GET /objects/{id}
+    -> complete first-level Object representation
+    -> direct-child fan-out deliberately unbounded
+    -> no pagination, truncation or backend cardinality guard on this route
+
+Object UUID identity
+    -> lifetime-global semantic identity
+    -> never reusable after allocation, including after DELETE
+    -> positive ObjectLineageCache entries may safely outlive current existence
+
+future ObjectTemplate sweep
+    -> material changes to effective-property, effective-component or stable-ancestry contracts
+       trigger targeted revalidation of dependent Object routes
+    -> unaffected Object routes remain reviewed baseline
+```
+
 The former ATTACH/DETACH route-local source families, the shared ownership-command route-shape checkpoint, the dedicated component read-projection source and the superseded component-persistence exploration source family have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
 
 Cross-operation responsibilities remain intentionally separate:
@@ -119,6 +138,8 @@ version number identifies exact version + allocation order only
 validity of one exact version != cross-version migrability
 REVISE/PUBLISH do not absorb future runtime-migration responsibility
 lifecycle payload = complete operation-owned semantic transition
+failure semantics/details derive from the efficient legal execution path
+    -> no backend work solely for diagnostic enrichment
 ```
 
 ### [`version-allocation.md`](version-allocation.md) — SPINE / REVIEWED BASELINE
@@ -164,6 +185,8 @@ GET /objects/{child}/owner
 DELETE /objects/{id}
 ```
 
+For `GET /objects/{id}`, use the GET-Object section in `object.md` for the complete first-level representation and its deliberately unbounded direct-child fan-out. The route returns every current effective slot and every current direct child without pagination, truncation or a backend cardinality guard; cost remains `O(P + S + C)`.
+
 For `POST /objects/{id}/schema`, use the SCHEMA_CHANGE section in `object.md` for:
 
 ```text
@@ -204,13 +227,14 @@ explicit /attach command route
 strict atomic batch 1..100 + 204 success
 parent vs nested-slot 404 distinction
 positive-only ObjectLineageCache[object_id] -> template_id
+lifetime-global non-reusable Object UUID identity
 no semantic negative Object-existence cache
 full READY stable ancestry/neighborship cache from object_template_ancestry
 protected ownerlessness + root-only cycle admission
 no mutable root materialization
 strict bulk edge insert
 child lifetime FK current-existence authority
-semantic-slot FK stale_state arbitration
+semantic-slot FK ownership_slot_unavailable arbitration
 PK/self-edge CHECK unexpected-failure classification after successful admission
 required parent/child historical canonical_name read after successful edge insertion
 one ATTACH_TO lifecycle row per committed edge
@@ -252,6 +276,8 @@ constant bounded one-statement cost profile
 no new relational/materialization/cache requirement
 physical plan/index handoff
 ```
+
+The Object family closure is explicitly dependency-aware. A material future change to ObjectTemplate certified exact effective-property semantics, certified exact effective-component semantics or stable complete ancestry reopens only the dependent Object routes identified by the revalidation-trigger section in `object.md`.
 
 Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`; reusable stable ObjectTemplate ancestry-cache semantics by `object-template-ancestry-cache.md`.
 
