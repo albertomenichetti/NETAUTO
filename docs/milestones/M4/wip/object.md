@@ -1362,7 +1362,7 @@ current name already equals requested name
 No equality precheck is introduced solely to classify same-name requests. A successful same-name assignment follows the normal RENAME lifecycle path and may record:
 
 ```text
-old_name == requested_name
+old_name == new_name
 ```
 
 Same-name assignment is a persisted intrinsic mutation and therefore advances technical `revision` like any other successful RENAME.
