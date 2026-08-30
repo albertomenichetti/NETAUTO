@@ -78,7 +78,7 @@ GET /objects/{child_object_id}/owner
 
 including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs.
 
-The former ATTACH/DETACH route-local source families, the dedicated component read-projection source and the superseded component-persistence exploration source family have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
+The former ATTACH/DETACH route-local source families, the shared ownership-command route-shape checkpoint, the dedicated component read-projection source and the superseded component-persistence exploration source family have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
 
 Cross-operation responsibilities remain intentionally separate:
 
@@ -410,7 +410,7 @@ DETACH
        slot_declaring_template_id
        slot_name
     -> required historical child/parent canonical_name display metadata
-    -> exactly one DETACH_FROM event per committed removed ownership edge
+    -> exactly one DETACH_FROM event per committed ownership edge
 ```
 
 The lifecycle API pass still owns final collection/detail DTOs, discriminated detail carrier, persistence decoding and read-side physical realization.
@@ -430,15 +430,9 @@ object-components-persistence.md / shared persistence boundary
 
 `object-components-reads-discovery.md` was removed after the GET-owner full sweep confirmed that its route-local owner projection was fully absorbed by `object.md` and its still-relevant persistence/read consequences were already represented by `object-components-persistence.md`.
 
-Git history is their historical source.
+The former shared ownership-command route-shape checkpoint `object-ownership-command-routes.md` was removed after its remaining cross-route rationale was absorbed into `object.md`: ATTACH and DETACH are explicit, symmetric semantic ownership commands; DETACH is not modeled as DELETE-with-body over the slot collection; and a future detach-all capability is a separate semantic operation.
 
-Retained ownership-command route-shape source:
-
-```text
-object-ownership-command-routes.md
-```
-
-Both ATTACH and DETACH route-local reviewed owners are now their corresponding full-sweep sections in `object.md`; this cross-route file remains only as the shared command-surface checkpoint.
+Git history is the historical source for those removed checkpoints.
 
 ## ATTACH source-family cleanup
 
