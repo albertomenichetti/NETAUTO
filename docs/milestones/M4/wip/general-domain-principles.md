@@ -201,6 +201,71 @@ Lifecycle remains historical/audit state; current authoritative state is owned b
 
 ---
 
+# GP-05 — Failure semantics derive from the efficient legal execution path
+
+For every operation, the normal data path must be designed first to execute the legal action correctly and as efficiently as possible.
+
+Public failure semantics and bounded error details then derive from the information naturally obtained while executing that path.
+
+Canonical direction:
+
+```text
+efficient/correct legal execution path
+    -> information naturally obtained
+    -> public failure classification/details
+```
+
+The reverse direction is invalid:
+
+```text
+desired diagnostic richness
+    -> additional backend work
+    -> more expensive normal failure path
+```
+
+An ambiguous failure is therefore **not sufficient reason** to perform additional backend work whose only purpose is to produce:
+
+```text
+a more specific public error code
+a richer diagnostic detail
+a fresher description of the cause
+a distinction between subcases not required by the legal action
+```
+
+This includes diagnostic-only rereads, retries, traversals or recertification after the operation already has enough information to stop safely.
+
+The principle does **not** prohibit backend work that is independently required by the operation for correctness or for its successful semantic contract, including:
+
+```text
+current admission
+integrity enforcement
+atomicity
+concurrency arbitration
+freshness/CAS protocols
+bounded retries required to prevent stale writes
+mandatory lifecycle/history payload
+mandatory successful response projection
+```
+
+The distinguishing question is whether the work would still be required to execute the legal action correctly and efficiently if no richer error diagnostic were desired.
+
+Public API design must respect the same direction. An error contract must not require information that forces backend work whose sole purpose is diagnostic enrichment.
+
+Therefore:
+
+```text
+known failure information from required path
+    -> may be exposed in bounded public details
+
+information not required by legal execution
+and unavailable from the required path
+    -> must not be demanded merely for error specificity
+```
+
+A route may still return a conservative or broader bounded failure when that is the most precise classification naturally supported by its efficient required path, provided the classification remains semantically safe and belongs to the finite public error vocabulary.
+
+---
+
 # Promotion note
 
 Before M4 closure, every principle retained here must be reviewed for:
