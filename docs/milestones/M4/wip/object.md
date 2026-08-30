@@ -900,6 +900,55 @@ page 1
 
 may observe changed membership according to the new committed state. The cursor is a continuation token, not a snapshot/export/CDC token.
 
+## Failure mapping and precedence
+
+Static request validation happens before cursor interpretation:
+
+```text
+request body present
+unknown/repeated query parameter
+malformed object_template_id
+malformed/non-positive object_template_version
+object_template_version without object_template_id
+malformed/out-of-range limit
+    -> 400 invalid_request
+```
+
+When static request carriers are valid, cursor validation is:
+
+```text
+malformed cursor envelope
+wrong route identity
+cursor filter/presence identity differs from the current request
+unusable cursor position carrier
+    -> 400 invalid_cursor
+```
+
+Then the authoritative current-state statement yields only collection outcomes:
+
+```text
+no current Object matches the valid request/filter/cursor position
+    -> 200 {"items": [], "next_cursor": null}
+
+current matching rows are materializable
+    -> 200 ObjectPageDto
+
+mandatory persisted response carrier cannot be materialized
+    -> 500 internal_error
+```
+
+Unknown-but-well-formed filter values remain normal collection membership and therefore produce an empty `200` page rather than `404`.
+
+There is no normal LIST-level:
+
+```text
+404
+409
+422
+```
+
+No diagnostic-only follow-up query is permitted solely to classify or enrich an unexpected projection failure.
+
 ## Data path
 
 The route is a pure current mutable data-plane read.
@@ -997,10 +1046,22 @@ The page cannot mix fields from multiple independently observed Object generatio
 
 ## Complexity and weight
 
-Application/result work is bounded by page size:
+Let:
 
 ```text
-O(page size)
+L = requested page limit, 1..500
+```
+
+Target cost:
+
+```text
+PostgreSQL business statements    1
+rows materialized                 at most L + 1
+response items                    at most L
+application work                  O(L)
+response payload                  O(L)
+cache/model/schema/graph work      0
+warm/cold distinction             none
 ```
 
 plus PostgreSQL filtering/keyset access cost.
@@ -1016,7 +1077,19 @@ Relationship count
 lifecycle-event count
 ```
 
-No M4 denormalization/materialization is required for this route.
+## Relational implication
+
+LIST introduces no route-specific persistence requirement:
+
+```text
+new table             none
+new persisted field   none
+new materialization   none
+new cache             none
+new semantic invariant none
+```
+
+The route consumes only current `objects` summary columns and introduces no M4 denormalization/materialization requirement.
 
 ## Architecture handoff
 
@@ -1029,7 +1102,35 @@ final physical index set
 final PostgreSQL plan/EXPLAIN evidence
 ```
 
-No route-local physical index is ratified during discovery. Architecture must evaluate Object LIST together with the complete Object workload and preserve the one-statement bounded-summary path above.
+No route-local physical index is ratified during discovery. Architecture must evaluate Object LIST together with the complete Object workload and preserve:
+
+```text
+one authoritative PostgreSQL statement
+bounded limit + 1 work
+keyset ordering by Object id
+exact filter semantics
+no properties JSONB read
+no component/model/cache work
+```
+
+## Full-sweep closure
+
+The logical `GET /objects` route is **full-sweep complete** on:
+
+```text
+public route/query/summary contract
+exact non-polymorphic filter semantics
+strict request/cursor validation and failure precedence
+keyset cursor identity and limit independence
+empty-filter result vs error semantics
+one-statement current data path
+statement-snapshot concurrency semantics
+bounded L+1 cost profile
+no cache/model/component/relationship/lifecycle dependency
+no new relational/materialization requirement
+architecture physical-index/plan handoff
+no diagnostic-only follow-up reads
+```
 
 # 3. GET Object
 
@@ -1039,7 +1140,24 @@ No route-local physical index is ratified during discovery. Architecture must ev
 GET /api/v1/core/objects/{object_id}
 ```
 
-Query parameters/body: none.
+Path:
+
+```text
+object_id UUID
+```
+
+Query parameters: none.
+
+Request body: none.
+
+Static/request-shape failures are:
+
+```text
+malformed object_id
+any query parameter
+request body present
+    -> 400 invalid_request
+```
 
 Missing Object:
 
@@ -1261,6 +1379,85 @@ The GET does not expose or use `revision` merely to provide a current representa
 
 The GET does not re-certify the materialized slot invariant against model-plane schema. Invariant verification belongs to write constraints, migration verification, tests/evidence or diagnostic tooling, not to the normal hot read path.
 
+## Failure semantics and precedence
+
+Bounded public failure set:
+
+```text
+400 invalid_request
+404 resource_not_found
+500 internal_error
+```
+
+Normal precedence:
+
+```text
+1. malformed/static request carrier
+       -> 400 invalid_request
+
+2. authoritative current-state statement
+       Object absent
+           -> 404 resource_not_found
+              resource_type = object
+
+       Object present + complete mandatory projection materializable
+           -> 200 ObjectDto
+
+       mandatory persisted/current state cannot be materialized
+           -> 500 internal_error
+```
+
+Examples of the final class include required UUID/string/integer/JSON carrier failure or an impossible missing/ambiguous structural fact encountered while constructing the mandatory representation. The route does not add backend work solely to determine a more specific cause.
+
+There is no normal GET-Object:
+
+```text
+409
+422
+```
+
+No diagnostic-only follow-up query is permitted solely to enrich an impossible or ambiguous result.
+
+## Cost profile
+
+Let:
+
+```text
+P = size of the current properties representation
+S = current effective slot count
+C = direct child count
+```
+
+Target profile:
+
+```text
+PostgreSQL business statements    1
+row/fact structural work          O(1 + S + C)
+semantic response/payload size    O(P + S + C)
+application assembly              O(S + C) + properties decode/copy cost proportional to P
+cache/model/schema work           0
+revision dependency               0
+explicit locks                    0
+lifecycle work                    0
+warm/cold distinction             none
+```
+
+The one-statement carrier must avoid an effective `O(P * C)` transfer caused by repeating the root properties payload for every child fact. Root properties are transferred once logically.
+
+## Relational implication
+
+GET Object introduces no route-specific persistence structure or invariant:
+
+```text
+new table             none
+new persisted field   none
+new materialization   none
+new cache             none
+new semantic invariant none
+```
+
+It consumes the already-reviewed `objects`, `object_component_slots` and `object_components` candidates. `object_component_slots` exists for cross-operation reasons and is consumed by this GET; this route is not an independent semantic authority for that materialization.
+
 ## Architecture handoff
 
 Still physical/open:
@@ -1268,6 +1465,8 @@ Still physical/open:
 ```text
 exact SQL/SQLAlchemy carrier
 aggregated facts vs tagged row stream
+root-preserving absence discrimination
+final PK/UNIQUE/FK realization
 final indexes
 EXPLAIN/BUFFERS evidence
 real payload/runtime measurements
@@ -1278,9 +1477,34 @@ These physical choices must preserve:
 ```text
 one authoritative statement
 root transferred once logically
-O(S + C) fact volume
+O(P + S + C) semantic payload/work
+complete current slot set including empty slots
+complete direct-child set
+child ordering by child_object_id ASC
+no model/cache/schema reconstruction
+no diagnostic follow-up query
 application-side components assembly
 ```
+
+## Full-sweep closure
+
+The logical `GET /objects/{object_id}` route is **full-sweep complete** on:
+
+```text
+strict UUID/no-query/no-body request surface
+complete ObjectDto with all current direct slots and children
+empty-slot and zero-slot representation semantics
+bounded 400/404/500 failure precedence
+one authoritative current data-plane statement
+no component-schema/model/cache/revision/lock/lifecycle dependency
+statement-snapshot concurrency semantics
+formal O(P + S + C) payload/work profile
+no new relational/cache/materialization requirement
+architecture one-statement/root-payload/index/plan handoff
+no diagnostic-only follow-up reads
+```
+
+Potentially unbounded direct-child fan-out remains a separately tracked public-contract/workload question and does not make this route description incomplete.
 
 # 4. Mutate canonical name — full sweep complete
 
