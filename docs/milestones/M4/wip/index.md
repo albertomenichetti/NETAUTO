@@ -220,7 +220,7 @@ bounded 0/1-statement cost profile
 physical plan/index handoff
 ```
 
-For the ownership mutation pair, use the shared command-surface rationale immediately before the ATTACH section in `object.md`. It owns why ATTACH/DETACH are explicit symmetric semantic command routes rather than generic CRUD on the `components` read projection or DELETE-with-body semantics.
+For the ownership mutation pair, use the shared command-surface rationale immediately before the ATTACH section in `object.md`. It owns why ATTACH/DETACH are explicit symmetric semantic commands rather than generic CRUD on the `components` read projection or DELETE-with-body semantics.
 
 For `POST /objects/{parent}/components/{slot}/attach`, use the ATTACH section in `object.md` for:
 
@@ -239,7 +239,7 @@ child lifetime FK current-existence authority
 semantic-slot FK ownership_slot_unavailable arbitration
 PK/self-edge CHECK unexpected-failure classification after successful admission
 required parent/child historical canonical_name read after successful edge insertion
-one ATTACH_TO lifecycle row per committed edge
+one ATTACH_TO lifecycle row per committed ownership edge
 execution-path failure precedence + no diagnostic-only rereads/default retry
 warm 6 / full-cold 8 logical statement baseline
 architecture cache/SQL/FK/lock/index handoff
@@ -387,24 +387,46 @@ Version allocation is cross-domain and owned by `version-allocation.md`.
 
 ### [`relationship.md`](relationship.md) — ACTIVE REVIEW FRONTIER / single factual Relationship WIP owner
 
-This file is now the only live factual Relationship WIP owner. It absorbs the former route/data-path micro-WIPs for CREATE, runtime closure/conflicts, global GET, Object-scoped Relationship collection, DATA_CHANGE, SCHEMA_CHANGE, DELETE and the Object-relative Relationship API exploration.
+This file is the only live factual Relationship WIP owner. It absorbs the former route/data-path micro-WIPs for CREATE, runtime closure/conflicts, global GET, Object-scoped Relationship collection, DATA_CHANGE, SCHEMA_CHANGE, DELETE and the Object-relative Relationship API exploration.
 
-The absorbed files were removed after consolidation; Git history remains their historical source. New factual Relationship micro-points should be recorded in `relationship.md` rather than creating additional route-specific WIP documents.
+The absorbed files were removed after consolidation; Git history remains their historical source. New factual Relationship micro-points must be recorded in `relationship.md` rather than creating additional route-specific WIP documents.
 
-Current ratified capability checkpoint inside the owner:
+The M4 factual Relationship **functional capability coverage gate is CLOSED**. Ratified required capabilities are:
 
 ```text
-GET /relationships/{relationship_id}
-    -> global factual Relationship detail
-
-GET /objects/{object_id}/relationships
-    -> required Object-scoped navigation/collection
-
-NO Object-scoped single-Relationship detail for now
-    -> introduce only if a concrete caller need later proves the two reads above insufficient
+CREATE
+GET global detail by relationship_id
+GET Object-scoped Relationship collection
+DATA_CHANGE
+SCHEMA_CHANGE
+DELETE
 ```
 
-The exact Object-scoped collection item is the current open micro-point and must be decided explicitly before the deeper route optimization sweep continues.
+Additional coverage decisions:
+
+```text
+NO Object-scoped single-Relationship detail for now
+    -> global detail + Object-scoped collection are sufficient
+
+global Relationship discovery/query
+    -> real need, deferred to M5 Search API
+    -> no generic root Relationship collection required in M4
+
+endpoint reassignment/repointing
+    -> changes the fact
+    -> DELETE + CREATE with a new relationship_id
+```
+
+The current ACTIVE REVIEW FRONTIER is now the **exact public REST contract pass**, one ratified API at a time. That pass defines only:
+
+```text
+exact HTTP method/path
+exact path/query input parameters
+exact request body when present
+exact success output body when present
+```
+
+It deliberately does not decide application/data-path realization, SQL, persistence/FKs, caches, indexes, locking/concurrency, transactions, DML shape, denormalization or performance optimization. Existing technical findings remain parked in `relationship.md` for the later technical sweep and must not constrain the public contract implicitly.
 
 # 6. Lifecycle — ACTIVE INPUT with reviewed mutation payload inputs
 
@@ -444,7 +466,7 @@ DETACH
        slot_declaring_template_id
        slot_name
     -> required historical child/parent canonical_name display metadata
-    -> exactly one DETACH_FROM event per committed removed ownership edge
+    -> exactly one DETACH_FROM event per committed removed edge
 ```
 
 The lifecycle API pass still owns final collection/detail DTOs, discriminated detail carrier, persistence decoding and read-side physical realization.
