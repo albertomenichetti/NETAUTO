@@ -78,7 +78,7 @@ GET /objects/{child_object_id}/owner
 
 including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs.
 
-The former ATTACH/DETACH route-local source families and the dedicated component read-projection source have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
+The former ATTACH/DETACH route-local source families, the dedicated component read-projection source and the superseded component-persistence exploration source family have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
 
 Cross-operation responsibilities remain intentionally separate:
 
@@ -466,20 +466,34 @@ were removed after the DETACH full sweep, explicit lossless absorption into `obj
 
 Git history is the historical source for the earlier rationale and superseded mechanisms.
 
-## Component-persistence source / architecture inputs
+## Component-persistence source-family cleanup
+
+The former focused component-persistence exploration files:
 
 ```text
 object-component-slots-data-plane-materialization.md
 object-component-slots-fk-arbitration.md
 object-components-runtime-schema-discovery.md
-```
-
-Physical-only candidates remain architecture inputs rather than reviewed DDL:
-
-```text
 object-components-physical-index-candidate.md
 object-components-physical-schema-discovery.md
 ```
+
+were removed after an explicit final lossless check against:
+
+```text
+object-components-persistence.md
+    -> shared current persistence/materialization owner
+    -> retained architecture physical-design/evidence handoff
+
+object.md
+    -> full-swept route-local consequences
+```
+
+`object-components-persistence.md` already records the consolidated current materialization shape, fields deliberately omitted, semantic/public identities, lifetime composition, edge-to-slot dependency, PostgreSQL FK-arbitration evidence, cross-operation consequences, storage/workload trade-off, migration/backfill direction, physical candidate alternatives and the required `EXPLAIN`/storage/write evidence gate. Exact PK/UNIQUE/FK/index DDL remains architecture work.
+
+The removed source files included first-phase or intermediate candidates that are now superseded where they differ from the consolidated owners; for example, older ATTACH cost variants and the earlier edge-only direction must not compete with current route/persistence ownership.
+
+Git history remains the historical source for their earlier rationale and superseded alternatives.
 
 ## SCHEMA_CHANGE source family cleanup
 
