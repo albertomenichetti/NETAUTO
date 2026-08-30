@@ -572,20 +572,22 @@ Current ownership via cascade supports:
     -> runtime_relationship_resolutions CASCADE
 ```
 
-Historical event metadata must be captured before deleting the factual root because the runtime closure disappears by cascade.
+Historical event metadata must be captured before root deletion because the runtime closure disappears by cascade.
 
 Conceptual path:
 
 ```text
-capture factual before-state + current display metadata
-DELETE factual root (closure cascades)
-INSERT complete DELETE event set
-COMMIT
+lock/load current factual Relationship
+-> one authoritative pre-delete projection
+-> DELETE factual root
+-> closure cascades
+-> bulk INSERT complete RELATIONSHIP_DELETED event set
+-> COMMIT
 ```
 
-No M4 cache is useful for this operation. RDV/DataType semantics, ObjectTemplate ancestry, and stable RelationshipDefinition topology are not needed. Resolution names and Object canonical names are mutable current metadata and must come from PostgreSQL.
+No RDV/DataType/ObjectTemplate cache is useful for DELETE. Mutable display names must come from current PostgreSQL state.
 
-Exact synchronization needed to make lifecycle display metadata coherent with concurrent Object/RelationshipDefinition renames remains open for the global concurrency phase.
+Exact synchronization with concurrent renames remains a concurrency-phase question.
 
 ---
 
