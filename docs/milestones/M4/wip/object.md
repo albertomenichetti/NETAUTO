@@ -114,7 +114,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | `GET /objects/{parent}/components/{slot}` | **full-sweep complete** | one current root-preserving data-plane statement + semantic-slot keyset cursor |
 | `POST /objects/{parent}/components/{slot}/attach` | **full-sweep complete** | materialized current slot + stable Object-lineage/ancestry caches + protected graph admission + FK arbitration + post-edge lifecycle display read |
 | `POST /objects/{parent}/components/{slot}/detach` | **full-sweep complete** | one fused exact-edge DELETE + conditional DETACH_FROM lifecycle; no schema/cache/graph/revision work |
-| `GET /objects/{child}/owner` | working current-fact candidate | one child-rooted statement over `objects` + `object_components` |
+| `GET /objects/{child}/owner` | **full-sweep complete** | one child-rooted current-state statement returning parent ObjectReference + slot name or null; no schema/cache/revision work |
 | `DELETE /objects/{id}` | **full-sweep complete** | DB-enforced lifetime arbitration + one fused Object DELETE + DELETED lifecycle statement |
 
 Object-relative Relationship and Lifecycle routes remain owned by their later top-down discovery passes even when the URL is rooted under `/objects`.
@@ -2682,7 +2682,7 @@ SlotSemanticKey
     = (declaring_template_id, slot_name)
 ```
 
-The same effective name under a different declaring lineage is semantic replacement, not continuity.
+The same effective name under a different declaring lineage is semantic replacement, not continuity by name alone.
 
 Differences caused by different exact parent-version pins are classified solely from the resolved SOURCE/TARGET effective schemas; declaration/inheritance provenance is not a separate runtime migration class.
 
@@ -5231,60 +5231,405 @@ no diagnostic-only backend work
 
 The retained `object-detach-*` / `to-be-api-object-detach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including zero-DB self-reference precedence, requested-child existence classification, `422 referenced_resource_not_found` for missing child operands, current parent-stabilization variants and the split two/three-statement lifecycle paths — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
 
-# 11. GET current owner
+# 11. GET current owner — full sweep complete
 
-## Current public surface baseline
+## Public contract
 
 ```http
 GET /api/v1/core/objects/{child_object_id}/owner
 ```
 
-The detailed top-down public DTO has not yet received the same route-local closure treatment as the operations above. The current working direction retains the existing ownership projection semantics while simplifying the data path.
+Path:
 
-Current projection concept:
+```text
+child_object_id
+    UUID
+```
+
+Query parameters: none.
+
+Request body: none.
+
+Static/request-shape failures are:
+
+```text
+malformed child_object_id
+any query parameter
+request body present
+    -> 400 invalid_request
+```
+
+The route is a current ownership projection of the selected child Object. `/owner` is not an independently existing nested resource whose absence should become `404`.
+
+If the child exists and is currently owned, success is:
+
+```http
+200 OK
+```
+
+```json
+{
+  "parent": {
+    "id": "<parent-object-id>",
+    "canonical_name": "server-1"
+  },
+  "slot_name": "parts"
+}
+```
+
+Conceptual wire model:
 
 ```text
 OwnerProjection
+    parent: ObjectReference
+        id
+        canonical_name
+    slot_name
+```
+
+`ObjectReference {id, canonical_name}` is the same first-level Object reference shape already used by Object/component read projections. `parent.canonical_name` is current display state observed by this GET; it is not ownership identity or historical metadata.
+
+If the child exists and is currently ownerless, success remains:
+
+```http
+200 OK
+```
+
+```json
+null
+```
+
+Public outcomes are therefore:
+
+```text
+child Object absent
+    -> 404 resource_not_found
+       resource_type = object
+
+child Object present + no current ownership edge
+    -> 200 null
+
+child Object present + current ownership edge
+    -> 200 OwnerProjection
+```
+
+The owned projection intentionally does not expose:
+
+```text
+slot_declaring_template_id
+parent ObjectTemplate binding
+parent properties
+parent components
+parent revision
+```
+
+`slot_declaring_template_id` remains part of persisted semantic edge identity and relational correctness, but it is not needed by callers to identify the current public owner relation and is not part of this wire DTO.
+
+## Current data path and authority boundary
+
+GET owner is a pure current mutable data-plane read.
+
+Required logical sources:
+
+```text
+objects child
+    -> path-target existence
+
+object_components
+    -> current ownership edge
+    -> parent_object_id
+    -> slot_name
+
+objects parent
+    -> current parent canonical_name when an edge exists
+```
+
+Preferred logical path:
+
+```text
+one root-preserving PostgreSQL statement
+
+objects child PK(child_object_id)
+LEFT JOIN object_components by child_object_id
+LEFT JOIN objects parent by edge.parent_object_id
+```
+
+The one statement naturally distinguishes all public states:
+
+```text
+no child root
+    -> 404
+
+child root + no edge
+    -> 200 null
+
+child root + edge + parent
+    -> 200 {
+         parent: {id, canonical_name},
+         slot_name
+       }
+```
+
+The query does not need to project or interpret `slot_declaring_template_id`; persistence retains that field for edge semantic identity and cross-operation invariants, not because every consumer must expose it.
+
+Normal GET owner does not read:
+
+```text
+object_component_slots
+ObjectTemplate / ObjectTemplateVersion
+object_template_effective_components
+objects.template_id
+objects.template_version
+objects.properties
+objects.revision
+DataType state
+ancestry state
+worker-local semantic caches
+lifecycle state
+```
+
+No semantic recertification is performed. The current `object_components` fact has already been admitted by the mutations that own ownership validity.
+
+The current relational model is responsible for ensuring that an edge cannot remain committed with a nonexistent parent/current semantic slot. If the required one-statement path incidentally encounters an impossible edge-without-parent state, that is an invariant/persistence failure:
+
+```text
+500 internal_error
+```
+
+This does not authorize a second diagnostic query to search for its cause.
+
+## Failure semantics and precedence
+
+Bounded public failure set:
+
+```text
+400 invalid_request
+404 resource_not_found
+500 internal_error
+```
+
+Normal precedence:
+
+```text
+1. malformed/static request carrier
+       -> 400 invalid_request
+
+2. authoritative current-state statement
+       child absent
+           -> 404 resource_not_found / object
+
+       child present + edge absent
+           -> 200 null
+
+       child present + valid edge/parent
+           -> 200 OwnerProjection
+
+       impossible required persisted invariant failure encountered
+           -> 500 internal_error
+```
+
+There is no normal GET-owner:
+
+```text
+409
+422
+404 for ownerless state
+404 object_component_slot
+```
+
+No failure-only follow-up read is permitted solely to enrich an impossible or ambiguous result.
+
+## Coherence and concurrency
+
+One PostgreSQL statement snapshot is the complete current-read coherence boundary.
+
+No explicit lock, LockPlanner participation, revision read, retry, graph gate or multi-statement coherent-read protocol is required.
+
+### GET owner vs ATTACH
+
+```text
+snapshot before ATTACH commit
+    -> child present + no edge
+    -> 200 null
+
+snapshot after ATTACH commit
+    -> child present + edge
+    -> 200 OwnerProjection
+```
+
+### GET owner vs DETACH
+
+```text
+snapshot before DETACH commit
+    -> 200 OwnerProjection
+
+snapshot after DETACH commit
+    -> 200 null
+```
+
+### GET owner vs parent RENAME
+
+`parent.canonical_name` is current display state. The statement may observe the old or new committed parent name according to ordinary PostgreSQL visibility:
+
+```text
+old canonical_name
+or
+new canonical_name
+```
+
+No synchronization is added merely to select a different display-name observation.
+
+### GET owner vs child DELETE
+
+```text
+snapshot sees child current
+    -> 200 null / OwnerProjection
+
+snapshot sees committed child absence
+    -> 404 resource_not_found
+```
+
+### GET owner vs parent DELETE
+
+While a current ownership edge exists, the reviewed ownership lifetime composition prevents the parent/current semantic slot from disappearing as committed state. Therefore a normal statement cannot legitimately observe a committed edge with an absent parent.
+
+If the edge has already been removed, GET owner simply observes ownerless child state and has no reason to read or diagnose a former parent.
+
+### GET owner vs SCHEMA_CHANGE
+
+For a preserved semantic slot or target widening, the edge remains current and the public projection remains the same owner/slot relation.
+
+For slot REMOVE or same-name semantic replacement, the edge -> current semantic-slot dependency prevents the transition from committing while the old edge still references the old semantic slot. Therefore SCHEMA_CHANGE cannot silently reinterpret a current edge merely because this public DTO exposes only `slot_name`.
+
+`slot_declaring_template_id` remains the internal semantic identity that enforces that invariant even though it is not returned by this GET.
+
+## Cost profile
+
+There is no warm/cold distinction.
+
+Static invalid request:
+
+```text
+0 PostgreSQL statements
+```
+
+Every current-state outcome has target cost:
+
+```text
+1 PostgreSQL business statement maximum
+```
+
+Logical access is bounded and child-rooted:
+
+```text
+objects child PK lookup
++ object_components lookup by child_object_id
++ objects parent PK lookup only when owned
+```
+
+Target profile:
+
+```text
+statement count       O(1)
+rows/facts consumed   O(1)
+payload               O(1)
+cache                  0
+model-plane reads      0
+schema reads           0
+graph traversal        0
+revision               0
+explicit locks         0
+lifecycle              0
+```
+
+The route does not scale with:
+
+```text
+Object property count
+parent component-slot count
+parent child count
+ownership depth
+ObjectTemplate inheritance depth
+Relationship count
+lifecycle-event count
+```
+
+## Relational implication
+
+GET owner introduces no route-specific persistence structure:
+
+```text
+new table / materialization    none
+new cache                      none
+new persisted field            none
+new semantic invariant         none
+```
+
+The route consumes the already-reviewed candidates:
+
+```text
+objects
+    id
+    canonical_name
+
+object_components
+    child_object_id
     parent_object_id
     slot_declaring_template_id
     slot_name
 ```
 
-The public-surface shape remains a point to recheck during the Object consistency sweep before architecture freeze; this section must not silently create a new public contract from current implementation alone.
+The current `child_object_id` at-most-one-owner direction remains the natural child-rooted access input. `parent.canonical_name` stays authoritative on `objects` and is deliberately not denormalized onto the edge merely to serve this GET.
 
-## Data-path candidate
+## Architecture handoff
 
-With semantic slot identity persisted directly on `object_components`:
-
-```text
-child objects PK lookup
-LEFT JOIN object_components by child_object_id PK
-```
-
-naturally distinguishes:
+Deferred physical decisions:
 
 ```text
-child Object absent
-    -> 404
-
-child exists and detached
-    -> owner = null
-
-child exists and attached
-    -> current owner projection
+exact SQL / SQLAlchemy root-preserving carrier
+final PK / UNIQUE / FK realization
+final child-rooted physical access path
+final indexes
+EXPLAIN (ANALYZE, BUFFERS) / equivalent evidence
 ```
 
-Candidate runtime path:
+Architecture must preserve:
 
 ```text
-1 PostgreSQL statement
-0 ObjectTemplate traversal
-0 effective-schema read
-0 cache
-0 semantic recertification
+one PostgreSQL statement maximum
+child absent -> 404
+child present + edge absent -> 200 null
+child present + edge -> 200 parent ObjectReference + slot_name
+current parent canonical_name from the same statement snapshot
+no slot_declaring_template_id in the public DTO
+no object_component_slots/model/cache/revision dependency
+no explicit locks/retry/graph gate/lifecycle work
+no diagnostic follow-up query
+constant bounded logical work
 ```
 
-This is a pure current-fact read.
+No route-local physical index is frozen during discovery.
+
+## Full-sweep closure
+
+The logical `GET /objects/{child_object_id}/owner` route is **full-sweep complete** on:
+
+```text
+exact GET route and strict no-query/no-body request surface
+child 404 vs current ownerless 200 null semantics
+parent ObjectReference {id, canonical_name} + slot_name owned DTO
+removal of public slot_declaring_template_id
+one-statement child-rooted current data path
+no object_component_slots/model/cache/revision dependency
+bounded 400/404/500 failure precedence
+statement-snapshot ATTACH/DETACH/RENAME/DELETE/SCHEMA_CHANGE semantics
+constant one-statement cost profile
+no new relational/cache/materialization requirement
+architecture physical-plan/index handoff
+no diagnostic-only follow-up reads
+```
+
+The retained `object-components-reads-discovery.md` file is source evidence only after this consolidation. Its still-relevant cross-operation persistence findings are represented by `object-components-persistence.md`; its GET-owner route-local findings are absorbed here. After explicit reference cleanup it may be removed; Git history remains the historical reasoning record.
 
 # 12. DELETE Object — full sweep complete
 
@@ -5851,6 +6196,7 @@ It removes the normal component-schema cache dependency from these current Objec
 ```text
 GET Object
 GET component slot
+GET owner
 ATTACH slot resolution
 DETACH
 ```
@@ -5902,7 +6248,7 @@ Object SCHEMA_CHANGE
 component-slot navigation / GET
 ATTACH
 DETACH
-GET owner working projection
+GET owner
 DELETE
 ```
 
@@ -5917,6 +6263,8 @@ The current `GET /objects/{parent}/components/{slot}` full sweep is now lossless
 The current `POST /objects/{parent}/components/{slot}/attach` full sweep is now losslessly absorbed here, including the strict batch command contract, nested-slot 404 semantics, stable Object-lineage cache, denormalized ancestry-neighborship cache, protected graph admission, FK arbitration/failure mapping, required historical display-name read, edge-oriented lifecycle, execution-path failure precedence, warm/full-cold cost profile and architecture handoff.
 
 The current `POST /objects/{parent}/components/{slot}/detach` full sweep is now losslessly absorbed here, including the symmetric 1..100 wire contract, strict non-convergent removal semantics, parent-before-self-reference precedence, persisted-edge semantic authority, deliberate collapse of missing-child/edge/slot diagnostic subcases into `ownership_conflict`, one-statement delete-first certification, conditional fused DETACH_FROM lifecycle, required historical display-name capture, concurrency outcomes, one-statement cost baseline and LockPlanner/physical architecture handoff.
+
+The current `GET /objects/{child}/owner` full sweep is now losslessly absorbed here, including strict no-query/no-body request semantics, child-absence vs ownerless-null distinction, parent ObjectReference + slot-name DTO, removal of public `slot_declaring_template_id`, one-statement child-rooted current-state projection, bounded failure/concurrency semantics, constant cost profile and physical-plan handoff.
 
 Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
