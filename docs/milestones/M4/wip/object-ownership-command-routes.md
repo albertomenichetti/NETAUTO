@@ -15,11 +15,12 @@ ATTACH
        full-sweep complete
 
 DETACH
-    -> docs/milestones/M4/wip/to-be-api-object-detach-batch.md
-       active route-local discovery input
+    -> docs/milestones/M4/wip/object.md
+       section: DETACH children from one slot
+       full-sweep complete
 ```
 
-The former ATTACH micro-WIP family was removed after lossless consolidation and reference cleanup; Git history remains the historical reasoning record. DETACH remains subject to its focused full sweep and later architecture-phase revalidation.
+The former ATTACH and DETACH route-local micro-WIP families were removed after lossless consolidation and reference cleanup; Git history remains the historical reasoning record. The reviewed route-local semantics now live in `object.md`, while this file remains only the shared command-surface checkpoint.
 
 ## Command-surface principle
 
@@ -56,7 +57,7 @@ This route replaces the earlier M4 WIP path:
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}
 ```
 
-The reviewed ATTACH route-local discovery owner is now:
+The reviewed ATTACH route-local discovery owner is:
 
 ```text
 object.md
@@ -97,13 +98,14 @@ one parent Object
 + one explicit ownership command
 ```
 
-The current DETACH route-local discovery candidate — including strict/non-convergent semantics, validation, candidate data path, lifecycle realization, failure mapping, cost profile and architecture handoffs — is consolidated in:
+The reviewed DETACH route-local discovery owner is:
 
 ```text
-to-be-api-object-detach-batch.md
+object.md
+    -> section: DETACH children from one slot
 ```
 
-That consolidation supersedes older DETACH route-local WIP directions where explicitly stated, while remaining fully non-normative until the focused DETACH full sweep and architecture-phase revalidation are complete.
+That section owns the full-swept public contract, strict/non-convergent semantics, one-statement data path, lifecycle realization, failure mapping, concurrency outcomes, cost profile and architecture handoff.
 
 ## Why not DELETE with a body
 
@@ -126,13 +128,13 @@ POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/detach
 ```
 
-Both receive a non-empty `child_object_ids` batch body shape and return `204 No Content` on candidate success.
+Both receive the reviewed bounded `child_object_ids` batch body shape and return `204 No Content` on success.
 
 Current route-local owners:
 
 ```text
 ATTACH -> object.md / ATTACH section / REVIEWED BASELINE
-DETACH -> to-be-api-object-detach-batch.md / ACTIVE REVIEW INPUT
+DETACH -> object.md / DETACH section / REVIEWED BASELINE
 ```
 
 All material remains M4 WIP and must be deliberately adopted through the normal milestone governance/architecture gates before implementation is authorized.

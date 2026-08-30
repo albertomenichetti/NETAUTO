@@ -66,15 +66,16 @@ object-template-ancestry-cache.md
 
 Interpretation of `object.md` is section-sensitive: routes/sections explicitly marked full-sweep complete and already-revalidated cross-operation findings are baseline; later Object sections still marked checkpoint/open remain subject to their own review frontiers.
 
-The Object family owner has now been refreshed losslessly after the focused SCHEMA_CHANGE, component-slot GET and ATTACH closures. `object.md` directly owns the complete reviewed route-level findings for:
+The Object family owner has now been refreshed losslessly after the focused SCHEMA_CHANGE, component-slot GET, ATTACH and DETACH closures. `object.md` directly owns the complete reviewed route-level findings for:
 
 ```text
 POST /objects/{id}/schema
 GET /objects/{parent_object_id}/components/{slot_name}
 POST /objects/{parent_object_id}/components/{slot_name}/attach
+POST /objects/{parent_object_id}/components/{slot_name}/detach
 ```
 
-including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. The former ATTACH route-local micro-WIP/source family has now been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
+including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs. The former ATTACH and DETACH route-local micro-WIP/source families have now been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
 
 Cross-operation responsibilities remain intentionally separate:
 
@@ -93,31 +94,29 @@ The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was already removed aft
 The next Object route in the top-down sequence is:
 
 ```text
-POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/detach
+GET /api/v1/core/objects/{child_object_id}/owner
 ```
 
 Current owner/frontier:
 
 ```text
 object.md
-    -> section: DETACH children from one slot
+    -> section: GET current owner
 ```
 
-Primary source evidence for this frontier is the retained DETACH family:
+Primary retained source evidence for this frontier is:
 
 ```text
-object-detach-*.md
-to-be-api-object-detach-*.md
-object-ownership-command-routes.md
+object-components-reads-discovery.md
 ```
 
-Cross-operation dependencies already reviewed and reusable for DETACH include:
+Cross-operation dependencies already reviewed and reusable for GET owner include:
 
 ```text
 object-components-persistence.md
 ```
 
-These source files do not override reviewed cross-operation owners; they are inputs for the focused DETACH full sweep.
+The existing `object.md` GET-owner section remains a working current-fact candidate until this focused full sweep closes its public DTO, failure semantics, data path, concurrency behavior, cost profile and architecture handoff.
 
 # 2. Current M4 spine
 
@@ -172,6 +171,7 @@ GET /objects/{id}/schema
 POST /objects/{id}/schema
 GET /objects/{parent}/components/{slot}
 POST /objects/{parent}/components/{slot}/attach
+POST /objects/{parent}/components/{slot}/detach
 DELETE /objects/{id}
 ```
 
@@ -226,6 +226,24 @@ one ATTACH_TO lifecycle row per committed edge
 execution-path failure precedence + no diagnostic-only rereads/default retry
 warm 6 / full-cold 8 logical statement baseline
 architecture cache/SQL/FK/lock/index handoff
+```
+
+For `POST /objects/{parent}/components/{slot}/detach`, use the DETACH section in `object.md` for:
+
+```text
+explicit /detach command route
+strict atomic batch 1..100 + 204 success
+parent-before-self-reference precedence
+persisted ownership edge as semantic slot-identity authority
+no current-slot/schema/cache/ancestry/graph/revision preparation
+no requested-child existence scan solely for diagnostics
+all incomplete exact-edge states -> 409 ownership_conflict
+one-statement delete-first strict-batch certification
+required parent/child historical canonical_name capture during deletion
+conditional fused DETACH_FROM lifecycle, one event per committed removed edge
+no lifecycle work for inadmissible batches
+one PostgreSQL business-statement + COMMIT success baseline
+route-local lock-order policy deferred to architecture/core LockPlanner
 ```
 
 Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`; reusable stable ObjectTemplate ancestry-cache semantics by `object-template-ancestry-cache.md`.
@@ -379,6 +397,15 @@ ATTACH
        slot_name
     -> required historical child/parent canonical_name display metadata
     -> exactly one ATTACH_TO event per committed ownership edge
+
+DETACH
+    -> exact removed edge semantic identity
+       child_object_id
+       parent_object_id
+       slot_declaring_template_id
+       slot_name
+    -> required historical child/parent canonical_name display metadata
+    -> exactly one DETACH_FROM event per committed removed ownership edge
 ```
 
 The lifecycle API pass still owns final collection/detail DTOs, discriminated detail carrier, persistence decoding and read-side physical realization.
@@ -398,11 +425,13 @@ object-components-persistence.md / shared persistence boundary
 
 Git history is their historical source.
 
-Retained ownership-route source shared with upcoming mutations:
+Retained ownership-command route-shape source:
 
 ```text
 object-ownership-command-routes.md
 ```
+
+Both ATTACH and DETACH route-local reviewed owners are now their corresponding full-sweep sections in `object.md`; this cross-route file remains only as the shared command-surface checkpoint.
 
 ## ATTACH source-family cleanup
 
@@ -417,16 +446,18 @@ were removed after the ATTACH full sweep, explicit lossless absorption into `obj
 
 Git history is the historical source for the earlier rationale and superseded mechanisms.
 
-## DETACH source family
+## DETACH source-family cleanup
 
-All existing files matching:
+The former route-specific files matching:
 
 ```text
 object-detach-*.md
 to-be-api-object-detach-*.md
 ```
 
-remain SOURCE MATERIAL for the active DETACH review frontier behind the current owners unless explicitly re-promoted during that full sweep.
+were removed after the DETACH full sweep, explicit lossless absorption into `object.md` / reviewed cross-operation owners, and reference cleanup. They are no longer part of the live M4 working set and cannot compete with the reviewed DETACH owner.
+
+Git history is the historical source for the earlier rationale and superseded mechanisms.
 
 ## Component-persistence source / architecture inputs
 
