@@ -46,6 +46,52 @@ As soon as one operation's request/response model is agreed, persist it explicit
 
 Collections and specific-resource reads must be evaluated independently. In particular, a list item should not automatically reuse the full detail DTO when some fields are unbounded or expensive.
 
+#### Mutation response vs current-resource representation
+
+Mutation response semantics must be reviewed independently from the richness of the corresponding current-resource GET projection.
+
+Canonical review direction:
+
+```text
+legal mutation work
+    -> operation-owned result that the caller actually needs
+    -> minimal successful response capable of communicating that result
+```
+
+The reverse coupling is not a valid default:
+
+```text
+rich GET projection
+    -> mutation must reconstruct the same projection after success
+```
+
+A mutation must not incur additional backend reads, model reconstruction, component/relationship expansion or other response-only work solely because a GET DTO is richer than the command acknowledgement requires.
+
+For a mutation of an existing resource, the default candidate is therefore:
+
+```text
+successful mutation
++ no operation-owned result value required by the caller
+    -> 204 No Content
+```
+
+For creation, review whether the canonical resource URI completely communicates the server-allocated identity:
+
+```text
+Location fully identifies the created resource
+    -> 201 Created
+    -> Location
+    -> no duplicated complete-resource body by default
+
+operation allocates an additional caller-required value
+not naturally communicated by Location
+    -> return only the minimal generated carrier needed by that operation
+```
+
+These are **review defaults, not blanket cross-family freezes**. Every route must still ratify its exact success status/body during its own family sweep. A concrete operation may return data when that data is genuinely part of its operation-owned result or a demonstrated caller need justifies it; it must not return a complete resource representation merely for uniformity or convenience.
+
+Once a family owner has ratified the concrete response contract, that family owner is authoritative for the route. Git history remains the evidence for superseded mutation-response brainstorming.
+
 ### 3. Data structures touched
 
 Record the exact current and TO-BE data structures required by the operation:
