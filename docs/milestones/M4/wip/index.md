@@ -195,6 +195,8 @@ bounded 0/1-statement cost profile
 physical plan/index handoff
 ```
 
+For the ownership mutation pair, use the shared command-surface rationale immediately before the ATTACH section in `object.md`. It owns why ATTACH/DETACH are explicit symmetric semantic command routes rather than generic CRUD on the `components` read projection or DELETE-with-body semantics.
+
 For `POST /objects/{parent}/components/{slot}/attach`, use the ATTACH section in `object.md` for:
 
 ```text
@@ -410,7 +412,7 @@ DETACH
        slot_declaring_template_id
        slot_name
     -> required historical child/parent canonical_name display metadata
-    -> exactly one DETACH_FROM event per committed ownership edge
+    -> exactly one DETACH_FROM event per committed removed ownership edge
 ```
 
 The lifecycle API pass still owns final collection/detail DTOs, discriminated detail carrier, persistence decoding and read-side physical realization.
@@ -419,20 +421,20 @@ The lifecycle API pass still owns final collection/detail DTOs, discriminated de
 
 Source material is evidence only. If it conflicts with a reviewed owner/general principle, revalidate explicitly rather than treating the source as authority.
 
-## Component navigation / ownership route sources
+## Component navigation / ownership route source cleanup
 
-The former dedicated navigation cursor/data-path files, broad Object-components brainstorming files, focused component-slot GET route owner and dedicated component read-projection source were removed after lossless consolidation into:
+The former dedicated navigation cursor/data-path files, broad Object-components brainstorming files, focused component-slot GET route owner, dedicated component read-projection source and shared ownership-command route-shape checkpoint were removed after lossless consolidation into:
 
 ```text
-object.md / Object family route semantics
+object.md / Object family route semantics and ownership command-surface rationale
 object-components-persistence.md / shared persistence boundary
 ```
 
 `object-components-reads-discovery.md` was removed after the GET-owner full sweep confirmed that its route-local owner projection was fully absorbed by `object.md` and its still-relevant persistence/read consequences were already represented by `object-components-persistence.md`.
 
-The former shared ownership-command route-shape checkpoint `object-ownership-command-routes.md` was removed after its remaining cross-route rationale was absorbed into `object.md`: ATTACH and DETACH are explicit, symmetric semantic ownership commands; DETACH is not modeled as DELETE-with-body over the slot collection; and a future detach-all capability is a separate semantic operation.
+`object-ownership-command-routes.md` was removed after its remaining unique rationale was absorbed into the shared ownership command-surface note in `object.md`: ATTACH/DETACH are explicit symmetric semantic commands; DETACH of a caller-selected child subset is not represented as DELETE of the slot collection with a request body; a future detach-all capability would be a distinct semantic operation.
 
-Git history is the historical source for those removed checkpoints.
+Git history is their historical source.
 
 ## ATTACH source-family cleanup
 
