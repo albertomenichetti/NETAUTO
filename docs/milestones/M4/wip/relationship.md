@@ -140,11 +140,30 @@ A non-symmetric Relationship already exposes reciprocal semantic views of the sa
 
 The same principle applies to replacing/repointing an endpoint: there is no caller requirement for the old `relationship_id` to survive.
 
+## REL-API-07 — M4 functional capability coverage is closed
+
+The factual Relationship functional coverage gate is ratified as complete for M4.
+
+Required M4 capabilities are exactly:
+
+```text
+CREATE
+GET global detail by relationship_id
+GET Object-scoped Relationship collection
+DATA_CHANGE
+SCHEMA_CHANGE
+DELETE
+```
+
+No additional factual Relationship capability is required by M4 at this checkpoint.
+
+This closure is dependency-aware rather than universal: a later concrete caller need may reopen the affected capability boundary, and global Relationship discovery remains explicitly handed to M5 Search API.
+
 ---
 
-# 3. Functional capability coverage gate
+# 3. Functional capability coverage gate — CLOSED
 
-M4 factual Relationship currently covers the operational lifecycle needed by the data-plane:
+M4 factual Relationship covers the operational lifecycle needed by the data-plane:
 
 ```text
 CREATE
@@ -166,7 +185,7 @@ DELETE
     remove the fact
 ```
 
-Coverage decisions already made:
+Coverage decisions are:
 
 ```text
 specific detail
@@ -199,9 +218,9 @@ global multi-criteria discovery
     -> M5 Search API
 ```
 
-Current concrete HTTP/CLI/test surfaces do not expose evidence for another distinct factual Relationship operation beyond the capabilities above.
+Current concrete HTTP/CLI/test surfaces do not expose evidence for another distinct factual Relationship operation beyond the ratified set.
 
-Therefore the next review decision is whether to **close the M4 functional capability gate**. Do not move into Object-scoped collection fields, response DTOs or route-level optimization until that closure is explicitly ratified.
+The functional capability gate is therefore closed. The family remains an ACTIVE REVIEW FRONTIER because the exact public REST contracts and later technical realization are not yet reviewed/closed.
 
 ---
 
@@ -388,7 +407,7 @@ INCLUDE (relationship_definition_id)
 
 No additional index/cache/denormalization is justified by current route evidence.
 
-**Important:** exact selected columns, DTO shape, destination display fields, `properties`, filters and pagination contract remain deliberately deferred until the functional coverage gate is closed.
+**Important:** exact selected columns, DTO shape, destination display fields, `properties`, filters and pagination contract remain deliberately deferred to the public REST contract review.
 
 ---
 
@@ -503,27 +522,47 @@ DELETE before-state capture vs concurrent metadata mutation
 
 ---
 
-# 13. Current review order
+# 13. Next pass — exact public REST contract review
 
-Before route-level DTO/read-shape or deep mutation optimization work, explicitly close the factual Relationship **functional capability coverage gate**.
+The functional capability coverage gate is closed. The next Relationship pass reviews the six ratified M4 capabilities **one API at a time** to define the exact public REST contract before returning to technical realization.
 
-Current candidate coverage closure is:
+For each API, this pass owns only the public contract, including:
 
 ```text
-M4 required factual Relationship capabilities
-    CREATE
-    global GET by relationship_id
-    Object-scoped Relationship collection
-    DATA_CHANGE
-    SCHEMA_CHANGE
-    DELETE
-
-recognized but outside M4
-    global Relationship discovery -> M5 Search API
-
-not required as separate M4 capabilities
-    Object-scoped single-Relationship detail
-    endpoint reassignment/repointing preserving relationship_id
+exact HTTP method + REST endpoint/path
+exact path/query input parameters
+exact request body, when present
+exact success output body, when present
 ```
 
-If this coverage set is ratified as complete, the next phase is exact public-contract/read-shape review, followed by the route-by-route data-path/concurrency/physical sweep.
+The pass may compare against AS-IS and previously recorded WIP candidates, but no existing shape is promoted automatically. Each API contract is revalidated explicitly before moving to the next one.
+
+This pass deliberately does **not** decide how the API will technically implement the required semantics. In particular, defer:
+
+```text
+application/data-path realization
+SQL statement shape
+persistence schema/FKs
+cache use/invalidation
+indexes/query plans
+locking/concurrency protocol
+transaction rendezvous/retry
+bulk-vs-row DML
+physical denormalization
+performance optimization
+```
+
+The technical findings already retained in sections 4–12 remain input for the later implementation/concurrency/physical sweep; they must not constrain the public contract merely because they were discovered earlier.
+
+Ratified capability set to review contract-by-contract:
+
+```text
+CREATE
+GET global detail by relationship_id
+GET Object-scoped Relationship collection
+DATA_CHANGE
+SCHEMA_CHANGE
+DELETE
+```
+
+Do not reopen global Relationship discovery in this pass; it remains owned by M5 Search API unless a new M4 caller requirement explicitly reopens that decision.
