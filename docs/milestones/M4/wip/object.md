@@ -1499,12 +1499,13 @@ one authoritative current data-plane statement
 no component-schema/model/cache/revision/lock/lifecycle dependency
 statement-snapshot concurrency semantics
 formal O(P + S + C) payload/work profile
+deliberately unbounded direct-child fan-out with no pagination, truncation or backend cardinality guard
 no new relational/cache/materialization requirement
 architecture one-statement/root-payload/index/plan handoff
 no diagnostic-only follow-up reads
 ```
 
-Potentially unbounded direct-child fan-out remains a separately tracked public-contract/workload question and does not make this route description incomplete.
+Direct-child fan-out is deliberately unbounded in the current M4 contract. `GET /objects/{id}` returns the complete first-level child set with no pagination, truncation or backend cardinality guard. The `O(P + S + C)` cost therefore intentionally remains proportional to the current direct-child count `C`.
 
 # 4. Mutate canonical name — full sweep complete
 
@@ -3822,7 +3823,7 @@ no-op/warm/cold cost character
 architecture handoff
 ```
 
-Older SCHEMA_CHANGE/fingerprint micro-WIPs are superseded wherever they conflict with this family owner. Non-superseded semantic/cache/concurrency/cost findings have been absorbed here. After reference cleanup they may be deleted; Git history remains the historical reasoning record.
+The former SCHEMA_CHANGE/fingerprint micro-WIP family was removed after lossless consolidation into this family owner and the reviewed cross-operation owners. Git history remains the historical reasoning record for its superseded alternatives and retained rationale.
 
 # 8. GET one component slot — full sweep complete
 
@@ -4242,7 +4243,7 @@ bounded cost profile
 architecture physical-design handoff
 ```
 
-The older navigation cursor/data-path and broad Object-components brainstorming files are source evidence only after this consolidation. Git history is the historical record once they are removed.
+The former navigation cursor/data-path and broad Object-components brainstorming files were removed after lossless consolidation into this owner and the reviewed component-persistence owner. Git history remains the historical reasoning record.
 
 ## Ownership command-surface rationale
 
@@ -4432,7 +4433,7 @@ It does **not** mean:
 Object X exists now
 ```
 
-`template_id` is stable for one Object identity; normal Object operations never reclassify an Object to another ObjectTemplate lineage. M4 also treats kernel-generated UUIDv4 Object identity as globally non-reused for semantic/cache purposes: once UUID X has identified one Object, the system does not intentionally reuse X for another Object incarnation. No historical UUID registry/tombstone table is introduced solely to enforce this; UUIDv4 generation plus current PK authority remain the realization.
+`template_id` is stable for one Object identity; normal Object operations never reclassify an Object to another ObjectTemplate lineage. Object identity is lifetime-global and never reusable: once UUID `X` has identified one Object, `X` can never identify another Object incarnation, including after deletion. DELETE removes current existence, not the semantic identity history. No historical UUID registry/tombstone table is introduced solely to enforce this; kernel-generated UUIDv4 plus current PK authority is the accepted realization of the non-reuse invariant.
 
 Consequently a positive:
 
@@ -4906,6 +4907,7 @@ Architecture must preserve:
 ```text
 cache never proves current Object existence/current ownership/current slot state
 positive object_id -> template_id knowledge remains stable semantic knowledge
+Object UUID identity is lifetime-global and never reusable after allocation
 no permanent semantic negative Object-existence cache
 full source ancestry is READY before authoritative negative compatibility
 no recursive/N+1 model traversal on ATTACH
@@ -4931,6 +4933,7 @@ strict non-convergent add-only semantics
 parent vs nested-slot 404 distinction
 self-reference semantics
 cache-first Object stable-lineage preparation
+lifetime-global non-reusable Object UUID identity supporting durable positive lineage knowledge
 positive-only stable Object-lineage knowledge / no semantic negative absence cache
 full denormalized ancestry-neighborship READY cache
 compatibility and accepted conservative cache-staleness diagnostic behavior
@@ -4946,7 +4949,7 @@ warm 6 / full-cold 8 logical cost baseline
 architecture cache/SQL/FK/lock/index handoff
 ```
 
-The retained `object-attach-*` / `to-be-api-object-attach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including mandatory preliminary child reads, parent exact-binding lock/recheck, entry-time `ownership_slot_unavailable` for a slot already absent during initial current-state resolution, `concurrent_object_change`, old 7/9 or 6/7 costs and PK-as-normal-residual-race behavior — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
+The former `object-attach-*` / `to-be-api-object-attach-*` route-local source files were removed after lossless consolidation. Their superseded mechanisms — including mandatory preliminary child reads, parent exact-binding lock/recheck, entry-time `ownership_slot_unavailable` for a slot already absent during initial current-state resolution, `concurrent_object_change`, old 7/9 or 6/7 costs and PK-as-normal-residual-race behavior — do not override this owner. Git history remains the historical reasoning record.
 
 # 10. DETACH children from one slot — full sweep complete
 
@@ -5355,7 +5358,7 @@ DETACH commits the final old edge removal first
     -> slot reference disappears
     -> REMOVE/replacement may proceed
 
-slot transition reaches arbitration while old edge still references the key
+slot transition reaches FK arbitration while old edge still references the key
     -> relational FK enforcement prevents invalid slot removal/key change
 ```
 
@@ -5472,7 +5475,7 @@ LockPlanner/deadlock realization architecture handoff
 no diagnostic-only backend work
 ```
 
-The retained `object-detach-*` / `to-be-api-object-detach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including zero-DB self-reference precedence, requested-child existence classification, `422 referenced_resource_not_found` for missing child operands, current parent-stabilization variants and the split two/three-statement lifecycle paths — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
+The former `object-detach-*` / `to-be-api-object-detach-*` route-local source files were removed after lossless consolidation. Their superseded mechanisms — including zero-DB self-reference precedence, requested-child existence classification, `422 referenced_resource_not_found` for missing child operands, current parent-stabilization variants and the split two/three-statement lifecycle paths — do not override this owner. Git history remains the historical reasoning record.
 
 # 11. GET current owner — full sweep complete
 
@@ -5872,7 +5875,7 @@ architecture physical-plan/index handoff
 no diagnostic-only follow-up reads
 ```
 
-The retained `object-components-reads-discovery.md` file is source evidence only after this consolidation. Its still-relevant cross-operation persistence findings are represented by `object-components-persistence.md`; its GET-owner route-local findings are absorbed here. After explicit reference cleanup it may be removed; Git history remains the historical reasoning record.
+The former `object-components-reads-discovery.md` source was removed after lossless consolidation. Its still-relevant cross-operation persistence findings are represented by `object-components-persistence.md`; its GET-owner route-local findings are absorbed here. Git history remains the historical reasoning record.
 
 # 12. DELETE Object — full sweep complete
 
@@ -6461,6 +6464,49 @@ GET owner
 
 Model-plane exact schema remains semantic authority, but normal current reads should not recertify admitted/materialized state solely to reconstruct identifiers/facts already persisted relationally.
 
+## Upstream ObjectTemplate revalidation triggers
+
+The reviewed Object family closure assumes the current upstream ObjectTemplate contracts for:
+
+```text
+certified immutable exact effective-property semantics
+    -> available for PUBLISHED/DEPRECATED exact ObjectTemplateVersions
+
+certified immutable exact effective-component semantics
+    -> available for exact ObjectTemplateVersions
+    -> able to drive current Object slot materialization
+
+stable complete ObjectTemplate lineage ancestry
+    -> immutable for an existing lineage
+    -> completely materializable
+    -> includes reflexive ancestry
+```
+
+A material change to those contracts during the later ObjectTemplate sweep does not automatically reopen the entire Object family. It reopens the dependent Object routes and requires their affected data-path, cost, cache, concurrency and persistence proofs to be revalidated.
+
+Current targeted dependency map:
+
+```text
+effective-property contract changes
+    -> revalidate Object CREATE
+    -> revalidate DATA_CHANGE
+    -> revalidate SCHEMA_CHANGE
+
+effective-component contract/materialization changes
+    -> revalidate Object CREATE
+    -> revalidate SCHEMA_CHANGE
+    -> revalidate GET Object / GET component slot
+       if the current-slot materialization invariant changes
+    -> revalidate ATTACH
+       if current slot source/target semantics change
+
+stable-ancestry contract changes
+    -> revalidate ATTACH
+    -> revalidate SCHEMA_CHANGE component-target relation planning
+```
+
+Until such an upstream contract changes, these are dependency/revalidation triggers rather than open Object design questions; the Object route-level sweep remains reviewed/full-sweep complete.
+
 ## Physical-design boundary
 
 This WIP intentionally does not ratify:
@@ -6511,4 +6557,4 @@ The current `GET /objects/{child}/owner` full sweep is now losslessly absorbed h
 
 Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
-For routes marked `full-sweep complete`, dedicated route-only legacy WIPs may be removed after this explicit lossless absorption/reference check; Git history remains the historical record. Cross-operation owners and source families needed by routes that are not yet full-swept remain in the working set until their own revalidation/cleanup passes.
+Former route-local Object WIPs removed after lossless consolidation remain historical Git evidence only and do not compete with this owner. Cross-operation owners and source families needed by later family sweeps remain in the working set until their own revalidation/cleanup passes.
