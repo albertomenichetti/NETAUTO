@@ -152,11 +152,9 @@ Initial M4 motivation, workload hypotheses and design exploration.
 
 ### [`top-down-api-closure-sweep.md`](top-down-api-closure-sweep.md) — SPINE / operating method / NOT REVIEWED BASELINE
 
-Method used to close routes from public contract through data path, cache, concurrency, persistence and architecture handoff.
+Method used to close routes from public contract through data path, cache, concurrency, persistence and architecture handoff. It also owns the cross-family review default that mutation acknowledgement must be evaluated independently from the richness/cost of the corresponding GET projection; exact success status/body remains a route-by-route family-owner decision.
 
-### [`mutation-response-semantics-discovery.md`](mutation-response-semantics-discovery.md) — ACTIVE INPUT
-
-Cross-family mutation-response vs GET-representation discovery.
+The former `mutation-response-semantics-discovery.md` file was removed after that reusable review rule was absorbed here. Its Object-specific conclusions are already owned by `object.md`; Git history remains the historical source for the superseded brainstorming.
 
 ### [`milestone-relational-schema-closure-requirement.md`](milestone-relational-schema-closure-requirement.md) — SUPPORT / HANDOFF
 
