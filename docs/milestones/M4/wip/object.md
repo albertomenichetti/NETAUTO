@@ -1362,7 +1362,7 @@ current name already equals requested name
 No equality precheck is introduced solely to classify same-name requests. A successful same-name assignment follows the normal RENAME lifecycle path and may record:
 
 ```text
-old_name == new_name
+old_name == requested_name
 ```
 
 Same-name assignment is a persisted intrinsic mutation and therefore advances technical `revision` like any other successful RENAME.
@@ -4019,6 +4019,25 @@ architecture physical-design handoff
 ```
 
 The older navigation cursor/data-path and broad Object-components brainstorming files are source evidence only after this consolidation. Git history is the historical record once they are removed.
+
+## Ownership command-surface rationale
+
+ATTACH and DETACH are semantic ownership mutation commands, not generic CRUD operations on the `components` read projection. The public mutation surface therefore uses explicit, symmetric command path segments:
+
+```http
+POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/attach
+POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/detach
+```
+
+A route such as:
+
+```http
+DELETE /api/v1/core/objects/{parent_object_id}/components/{slot_name}
+```
+
+would naturally read as deleting the slot collection or its current membership as a whole, while DETACH selects a caller-provided subset of child Object ids. The explicit `/detach` command avoids overloading DELETE request-body semantics and keeps ATTACH/DETACH visibly symmetric.
+
+A future true "detach all children from this slot" capability, if required, is a separate semantic operation and is not introduced by M4.
 
 # 9. ATTACH children to one slot — full sweep complete
 
