@@ -113,7 +113,7 @@ Exact PK/UNIQUE/FK/index DDL remains architecture-phase physical design.
 | `POST /objects/{id}/schema` | **full-sweep complete** | exact-pair MigrationPlan + universal expected-revision freshness + set-based slot delta + final TARGET admission |
 | `GET /objects/{parent}/components/{slot}` | **full-sweep complete** | one current root-preserving data-plane statement + semantic-slot keyset cursor |
 | `POST /objects/{parent}/components/{slot}/attach` | **full-sweep complete** | materialized current slot + stable Object-lineage/ancestry caches + protected graph admission + FK arbitration + post-edge lifecycle display read |
-| `POST /objects/{parent}/components/{slot}/detach` | public semantics retained; execution revalidated | set-based current-edge delete + lifecycle |
+| `POST /objects/{parent}/components/{slot}/detach` | **full-sweep complete** | one fused exact-edge DELETE + conditional DETACH_FROM lifecycle; no schema/cache/graph/revision work |
 | `GET /objects/{child}/owner` | working current-fact candidate | one child-rooted statement over `objects` + `object_components` |
 | `DELETE /objects/{id}` | **full-sweep complete** | DB-enforced lifetime arbitration + one fused Object DELETE + DELETED lifecycle statement |
 
@@ -4705,15 +4705,29 @@ architecture cache/SQL/FK/lock/index handoff
 
 The retained `object-attach-*` / `to-be-api-object-attach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including mandatory preliminary child reads, parent exact-binding lock/recheck, `ownership_slot_unavailable`, `concurrent_object_change`, old 7/9 or 6/7 costs and PK-as-normal-residual-race behavior — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
 
-# 10. DETACH children from one slot
+# 10. DETACH children from one slot — full sweep complete
 
 ## Public contract
 
 ```http
 POST /api/v1/core/objects/{parent_object_id}/components/{slot_name}/detach
+Content-Type: application/json
 ```
 
-Request:
+Path:
+
+```text
+parent_object_id
+    UUID
+
+slot_name
+    canonical component-slot name
+    ^[a-z][a-z0-9_]{0,63}$
+```
+
+Query parameters: none.
+
+Request body exactly:
 
 ```json
 {
@@ -4724,34 +4738,59 @@ Request:
 }
 ```
 
-Static validation:
+Static/request-shape rules:
 
 ```text
-malformed/missing body
-missing/empty child_object_ids
-malformed UUID carriers
-duplicate child_object_ids
-invalid transport carriers
-    -> 400 invalid_request
-
-parent_object_id included in child_object_ids
-    -> 422 semantic_validation_failed / self_reference
+child_object_ids required
+batch size 1..100
+every child id is a UUID
+duplicate child ids invalid
+input order has no semantic meaning
+unknown body fields invalid
+unknown/repeated query parameters invalid
+atomic batch
 ```
 
-DETACH is strict, non-convergent and atomic:
+The parent may not appear in `child_object_ids`; that is a semantic self-reference failure after current parent resolution, not a wire-shape failure.
+
+DETACH is a strict, non-convergent remove-membership command:
 
 ```text
-all requested exact edges current
-    -> remove all
+remove exactly the requested current ownership edges
+no implicit move
+no replacement
+no partial success
+already-absent edge is not successful convergence
+```
 
-missing child
-    -> whole batch fails
+For every requested child id, success requires one current exact edge identified publicly by:
 
-existing child but exact edge absent/different
-    -> whole batch fails
+```text
+parent_object_id
+slot_name
+child_object_id
+```
 
-already absent exact edge
-    -> not a successful no-op
+The persisted edge is richer:
+
+```text
+child_object_id
+parent_object_id
+slot_declaring_template_id
+slot_name
+```
+
+and `slot_declaring_template_id` is taken from the edge actually removed. DETACH does not resolve or reinterpret the current ObjectTemplate schema merely to delete an already-admitted ownership fact.
+
+If any requested exact edge cannot be removed, the whole batch fails atomically. This includes, without requiring separate diagnosis:
+
+```text
+child Object absent
+child ownerless
+child owned by another parent
+child owned by the same parent under another slot
+requested slot name with no matching current edge
+edge already detached
 ```
 
 Success:
@@ -4760,71 +4799,437 @@ Success:
 204 No Content
 ```
 
-## Current data path
+The command returns no component projection. Current state remains owned by Object/component GET surfaces.
 
-DETACH needs only current persisted facts. It does not need normal:
+## Authority and dependency boundary
+
+DETACH consumes only current data-plane facts needed to perform the legal removal and persist its history:
 
 ```text
-ObjectTemplate effective-schema reconstruction
-component-schema cache
-ancestry cache
-target_template_id
-compatibility validation
-cycle validation
-graph-write gate
+objects parent
+    -> path-target existence
+    -> required lifecycle canonical_name
+
+objects child
+    -> required lifecycle canonical_name only for edges actually removed
+
+object_components
+    -> authoritative current ownership fact
+    -> persisted semantic slot identity
+
+object lifecycle persistence
+    -> DETACH_FROM history
 ```
 
-Current candidate:
+`object_component_slots` is not a normal DETACH read source. Its existing relational dependency with `object_components` remains part of database arbitration, especially against concurrent slot REMOVE/semantic replacement, but DETACH performs no current-slot existence lookup merely to classify an error.
+
+Normal DETACH therefore requires no:
+
+```text
+ObjectTemplate / ObjectTemplateVersion read
+ObjectTemplate effective component-schema reconstruction
+object_template_effective_components read
+target_template_id
+component-schema cache
+ObjectLineageCache
+StableObjectTemplateAncestryCache
+compatibility validation
+cycle validation
+ownership graph traversal
+OWNERSHIP_GRAPH_WRITE_GATE
+objects.revision
+MigrationPlan
+```
+
+The route removes an already-authoritative current fact; it does not re-admit the fact before deleting it.
+
+## One-statement mutation Unit of Work
+
+After static request validation, DETACH enters the mutation UoW directly.
+
+Logical discovery baseline:
 
 ```text
 BEGIN
 
-Q1 one fresh set-based statement
-    -> prove parent existence
-    -> classify requested child existence
-    -> bulk DELETE exact requested ownership rows
-    -> RETURNING semantic edge + lifecycle display material
+Q1  one data-modifying PostgreSQL business statement
 
-Q2 one bulk DETACH_FROM lifecycle INSERT
+    parent
+        -> prove current parent existence
+        -> capture parent canonical_name
+
+    deleted
+        -> enabled only when self_reference = false
+        -> bulk DELETE all requested exact object_components rows
+        -> consume current child rows only to capture required canonical_name
+        -> RETURNING authoritative removed-edge identity + display metadata
+
+    certification
+        -> deleted_count = number of actually removed requested edges
+        -> complete iff deleted_count == requested_count
+
+    lifecycle
+        -> bulk INSERT exactly N DETACH_FROM rows from deleted material
+        -> executed only when complete = true
+
+    result/classification carrier
+        -> parent_exists
+        -> request-derived self_reference fact
+        -> deleted_count
 
 COMMIT
 ```
 
-Failure precedence:
+The exact SQL/CTE/SQLAlchemy spelling remains architecture work. The route-level requirement is one PostgreSQL business statement on the normal mutation path that can carry the `DELETE ... RETURNING` material directly into the conditional lifecycle `INSERT ... SELECT` or an equivalent one-statement realization.
+
+### Parent and self-reference precedence
+
+Self-reference is known from the request before PostgreSQL access, but parent path-target absence has precedence.
+
+The same Q1 therefore observes the parent while gating edge deletion when self-reference is present:
 
 ```text
-1. static invalid request
-    -> 400 invalid_request
+parent absent
+    -> no DELETE
+    -> no lifecycle
+    -> 404 resource_not_found / object
 
-2. self-reference
+parent present + self_reference
+    -> no DELETE
+    -> no lifecycle
     -> 422 semantic_validation_failed / self_reference
-
-3. parent absent
-    -> 404 resource_not_found
-
-4. requested child absent
-    -> 422 referenced_resource_not_found
-
-5. requested exact edge set incomplete
-    -> 409 ownership_conflict
-
-6. persistence/lifecycle failure
-    -> normal bounded persistence classification
 ```
 
-No diagnostics-only DB reads are introduced.
+No standalone preliminary parent SELECT is introduced solely to obtain this precedence.
 
-Canonical names used in lifecycle history remain best-effort historical display metadata.
+### Delete-first strict-batch certification
 
-Candidate cost:
+DETACH does not pre-read all requested edges and then delete the same facts in a second statement.
+
+Instead:
 
 ```text
-success                  = 2 PostgreSQL statements + COMMIT
-failure classified by Q1 = 1 statement + rollback
-static failure            = 0 DB
+DELETE matching exact edges
+RETURNING actual removed set
+compare deleted_count with requested_count
 ```
 
-A parent Object stabilization statement is no longer preferred solely as generic SCHEMA_CHANGE rendezvous. Edge removal cannot create a graph/schema violation; slot REMOVE/replacement arbitration occurs at the referenced slot FK boundary.
+If only a subset was removable, those row deletions remain inside the open transaction and the application rolls the transaction back:
+
+```text
+requested_count = 100
+deleted_count   = 99
+    -> lifecycle INSERT = 0
+    -> 409 ownership_conflict
+    -> ROLLBACK restores the 99 physical deletions
+```
+
+No partial DETACH becomes committed.
+
+### No requested-child existence classification
+
+DETACH does not independently classify current existence for requested child ids that have no matching edge.
+
+On a valid success path, an existing `object_components` edge is already protected by the Object lifetime FK. The child row is read only because its canonical name is required for lifecycle history. Reading otherwise-unmatched requested child rows would exist solely to distinguish diagnostic subcases and is therefore excluded.
+
+Consequently all non-current exact-edge states collapse naturally to:
+
+```text
+deleted_count < requested_count
+    -> 409 ownership_conflict
+```
+
+There is no normal DETACH `422 referenced_resource_not_found` for a missing child operand.
+
+### No current-slot existence classification
+
+The semantic slot identity needed for history comes from the edge actually deleted:
+
+```text
+slot_declaring_template_id
+slot_name
+```
+
+DETACH therefore does not read `object_component_slots` merely to decide whether a requested `slot_name` is currently defined. If the parent exists but the requested exact edge set cannot be removed, the normal observable result remains incomplete deletion and therefore `409 ownership_conflict`.
+
+There is no DETACH-specific:
+
+```text
+404 object_component_slot
+```
+
+unless a future legal success path independently requires a current-slot read for another correctness reason and thereby changes the information obtained naturally by the operation.
+
+## DETACH_FROM lifecycle
+
+A successful batch with `N` removed edges creates exactly `N` `DETACH_FROM` lifecycle events. There is no request-level aggregate DETACH event.
+
+For every removed edge the same Q1 captures the required historical display metadata and semantic ownership identity:
+
+```text
+child_object_id
+child_canonical_name
+parent_object_id
+parent_canonical_name
+slot_declaring_template_id
+slot_name
+```
+
+Event mapping:
+
+```text
+kind                       = DETACH_FROM
+object_id                  = child_object_id
+canonical_name             = child_canonical_name
+destination_object_id      = parent_object_id
+destination_canonical_name = parent_canonical_name
+slot_declaring_template_id = slot_declaring_template_id
+slot_name                  = slot_name
+```
+
+Ownership lifecycle events do not need intrinsic `before_state` / `after_state` Object snapshots. Historical structural identity is the exact removed edge identity.
+
+Canonical names are required historical display fields, but their precise freshness relative to a concurrent RENAME is not ownership identity. DETACH does not add locks, retries or rereads solely to choose a different display-name observation.
+
+Lifecycle rows are inserted only after the same statement has certified the complete requested delete set. Therefore an inadmissible batch performs no lifecycle insert work. If lifecycle persistence fails, the statement/transaction fails and all edge removals are rolled back.
+
+All rows produced by the one bulk lifecycle branch may share one transaction/statement timestamp; per-row timestamp differentiation carries no DETACH semantic requirement.
+
+## Public failure semantics and execution precedence
+
+Canonical project rule applies directly:
+
+```text
+public failure
+    = information naturally obtained while executing the legal action
+      as efficiently as possible
+
+no additional backend work is performed
+solely to discover a more specific or fresher diagnostic
+```
+
+Normal precedence:
+
+```text
+1. malformed/static request
+    malformed parent_object_id
+    malformed slot_name
+    malformed/missing body
+    missing/empty child_object_ids
+    batch size outside 1..100
+    malformed child UUID
+    duplicate child ids
+    unknown body fields
+    unknown/repeated query parameters
+        -> 400 invalid_request
+
+2. Q1 parent absent
+        -> 404 resource_not_found
+           resource_type = object
+
+3. Q1 parent present + parent_object_id appears in child_object_ids
+        -> 422 semantic_validation_failed
+           rule = self_reference
+
+4. Q1 parent present + no self-reference + deleted_count < requested_count
+        -> 409 ownership_conflict
+
+5. complete delete but persistence/lifecycle/invariant failure
+        -> 500 internal_error
+```
+
+The following public distinctions are intentionally absent because the one-statement legal path does not need to establish them:
+
+```text
+404 object_component_slot
+422 referenced_resource_not_found for child
+ownerless vs wrong parent vs wrong slot
+missing child vs absent edge
+stale_state
+ownership_cycle
+concurrent_object_change
+```
+
+No failure-only diagnostic SELECT, schema reread or retry is allowed merely because the returned error family is broad. In particular, an ambiguous failure is never sufficient reason for additional backend operations.
+
+## Concurrency outcomes
+
+DETACH owns no additional synchronization protocol beyond current relational arbitration. Exact lock/wait ordering is architecture work and composes with the existing core LockPlanner.
+
+Explicit route-local exclusions:
+
+```text
+NO parent Object FOR NO KEY UPDATE solely for DETACH
+NO Object revision fence/bump
+NO OWNERSHIP_GRAPH_WRITE_GATE
+NO model/cache preparation lock
+NO current-slot lock/read solely for continuity
+NO automatic diagnostic/stale retry
+```
+
+### DETACH vs DETACH
+
+The same `object_components` row is the rendezvous for concurrent removal.
+
+```text
+first DETACH commits the edge removal
+    -> first may return 204
+    -> competing strict DETACH can no longer remove its complete requested set
+    -> competing request returns 409 ownership_conflict
+
+first DETACH rolls back
+    -> competing request may subsequently remove the edge and succeed
+```
+
+For overlapping multi-row batches the route freezes no lock acquisition order. Architecture must integrate the statement with the core LockPlanner and prove deadlock/wait ordering globally rather than introducing a route-local pre-lock SELECT solely for DETACH.
+
+### DETACH vs ATTACH
+
+DETACH does not join ATTACH's graph edge-add gate merely because both mutate ownership.
+
+```text
+ATTACH observes the old edge before DETACH commit
+    -> ATTACH may conservatively fail ownership_conflict
+    -> DETACH may then commit
+
+DETACH commits first
+    -> the child becomes ownerless
+    -> a later/fresh ATTACH may independently pass its normal admission
+
+ATTACH creates a new edge while DETACH's requested old edge is not current/visible
+    -> DETACH cannot remove its complete requested set
+    -> 409 ownership_conflict
+```
+
+DETACH does not wait/retry solely because a concurrent mutation might later make the command admissible.
+
+### DETACH vs SCHEMA_CHANGE
+
+DETACH does not interpret the parent's exact binding. Current slot REMOVE/semantic replacement arbitration is supplied by the existing edge -> semantic-slot relational dependency:
+
+```text
+DETACH commits the final old edge removal first
+    -> slot reference disappears
+    -> REMOVE/replacement may proceed
+
+slot transition reaches arbitration while old edge still references the key
+    -> relational FK enforcement prevents invalid slot removal/key change
+```
+
+Preserved/equal slots and non-key target widening require no DETACH-specific stabilization.
+
+### DETACH vs Object DELETE
+
+Current ownership FKs protect parent/child lifetime while the edge exists. Removing the edge may legitimately remove a lifetime blocker:
+
+```text
+DETACH commits first
+    -> DELETE may subsequently succeed if no other blocker remains
+
+DELETE reaches lifetime arbitration while edge still exists
+    -> DELETE may fail delete_blocked
+```
+
+DETACH captures required display names in the same statement that removes the edge, so it does not need to keep parent/child alive merely for a later lifecycle-name read.
+
+## Cost profile
+
+There is no warm/cold distinction.
+
+Static failure:
+
+```text
+0 PostgreSQL statements
+```
+
+Every path that reaches current state uses one PostgreSQL business statement:
+
+```text
+parent absent
+self-reference after parent resolution
+incomplete exact-edge set
+successful complete DETACH
+```
+
+Successful logical baseline, excluding `BEGIN`:
+
+```text
+Q1  parent resolution
+    + exact-edge bulk DELETE ... RETURNING
+    + strict deleted-count certification
+    + conditional bulk DETACH_FROM lifecycle INSERT
+-------------------------------------------------------
+    1 PostgreSQL business statement + COMMIT
+```
+
+For batch cardinality `N <= 100`:
+
+```text
+round trips         O(1)
+edge delete work    O(N)
+lifecycle rows      O(N) on success, 0 on inadmissible batch
+cache/model work    0
+graph traversal     0
+```
+
+No statement count scales with batch size.
+
+## Architecture handoff
+
+Deferred physical/concurrency work:
+
+```text
+exact one-statement SQL / SQLAlchemy data-modifying carrier
+exact DELETE ... RETURNING -> certification -> lifecycle INSERT realization
+final transaction/isolation/wait behavior
+integration with the existing core LockPlanner
+multi-row lock ordering and global deadlock proof
+final PK/UNIQUE/FK actions/timing and SQLSTATE classification
+lifecycle physical carrier / timestamp realization
+final indexes / EXPLAIN/BUFFERS evidence
+realistic N<=100 row-volume/latency measurements
+```
+
+Architecture must preserve:
+
+```text
+strict non-convergent atomic batch semantics
+1..100 public batch bound
+no current-slot/schema/cache/ancestry/graph/revision preparation
+persisted edge as semantic slot-identity authority
+parent absence before self-reference in public precedence
+no requested-child existence scan solely for diagnostics
+all incomplete exact-edge states -> ownership_conflict
+required parent/child historical display names captured during the delete statement
+exactly one DETACH_FROM row per committed removed edge
+no lifecycle work for an inadmissible batch
+one PostgreSQL business-statement logical success baseline
+no diagnostic-only backend work or retry
+route-local lock-order policy deferred to architecture/core LockPlanner
+```
+
+## Full-sweep closure
+
+The logical `POST /objects/{parent_object_id}/components/{slot_name}/detach` route is **full-sweep complete** on:
+
+```text
+exact /detach public route and 1..100 wire contract
+strict non-convergent atomic removal semantics
+parent-before-self-reference precedence
+persisted edge semantic identity / no current-slot lookup
+no requested-child existence diagnostic classification
+409 ownership_conflict collapse for every incomplete exact-edge set
+one-statement delete-first strict-batch certification
+required display-name capture in the delete statement
+conditional fused edge-oriented DETACH_FROM lifecycle
+one-statement success cost / no warm-cold path
+no schema/cache/ancestry/graph/revision dependency
+DETACH x DETACH / ATTACH / SCHEMA_CHANGE / DELETE concurrency outcomes
+LockPlanner/deadlock realization architecture handoff
+no diagnostic-only backend work
+```
+
+The retained `object-detach-*` / `to-be-api-object-detach-*` files are historical/source evidence only after this consolidation. Their superseded mechanisms — including zero-DB self-reference precedence, requested-child existence classification, `422 referenced_resource_not_found` for missing child operands, current parent-stabilization variants and the split two/three-statement lifecycle paths — do not override this owner. After explicit reference cleanup they may be removed; Git history remains the historical reasoning record.
 
 # 11. GET current owner
 
@@ -5510,6 +5915,8 @@ The current `POST /objects/{id}/schema` full sweep is now losslessly absorbed he
 The current `GET /objects/{parent}/components/{slot}` full sweep is now losslessly absorbed here, including exact route/query/response contract, semantic-slot cursor identity, slot-absent vs empty semantics, keyset continuation, one-statement current data path, failure precedence, snapshot concurrency semantics, bounded cost profile and physical-design handoff.
 
 The current `POST /objects/{parent}/components/{slot}/attach` full sweep is now losslessly absorbed here, including the strict batch command contract, nested-slot 404 semantics, stable Object-lineage cache, denormalized ancestry-neighborship cache, protected graph admission, FK arbitration/failure mapping, required historical display-name read, edge-oriented lifecycle, execution-path failure precedence, warm/full-cold cost profile and architecture handoff.
+
+The current `POST /objects/{parent}/components/{slot}/detach` full sweep is now losslessly absorbed here, including the symmetric 1..100 wire contract, strict non-convergent removal semantics, parent-before-self-reference precedence, persisted-edge semantic authority, deliberate collapse of missing-child/edge/slot diagnostic subcases into `ownership_conflict`, one-statement delete-first certification, conditional fused DETACH_FROM lifecycle, required historical display-name capture, concurrency outcomes, one-statement cost baseline and LockPlanner/physical architecture handoff.
 
 Non-superseded contract, failure, concurrency and cost details omitted by earlier consolidation drafts have been recovered here. Historical rationale and already-superseded mechanisms are intentionally not duplicated.
 
