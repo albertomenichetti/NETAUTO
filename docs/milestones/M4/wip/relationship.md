@@ -6,30 +6,17 @@
 
 This is the single M4 WIP owner for the factual `Relationship` family.
 
-All route-level factual Relationship discovery, review decisions, data-path findings and open questions must be maintained here instead of creating one WIP file per operation or micro-point. Dedicated files remain appropriate only for genuinely cross-domain owners/support that are not owned by the factual Relationship family.
+All factual Relationship route discovery, review decisions, data-path findings and open questions must be maintained here instead of creating one WIP per operation or micro-point. Separate files remain appropriate only for genuinely cross-domain owners/support not owned by factual Relationship.
 
-This WIP remains non-normative under M4 governance: ratified discovery checkpoints recorded here do not authorize implementation until the milestone promotes/finalizes the corresponding TO-BE architecture.
+This WIP remains non-normative under M4 governance: ratified discovery checkpoints recorded here do not authorize implementation until milestone closure/promotion.
 
-This owner absorbs the previously distributed factual Relationship WIPs for:
-
-```text
-CREATE
-GET /relationships/{relationship_id}
-GET /objects/{object_id}/relationships
-DATA_CHANGE
-SCHEMA_CHANGE
-DELETE
-runtime-closure/conflict persistence
-Object-relative Relationship API exploration
-```
-
-Git history remains the historical source for the absorbed intermediate reasoning.
+This owner absorbs the former distributed WIPs for CREATE, runtime closure/conflict persistence, global GET, Object-scoped Relationship navigation, DATA_CHANGE, SCHEMA_CHANGE, DELETE and Object-relative API exploration. Git history remains the historical source for superseded intermediate reasoning.
 
 ---
 
 # 1. AS-IS public capability surface
 
-The current factual Relationship API exposes these six capabilities:
+Current factual Relationship HTTP capabilities are:
 
 ```text
 POST   /relationships
@@ -43,19 +30,18 @@ GET    /objects/{object_id}/relationships
 There is currently:
 
 ```text
-NO root Relationship collection GET
+NO generic root Relationship collection GET
 NO Object-relative single-Relationship detail GET
+NO endpoint-reassignment mutation
 ```
 
-The public/runtime model distinguishes one global factual Relationship from one or more object-relative semantic views of that fact.
-
-A factual Relationship has its own lifetime identity (`relationship_id`). Its persisted runtime closure may expose several public semantic views, including reciprocal views for non-symmetric definitions and multiple views in overlap/self-loop cases.
+A factual Relationship is one global fact with lifetime identity `relationship_id`. Its persisted runtime closure can expose multiple object-relative semantic views, including reciprocal views and overlap/self-loop cases.
 
 ---
 
-# 2. Ratified M4 API capability checkpoints
+# 2. Ratified M4 functional capability checkpoints
 
-These are ratified review decisions for the current M4 discovery pass. They remain non-normative until milestone closure/promotion.
+These are ratified review decisions for the current M4 discovery pass. Exact DTOs, payload fields, filters, pagination, SQL realization and physical optimization are separate later decisions.
 
 ## REL-API-01 — specific Relationship detail is global
 
@@ -71,13 +57,11 @@ This answers:
 what is this factual Relationship globally?
 ```
 
-The Relationship is a global fact with its own identity. An Object used to navigate to that fact is context, not part of the fact identity.
-
-The global detail may therefore coherently expose the complete factual state, including all distinct public semantic views belonging to the fact.
+The Relationship has its own identity; an Object used to navigate to it is context, not part of that identity. The global detail can therefore coherently expose the complete factual state and all distinct semantic views.
 
 ## REL-API-02 — Object-scoped Relationship collection is required
 
-The Object-scoped collection remains a fundamental public capability:
+The Object-scoped collection is a fundamental capability:
 
 ```text
 GET /objects/{object_id}/relationships
@@ -89,136 +73,135 @@ This answers:
 which factual Relationships are visible from this Object?
 ```
 
-Its role is navigation/query in Object context. Exact response shape, fields, filters, pagination contract and physical data path are deliberately deferred until the functional capability coverage gate is closed.
+Its role is Object-context navigation/query. Exact item representation and route-detail mechanics remain deferred until the functional coverage gate is closed.
 
 ## REL-API-03 — no Object-scoped single-Relationship detail for now
 
-Do **not** introduce a route conceptually equivalent to:
+Do not introduce a route conceptually equivalent to:
 
 ```text
 GET /objects/{object_id}/relationships/{relationship_id}
 ```
 
-unless a concrete caller need later proves that the global detail plus the Object-scoped collection is insufficient.
+unless a concrete caller need later proves that global detail plus Object-scoped collection is insufficient.
 
 Reasons:
 
-1. the factual Relationship already has a global identity and root detail;
-2. Object scope is navigation context rather than ownership/identity;
-3. `object_id + relationship_id` does not necessarily identify one unique semantic perspective in overlap/self-loop cases;
-4. introducing a scoped detail would force additional public selector, ambiguity, rename and error semantics without a demonstrated caller requirement.
+```text
+Relationship already has global identity/detail
+Object scope is navigation context, not ownership
+object_id + relationship_id can be perspective-ambiguous
+scoped detail would force selector/ambiguity/rename/error semantics
+without a demonstrated need
+```
 
-The earlier candidate direction that proposed an Object-relative single-Relationship detail is therefore **superseded by this checkpoint** and must not be treated as current direction.
+The former candidate proposing Object-relative single-Relationship detail is superseded.
 
 ## REL-API-04 — functional coverage precedes route-detail design
 
-The current phase is a functional capability coverage audit. Before reviewing DTO fields, payload weight, exact filters, SQL shape or route-level optimization, determine whether the factual Relationship family exposes every caller capability that M4 needs.
-
-Therefore:
+The current phase is a functional capability coverage audit.
 
 ```text
 absence from AS-IS != automatic rejection
 candidate capability != automatic new endpoint
 ```
 
-A missing capability must be evaluated from a concrete caller/domain need and ratified explicitly. Conversely, no route or operation is introduced merely because it is theoretically possible.
+A missing capability must be justified by caller/domain need. Do not review payload weight, exact fields, SQL or performance until M4 functional coverage is explicitly closed.
 
-Current open coverage questions include:
+## REL-API-05 — global Relationship discovery is real but deferred to M5 Search API
 
-```text
-endpoint reassignment/reversal as a first-class mutation vs delete+create
-any other factual-Relationship capability surfaced by concrete callers
-```
+There is a real need to discover/query factual Relationships without already knowing a `relationship_id` or a starting Object.
 
-## REL-API-05 — global Relationship discovery is recognized but deferred to M5 Search API
+That need is not rejected, but it does not justify a generic root `LIST relationships` in M4. Global Relationship discovery is materially search-oriented: useful criteria naturally span endpoints, RelationshipDefinition and factual data.
 
-There is a real caller need to discover/query factual Relationships without already knowing either a `relationship_id` or a starting Object.
-
-That need is **not** rejected. However, it is not an M4 requirement for a generic root list operation.
-
-The distinction is intentional:
-
-```text
-list Objects
-    -> useful direct inventory capability in the current REST surface
-
-global Relationship discovery
-    -> materially more query/search-oriented
-    -> useful criteria naturally span endpoints, RelationshipDefinition and factual data
-```
-
-Therefore M4 does not add a generic root Relationship collection merely for REST symmetry:
+Therefore:
 
 ```text
 NO M4 requirement for generic GET /relationships collection
+M5 Search API owns global Relationship discovery/query
 ```
 
-The functional need is handed forward to M5, where the Search API can own global Relationship discovery/query semantics together with the broader search model.
+This is a milestone-scope decision, not a statement that the need is unnecessary.
 
-This is a milestone-scope decision, not a claim that global Relationship discovery is unnecessary.
+## REL-API-06 — endpoint binding is part of factual Relationship identity
 
----
+M4 does not require an identity-preserving endpoint reassignment/reversal capability.
 
-# 3. Current functional capability coverage gate
-
-The AS-IS surface already covers these user-level needs:
-
-```text
-CREATE
-    create/admit a factual Relationship between Objects
-
-GET global detail
-    retrieve one known factual Relationship by its lifetime identity
-
-GET Object-scoped collection
-    discover factual Relationships visible from one Object
-
-DATA_CHANGE
-    mutate factual Relationship property data while preserving identity/binding
-
-SCHEMA_CHANGE
-    migrate the factual Relationship exact schema-version binding
-
-DELETE
-    remove the factual Relationship
-```
-
-Read-capability decisions already ratified are:
-
-```text
-known specific Relationship
-    -> global GET by relationship_id
-
-Object-context navigation
-    -> Object-scoped Relationship collection
-
-Object-scoped single-Relationship detail
-    -> not required for now
-
-global Relationship discovery/query
-    -> real need, deferred to M5 Search API
-    -> no generic root Relationship list required in M4
-```
-
-The exact representation of the Object-scoped collection, including whether it carries `properties`, destination names or other fields, remains explicitly deferred until this functional coverage gate is closed.
-
-The coverage gate is **not yet closed** because mutation/lifetime capabilities still require review.
-
-## Current next open coverage question
-
-Evaluate whether callers need to change the endpoint binding of an existing factual Relationship while preserving its `relationship_id`, for example by replacing one endpoint or reversing/repointing the fact.
-
-The AS-IS has no such operation. Today the available composition is conceptually:
+Changing one of the participating Objects changes the fact itself. The correct composition is:
 
 ```text
 DELETE old factual Relationship
 +
 CREATE new factual Relationship
+    -> new relationship_id
 ```
 
-The coverage question is only whether that composition is functionally sufficient for M4 or whether endpoint reassignment is itself a required identity-preserving capability.
+A non-symmetric Relationship already exposes reciprocal semantic views of the same fact; reading the reciprocal perspective is not an endpoint-reversal mutation.
 
-Do **not** decide route shape, request DTO, locking or persistence realization before the capability decision.
+The same principle applies to replacing/repointing an endpoint: there is no caller requirement for the old `relationship_id` to survive.
+
+---
+
+# 3. Functional capability coverage gate
+
+M4 factual Relationship currently covers the operational lifecycle needed by the data-plane:
+
+```text
+CREATE
+    create/admit a factual Relationship
+
+GET global detail
+    retrieve one known fact by lifetime identity
+
+GET Object-scoped collection
+    discover/navigate facts from one Object
+
+DATA_CHANGE
+    mutate factual property data while preserving fact identity/binding
+
+SCHEMA_CHANGE
+    migrate the exact schema-version binding of the same fact
+
+DELETE
+    remove the fact
+```
+
+Coverage decisions already made:
+
+```text
+specific detail
+    -> global GET by relationship_id
+
+Object-context discovery
+    -> Object-scoped collection
+
+Object-scoped single detail
+    -> not required for now
+
+global discovery/query
+    -> real need, deferred to M5 Search API
+
+endpoint reassignment/repointing
+    -> not an identity-preserving M4 capability
+    -> DELETE + CREATE
+```
+
+Adjacent needs are owned elsewhere rather than by new factual Relationship operations:
+
+```text
+historical/audit navigation
+    -> Lifecycle family
+
+Relationship name/topology mutation
+    -> RelationshipDefinition family
+
+global multi-criteria discovery
+    -> M5 Search API
+```
+
+Current concrete HTTP/CLI/test surfaces do not expose evidence for another distinct factual Relationship operation beyond the capabilities above.
+
+Therefore the next review decision is whether to **close the M4 functional capability gate**. Do not move into Object-scoped collection fields, response DTOs or route-level optimization until that closure is explicitly ratified.
 
 ---
 
@@ -228,14 +211,12 @@ Current durable ownership is conceptually:
 
 ```text
 relationships
-    factual root
     id
     relationship_definition_id
     relationship_definition_version
     properties
 
 runtime_relationship_resolutions
-    complete deterministic runtime closure
     resolution_id
     from_object_id
     to_object_id
@@ -246,7 +227,7 @@ runtime_relationship_resolutions
 `runtime_relationship_resolutions` is both:
 
 ```text
-materialized factual runtime closure
+complete deterministic runtime closure
 +
 authoritative exact-view ownership/conflict index
 ```
@@ -257,9 +238,9 @@ Its exact row identity is:
 (resolution_id, from_object_id, to_object_id)
 ```
 
-M4 should not introduce a second Relationship-specific materialization/conflict table for the same semantic space without new evidence.
+M4 should not create a second Relationship-specific materialization/conflict table for the same semantic space without new evidence.
 
-Current factual Relationship references also participate in Object lifetime arbitration through database-enforced Object foreign keys. A material change to Relationship persistence or Object-reference FK behavior must therefore trigger targeted revalidation of the reviewed Object.DELETE lifetime dependency.
+Current factual Relationship persistence also participates in Object lifetime arbitration through database-enforced Object references. Any material change to the Relationship persistence/FK graph must trigger targeted revalidation of reviewed Object.DELETE lifetime assumptions.
 
 ---
 
@@ -267,40 +248,40 @@ Current factual Relationship references also participate in Object lifetime arbi
 
 Concurrency/lock redesign remains deferred to the global concurrency phase.
 
-## 5.1 Current expensive preparation shape
+## 5.1 Current preparation cost
 
-Before factual conflict arbitration/DML, the current CREATE path performs work including:
+Current CREATE performs, before conflict arbitration/DML, work including:
 
-1. resolution -> complete RelationshipDefinition aggregate;
-2. explicit/default exact RelationshipDefinitionVersion selection;
-3. lock-plan stabilization/repeated model reads;
-4. endpoint Object -> ObjectTemplate identity reads;
-5. complete ObjectTemplate parent-graph load;
-6. Python ancestry walking to derive deterministic runtime closure;
-7. another exact RDV/schema load through runtime property-spec construction;
-8. exact DataType semantic loads;
-9. property canonicalization.
+```text
+resolution -> complete RelationshipDefinition
+explicit/default exact RDV selection
+lock-plan stabilization/repeated model reads
+endpoint Object -> ObjectTemplate identity
+complete ObjectTemplate parent-graph load
+Python ancestry walking -> deterministic runtime closure
+repeated exact RDV/schema load
+exact DataType semantic loads
+property canonicalization
+```
 
-Reads that exist specifically for lock-plan stabilization remain concurrency-phase concerns.
+Reads existing solely for lock-plan stabilization remain concurrency-phase concerns.
 
 ## 5.2 Redundant exact-schema reload
 
-After stabilization the selected exact RDV is already known, including its property declarations. Reloading the same RDV again solely to construct runtime property specs is redundant independently of any cache design.
+After stabilization the selected exact RDV is already known. Reloading the same exact RDV solely to construct runtime property specs is redundant independently of cache design.
 
-Candidate separation:
+Target separation:
 
 ```text
-stabilized target RDV
+stabilized exact RDV
 +
 DataType semantic payloads
 -> resolved runtime Relationship schema
 ```
 
-## 5.3 Immutable exact RDV runtime cache candidate
+## 5.3 Immutable exact RDV cache candidate
 
-Published/deprecated exact RelationshipDefinitionVersion property semantics are immutable.
-
-Candidate worker cache:
+Published/deprecated exact RelationshipDefinitionVersion semantics are immutable and fit:
 
 ```text
 ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
@@ -310,15 +291,11 @@ ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
     compiled RuntimePropertySpec / validators
 ```
 
-The cache must not own mutable lifecycle state such as RDV status or Definition default version.
-
-PostgreSQL remains authority for current CREATE admission, including current existence, selected target currently `PUBLISHED`, and required current admission of direct exact DataType dependencies.
-
-Cache presence never proves current admissibility.
+The cache must exclude mutable state such as RDV status and Definition default version. PostgreSQL remains authority for current CREATE admission; cache presence never proves current existence/admissibility.
 
 ## 5.4 Full ObjectTemplate graph load should leave the data-plane
 
-CREATE only needs bounded ancestry predicates for the involved resolution topology and endpoint templates. The M4 stable closure owner:
+CREATE needs bounded endpoint ancestry predicates, not the complete ObjectTemplate graph. Stable closure owner:
 
 ```text
 object_template_ancestry
@@ -327,14 +304,7 @@ object_template_ancestry
     depth
 ```
 
-with self rows can answer them directly.
-
-A positive/full worker cache over stable ancestry may then support in-memory closure derivation without loading the entire ObjectTemplate graph:
-
-```text
-StableObjectTemplateAncestryCache[template_id]
-    -> complete ancestor set including self
-```
+with self rows supports those predicates. A READY/full stable ancestry cache may provide complete ancestor sets in memory.
 
 Stable RelationshipDefinition topology is also a natural cache candidate:
 
@@ -347,92 +317,63 @@ StableRelationshipDefinitionTopologyCache[definition_id]
         to_template_id
 ```
 
-Mutable Resolution names are excluded from stable topology cache ownership.
+Mutable Resolution names are excluded.
 
-## 5.5 Conflict pre-check redundancy
+## 5.5 Conflict-owner lookup
 
-Once the complete deterministic runtime closure has been derived, a selected-view exact-owner pre-check is informationally contained in a closure-wide ownership lookup.
+Once complete deterministic closure is known, a selected-view exact-owner pre-check is informationally contained in a closure-wide ownership lookup.
 
-If a pre-check remains in the final concurrency design, one set-based current-owner projection over the complete closure is sufficient.
+If a pre-check remains, one set-based closure-owner projection is sufficient. Whether pre-checking remains at all or the runtime-closure PK arbitrates first remains a concurrency decision.
 
-Whether pre-checking remains at all, or collision is first arbitrated by the runtime-closure PK followed by post-rollback classification, remains a concurrency-phase decision.
-
-Observed conflicting Relationship owners do not need full semantic recertification merely to return/prove current owner identity.
+Observed conflicting owners do not need full semantic recertification merely to return/prove current owner identity.
 
 ## 5.6 Runtime closure DML
 
-Current conceptual DML can be improved from N row inserts to:
+Candidate write shape:
 
 ```text
 1 INSERT factual Relationship root
 1 bulk INSERT complete runtime closure
 ```
 
-The closure remains all-or-nothing. Partial `ON CONFLICT DO NOTHING` materialization is not acceptable because a factual Relationship requires its complete deterministic closure.
+Closure materialization remains all-or-nothing. Partial `ON CONFLICT DO NOTHING` is not acceptable.
 
-## 5.7 CREATE lifecycle metadata reread remains open
+`LifecycleStore.insert_relationship_events()` is already bulk and should remain so.
 
-The current lifecycle path rereads runtime closure plus mutable Resolution/Object display names after insertion.
+## 5.7 Lifecycle display metadata reread
 
-It may be possible to acquire/reuse those names earlier, but any elimination of the reread must preserve a coherent metadata snapshot under concurrent Object/RelationshipDefinition renames.
-
-Therefore this optimization remains concurrency-dependent and OPEN.
+CREATE currently rereads runtime closure plus mutable Resolution/Object display names after insertion. Eliminating that reread is possible only if coherent metadata is preserved under concurrent renames, so this remains OPEN / concurrency-dependent.
 
 ---
 
 # 6. Global Relationship GET
 
-Current M3 persistence already projects the factual detail in one authoritative PostgreSQL statement rooted at `relationships`, joined to the persisted runtime closure and current Resolution names.
+Current M3 GET is already a trusted one-statement authoritative projection rooted at `relationships`, joined to materialized runtime closure and current Resolution names.
 
-Required factual detail includes:
+It does not need model/schema/lineage recertification.
 
-```text
-Relationship id
-exact RelationshipDefinition id/version pin
-persisted properties
-all distinct public semantic views
-```
-
-No model/schema/lineage recertification is required.
-
-Current first-phase conclusion:
+Target remains:
 
 ```text
-preserve one-statement authoritative factual projection
+one authoritative PostgreSQL statement
 no worker cache
 no new denormalization
 no semantic recertification
 ```
 
-Do not copy mutable `Resolution.name` into runtime closure rows merely to avoid the current join; the join preserves correct current-name behavior without invalidation/update protocols.
+Do not copy mutable `Resolution.name` into runtime closure rows merely to avoid the join.
 
 ---
 
-# 7. Object-scoped Relationship collection — technical data path
+# 7. Object-scoped Relationship collection — technical baseline
 
-The current persistence path pages directly from `runtime_relationship_resolutions`, joins `relationships` for factual current state and joins `relationship_resolutions` for current relationship names.
+The current persistence path pages from `runtime_relationship_resolutions`, joins `relationships` for factual current state and `relationship_resolutions` for current names, and is Object-rooted so it distinguishes absent Object from present Object with an empty page.
 
-It is Object-rooted so the public behavior distinguishes:
+The operation is already one PostgreSQL statement and must not reconstruct RelationshipDefinition topology, ObjectTemplate ancestry, exact schema semantics or factual derivability.
 
-```text
-requested Object absent
-requested Object present + no matching Relationship views
-normal non-empty page
-```
+Multiple exact runtime rows can collapse to one public object-relative semantic view, especially for symmetric definitions with overlapping lineage spaces; deduplication must therefore remain before pagination.
 
-The operation is already one PostgreSQL statement.
-
-The current runtime closure is the correct navigation/materialization layer; this read must not reconstruct RelationshipDefinition topology, ObjectTemplate ancestry, exact schema semantics or factual derivability.
-
-## 7.1 DISTINCT is semantically meaningful
-
-Multiple exact runtime rows can collapse to one public object-relative semantic view, particularly with symmetric definitions and overlapping lineage spaces.
-
-Deduplication therefore must happen before pagination.
-
-## 7.2 Existing navigation index is already aligned
-
-Current dedicated page support is conceptually:
+Existing navigation support is conceptually:
 
 ```text
 ix_runtime_resolutions_from_object_page
@@ -445,49 +386,34 @@ ix_runtime_resolutions_from_object_page
 INCLUDE (relationship_definition_id)
 ```
 
-No additional M4 index is justified by the current route evidence.
+No additional index/cache/denormalization is justified by current route evidence.
 
-## 7.3 Cache/denormalization
-
-No worker cache is justified for the authoritative collection read. Stable endpoint/resolution assignment is already durably materialized, while other useful public fields are current mutable state.
-
-Exact selected columns and DTO content are deliberately deferred until the functional capability coverage gate in section 3 is closed. The technical findings in this section are retained only because they are independent of that later representation decision.
+**Important:** exact selected columns, DTO shape, destination display fields, `properties`, filters and pagination contract remain deliberately deferred until the functional coverage gate is closed.
 
 ---
 
 # 8. DATA_CHANGE — current first-phase findings
 
-`DATA_CHANGE` changes only factual `relationships.properties`; it does not change Definition identity/version pin, endpoints or persisted runtime closure.
+DATA_CHANGE mutates only `relationships.properties`; it does not alter Definition identity/version pin, endpoint identities or materialized runtime closure.
 
-Therefore the target hot path should not re-certify:
-
-```text
-RelationshipDefinition topology
-ObjectTemplate ancestry
-runtime closure derivability
-persisted factual canonicality as a whole
-```
-
-The operation needs authoritative current factual state plus exact immutable schema semantics for the already-pinned RDV.
+Therefore the target hot path must not recertify RelationshipDefinition topology, ObjectTemplate ancestry or closure derivability.
 
 Candidate warm path:
 
 ```text
-validate operation set in memory
+validate operations in memory
 -> lock/load current factual Relationship
 -> ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
 -> apply_data_change()
--> if canonical no-op: no UPDATE and no DATA_CHANGE lifecycle event
--> else one UPDATE relationships.properties
+-> canonical no-op: no UPDATE / no lifecycle event
+-> otherwise one UPDATE relationships.properties
 -> coherent lifecycle metadata/event path
 -> COMMIT
 ```
 
-The source exact RDV may be `PUBLISHED` or `DEPRECATED`; an already-admitted fact does not need a current `PUBLISHED` check for its existing pin merely to mutate data.
+The existing pinned RDV may be PUBLISHED or DEPRECATED; mutating an already-admitted fact does not require re-proving its source pin as currently PUBLISHED.
 
-Current repeated exact-schema loading is redundant once the schema has been resolved once.
-
-Lifecycle display-metadata reread/locking remains concurrency-dependent and OPEN.
+Repeated exact-schema loading is redundant once exact schema semantics are available. Lifecycle display-metadata optimization remains concurrency-dependent.
 
 ---
 
@@ -500,41 +426,21 @@ relationship_definition_version
 properties
 ```
 
-It preserves Definition identity and materialized runtime closure.
+Definition identity and runtime closure remain unchanged, so topology, endpoint compatibility, ObjectTemplate ancestry and closure completeness must not be recertified on the normal data-plane path.
 
-Therefore the normal data-plane path should not recertify Definition topology, endpoint compatibility, ObjectTemplate ancestry or closure completeness.
+Publication is the model-plane certification boundary. Runtime migration must not reload complete published/deprecated history and re-run publication certification.
 
-## 9.1 Published-history recertification should leave the data-plane
+Source and target exact semantic schemas fit the immutable RDV cache. PostgreSQL remains authority for current target existence/status and required direct exact DataType admission.
 
-Publication is the model-plane certification boundary for immutable exact RDV semantics/history rules. Runtime migration should not reload complete published/deprecated history and re-run publication certification.
-
-## 9.2 Source/target immutable exact schemas are cache candidates
-
-Migration needs exact source/target semantic declarations and compiled validators, naturally owned by:
-
-```text
-ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
-```
-
-PostgreSQL remains authority for current target admission (`target exists`, same Definition, currently `PUBLISHED`, required direct exact DTV admission).
-
-## 9.3 Numeric version order does not prove migrability
-
-An older candidate path contained:
+Numeric version order does **not** prove migrability. The older candidate requirement:
 
 ```text
 target_version > source_version
 ```
 
-as a runtime requirement.
+is not current direction and must not be carried forward. Exact migration admission must derive from migration semantics, consistent with GP-01.
 
-That assumption is **not current direction**. It conflicts with the ratified general M4 principle that numeric version ordering/allocation and cross-version migrability are distinct concerns.
-
-The exact Relationship runtime migration-admission rule must therefore be revalidated from migration semantics rather than inferred from version number ordering.
-
-## 9.4 DML shape
-
-The existing conceptual write shape remains good:
+Conceptual DML remains:
 
 ```text
 one UPDATE
@@ -542,52 +448,26 @@ one UPDATE
     properties = migrated canonical map
 ```
 
-Runtime closure remains unchanged.
-
-A schema-change event remains semantically meaningful when the exact version pin changes even if the migrated canonical properties happen to be equal; final no-op/equal-target behavior must be reviewed consistently with the general version/migration principles during the detailed route sweep.
-
-Concurrency/current-admission realization and lifecycle display metadata remain open for the concurrency phase.
+Runtime closure remains unchanged. A changed exact schema pin remains semantically meaningful even if migrated canonical properties are equal; equal-target/no-op semantics must be reviewed in the detailed route sweep.
 
 ---
 
 # 10. DELETE — current first-phase findings
 
-DELETE does not need model/schema semantic recertification. If the current factual Relationship exists and the operation is otherwise admissible, deletion needs authoritative factual before-state and coherent historical display metadata for lifecycle emission.
+DELETE needs authoritative factual before-state and coherent historical display metadata, not full model/schema recertification.
 
-Candidate pre-delete projection:
+Candidate pre-delete projection contains factual root, complete persisted closure, current Resolution names and current endpoint Object canonical names. It must not re-derive expected closure from model topology.
 
-```text
-factual root
-complete persisted runtime closure
-current RelationshipResolution names
-current endpoint Object canonical names
-```
-
-Do not re-derive expected runtime closure from model topology.
-
-Current ownership via cascade supports:
+Current ownership supports:
 
 ```text
 1 DELETE relationships row
     -> runtime_relationship_resolutions CASCADE
 ```
 
-Historical event metadata must be captured before root deletion because the runtime closure disappears by cascade.
+Historical event metadata must be captured before the root delete because closure rows disappear by cascade. The complete DELETE event set remains bulk/atomic with the root deletion.
 
-Conceptual path:
-
-```text
-lock/load current factual Relationship
--> one authoritative pre-delete projection
--> DELETE factual root
--> closure cascades
--> bulk INSERT complete RELATIONSHIP_DELETED event set
--> COMMIT
-```
-
-No RDV/DataType/ObjectTemplate cache is useful for DELETE. Mutable display names must come from current PostgreSQL state.
-
-Exact synchronization with concurrent renames remains a concurrency-phase question.
+No RDV/DataType/ObjectTemplate cache is useful for DELETE. Mutable display names come from PostgreSQL. Exact synchronization with concurrent renames remains a concurrency question.
 
 ---
 
@@ -595,80 +475,55 @@ Exact synchronization with concurrent renames remains a concurrency-phase questi
 
 ## 11.1 Mutation response vs GET richness
 
-Per the cross-family top-down review method, mutation acknowledgement/response shape must be evaluated independently from the cost/richness of GET projections. Relationship route review must not assume mutations must return the complete global GET DTO merely because that is the current AS-IS behavior.
+Per the top-down review method, mutation acknowledgement/response shape is independent from the richness/cost of GET projections. Do not assume Relationship mutations must return the global GET DTO merely because AS-IS does.
 
 ## 11.2 Relationship persistence -> Object lifetime revalidation trigger
 
-Current factual Relationship rows/runtime closure hold database-enforced references to endpoint Objects and therefore participate in Object.DELETE blocker arbitration.
-
-If the Relationship persistence/FK graph materially changes, re-open only the affected reviewed Object lifetime/delete assumptions rather than silently carrying them forward.
+Relationship references currently participate in Object.DELETE blocker arbitration. Material changes to Relationship persistence/FKs reopen only the affected Object lifetime/delete assumptions.
 
 ## 11.3 No diagnostic-only backend work
 
-Failure details/classification should derive from the efficient legal execution path. Do not add backend reads solely to enrich diagnostics when the operation can already classify the public outcome without them.
+Failure details/classification derive from the efficient legal execution path. Do not add reads solely for richer diagnostics.
 
 ---
 
 # 12. Concurrency boundary
 
-The first-phase findings above intentionally do not freeze lock planning, collision restart realization, rename-race synchronization or final transaction rendezvous.
+First-phase findings do not freeze lock planning, collision restart realization, rename-race synchronization or final transaction rendezvous.
 
-The later concurrency sweep must prove, among other things:
+Later concurrency review must prove at least:
 
 ```text
-CREATE exact-view arbitration / collision classification
+CREATE exact-view arbitration/collision classification
 coherent lifecycle display metadata under Object/Resolution renames
 SCHEMA_CHANGE final target admission
-DATA_CHANGE/SCHEMA_CHANGE current fact generation/lock behavior
+DATA_CHANGE/SCHEMA_CHANGE current fact lock/generation behavior
 DELETE before-state capture vs concurrent metadata mutation
 ```
-
-Do not reinterpret first-phase read/DML simplifications as final concurrency protocols.
 
 ---
 
 # 13. Current review order
 
-Before any route-level payload/read-shape or deep mutation optimization work, close the factual Relationship **functional capability coverage gate**.
+Before route-level DTO/read-shape or deep mutation optimization work, explicitly close the factual Relationship **functional capability coverage gate**.
 
-Current sequence:
-
-```text
-1. enumerate caller/domain capabilities already covered by AS-IS
-2. examine plausible missing capabilities one at a time against concrete caller need
-3. explicitly ratify required capabilities or reject/defer them
-4. only when functional coverage is closed, review exact public contracts/read shapes
-5. then continue the route-by-route data-path/concurrency/physical sweep
-```
-
-Coverage checkpoint already closed:
+Current candidate coverage closure is:
 
 ```text
-global Relationship discovery/query
-    -> real functional need
-    -> deferred to M5 Search API
-    -> no generic root Relationship collection required in M4
+M4 required factual Relationship capabilities
+    CREATE
+    global GET by relationship_id
+    Object-scoped Relationship collection
+    DATA_CHANGE
+    SCHEMA_CHANGE
+    DELETE
+
+recognized but outside M4
+    global Relationship discovery -> M5 Search API
+
+not required as separate M4 capabilities
+    Object-scoped single-Relationship detail
+    endpoint reassignment/repointing preserving relationship_id
 ```
 
-Current next coverage question:
-
-```text
-do callers need endpoint reassignment/reversal
-as an identity-preserving mutation of an existing Relationship,
-or is DELETE + CREATE the correct functional composition?
-```
-
-Do not discuss Object-scoped collection fields, `properties`, destination display data, pagination details or SQL realization until the coverage gate is closed.
-
-After functional coverage is explicitly closed, continue the family sweep through the ratified public operations rather than inventing theoretical endpoints.
-
-For each coverage decision:
-
-```text
-state functional problem
-state concrete AS-IS/caller evidence
-compare capability alternatives and semantic cost
-ratify explicitly
-update this owner
-re-read diff/current owner for consistency
-```
+If this coverage set is ratified as complete, the next phase is exact public-contract/read-shape review, followed by the route-by-route data-path/concurrency/physical sweep.
