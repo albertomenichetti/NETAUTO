@@ -1264,11 +1264,41 @@ failures:
 
 No DATA_CHANGE implementation/data-path/concurrency mechanism is implied by this public-contract closure. Exact semantic-cache use, current-state carrier, write shape, lifecycle physical carrier, locking/retry strategy and any Relationship generation mechanism remain later technical/concurrency decisions.
 
-Current next public-contract target:
+## 13.24 SCHEMA_CHANGE — route identity and Object-alignment principle RATIFIED
+
+The Relationship SCHEMA_CHANGE public route is ratified as:
 
 ```text
-POST /api/v1/core/relationships/{relationship_id}/schema-change
-    -> route identity and Object-alignment review
+POST /api/v1/core/relationships/{relationship_id}/schema
+```
+
+with:
+
+```text
+path parameter:
+    relationship_id: UUID, required
+
+query parameters: none
+```
+
+The M4 TO-BE route intentionally supersedes the AS-IS `/relationships/{relationship_id}/schema-change` path. `SCHEMA_CHANGE` remains the capability/lifecycle name, while `/schema` identifies the exact schema-binding sub-resource being mutated.
+
+This aligns the Relationship mutation surface with the already-consolidated Object M4 contract:
+
+```text
+POST /api/v1/core/objects/{object_id}/schema
+POST /api/v1/core/relationships/{relationship_id}/schema
+```
+
+The review principle is to keep Object and Relationship schema-mutation wire contracts and behavior analogous wherever their domain semantics permit. Any divergence must be justified by a concrete Relationship-specific semantic requirement rather than inherited from AS-IS shape.
+
+This checkpoint ratifies only route/path/query identity and the alignment principle. The exact Relationship request body, exact-target semantics, success response, same-version behavior and failure mapping remain OPEN and must be reviewed explicitly.
+
+Current next public-contract micro-point:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/schema
+    -> exact request body and exact-target command semantics, compared with Object schema mutation
 ```
 
 Ratified capability set to review contract-by-contract:
