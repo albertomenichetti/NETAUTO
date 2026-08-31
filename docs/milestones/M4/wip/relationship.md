@@ -1831,3 +1831,135 @@ GET /api/v1/core/relationships/{relationship_id}
     -> index sufficiency and EXPLAIN/BUFFERS architecture handoff
     -> final technical closure of the global GET
 ```
+
+## 14.3 GET global detail — projection decoding, operational ordering, index sufficiency and technical closure RATIFIED
+
+The global GET projector decodes the one-statement result directly into the ratified exact-detail representation. One successful exact runtime row maps to one public `RelationshipResolutionView`; there is no `RelationshipView` set conversion and no deduplication layer.
+
+Conceptual row shape:
+
+```text
+relationship_id
+relationship_definition_id
+relationship_definition_version
+properties
+
+resolution_id
+resolution_name
+
+from_object_id
+from_canonical_name
+
+to_object_id
+to_canonical_name
+```
+
+Projection classification is:
+
+```text
+zero SQL rows
+    -> factual Relationship root absent
+    -> 404 resource_not_found
+
+root row present + resolution_id absent
+    -> factual Relationship root exists but complete runtime closure is absent
+    -> persisted factual invariant corruption
+    -> 500 internal_error
+
+normal exact runtime rows
+    -> one public resolution item per exact row
+    -> no exact-row collapse or deduplication
+```
+
+`properties` is decoded as persisted factual JSON state and is not revalidated or re-canonicalized against RelationshipDefinitionVersion/DataType semantics. Repeated root columns across joined exact rows must be internally coherent; an impossible disagreement while decoding is `500 internal_error`, not a public domain outcome.
+
+The implementation may emit `resolutions` in deterministic operational order:
+
+```text
+resolution_id
+from_object_id
+to_object_id
+```
+
+This tuple is the exact runtime-row identity and depends only on stable identities. The ordering exists for reproducibility, testing and operational stability only; it carries no public/domain ordering meaning and clients must not rely on it.
+
+The one-statement snapshot is also the complete GET concurrency model:
+
+```text
+no explicit row locks
+no generation token
+no retry/stabilization loop
+no multi-statement coherent-read wrapper
+
+concurrent factual/display mutation
+    -> GET observes one PostgreSQL statement snapshot before or after the concurrent commit
+```
+
+Current physical access paths are sufficient for correctness and the expected normal plan:
+
+```text
+relationships PK
+    -> root lookup by relationship_id
+
+ix_runtime_resolutions_relationship(relationship_id)
+    -> bounded exact closure lookup
+
+relationship_resolutions PK
+    -> current Resolution display lookup
+
+objects PK
+    -> current from/to Object display lookup
+```
+
+No new index is required by the M4 logical architecture for this GET. Because the route is expected to be potentially very high frequency, architecture/performance work must nevertheless compare the current runtime-closure index with the optional covering/order-preserving candidate:
+
+```text
+ix_runtime_resolutions_relationship_cover
+(
+    relationship_id,
+    resolution_id,
+    from_object_id,
+    to_object_id
+)
+INCLUDE (relationship_definition_id)
+```
+
+The candidate could combine owner lookup, deterministic exact-row order and complete runtime-row projection columns, and may permit index-only access when PostgreSQL visibility conditions allow. It also duplicates columns already present in the runtime-closure PK, enlarges the index and adds CREATE/DELETE/storage/cache-footprint cost.
+
+Therefore:
+
+```text
+existing ix_runtime_resolutions_relationship
+    -> architecture-sufficient default
+
+covering candidate
+    -> performance handoff only
+    -> adopt only if realistic high-QPS benchmarking and
+       EXPLAIN (ANALYZE, BUFFERS) show a material net benefit
+```
+
+The global factual Relationship GET technical sweep is now CLOSED for M4 discovery:
+
+```text
+public contract                     CLOSED
+materialized exact closure source   CLOSED
+live mutable display joins          CLOSED
+cache decision                      CLOSED
+additional display denormalization  EVALUATED / NOT SELECTED
+one-statement hot-path shape         CLOSED
+404 vs corruption boundary          CLOSED
+projection decoding                 CLOSED
+operational ordering                CLOSED
+concurrency model                    CLOSED
+logical index sufficiency           CLOSED
+physical covering-index choice      ARCHITECTURE/PERFORMANCE HANDOFF
+```
+
+This technical closure remains an M4 WIP checkpoint and does not authorize implementation or promote the design to normative architecture.
+
+Current next technical frontier:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+    -> Object-scoped Relationship collection technical realization
+```
