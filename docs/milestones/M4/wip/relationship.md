@@ -1089,11 +1089,62 @@ The review principle is to keep Object and Relationship property-mutation wire c
 
 This checkpoint ratifies only route/path/query identity and the alignment principle. The exact Relationship request body, success response, no-op semantics and failure mapping remain OPEN and must be reviewed explicitly.
 
+## 13.20 DATA_CHANGE — request body RATIFIED
+
+The Relationship properties-mutation request body is intentionally identical field-for-field and rule-for-rule to the already-consolidated Object properties-mutation body.
+
+Conceptual transport model:
+
+```text
+RelationshipPropertiesMutationBody
+    operations: PropertyOperation[1..N]
+
+PropertyOperation
+    SET
+        property: string
+        value: JsonValue
+
+    REMOVE
+        property: string
+```
+
+Ratified structural/request semantics are:
+
+```text
+operations
+    required
+    non-empty
+
+same property
+    at most once per request
+
+SET
+    requires value
+
+REMOVE
+    forbids value
+
+array order
+    no semantic mutation-order meaning
+
+whole request
+    atomic
+    no partial success
+```
+
+Unknown body fields are rejected by the strict public-body contract.
+
+No Relationship-specific wire-level property-name regex is introduced. `property` is structurally a string; whether that property exists and whether the requested effect is admissible belong to semantic validation against the Relationship's exact pinned RelationshipDefinitionVersion schema.
+
+A `SET` operation with `value: null` is not interpreted as `REMOVE` or omission. It remains a structurally meaningful SET attempt whose null runtime value is semantically invalid under the runtime property model.
+
+This checkpoint ratifies request shape and request-operation semantics only. Exact success response, semantic no-op behavior and complete failure mapping remain OPEN and must be reviewed explicitly.
+
 Current next public-contract micro-point:
 
 ```text
 POST /api/v1/core/relationships/{relationship_id}/properties
-    -> exact request body, compared field-for-field with Object properties mutation
+    -> success response and semantic no-op behavior, compared with Object properties mutation
 ```
 
 Ratified capability set to review contract-by-contract:
