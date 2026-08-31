@@ -828,7 +828,7 @@ cursor present
 
 The cursor is an opaque continuation token. Clients must not parse, construct or assign semantic meaning to its contents. Offset pagination is not part of this contract.
 
-This checkpoint ratifies the existence of cursor-based keyset pagination only. The exact stable public ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN and must be reviewed explicitly.
+This checkpoint ratifies the existence of cursor-based keyset pagination only. Cursor payload/encoding, cursor-to-scope/filter binding rules and invalid-cursor semantics remain OPEN and must be reviewed explicitly.
 
 ## 13.12 GET Object-scoped collection — page limit RATIFIED
 
@@ -862,7 +862,7 @@ no name query parameter
 body: none
 ```
 
-The exact stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
+Cursor payload/encoding, cursor-to-scope/filter binding rules and invalid-cursor semantics remain OPEN.
 
 ## 13.13 GET Object-scoped collection — item representation RATIFIED
 
@@ -910,7 +910,7 @@ The path `object_id` is intentionally not repeated in every item. The item also 
 
 `destination_object.canonical_name` and `name` are current mutable display metadata and are not part of factual Relationship identity.
 
-The stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
+Cursor payload/encoding, cursor-to-scope/filter binding rules and invalid-cursor semantics remain OPEN.
 
 ## 13.14 GET Object-scoped collection — page envelope RATIFIED
 
@@ -933,13 +933,44 @@ next_cursor
     null when the current page has no continuation
 ```
 
-The page envelope does not expose a total count and does not introduce offset/page-number semantics. The cursor remains opaque as ratified above; exact ordering/keyset and cursor validity/binding rules remain separate decisions.
+The page envelope does not expose a total count and does not introduce offset/page-number semantics. The cursor remains opaque as ratified above; cursor validity/binding rules remain separate decisions.
+
+## 13.15 GET Object-scoped collection — ordering/keyset semantics RATIFIED
+
+The collection is emitted in a deterministic order solely to support stable keyset continuation.
+
+Public semantics are:
+
+```text
+items order
+    deterministic for pagination continuity
+    no domain or business meaning
+    clients MUST NOT rely on item position/order
+
+keyset boundary
+    server-defined and carried only by the opaque cursor
+    based on stable identities sufficient to distinguish Object-relative public items
+    independent from mutable display/factual state
+```
+
+In particular, the pagination key must not depend on:
+
+```text
+RelationshipResolution.name
+Object.canonical_name
+Relationship.properties
+relationship_definition_version
+```
+
+because those values can change while the factual Relationship or its endpoint binding remains the same.
+
+The implementation may use stable fact/endpoint identities plus a stable resolution-derived tie-breaker when more than one distinct Object-relative perspective of the same fact reaches the same destination. The exact internal key tuple is intentionally not part of the public REST contract and remains a technical realization detail; only its stability and opacity are public requirements.
 
 Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> stable ordering/keyset semantics
+    -> cursor scope/filter binding and invalid-cursor semantics
 ```
 
 Ratified capability set to review contract-by-contract:
