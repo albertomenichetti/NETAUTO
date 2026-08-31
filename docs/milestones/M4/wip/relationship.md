@@ -864,11 +864,59 @@ body: none
 
 The exact stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
 
+## 13.13 GET Object-scoped collection — item representation RATIFIED
+
+Each collection item is the factual Relationship as seen from the Object fixed by the path, not the global lossless runtime closure.
+
+The ratified item shape is:
+
+```text
+ObjectRelationshipItem
+    relationship_id: UUID
+    relationship_definition_id: UUID
+    relationship_definition_version: positive integer
+    properties: object
+    name: string
+    destination_object: ObjectReference
+
+ObjectReference
+    id: UUID
+    canonical_name: string
+```
+
+Semantics:
+
+```text
+relationship_id
+    stable factual Relationship identity and navigation key to global detail
+
+relationship_definition_id
+relationship_definition_version
+    current exact Definition binding of the fact; retained in the item so the
+    Object-scoped projection remains self-contained for common callers
+
+properties
+    current factual Relationship property state
+
+name
+    current mutable display/semantic label of the Object-relative perspective;
+    returned as display context but not accepted as an M4 query filter
+
+destination_object
+    current Object reference reached from the Object fixed by the route path
+```
+
+The path `object_id` is intentionally not repeated in every item. The item also does not expose a single `resolution_id`: multiple exact runtime resolution rows can collapse to the same Object-relative public semantic view, so selecting one exact resolution identity would be arbitrary. Callers that need the complete lossless exact resolution closure use the global Relationship detail endpoint.
+
+`destination_object.canonical_name` and `name` are current mutable display metadata and are not part of factual Relationship identity.
+
+The exact page envelope, stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
+
 Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> collection item representation
+    -> page envelope and stable ordering/keyset semantics
 ```
 
 Ratified capability set to review contract-by-contract:
