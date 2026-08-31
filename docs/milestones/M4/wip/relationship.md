@@ -1729,3 +1729,105 @@ GET /api/v1/core/relationships/{relationship_id}
     -> required-reference join semantics (INNER vs LEFT)
     -> root/closure corruption handling and 404 vs 500 boundary
 ```
+
+## 14.2 GET global detail — hot-path one-statement projection and additional denormalization evaluation RATIFIED
+
+The preceding open join-polarity point is now resolved for the normal GET path. This route is expected to be a potentially very high-frequency data-plane read, so minimizing PostgreSQL round trips is a first-order requirement. The target remains **one business SQL statement** rather than splitting factual/closure state and display metadata into multiple reads.
+
+The logical join shape is:
+
+```text
+relationships AS r
+    LEFT JOIN enriched_runtime_closure AS c
+
+where enriched_runtime_closure is:
+
+runtime_relationship_resolutions AS rr
+    INNER JOIN relationship_resolutions AS resolution
+    INNER JOIN objects AS from_object
+    INNER JOIN objects AS to_object
+```
+
+The outer `LEFT JOIN` is required only at the factual-root boundary so the projector can distinguish:
+
+```text
+no relationships root row
+    -> 404 resource_not_found
+
+relationships root exists but no runtime closure row is visible
+    -> persisted factual invariant corruption
+    -> 500 internal_error
+```
+
+Inside one existing runtime row, Resolution and endpoint Object references are required FK-backed dependencies. They are therefore consumed through `INNER JOIN` in the normal projection rather than turning every required reference into a nullable public carrier. The GET still does not re-derive expected closure membership from model topology; structurally valid but semantically incomplete persisted closure remains a write/invariant responsibility, not read-time recertification.
+
+Normal successful read character is therefore:
+
+```text
+1 PostgreSQL business statement
+1 statement snapshot
+0 follow-up display-name statements
+0 worker-cache dependency
+0 semantic/schema/ancestry reconstruction
+cost proportional only to the small exact runtime closure cardinality
+```
+
+### Additional display-metadata denormalization explicitly evaluated and not selected
+
+M4 explicitly evaluated a further denormalization **on top of** the already-required `runtime_relationship_resolutions` structural materialization, specifically to make this very hot GET even more self-contained. The evaluated direction was conceptually:
+
+```text
+runtime_relationship_resolutions
+    relationship_id
+    relationship_definition_id
+    resolution_id
+    from_object_id
+    to_object_id
+
+    + resolution_name
+    + from_object_canonical_name
+    + to_object_canonical_name
+```
+
+The potential read-side benefit is understood: the GET could eliminate the current-name lookup through `relationship_resolutions` and the two endpoint `objects` PK joins, leaving the factual root plus an almost response-ready runtime closure.
+
+That additional denormalization is **not selected at the current M4 checkpoint** because the expected benefit does not currently justify the new maintenance and consistency obligations:
+
+```text
+runtime closure cardinality per factual Relationship is very small
+current live joins are highly selective/index-backed and remain inside one statement
+RelationshipResolution.name is mutable, even if RENAME is expected to be rare
+Object.canonical_name is mutable data-plane state
+copying Object canonical names would make Object RENAME fan out across every
+    runtime Relationship row in which the Object participates
+all copied display fields would require atomic maintenance/backfill/invariant rules
+mutable display metadata would be mixed into a table whose primary role is
+    structural factual closure + exact-view conflict ownership
+```
+
+The rarity of `RelationshipResolution` rename was considered explicitly. It makes copying `resolution_name` technically feasible, but does not by itself make it advantageous because the saved lookup is already a selective identity join and the two Object display joins would remain unless their canonical names were duplicated as well. Duplicating those Object names has the materially worse write-amplification consequence on `Object.RENAME`.
+
+Therefore the current direction is:
+
+```text
+runtime_relationship_resolutions
+    -> keep structural factual closure only
+
+relationship_resolutions.name
+objects.canonical_name
+    -> remain live mutable PostgreSQL truth
+
+GET global Relationship
+    -> one live joined statement
+```
+
+This is a measured-design checkpoint rather than a permanent prohibition. Additional display denormalization may be reopened later only if realistic high-QPS evidence / `EXPLAIN (ANALYZE, BUFFERS)` / latency profiling shows that these identity joins are a material bottleneck relative to the added write amplification and consistency complexity.
+
+Current next technical micro-point:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+    -> exact projection decoding / deterministic operational ordering
+    -> index sufficiency and EXPLAIN/BUFFERS architecture handoff
+    -> final technical closure of the global GET
+```
