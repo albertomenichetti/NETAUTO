@@ -1511,11 +1511,40 @@ failures:
 
 No SCHEMA_CHANGE implementation/data-path/concurrency mechanism is implied by this public-contract closure. Exact semantic-cache/MigrationPlan realization, current-state carrier, write/lifecycle shape, locking/retry strategy and any Relationship generation mechanism remain later technical/concurrency decisions.
 
-Current next public-contract target:
+## 13.29 DELETE — route and request surface RATIFIED
+
+The Relationship DELETE public route is ratified as:
 
 ```text
 DELETE /api/v1/core/relationships/{relationship_id}
-    -> route/input/success and public failure semantics
+```
+
+with:
+
+```text
+path parameter:
+    relationship_id: UUID, required
+
+query parameters: none
+request body: none
+```
+
+The factual Relationship is deleted directly through its lifetime-global identity. No subordinate `/delete` command route or Object-scoped deletion surface is introduced.
+
+This request surface is intentionally aligned with Object DELETE:
+
+```text
+DELETE /api/v1/core/objects/{object_id}
+DELETE /api/v1/core/relationships/{relationship_id}
+```
+
+This checkpoint ratifies only method/path/request carriers. Success acknowledgement, repeated/missing-target behavior and complete public failure mapping remain OPEN and are reviewed explicitly next.
+
+Current next public-contract micro-point:
+
+```text
+DELETE /api/v1/core/relationships/{relationship_id}
+    -> success acknowledgement and missing/repeated DELETE semantics, compared with Object DELETE
 ```
 
 Ratified capability set to review contract-by-contract:
