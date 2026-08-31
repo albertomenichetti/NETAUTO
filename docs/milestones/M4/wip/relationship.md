@@ -577,10 +577,10 @@ The CREATE request body is ratified as a strict object with exactly these public
 
 ```text
 resolution_id: UUID                         required
-from_object_id: UUID                        required
-to_object_id: UUID                          required
+from_object_id: UUID                       required
+to_object_id: UUID                         required
 relationship_definition_version: integer   optional, positive, non-null when present
-properties: object                          optional, non-null when present, omission -> {}
+properties: object                         optional, non-null when present, omission -> {}
 ```
 
 Semantic meaning:
@@ -1564,22 +1564,90 @@ Consequently, repeating DELETE after a previously committed successful deletion 
 
 This checkpoint ratifies only success acknowledgement and missing/repeated-target behavior. Complete public failure mapping and precedence remain OPEN and are reviewed next.
 
-Current next public-contract micro-point:
+## 13.31 DELETE — failure mapping and precedence RATIFIED
+
+The complete public failure set is:
+
+```text
+400 invalid_request
+    malformed relationship_id carrier
+    any query parameter
+    request body present
+
+404 resource_not_found
+    selected factual Relationship does not exist
+    including repeated DELETE after a previously committed successful deletion
+
+500 internal_error
+    required persisted factual Relationship/root/closure state unexpectedly inconsistent
+    unexpected persistence/lifecycle/invariant failure
+    eventual bounded concurrency stabilization failure, if the later technical realization requires such retries
+```
+
+Relationship DELETE has no normal `409` or `422` outcome. No current Relationship-owned runtime closure row is an external lifetime blocker to its owning factual Relationship; owned closure removal is part of the deletion transition rather than a caller-resolvable conflict.
+
+Public precedence is:
+
+```text
+static request validation
+    -> authoritative current Relationship existence
+    -> atomic factual deletion + required DELETE lifecycle transition
+    -> 204 No Content
+```
+
+If another operation has already removed the factual Relationship before authoritative existence is established, the observable outcome is `404 resource_not_found`. Technical contention/retry behavior does not by itself create a public `409` class.
+
+## 13.32 DELETE — public contract CLOSED
+
+The complete ratified Relationship DELETE public contract is:
 
 ```text
 DELETE /api/v1/core/relationships/{relationship_id}
-    -> complete failure mapping and precedence, then DELETE/public REST sweep closure
+path:
+    relationship_id: UUID, required
+query: none
+body: none
+success:
+    204 No Content
+    no body
+absence/repeated delete:
+    404 resource_not_found
+    resource_type = relationship
+failures:
+    malformed/static request -> 400 invalid_request
+    missing Relationship -> 404 resource_not_found
+    impossible persisted/infrastructure failure -> 500 internal_error
+    no normal 409 or 422
 ```
 
-Ratified capability set to review contract-by-contract:
+No DELETE implementation/data-path/concurrency mechanism is implied by this public-contract closure. Exact before-state carrier, lifecycle physical carrier, delete statement shape, locking/retry strategy and persistence/FK realization remain later technical/concurrency decisions.
+
+## 13.33 Exact public REST contract sweep — CLOSED
+
+The factual Relationship exact public REST contract sweep is ratified as complete for all six M4 capabilities:
 
 ```text
-CREATE
-GET global detail by relationship_id
-GET Object-scoped Relationship collection
-DATA_CHANGE
-SCHEMA_CHANGE
-DELETE
+CREATE                                  CLOSED
+GET global detail by relationship_id    CLOSED
+GET Object-scoped Relationship collection CLOSED
+DATA_CHANGE                             CLOSED
+SCHEMA_CHANGE                           CLOSED
+DELETE                                  CLOSED
 ```
 
-Do not reopen global Relationship discovery in this pass; it remains owned by M5 Search API unless a new M4 caller requirement explicitly reopens that decision.
+The resulting M4 public surface is:
+
+```text
+POST   /api/v1/core/relationships
+GET    /api/v1/core/relationships/{relationship_id}
+GET    /api/v1/core/objects/{object_id}/relationships
+POST   /api/v1/core/relationships/{relationship_id}/properties
+POST   /api/v1/core/relationships/{relationship_id}/schema
+DELETE /api/v1/core/relationships/{relationship_id}
+```
+
+No additional factual Relationship public capability is introduced by this sweep. Global Relationship discovery remains owned by M5 Search API, Object-scoped single detail remains unnecessary absent a new caller requirement, and endpoint reassignment remains DELETE + CREATE with new factual identity.
+
+This closure freezes only the reviewed public contracts at the current M4 discovery checkpoint. It does not authorize implementation and does not promote this WIP to normative architecture.
+
+The Relationship review frontier now returns to technical realization/concurrency/physical revalidation. Sections 4–12 remain candidate input for that phase and must be revalidated against the now-ratified public contracts rather than treated as automatically approved implementation design.
