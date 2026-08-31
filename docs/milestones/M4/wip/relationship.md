@@ -756,13 +756,34 @@ success:
 
 No global-GET implementation/data-path decision is implied by this contract closure.
 
-Current next public-contract target:
+## 13.8 GET Object-scoped collection — route/path RATIFIED
+
+The Object-scoped factual Relationship collection route is ratified as:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
 ```
 
-Start by revalidating route identity and public request inputs before deciding collection item shape, filters or pagination semantics.
+with:
+
+```text
+path parameter:
+    object_id: UUID, required
+
+request body: none
+query parameters: OPEN
+```
+
+The Object is the navigation context, not the owner of the factual Relationship identity. This route answers which factual Relationships are visible from the selected Object and remains distinct from global Relationship discovery/query, which is owned by M5 Search API.
+
+No query parameter is ratified by this checkpoint. In particular, the current AS-IS `relationship_definition_id`, `name`, `cursor` and `limit` parameters remain separate open contract decisions and must not be inherited automatically.
+
+Current next public-contract micro-point:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+    -> relationship_definition_id query filter
+```
 
 Ratified capability set to review contract-by-contract:
 
