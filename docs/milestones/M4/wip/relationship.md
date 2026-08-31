@@ -577,10 +577,10 @@ The CREATE request body is ratified as a strict object with exactly these public
 
 ```text
 resolution_id: UUID                         required
-from_object_id: UUID                       required
-to_object_id: UUID                         required
+from_object_id: UUID                        required
+to_object_id: UUID                          required
 relationship_definition_version: integer   optional, positive, non-null when present
-properties: object                         optional, non-null when present, omission -> {}
+properties: object                          optional, non-null when present, omission -> {}
 ```
 
 Semantic meaning:
