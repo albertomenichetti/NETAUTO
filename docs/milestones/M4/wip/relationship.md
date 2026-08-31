@@ -571,15 +571,47 @@ query parameters: none
 
 The factual Relationship is a global fact with its own lifetime identity, so CREATE is rooted at the global Relationship collection rather than subordinated under one Object or one RelationshipDefinition.
 
-This checkpoint decides only method/path and absence of path/query input. CREATE request-body and success-response contracts remain open and must be ratified separately.
+## 13.2 CREATE — request body RATIFIED
 
-Current next CREATE contract micro-point:
+The CREATE request body is ratified as a strict object with exactly these public fields:
 
 ```text
-how the request body selects the Relationship semantic perspective/capability
+resolution_id: UUID                         required
+from_object_id: UUID                        required
+to_object_id: UUID                          required
+relationship_definition_version: integer   optional, positive, non-null when present
+properties: object                          optional, non-null when present, omission -> {}
 ```
 
-AS-IS uses public `resolution_id`; this must be revalidated explicitly rather than inherited automatically.
+Semantic meaning:
+
+```text
+resolution_id
+    selects the public RelationshipResolution / semantic perspective used to create the fact
+
+from_object_id
+    Object occupying the selected resolution's from side
+
+to_object_id
+    Object occupying the selected resolution's to side
+
+relationship_definition_version omitted
+    select the current default version of the RelationshipDefinition owning resolution_id
+
+relationship_definition_version present
+    select that explicit exact positive version
+
+properties omitted
+    equivalent to an empty property candidate {}
+```
+
+`resolution_id` remains the public selector rather than `name` because resolution identity is stable while its display name is renameable. Supplying `relationship_definition_id` in addition to `resolution_id` would be redundant because the selected resolution already belongs to exactly one RelationshipDefinition.
+
+`from_object_id` and `to_object_id` remain directional rather than anonymous endpoint fields. Their meaning is interpreted against the selected resolution's public `from_template_id` / `to_template_id` semantics, including symmetric definitions.
+
+Omission is not `null`: optional fields may be omitted to request default/empty semantics, but explicit `null` is not a valid substitute. Unknown body fields are rejected by the strict public-body contract.
+
+CREATE success status/header/body remain open and are the next CREATE contract micro-point.
 
 Ratified capability set to review contract-by-contract:
 
