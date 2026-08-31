@@ -828,7 +828,25 @@ cursor present
 
 The cursor is an opaque continuation token. Clients must not parse, construct or assign semantic meaning to its contents. Offset pagination is not part of this contract.
 
-This checkpoint ratifies the existence of cursor-based keyset pagination only. The exact stable public ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN and must be reviewed explicitly. `limit` also remains OPEN.
+This checkpoint ratifies the existence of cursor-based keyset pagination only. The exact stable public ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN and must be reviewed explicitly.
+
+## 13.12 GET Object-scoped collection — page limit RATIFIED
+
+The collection exposes the optional page-size parameter:
+
+```text
+limit: positive integer, optional
+```
+
+with exact public bounds:
+
+```text
+omitted -> 100
+minimum -> 1
+maximum -> 500
+```
+
+`limit` bounds only the requested page size. It does not alter collection membership or introduce offset semantics, and it composes with the ratified opaque keyset `cursor`.
 
 Current ratified request surface is therefore:
 
@@ -839,16 +857,18 @@ path:
 query:
     relationship_definition_id: UUID, optional
     cursor: opaque string, optional
-    limit: OPEN
+    limit: positive integer 1..500, optional, default 100
 no name query parameter
 body: none
 ```
+
+The exact stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
 
 Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> limit query parameter
+    -> collection item representation
 ```
 
 Ratified capability set to review contract-by-contract:
