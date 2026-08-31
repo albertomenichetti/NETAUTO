@@ -522,9 +522,9 @@ DELETE before-state capture vs concurrent metadata mutation
 
 ---
 
-# 13. Next pass — exact public REST contract review
+# 13. Exact public REST contract review
 
-The functional capability coverage gate is closed. The next Relationship pass reviews the six ratified M4 capabilities **one API at a time** to define the exact public REST contract before returning to technical realization.
+The functional capability coverage gate is closed. The Relationship pass reviews the six ratified M4 capabilities **one API at a time** to define the exact public REST contract before returning to technical realization.
 
 For each API, this pass owns only the public contract, including:
 
@@ -611,7 +611,54 @@ properties omitted
 
 Omission is not `null`: optional fields may be omitted to request default/empty semantics, but explicit `null` is not a valid substitute. Unknown body fields are rejected by the strict public-body contract.
 
-CREATE success status/header/body remain open and are the next CREATE contract micro-point.
+## 13.3 CREATE — success response RATIFIED
+
+Successful CREATE returns:
+
+```text
+201 Created
+Location: /api/v1/core/relationships/{new_relationship_id}
+```
+
+with:
+
+```text
+success body: none
+```
+
+The new factual `relationship_id` is server-generated. `Location` is the canonical acknowledgement carrier for the created resource identity; a duplicate `{id}` response body is unnecessary.
+
+CREATE does not return the global Relationship GET representation. Callers that need the canonical current factual representation follow the `Location` and use `GET /relationships/{relationship_id}`. This keeps mutation acknowledgement independent from GET richness and avoids coupling CREATE to the global detail `views` contract.
+
+## 13.4 CREATE — public contract CLOSED
+
+The complete ratified CREATE public contract is therefore:
+
+```text
+POST /api/v1/core/relationships
+path params: none
+query params: none
+body:
+    resolution_id required UUID
+    from_object_id required UUID
+    to_object_id required UUID
+    relationship_definition_version optional positive integer, non-null when present
+    properties optional object, non-null when present, omission -> {}
+success:
+    201 Created
+    Location: /api/v1/core/relationships/{new_relationship_id}
+    no body
+```
+
+No CREATE implementation/data-path decision is implied by this contract closure.
+
+Current next public-contract target:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+```
+
+Start by revalidating method/path, path input and absence/presence of query/body before deciding the exact success representation.
 
 Ratified capability set to review contract-by-contract:
 
