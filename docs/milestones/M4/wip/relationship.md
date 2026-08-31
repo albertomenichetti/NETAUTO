@@ -569,7 +569,7 @@ path parameters:  none
 query parameters: none
 ```
 
-The factual Relationship is a global fact with its own lifetime identity, so CREATE is rooted at the global Relationship collection rather than subordinated under one Object or RelationshipDefinition.
+The factual Relationship is a global fact with its own lifetime identity, so CREATE is rooted at the global Relationship collection rather than subordinated under one Object or one RelationshipDefinition.
 
 ## 13.2 CREATE — request body RATIFIED
 
