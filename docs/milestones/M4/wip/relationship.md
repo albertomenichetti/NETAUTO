@@ -1182,11 +1182,93 @@ No additional PostgreSQL statement, lock round trip, schema/cache lookup or seco
 
 This public checkpoint deliberately does not introduce or ratify a Relationship generation/revision mechanism. Any such concurrency/freshness realization remains part of the later technical/concurrency sweep.
 
-Current next public-contract micro-point:
+## 13.22 DATA_CHANGE — failure mapping and precedence RATIFIED
+
+Relationship DATA_CHANGE follows the Object properties-mutation failure taxonomy wherever the domains are equivalent, with only the Relationship-schema differences that actually exist.
+
+Public failures are:
+
+```text
+400 invalid_request
+    malformed relationship_id carrier
+    any query parameter
+    malformed/static request body
+    operations missing or empty
+    unknown operation kind
+    duplicate operation for the same property
+    SET without value
+    REMOVE with value
+    unknown body fields
+
+404 resource_not_found
+    selected factual Relationship does not exist
+
+422 semantic_validation_failed
+    requested property does not exist in the exact pinned RelationshipDefinitionVersion
+    SET null
+    wrong SCALAR/LIST shape
+    primitive validation/canonicalization failure
+    exact DataTypeVersion constraint violation
+
+500 internal_error
+    required persisted exact Relationship schema/dependency unexpectedly missing or corrupt
+    unexpected persistence/lifecycle/invariant failure
+    eventual bounded concurrency stabilization failure, if the later technical realization requires such retries
+```
+
+Unlike Object DATA_CHANGE, Relationship DATA_CHANGE has no `REMOVE required` or `required LIST=[]` failure because the current Relationship property schema has no `required` property dimension.
+
+There is no normal `409` concurrency/business-conflict response for this capability. Any stale-attempt/retry mechanism introduced by the later concurrency realization is internal control flow unless a distinct domain conflict is independently proven.
+
+Public precedence is:
+
+```text
+static transport/request validation
+    -> authoritative current Relationship existence/state
+    -> requested-effect semantic validation against the exact pinned schema
+    -> candidate/no-op derivation
+    -> real mutation commit when required
+```
+
+A factual Relationship pinned to a RelationshipDefinitionVersion that is now DEPRECATED remains mutable. DATA_CHANGE does not create a new model-plane binding and therefore does not require the current exact pin to be PUBLISHED, default or latest.
+
+## 13.23 DATA_CHANGE — public contract CLOSED
+
+The complete ratified Relationship DATA_CHANGE public contract is:
 
 ```text
 POST /api/v1/core/relationships/{relationship_id}/properties
-    -> failure mapping and precedence, compared with Object properties mutation
+path:
+    relationship_id: UUID, required
+query: none
+body:
+    operations: PropertyOperation[1..N], required
+    SET    { op, property, value }
+    REMOVE { op, property }
+    same property at most once
+    array order has no mutation-order meaning
+    atomic / no partial success
+success:
+    204 No Content
+    no body
+no-op:
+    204 No Content
+    cheaply recognized no-op may elide UPDATE and DATA_CHANGE lifecycle
+failures:
+    malformed/static request -> 400 invalid_request
+    missing Relationship -> 404 resource_not_found
+    invalid requested property effect/value -> 422 semantic_validation_failed
+    impossible persisted/infrastructure failure -> 500 internal_error
+    no normal 409
+```
+
+No DATA_CHANGE implementation/data-path/concurrency mechanism is implied by this public-contract closure. Exact semantic-cache use, current-state carrier, write shape, lifecycle physical carrier, locking/retry strategy and any Relationship generation mechanism remain later technical/concurrency decisions.
+
+Current next public-contract target:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/schema-change
+    -> route identity and Object-alignment review
 ```
 
 Ratified capability set to review contract-by-contract:
