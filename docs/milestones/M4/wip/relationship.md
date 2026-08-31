@@ -569,7 +569,7 @@ path parameters:  none
 query parameters: none
 ```
 
-The factual Relationship is a global fact with its own lifetime identity, so CREATE is rooted at the global Relationship collection rather than subordinated under one Object or one RelationshipDefinition.
+The factual Relationship is a global fact with its own lifetime identity, so CREATE is rooted at the global Relationship collection rather than subordinated under one Object or RelationshipDefinition.
 
 ## 13.2 CREATE — request body RATIFIED
 
@@ -1540,11 +1540,35 @@ DELETE /api/v1/core/relationships/{relationship_id}
 
 This checkpoint ratifies only method/path/request carriers. Success acknowledgement, repeated/missing-target behavior and complete public failure mapping remain OPEN and are reviewed explicitly next.
 
+## 13.30 DELETE — success and missing/repeated-target semantics RATIFIED
+
+Relationship DELETE follows the already-consolidated Object DELETE success/absence semantics.
+
+Successful deletion of an existing factual Relationship returns:
+
+```text
+204 No Content
+```
+
+with no response body. DELETE does not return the deleted Relationship representation.
+
+An absent target is not treated as convergent success:
+
+```text
+relationship_id does not identify a current factual Relationship
+    -> 404 resource_not_found
+       resource_type = relationship
+```
+
+Consequently, repeating DELETE after a previously committed successful deletion also returns `404 resource_not_found`; the operation does not collapse "already absent" into another `204` success.
+
+This checkpoint ratifies only success acknowledgement and missing/repeated-target behavior. Complete public failure mapping and precedence remain OPEN and are reviewed next.
+
 Current next public-contract micro-point:
 
 ```text
 DELETE /api/v1/core/relationships/{relationship_id}
-    -> success acknowledgement and missing/repeated DELETE semantics, compared with Object DELETE
+    -> complete failure mapping and precedence, then DELETE/public REST sweep closure
 ```
 
 Ratified capability set to review contract-by-contract:
