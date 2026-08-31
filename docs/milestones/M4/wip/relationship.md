@@ -632,7 +632,7 @@ success body: none
 
 The new factual `relationship_id` is server-generated. `Location` is the canonical acknowledgement carrier for the created resource identity; a duplicate `{id}` response body is unnecessary.
 
-CREATE does not return the global Relationship GET representation. Callers that need the canonical current factual representation follow the `Location` and use `GET /relationships/{relationship_id}`. This keeps mutation acknowledgement independent from GET richness and avoids coupling CREATE to the global detail `views` contract.
+CREATE does not return the global Relationship GET representation. Callers that need the canonical current factual representation follow the `Location` and use `GET /relationships/{relationship_id}`. This keeps mutation acknowledgement independent from GET richness and avoids coupling CREATE to the global detail contract.
 
 ## 13.4 CREATE — public contract CLOSED
 
@@ -676,13 +676,90 @@ request body: none
 
 `relationship_id` is the factual Relationship lifetime-global identity. The route is rooted globally rather than under an Object or RelationshipDefinition because those entities are context/model inputs, not owners of the factual Relationship identity.
 
-This checkpoint decides only method/path and request inputs. The exact successful response representation remains open and is the next GET contract micro-point.
+## 13.6 GET global detail — success representation shape RATIFIED
 
-Current next public-contract target:
+Successful global detail returns `200 OK` with the factual root state plus the **complete exact runtime resolution closure**, not the deduplicated Object-relative `views` projection used for navigation.
+
+Conceptual response:
+
+```text
+RelationshipDetail
+    id: UUID
+    relationship_definition_id: UUID
+    relationship_definition_version: positive integer
+    properties: object
+    resolutions: array<RelationshipResolutionView>
+
+RelationshipResolutionView
+    resolution_id: UUID
+    name: string
+    from_object: ObjectReference
+    to_object: ObjectReference
+
+ObjectReference
+    id: UUID
+    canonical_name: string
+```
+
+Example shape:
+
+```json
+{
+  "id": "R100",
+  "relationship_definition_id": "D10",
+  "relationship_definition_version": 3,
+  "properties": {
+    "weight": 10
+  },
+  "resolutions": [
+    {
+      "resolution_id": "RR1",
+      "name": "hosts",
+      "from_object": {
+        "id": "A",
+        "canonical_name": "server-a"
+      },
+      "to_object": {
+        "id": "B",
+        "canonical_name": "rack-1"
+      }
+    }
+  ]
+}
+```
+
+Semantics:
+
+```text
+resolutions
+    complete lossless exact closure of the factual Relationship
+    no collapse/deduplication into Object-relative semantic views
+
+resolution_id
+    stable public identity of the exact RelationshipResolution represented by the closure row
+
+name
+    current mutable display name of that RelationshipResolution
+
+from_object / to_object
+    current Object references occupying the exact resolution direction
+
+ObjectReference.canonical_name
+    current mutable Object display metadata
+    not part of Relationship or resolution identity
+```
+
+The global detail intentionally exposes the resolution identities because its role is to represent the factual Relationship losslessly. The Object-scoped collection remains the natural owner for a perspective-oriented/deduplicated navigation projection.
+
+The response shape does not imply that Resolution names or Object canonical names are copied into factual persistence; they are current public display metadata.
+
+The ordering contract of `resolutions` is still OPEN and must be decided explicitly before the global GET public contract is closed.
+
+Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/relationships/{relationship_id}
-    -> exact 200 response representation
+    -> public ordering semantics of resolutions
 ```
 
 Ratified capability set to review contract-by-contract:
