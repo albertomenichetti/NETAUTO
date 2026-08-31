@@ -1140,11 +1140,53 @@ A `SET` operation with `value: null` is not interpreted as `REMOVE` or omission.
 
 This checkpoint ratifies request shape and request-operation semantics only. Exact success response, semantic no-op behavior and complete failure mapping remain OPEN and must be reviewed explicitly.
 
+## 13.21 DATA_CHANGE — success response and semantic no-op policy RATIFIED
+
+Relationship DATA_CHANGE follows the already-consolidated Object properties-mutation success/no-op contract.
+
+Successful real changes return:
+
+```text
+204 No Content
+```
+
+with no response body. The canonical current Relationship representation remains owned by `GET /api/v1/core/relationships/{relationship_id}`.
+
+A semantic no-op also returns:
+
+```text
+204 No Content
+```
+
+When no-op recognition falls naturally out of applying the requested operations to current canonical Relationship properties, the implementation may elide persistence/history work:
+
+```text
+cheaply recognized no-op
+    -> no Relationship properties UPDATE
+    -> no DATA_CHANGE lifecycle event
+```
+
+Canonical examples are:
+
+```text
+SET p = canonical V
+    current p == V
+        -> no-op
+
+REMOVE p
+    p already absent
+        -> no-op
+```
+
+No additional PostgreSQL statement, lock round trip, schema/cache lookup or second whole-map equality pass is introduced solely to prove a no-op. If classifying a request as a no-op would require material extra work, normal persisted mutation behavior remains allowed; throughput is preferred over artificial no-op classification.
+
+This public checkpoint deliberately does not introduce or ratify a Relationship generation/revision mechanism. Any such concurrency/freshness realization remains part of the later technical/concurrency sweep.
+
 Current next public-contract micro-point:
 
 ```text
 POST /api/v1/core/relationships/{relationship_id}/properties
-    -> success response and semantic no-op behavior, compared with Object properties mutation
+    -> failure mapping and precedence, compared with Object properties mutation
 ```
 
 Ratified capability set to review contract-by-contract:
