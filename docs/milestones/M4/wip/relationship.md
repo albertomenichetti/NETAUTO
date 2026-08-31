@@ -910,13 +910,36 @@ The path `object_id` is intentionally not repeated in every item. The item also 
 
 `destination_object.canonical_name` and `name` are current mutable display metadata and are not part of factual Relationship identity.
 
-The exact page envelope, stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
+The stable ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN.
+
+## 13.14 GET Object-scoped collection — page envelope RATIFIED
+
+Successful collection reads use the minimal page envelope:
+
+```text
+ObjectRelationshipPage
+    items: array<ObjectRelationshipItem>
+    next_cursor: string | null
+```
+
+Semantics:
+
+```text
+items
+    current page of Object-relative Relationship items, bounded by limit
+
+next_cursor
+    opaque continuation cursor when another page exists
+    null when the current page has no continuation
+```
+
+The page envelope does not expose a total count and does not introduce offset/page-number semantics. The cursor remains opaque as ratified above; exact ordering/keyset and cursor validity/binding rules remain separate decisions.
 
 Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> page envelope and stable ordering/keyset semantics
+    -> stable ordering/keyset semantics
 ```
 
 Ratified capability set to review contract-by-contract:
