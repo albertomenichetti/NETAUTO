@@ -1294,11 +1294,64 @@ The review principle is to keep Object and Relationship schema-mutation wire con
 
 This checkpoint ratifies only route/path/query identity and the alignment principle. The exact Relationship request body, exact-target semantics, success response, same-version behavior and failure mapping remain OPEN and must be reviewed explicitly.
 
+## 13.25 SCHEMA_CHANGE — request body, exact-target command and equal-target semantics RATIFIED
+
+The Relationship schema-mutation request body is intentionally identical to the already-consolidated Object schema-mutation body:
+
+```text
+RelationshipSchemaMutationBody
+    target_version: positive integer, required
+```
+
+Equivalent JSON shape:
+
+```json
+{
+  "target_version": 5
+}
+```
+
+Missing, explicit-null, malformed/non-positive `target_version` and unknown body fields are invalid static request input.
+
+For current exact RelationshipDefinition binding:
+
+```text
+SOURCE = D@VS
+TARGET = D@VT
+```
+
+SCHEMA_CHANGE is an **exact-target migration command**. Version numbers identify exact versions and their allocation/creation order within one RelationshipDefinition lineage; they do not by themselves define genealogy, compatibility or migration direction.
+
+Therefore:
+
+```text
+VT > VS
+VT < VS
+```
+
+carry no migration-admission meaning by themselves. In particular, the AS-IS/older `target_version > source_version` requirement is not part of the M4 TO-BE contract.
+
+Intermediate numeric versions are not implicitly replayed. A distinct request is evaluated as the exact SOURCE -> TARGET pair selected by the command.
+
+Equal target is aligned exactly with Object TO-BE semantics:
+
+```text
+VT == VS
+    -> 204 No Content
+    -> no migration plan / schema migration work
+    -> no Relationship UPDATE
+    -> no SCHEMA_CHANGE lifecycle event
+```
+
+An equal-target request creates no new binding. The current exact RelationshipDefinitionVersion may therefore already be DEPRECATED; equal-target success does not require re-admitting it as PUBLISHED/default/latest.
+
+This checkpoint ratifies request shape, exact-target semantics, removal of forward-only numeric admission and equal-target success/no-op behavior only. Distinct-target admission, migrability rules, real-migration success semantics and complete failure mapping remain OPEN.
+
 Current next public-contract micro-point:
 
 ```text
 POST /api/v1/core/relationships/{relationship_id}/schema
-    -> exact request body and exact-target command semantics, compared with Object schema mutation
+    -> distinct-target admission and migrability/public outcomes, compared with Object schema mutation
 ```
 
 Ratified capability set to review contract-by-contract:
