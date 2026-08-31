@@ -1651,3 +1651,81 @@ No additional factual Relationship public capability is introduced by this sweep
 This closure freezes only the reviewed public contracts at the current M4 discovery checkpoint. It does not authorize implementation and does not promote this WIP to normative architecture.
 
 The Relationship review frontier now returns to technical realization/concurrency/physical revalidation. Sections 4–12 remain candidate input for that phase and must be revalidated against the now-ratified public contracts rather than treated as automatically approved implementation design.
+
+---
+
+# 14. Technical realization / concurrency / physical revalidation
+
+The exact public REST contract sweep is closed. Technical realization is now revalidated operation-by-operation against those ratified contracts. Findings in sections 4–12 remain inputs but are not promoted automatically.
+
+## 14.1 GET global detail — materialized closure + live display joins RATIFIED
+
+The global factual Relationship GET keeps the already-materialized factual/runtime split:
+
+```text
+relationships
+    -> factual root identity
+    -> current exact RelationshipDefinitionVersion pin
+    -> current factual properties
+
+runtime_relationship_resolutions
+    -> complete exact runtime resolution closure
+    -> exact factual endpoint/resolution identities
+```
+
+`runtime_relationship_resolutions` remains the durable materialized structural source for the complete exact closure. The GET must consume that closure directly; it does not reconstruct or re-certify closure membership from RelationshipDefinition topology, ObjectTemplate ancestry or endpoint template compatibility.
+
+Current mutable display metadata is deliberately **not** copied into the runtime closure. In particular M4 does not add:
+
+```text
+runtime_relationship_resolutions.resolution_name
+runtime_relationship_resolutions.from_object_canonical_name
+runtime_relationship_resolutions.to_object_canonical_name
+```
+
+The normal read path instead uses one live PostgreSQL projection combining:
+
+```text
+relationships
+runtime_relationship_resolutions
+relationship_resolutions
+objects AS from_object
+objects AS to_object
+```
+
+The live joins supply exactly the mutable current display fields required by the ratified public DTO:
+
+```text
+RelationshipResolution.name
+from Object.canonical_name
+to Object.canonical_name
+```
+
+This keeps mutable display state in its existing PostgreSQL owners and avoids rename fan-out/invalidation invariants merely to remove highly selective joins.
+
+No worker-local cache participates in this GET. Existing M4 cache candidates carry immutable/stable schema, topology or lineage knowledge and do not own the mutable current display values required by the response; using them would not remove a required authoritative current-state read.
+
+Target read character is therefore:
+
+```text
+one authoritative PostgreSQL business statement
+one statement snapshot
+trusted persisted factual root
+trusted materialized exact runtime closure
+live current display metadata
+no exact-view deduplication
+no semantic closure re-derivation
+no schema/DataType/ancestry reads
+no worker cache
+no new GET-specific denormalization
+```
+
+The exact SQL join polarity is intentionally still OPEN. In particular this checkpoint does not yet decide whether required persisted references should be represented with `INNER JOIN` or root-preserving `LEFT JOIN` plus explicit corruption classification. That integrity/read-projection boundary is the next micro-point.
+
+Current next technical micro-point:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+    -> required-reference join semantics (INNER vs LEFT)
+    -> root/closure corruption handling and 404 vs 500 boundary
+```
