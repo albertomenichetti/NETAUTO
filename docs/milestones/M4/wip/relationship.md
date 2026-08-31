@@ -997,11 +997,73 @@ The token represents a stable keyset boundary, not a foreign-key-like reference 
 
 The exact cursor payload fields, serialization and encoding remain implementation details as long as the token remains opaque and the ratified binding/validation semantics are preserved.
 
-Current next public-contract micro-point:
+## 13.17 GET Object-scoped collection — parent/filter existence semantics RATIFIED
+
+The route distinguishes the existence of the Object addressed by the path from collection/filter membership.
+
+Ratified behavior is:
+
+```text
+object_id does not exist
+    -> 404 Not Found
+       resource_type = object
+
+object_id exists but no factual Relationship is visible
+    -> 200 OK
+       items = []
+       next_cursor = null
+
+object_id exists and relationship_definition_id produces no matches
+    -> 200 OK
+       items = []
+       next_cursor = null
+```
+
+The last case also applies when the supplied `relationship_definition_id` does not identify any existing RelationshipDefinition. In this route it is a collection filter, not a parent/resource selector, so a non-matching or nonexistent filter value produces an empty collection rather than a referenced-resource error.
+
+## 13.18 GET Object-scoped collection — public contract CLOSED
+
+The complete ratified Object-scoped collection contract is therefore:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> parent/filter existence and empty-collection semantics
+path:
+    object_id: UUID, required
+query:
+    relationship_definition_id: UUID, optional
+    cursor: opaque string, optional
+    limit: positive integer 1..500, optional, default 100
+    no name query parameter
+body: none
+success:
+    200 OK
+    ObjectRelationshipPage
+        items: array<ObjectRelationshipItem>
+            relationship_id
+            relationship_definition_id
+            relationship_definition_version
+            properties
+            current name
+            destination_object { id, current canonical_name }
+        next_cursor: opaque string | null
+pagination:
+    keyset only
+    deterministic order with no public/domain ordering meaning
+    stable opaque boundary independent from mutable display/factual state
+    cursor bound to object_id + relationship_definition_id scope, not to limit
+errors/empty semantics:
+    malformed/incompatible cursor -> 400 invalid_cursor
+    missing object_id -> 404 resource_not_found(object)
+    existing Object with zero matches -> 200 empty page
+```
+
+No Object-scoped collection implementation/data-path decision is implied by this contract closure. Exact internal key tuple, cursor payload/encoding, SQL realization, index design and deduplication mechanics remain technical realization concerns subject to the later sweep.
+
+Current next public-contract target:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/data-change
+    -> route identity and public request inputs
 ```
 
 Ratified capability set to review contract-by-contract:
