@@ -771,18 +771,84 @@ path parameter:
     object_id: UUID, required
 
 request body: none
-query parameters: OPEN
+query parameters: under review
 ```
 
 The Object is the navigation context, not the owner of the factual Relationship identity. This route answers which factual Relationships are visible from the selected Object and remains distinct from global Relationship discovery/query, which is owned by M5 Search API.
 
-No query parameter is ratified by this checkpoint. In particular, the current AS-IS `relationship_definition_id`, `name`, `cursor` and `limit` parameters remain separate open contract decisions and must not be inherited automatically.
+## 13.9 GET Object-scoped collection — RelationshipDefinition filter RATIFIED
+
+The collection supports the optional stable filter:
+
+```text
+relationship_definition_id: UUID, optional
+```
+
+Semantics:
+
+```text
+omitted
+    do not restrict visible factual Relationships by RelationshipDefinition
+
+present
+    return only factual Relationships visible from object_id whose owning
+    RelationshipDefinition has the supplied stable identity
+```
+
+This remains an Object-scoped navigation filter rather than global search: the path already fixes the Object navigation domain and the filter only narrows that domain to one stable RelationshipDefinition identity.
+
+## 13.10 GET Object-scoped collection — `name` query filter REMOVED
+
+The M4 TO-BE contract does **not** expose the AS-IS `name` query parameter.
+
+`RelationshipResolution.name` is mutable display/semantic-label state rather than stable identity. Filtering this navigation endpoint by that string would make the route behave like a partial search API and creates coupling to renameable model-plane display state without a demonstrated navigation requirement.
+
+No `resolution_id` replacement filter is introduced automatically. A specific perspective filter would require a concrete caller need before being added to this API.
+
+Textual/perspective-name discovery belongs to the M5 Search API unless a later M4 caller requirement explicitly reopens this boundary.
+
+## 13.11 GET Object-scoped collection — keyset cursor RATIFIED
+
+The collection uses keyset pagination and exposes:
+
+```text
+cursor: opaque string, optional
+```
+
+Semantics:
+
+```text
+cursor omitted
+    request the first page under the current collection/filter scope
+
+cursor present
+    continue keyset pagination from the server-defined boundary encoded
+    by the opaque cursor
+```
+
+The cursor is an opaque continuation token. Clients must not parse, construct or assign semantic meaning to its contents. Offset pagination is not part of this contract.
+
+This checkpoint ratifies the existence of cursor-based keyset pagination only. The exact stable public ordering/keyset, cursor payload/encoding, cursor-to-filter binding rules and invalid-cursor semantics remain OPEN and must be reviewed explicitly. `limit` also remains OPEN.
+
+Current ratified request surface is therefore:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+path:
+    object_id: UUID, required
+query:
+    relationship_definition_id: UUID, optional
+    cursor: opaque string, optional
+    limit: OPEN
+no name query parameter
+body: none
+```
 
 Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> relationship_definition_id query filter
+    -> limit query parameter
 ```
 
 Ratified capability set to review contract-by-contract:
