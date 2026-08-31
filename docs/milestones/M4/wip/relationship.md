@@ -1424,11 +1424,98 @@ and changes only the exact RelationshipDefinitionVersion binding plus the canoni
 
 This checkpoint ratifies distinct-target admission, direct exact-pair migrability, the concrete-data blocker class and real-migration success acknowledgement. Complete static/failure mapping and precedence remain OPEN and are reviewed next.
 
-Current next public-contract micro-point:
+## 13.27 SCHEMA_CHANGE — failure mapping and precedence RATIFIED
+
+The complete public failure set is:
+
+```text
+400 invalid_request
+    malformed relationship_id carrier
+    any query parameter
+    malformed/static request body
+    target_version missing, explicit-null, malformed or non-positive
+    unknown body fields
+
+404 resource_not_found
+    selected factual Relationship does not exist
+
+422 referenced_resource_not_found
+    distinct exact target D@VT does not exist
+
+409 dependency_not_admissible
+    distinct exact target D@VT exists but is not PUBLISHED
+
+409 schema_change_blocked
+    current factual information cannot be preserved/represented under TARGET semantics
+
+500 internal_error
+    required persisted exact Relationship schema/dependency unexpectedly missing or corrupt
+    unexpected persistence/lifecycle/invariant failure
+    eventual bounded concurrency stabilization failure, if the later technical realization requires such retries
+```
+
+The two `409` outcomes are domain conflicts, not exposure of technical contention: `dependency_not_admissible` means the requested new exact binding is not currently admissible, while `schema_change_blocked` means the current factual state cannot be migrated losslessly to the requested exact target.
+
+Public precedence is:
+
+```text
+static request validation
+    -> authoritative current Relationship existence + SOURCE binding
+    -> VT == VS ?
+         yes -> 204 semantic no-op
+         no  -> exact TARGET existence
+              -> TARGET PUBLISHED admission
+              -> exact SOURCE -> TARGET migrability against current factual state
+              -> real migration commit
+```
+
+Consequently, an equal-target request does not re-check whether the already-current exact version is still PUBLISHED. It creates no new binding and is already satisfied by the current factual state.
+
+Any later stale-attempt/retry mechanism remains technical control flow. It must not introduce an additional public concurrency-conflict class unless a distinct domain conflict is independently proven.
+
+## 13.28 SCHEMA_CHANGE — public contract CLOSED
+
+The complete ratified Relationship SCHEMA_CHANGE public contract is:
 
 ```text
 POST /api/v1/core/relationships/{relationship_id}/schema
-    -> complete failure mapping and precedence, then public-contract closure
+path:
+    relationship_id: UUID, required
+query: none
+body:
+    target_version: positive integer, required
+semantics:
+    exact-target command within current RelationshipDefinition lineage
+    numeric direction has no migration-admission meaning
+    no intermediate-version replay
+    equal target -> semantic no-op
+success:
+    204 No Content
+    no body
+equal target:
+    204 No Content
+    no migration / UPDATE / SCHEMA_CHANGE lifecycle
+distinct target:
+    exact target must exist and be PUBLISHED
+    direct exact SOURCE -> TARGET migrability
+    current information preserved where semantically continuous
+    incompatible current factual information -> 409 schema_change_blocked
+failures:
+    malformed/static request -> 400 invalid_request
+    missing Relationship -> 404 resource_not_found
+    missing distinct target -> 422 referenced_resource_not_found
+    non-PUBLISHED distinct target -> 409 dependency_not_admissible
+    concrete migration blocker -> 409 schema_change_blocked
+    impossible persisted/infrastructure failure -> 500 internal_error
+```
+
+No SCHEMA_CHANGE implementation/data-path/concurrency mechanism is implied by this public-contract closure. Exact semantic-cache/MigrationPlan realization, current-state carrier, write/lifecycle shape, locking/retry strategy and any Relationship generation mechanism remain later technical/concurrency decisions.
+
+Current next public-contract target:
+
+```text
+DELETE /api/v1/core/relationships/{relationship_id}
+    -> route/input/success and public failure semantics
 ```
 
 Ratified capability set to review contract-by-contract:
