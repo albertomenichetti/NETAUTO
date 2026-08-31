@@ -1347,11 +1347,88 @@ An equal-target request creates no new binding. The current exact RelationshipDe
 
 This checkpoint ratifies request shape, exact-target semantics, removal of forward-only numeric admission and equal-target success/no-op behavior only. Distinct-target admission, migrability rules, real-migration success semantics and complete failure mapping remain OPEN.
 
+## 13.26 SCHEMA_CHANGE — distinct-target admission and migrability RATIFIED
+
+For a distinct exact target:
+
+```text
+VT != VS
+```
+
+Relationship SCHEMA_CHANGE follows the same target-admission model as Object SCHEMA_CHANGE.
+
+The selected target is the exact RelationshipDefinitionVersion within the Relationship's existing stable RelationshipDefinition lineage:
+
+```text
+TARGET = D@VT
+```
+
+and must satisfy:
+
+```text
+exact D@VT exists
+exact D@VT is PUBLISHED through the new-binding commit
+```
+
+Public target-admission outcomes are:
+
+```text
+exact D@VT does not exist
+    -> 422 referenced_resource_not_found
+
+exact D@VT exists but is not PUBLISHED
+    -> 409 dependency_not_admissible
+```
+
+The SOURCE exact version is already the Relationship's current admitted binding and may be PUBLISHED or DEPRECATED. SCHEMA_CHANGE does not require SOURCE to be re-admitted as PUBLISHED merely because the Relationship is leaving it.
+
+Migrability is evaluated directly for the exact SOURCE -> TARGET pair. No intermediate version is replayed and numeric direction has no admission meaning.
+
+Relationship-specific migration remains simpler than Object migration because factual Relationship schema has no ObjectTemplate inheritance/component-slot dimension and no `required`/`migration_default` property dimension. Public migration semantics are:
+
+```text
+property present only in TARGET
+    -> starts absent
+
+property present only in SOURCE
+    -> omitted from TARGET factual state
+
+semantically continuous property with current value
+    -> preserve current information when the exact TARGET semantics admit it
+
+SCALAR -> LIST continuity
+    -> preserve x as [x]
+
+current factual information not representable/valid under TARGET semantics
+    -> 409 schema_change_blocked
+```
+
+A successful real distinct-target migration returns:
+
+```text
+204 No Content
+```
+
+with no response body. The canonical current state remains owned by the global Relationship GET.
+
+Successful SCHEMA_CHANGE preserves:
+
+```text
+relationship_id
+relationship_definition_id
+endpoint identities
+complete runtime resolution closure
+```
+
+and changes only the exact RelationshipDefinitionVersion binding plus the canonical factual property state required by that target.
+
+This checkpoint ratifies distinct-target admission, direct exact-pair migrability, the concrete-data blocker class and real-migration success acknowledgement. Complete static/failure mapping and precedence remain OPEN and are reviewed next.
+
 Current next public-contract micro-point:
 
 ```text
 POST /api/v1/core/relationships/{relationship_id}/schema
-    -> distinct-target admission and migrability/public outcomes, compared with Object schema mutation
+    -> complete failure mapping and precedence, then public-contract closure
 ```
 
 Ratified capability set to review contract-by-contract:
