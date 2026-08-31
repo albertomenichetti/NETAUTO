@@ -966,11 +966,42 @@ because those values can change while the factual Relationship or its endpoint b
 
 The implementation may use stable fact/endpoint identities plus a stable resolution-derived tie-breaker when more than one distinct Object-relative perspective of the same fact reaches the same destination. The exact internal key tuple is intentionally not part of the public REST contract and remains a technical realization detail; only its stability and opacity are public requirements.
 
+## 13.16 GET Object-scoped collection — cursor binding and invalid-cursor semantics RATIFIED
+
+A continuation cursor is bound to the exact navigation/query scope that produced it.
+
+Public binding semantics are:
+
+```text
+cursor bound to:
+    this Object-scoped Relationship collection/cursor kind
+    object_id from the route path
+    relationship_definition_id filter value, including the explicit semantic state "filter omitted"
+
+cursor not bound to:
+    limit
+```
+
+Therefore callers may change `limit` while continuing the same traversal, but a cursor produced for one Object or one RelationshipDefinition-filter scope cannot be reused for another.
+
+The cursor is rejected with:
+
+```text
+400 Bad Request
+code: invalid_cursor
+```
+
+when it is malformed, uses an unsupported/unrecognized cursor version or shape, belongs to another collection/cursor kind, or is incompatible with the current `object_id` / `relationship_definition_id` scope.
+
+The token represents a stable keyset boundary, not a foreign-key-like reference to the item that originally ended the prior page. Deletion of that boundary item after cursor issuance therefore does not by itself invalidate the cursor; continuation proceeds beyond the encoded stable boundary.
+
+The exact cursor payload fields, serialization and encoding remain implementation details as long as the token remains opaque and the ratified binding/validation semantics are preserved.
+
 Current next public-contract micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> cursor scope/filter binding and invalid-cursor semantics
+    -> parent/filter existence and empty-collection semantics
 ```
 
 Ratified capability set to review contract-by-contract:
