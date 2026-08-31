@@ -588,6 +588,8 @@ Semantic meaning:
 ```text
 resolution_id
     selects the public RelationshipResolution / semantic perspective used to create the fact
+    identifies implicitly the owning RelationshipDefinition
+    determines the semantic direction used to interpret from_object_id -> to_object_id
 
 from_object_id
     Object occupying the selected resolution's from side
@@ -607,7 +609,9 @@ properties omitted
 
 `resolution_id` remains the public selector rather than `name` because resolution identity is stable while its display name is renameable. Supplying `relationship_definition_id` in addition to `resolution_id` would be redundant because the selected resolution already belongs to exactly one RelationshipDefinition.
 
-`from_object_id` and `to_object_id` remain directional rather than anonymous endpoint fields. Their meaning is interpreted against the selected resolution's public `from_template_id` / `to_template_id` semantics, including symmetric definitions.
+The CREATE command uses `resolution_id` as the fastest unambiguous selector for both the RelationshipDefinition and the intended traversal/perspective of that Definition. It is a command selector: it orients how the two supplied endpoint Objects are interpreted and from that selector the complete factual runtime closure is derived. The factual Relationship root does not persist a distinguished "creation resolution" after creation; it persists its own identity/schema/data while the complete runtime closure carries all exact resolutions of the admitted fact.
+
+`from_object_id` and `to_object_id` remain directional rather than anonymous endpoint fields. Their names are intentionally retained because they make the selected resolution orientation explicit and readable: `from_object_id` occupies the selected resolution's from side and `to_object_id` its to side, including for symmetric definitions.
 
 Omission is not `null`: optional fields may be omitted to request default/empty semantics, but explicit `null` is not a valid substitute. Unknown body fields are rejected by the strict public-body contract.
 
