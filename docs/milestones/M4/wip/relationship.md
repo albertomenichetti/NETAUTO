@@ -652,13 +652,34 @@ success:
 
 No CREATE implementation/data-path decision is implied by this contract closure.
 
-Current next public-contract target:
+## 13.5 GET global detail — route/input RATIFIED
+
+The global factual Relationship detail route is ratified as:
 
 ```text
 GET /api/v1/core/relationships/{relationship_id}
 ```
 
-Start by revalidating method/path, path input and absence/presence of query/body before deciding the exact success representation.
+with:
+
+```text
+path parameter:
+    relationship_id: UUID, required
+
+query parameters: none
+request body: none
+```
+
+`relationship_id` is the factual Relationship lifetime-global identity. The route is rooted globally rather than under an Object or RelationshipDefinition because those entities are context/model inputs, not owners of the factual Relationship identity.
+
+This checkpoint decides only method/path and request inputs. The exact successful response representation remains open and is the next GET contract micro-point.
+
+Current next public-contract target:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+    -> exact 200 response representation
+```
 
 Ratified capability set to review contract-by-contract:
 
