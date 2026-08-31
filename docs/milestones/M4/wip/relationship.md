@@ -554,6 +554,33 @@ performance optimization
 
 The technical findings already retained in sections 4–12 remain input for the later implementation/concurrency/physical sweep; they must not constrain the public contract merely because they were discovered earlier.
 
+## 13.1 CREATE — route identity RATIFIED
+
+The CREATE route is ratified as:
+
+```text
+POST /api/v1/core/relationships
+```
+
+with:
+
+```text
+path parameters:  none
+query parameters: none
+```
+
+The factual Relationship is a global fact with its own lifetime identity, so CREATE is rooted at the global Relationship collection rather than subordinated under one Object or one RelationshipDefinition.
+
+This checkpoint decides only method/path and absence of path/query input. CREATE request-body and success-response contracts remain open and must be ratified separately.
+
+Current next CREATE contract micro-point:
+
+```text
+how the request body selects the Relationship semantic perspective/capability
+```
+
+AS-IS uses public `resolution_id`; this must be revalidated explicitly rather than inherited automatically.
+
 Ratified capability set to review contract-by-contract:
 
 ```text
