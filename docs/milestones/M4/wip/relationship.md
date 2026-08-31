@@ -1059,11 +1059,41 @@ errors/empty semantics:
 
 No Object-scoped collection implementation/data-path decision is implied by this contract closure. Exact internal key tuple, cursor payload/encoding, SQL realization, index design and deduplication mechanics remain technical realization concerns subject to the later sweep.
 
-Current next public-contract target:
+## 13.19 DATA_CHANGE — route identity and Object-alignment principle RATIFIED
+
+The Relationship DATA_CHANGE public route is ratified as:
 
 ```text
-POST /api/v1/core/relationships/{relationship_id}/data-change
-    -> route identity and public request inputs
+POST /api/v1/core/relationships/{relationship_id}/properties
+```
+
+with:
+
+```text
+path parameter:
+    relationship_id: UUID, required
+
+query parameters: none
+```
+
+The M4 TO-BE route intentionally supersedes the AS-IS `/relationships/{relationship_id}/data-change` path. `DATA_CHANGE` remains the capability/lifecycle name, while the HTTP resource being mutated is the factual Relationship `properties` sub-resource.
+
+This aligns the Relationship mutation surface with the already-consolidated Object M4 contract:
+
+```text
+POST /api/v1/core/objects/{object_id}/properties
+POST /api/v1/core/relationships/{relationship_id}/properties
+```
+
+The review principle is to keep Object and Relationship property-mutation wire contracts and behavior analogous wherever their domain semantics permit. Any divergence must be justified by a concrete Relationship-specific semantic requirement rather than inherited from AS-IS shape.
+
+This checkpoint ratifies only route/path/query identity and the alignment principle. The exact Relationship request body, success response, no-op semantics and failure mapping remain OPEN and must be reviewed explicitly.
+
+Current next public-contract micro-point:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/properties
+    -> exact request body, compared field-for-field with Object properties mutation
 ```
 
 Ratified capability set to review contract-by-contract:
