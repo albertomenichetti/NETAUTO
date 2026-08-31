@@ -676,7 +676,7 @@ request body: none
 
 `relationship_id` is the factual Relationship lifetime-global identity. The route is rooted globally rather than under an Object or RelationshipDefinition because those entities are context/model inputs, not owners of the factual Relationship identity.
 
-## 13.6 GET global detail — success representation shape RATIFIED
+## 13.6 GET global detail — success representation RATIFIED
 
 Successful global detail returns `200 OK` with the factual root state plus the **complete exact runtime resolution closure**, not the deduplicated Object-relative `views` projection used for navigation.
 
@@ -701,39 +701,14 @@ ObjectReference
     canonical_name: string
 ```
 
-Example shape:
-
-```json
-{
-  "id": "R100",
-  "relationship_definition_id": "D10",
-  "relationship_definition_version": 3,
-  "properties": {
-    "weight": 10
-  },
-  "resolutions": [
-    {
-      "resolution_id": "RR1",
-      "name": "hosts",
-      "from_object": {
-        "id": "A",
-        "canonical_name": "server-a"
-      },
-      "to_object": {
-        "id": "B",
-        "canonical_name": "rack-1"
-      }
-    }
-  ]
-}
-```
-
 Semantics:
 
 ```text
 resolutions
     complete lossless exact closure of the factual Relationship
     no collapse/deduplication into Object-relative semantic views
+    complete collection with no semantic public ordering
+    clients MUST NOT rely on array position/order
 
 resolution_id
     stable public identity of the exact RelationshipResolution represented by the closure row
@@ -753,14 +728,41 @@ The global detail intentionally exposes the resolution identities because its ro
 
 The response shape does not imply that Resolution names or Object canonical names are copied into factual persistence; they are current public display metadata.
 
-The ordering contract of `resolutions` is still OPEN and must be decided explicitly before the global GET public contract is closed.
+An implementation may emit `resolutions` in a deterministic order for operational stability, but that order has no domain/public meaning and is not part of the REST contract.
 
-Current next public-contract micro-point:
+## 13.7 GET global detail — public contract CLOSED
+
+The complete ratified global-detail contract is therefore:
 
 ```text
 GET /api/v1/core/relationships/{relationship_id}
-    -> public ordering semantics of resolutions
+path:
+    relationship_id required UUID
+query: none
+body: none
+success:
+    200 OK
+    RelationshipDetail
+        id
+        relationship_definition_id
+        relationship_definition_version
+        properties
+        complete unordered resolutions[]
+            resolution_id
+            current name
+            from_object { id, current canonical_name }
+            to_object   { id, current canonical_name }
 ```
+
+No global-GET implementation/data-path decision is implied by this contract closure.
+
+Current next public-contract target:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+```
+
+Start by revalidating route identity and public request inputs before deciding collection item shape, filters or pagination semantics.
 
 Ratified capability set to review contract-by-contract:
 
