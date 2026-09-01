@@ -24,15 +24,17 @@ IN SCOPE
     relational direction for Definition + closure
     model-plane vs data-plane responsibility split
     ability to expose oriented read projections without autonomous Resolution persistence
+    boundary between domain invariants and relational DB constraints
 
 NOT YET CLOSED
     exact public RelationshipDefinition request/response DTOs
-    exact physical column names/nullability/check constraints
+    exact physical column names/nullability and relational constraints
     exact PK/FK/index realization
     CREATE/DELETE/version lifecycle concurrency protocol
     ObjectTemplate-growth maintenance protocol
     factual Relationship selector and persistence after removal of resolution_id
     factual Relationship runtime representation
+    cross-cutting revalidation of existing CHECK constraints elsewhere in the schema
 ```
 
 ---
@@ -419,7 +421,7 @@ persist the complete compact relationship contract on relationship_definitions
 materialize the effective inheritance-expanded cells in a derived closure table
 ```
 
-This is a relational/model direction, not final DDL. Exact column names, nullability and CHECK constraints remain architecture work.
+This is a relational/model direction, not final DDL. Exact column names, nullability and relational constraints remain architecture work.
 
 Logical Definition source-of-truth state is:
 
@@ -437,8 +439,7 @@ The naming contract is:
 
 ```text
 symmetric=true
-    -> exactly one stable semantic name
-    -> same name used under reciprocal observation
+    -> one semantic name used in both reciprocal orientations
 
 symmetric=false
     -> exactly two distinct stable semantic names
@@ -485,7 +486,95 @@ The server deliberately does not normalize these equivalent compact encodings be
 
 Keeping the client orientation also avoids inventing a synthetic ordering rule solely for persistence. Exact public request field names remain OPEN; this checkpoint freezes only the semantic handling of whichever oriented authoring form is chosen.
 
-A possible physical encoding might use fields conceptually equivalent to:
+## 7.2 RATIFIED — both directional naming slots are populated
+
+The compact persisted contract uses one naming slot for each stored orientation:
+
+```text
+name_a_to_b
+name_b_to_a
+```
+
+Both slots carry an explicit semantic name. A symmetric Definition does not use `NULL` as a sentinel meaning "reuse the other name".
+
+RATIFIED logical rule:
+
+```text
+symmetric = true
+    -> name_a_to_b and name_b_to_a carry the same stable name
+
+symmetric = false
+    -> name_a_to_b and name_b_to_a carry two distinct stable names
+```
+
+Examples:
+
+```text
+symmetric=true
+A = Router
+B = Switch
+name_a_to_b = connected_to
+name_b_to_a = connected_to
+```
+
+```text
+symmetric=false
+A = VirtualMachine
+B = Hypervisor
+name_a_to_b = runs_on
+name_b_to_a = hosts
+```
+
+For a same-space symmetric Definition:
+
+```text
+A = Person
+B = Person
+name_a_to_b = friend_of
+name_b_to_a = friend_of
+```
+
+The two persisted naming slots do not imply two distinct semantic perspectives and do not cause duplicate closure generation. Same-space symmetric closure remains exactly:
+
+```text
+Desc(Person) x {friend_of} x Desc(Person)
+```
+
+This representation is intentionally regular: callers/domain code can always reason over two oriented naming slots without introducing a special `NULL = same reciprocal name` convention.
+
+## 7.3 RATIFIED design boundary — semantic invariants live in the domain; DB constraints remain relational
+
+The equality/difference rule above is a domain invariant, not a relational-storage primitive.
+
+RATIFIED design direction for this redesign:
+
+```text
+DOMAIN
+    validates symmetric/asymmetric semantic consistency
+    validates name equality vs distinction
+    validates allowed endpoint-space topology
+    validates complete Definition semantics before persistence
+
+DATABASE
+    enforces relational integrity
+    does not duplicate domain predicates through semantic CHECK constraints
+```
+
+Therefore this redesign does **not** introduce a DB `CHECK` equivalent to:
+
+```text
+(symmetric AND name_a_to_b = name_b_to_a)
+OR
+(NOT symmetric AND name_a_to_b <> name_b_to_a)
+```
+
+The same principle should be considered when existing schema `CHECK` constraints are later revalidated: domain rules should remain owned by the domain, while the database should retain constraints that are genuinely relational/structural.
+
+This checkpoint does **not** automatically repeal every existing `CHECK` constraint in NETAUTO. A separate cross-cutting review must classify them one by one before removal, because some current constraints may protect structural/relational properties rather than duplicate domain semantics.
+
+Likewise, this principle does not pre-decide the exact use of PK/FK/UNIQUE/nullability/index mechanisms. Those remain physical-design questions and must be evaluated according to whether they provide required relational integrity/arbitration rather than re-encode business semantics.
+
+The compact logical shape is now:
 
 ```text
 relationship_definitions
@@ -494,11 +583,11 @@ relationship_definitions
     endpoint_a_template_id
     endpoint_b_template_id
     name_a_to_b
-    name_b_to_a       # asymmetric only, or otherwise represented compactly
+    name_b_to_a
     default_version
 ```
 
-but this exact column layout is **not yet frozen**.
+Exact SQL types, nullability, FK policy and physical constraints are still not frozen.
 
 The existing version/property family remains conceptually separate:
 
@@ -624,7 +713,7 @@ explicit candidate prevalidation + final UNIQUE arbitration
 other equivalent PostgreSQL realization
 ```
 
-The semantic invariant is ratified; only the DDL mechanism is not.
+The semantic invariant is ratified; only the DDL mechanism is not. The domain-vs-DB boundary ratified in section 7.3 must be applied when selecting that mechanism: any DB enforcement retained here must be justified as required relational integrity/arbitration, not merely as a duplicate domain validator.
 
 ---
 
@@ -834,6 +923,8 @@ asymmetric relationship names being applicable in both orientations
 asymmetric Definitions being allowed to omit the reciprocal name
 cross-Definition conflict being represented only as an abstract overlap predicate
 server-side endpoint canonicalization being required for Definition equivalence
+NULL reciprocal-name sentinel being required for symmetric Definition persistence
+semantic domain invariants being automatically duplicated as DB CHECK constraints
 ```
 
 The factual Relationship WIP remains frozen until these dependencies are revalidated against the stabilized upstream Definition model.
@@ -847,13 +938,15 @@ The current intent is deliberately incomplete. Remaining explicit review points 
 ```text
 1. Exact compact relational encoding
     - RATIFIED: A/B preserves the client-declared endpoint orientation; no synthetic canonical reorder
-    - final column names for endpoint slots and names
-    - symmetric representation of the single name
-    - CHECK/nullability constraints
+    - RATIFIED: both naming slots are populated
+    - RATIFIED: symmetric stores the same name in both slots; asymmetric stores two distinct names
+    - RATIFIED: semantic name equality/distinction is enforced by the domain, not by a semantic DB CHECK
+    - final SQL column names/types/nullability
     - endpoint-root FK behavior
+    - exact catalogue of genuinely relational DB constraints
 
 2. Physical relationship_definition_space realization
-    - PK/UNIQUE choice
+    - PK/UNIQUE choice under the domain-vs-relational-constraint boundary
     - indexes for conflict/capability/factual admission
     - FK/cascade/rebuild semantics
     - storage/fan-out evidence gate
@@ -881,6 +974,11 @@ The current intent is deliberately incomplete. Remaining explicit review points 
 
 7. Version/property interaction
     - confirm stable topology/name remains outside RDV lifecycle
+
+8. Cross-cutting DB constraint review
+    - inventory existing CHECK constraints
+    - classify domain-semantic vs genuinely relational/structural protection
+    - remove/rehome only after explicit per-constraint revalidation
 ```
 
 ---
@@ -895,8 +993,16 @@ RelationshipDefinition
     + explicit stable symmetric intent
     + two declared endpoint compatibility-space roots
     + stable client-declared A/B orientation for compact authoring/persistence
-    + one stable semantic name if symmetric
-      OR two distinct stable reciprocal names if asymmetric
+    + two populated directional naming slots
+
+naming slots [RATIFIED]
+    symmetric=true
+        -> name_a_to_b == name_b_to_a
+        -> one semantic name represented in both stored orientations
+
+    symmetric=false
+        -> name_a_to_b != name_b_to_a
+        -> two distinct reciprocal semantic names
 
 A/B orientation
     = preserved from client intent
@@ -934,6 +1040,12 @@ asymmetric [RATIFIED]
     = exactly two distinct reciprocal stable names
     = each name applies only in its own direction
     = endpoint spaces may be identical, disjoint, or inheritance-overlapping
+
+domain / DB boundary [RATIFIED direction]
+    = domain owns semantic invariants and certification
+    = DB does not duplicate them through semantic CHECK constraints
+    = DB constraints retained only when justified as relational/structural integrity or arbitration
+    = existing CHECK constraints require separate explicit revalidation before removal
 
 oriented GET
     = domain/API projection derived from Definition semantics
