@@ -106,13 +106,13 @@ Example non-symmetric Definition:
 
 ```text
 Resolution R1
-    VM --is_hosted_by--> Hypervisor
+    VM --runs_on--> Hypervisor
 
 Resolution R2
     Hypervisor --hosts--> VM
 ```
 
-`is_hosted_by` and `hosts` are the stable semantic names of the two distinct perspectives.
+`runs_on` and `hosts` are the stable semantic names of the two distinct perspectives.
 
 Under this candidate, changing a Resolution name is not a display-metadata rename of the same semantic contract. A change such as:
 
@@ -279,7 +279,7 @@ to_template_id
     exact effective ObjectTemplate member of the declared to-space
 ```
 
-For one declared Resolution:
+For one declared directional semantic perspective:
 
 ```text
 R1: A --rel1--> B
@@ -317,7 +317,7 @@ A2  rel1 B1
 A2  rel1 B2
 ```
 
-If the Definition also declares the reciprocal distinct semantic perspective:
+If the Definition also has the reciprocal distinct semantic perspective:
 
 ```text
 R2: B --rel2--> A
@@ -339,6 +339,8 @@ B1  rel2 A2
 B2  rel2 A1
 ...
 ```
+
+A semantic name does not automatically materialize in the reverse direction. The reverse orientation exists only when the Definition semantics require it, either under the same name for a symmetric relationship or under the distinct reciprocal name for an asymmetric relationship.
 
 This table is derived effective knowledge, not the compact authoring source.
 
@@ -402,18 +404,18 @@ A
 └── B
 ```
 
-and a symmetric Definition is represented by reciprocal Resolutions with the same stable name:
+and a symmetric Definition is represented by reciprocal semantic perspectives with the same stable name:
 
 ```text
-R1: A --rel--> B
-R2: B --rel--> A
+P1: A --rel--> B
+P2: B --rel--> A
 ```
 
 Then:
 
 ```text
-R1 -> Desc(A) x {rel} x Desc(B)
-R2 -> Desc(B) x {rel} x Desc(A)
+P1 -> Desc(A) x {rel} x Desc(B)
+P2 -> Desc(B) x {rel} x Desc(A)
 ```
 
 Because:
@@ -507,7 +509,7 @@ This rule is semantic/domain-driven. It is not justified by an inability to mate
 
 ---
 
-# 7B. RATIFIED domain invariant — disjoint endpoint spaces have the same applicability topology regardless of symmetry
+# 7B. RATIFIED domain invariant — disjoint endpoint spaces share Definition-level reciprocal topology, while semantic-name applicability remains directional
 
 Let the two endpoint compatibility spaces be disjoint:
 
@@ -520,40 +522,70 @@ A RelationshipDefinition between those spaces is a genuine cross-domain relation
 RATIFIED domain decision:
 
 ```text
-for disjoint endpoint spaces, symmetric and asymmetric Definitions have the
-same endpoint-applicability topology
+for disjoint endpoint spaces, symmetric and asymmetric Definitions share the
+same reciprocal endpoint-space pairing at Definition level
 ```
 
-Both cases require the same two reciprocal directed effective spaces:
+At the Definition level both describe a fact connecting the two spaces:
 
 ```text
-Desc(A) -> Desc(B)
-Desc(B) -> Desc(A)
+Desc(A) <-> Desc(B)
 ```
 
-The difference is semantic naming, not endpoint applicability:
+This does **not** mean that every semantic name is applicable in both directions.
+
+For a symmetric Definition, reciprocal observation preserves the same name, so that one semantic name covers both orientations:
 
 ```text
 SYMMETRIC
     A --rel--> B
     B --rel--> A
-    same stable semantic name in both directions
 
+effective cells for rel:
+    Desc(A) x {rel} x Desc(B)
+    UNION
+    Desc(B) x {rel} x Desc(A)
+```
+
+For an asymmetric Definition, each semantic name is directional and covers exactly one reciprocal orientation:
+
+```text
 ASYMMETRIC
     A --rel1--> B
     B --rel2--> A
-    distinct stable semantic names for the two perspectives
+    rel1 != rel2
+
+rel1 effective cells:
+    Desc(A) x {rel1} x Desc(B)
+
+rel2 effective cells:
+    Desc(B) x {rel2} x Desc(A)
 ```
 
-Because the endpoint spaces are disjoint, the two reciprocal expansions cannot collide merely by reversing direction. For a symmetric Definition they occupy different ordered semantic cells even though the name is the same:
+Therefore an asymmetric Definition does **not** imply:
+
+```text
+B --rel1--> A
+or
+A --rel2--> B
+```
+
+For example:
+
+```text
+VirtualMachine --runs_on--> Hypervisor
+Hypervisor     --hosts----> VirtualMachine
+```
+
+admits `runs_on` only in the `VirtualMachine -> Hypervisor` orientation and `hosts` only in the reciprocal `Hypervisor -> VirtualMachine` orientation.
+
+Because the endpoint spaces are disjoint, a symmetric Definition can materialize the same name in both reciprocal orientations without creating a duplicate semantic cell:
 
 ```text
 (A', rel, B') != (B', rel, A')
 ```
 
-This means symmetry must not introduce a special applicability algorithm for the disjoint-lineage case. The model-plane effective closure treats symmetric and asymmetric cross-domain relationships uniformly; symmetry only determines whether the reciprocal perspectives carry the same or different semantic names.
-
-This checkpoint deliberately does **not** decide the persisted representation. In particular, it does not yet decide whether reciprocal effective perspectives require two stored `relationship_resolutions` or can be derived from a more compact declaration.
+The persisted representation is still OPEN. In particular, this checkpoint does not decide whether the reciprocal semantic perspectives require two stored `relationship_resolutions` or can be derived from a more compact declaration.
 
 ---
 
@@ -613,14 +645,77 @@ This checkpoint does not yet close the exact public request DTO or the minimal p
 
 ---
 
+# 7D. RATIFIED domain invariant — asymmetric Definitions require exactly two distinct reciprocal semantic names
+
+An asymmetric RelationshipDefinition represents one relationship fact whose two endpoint roles are not semantically peers.
+
+RATIFIED domain decision:
+
+```text
+symmetric = false
+    -> exactly two reciprocal semantic perspectives
+    -> exactly two distinct stable semantic names
+```
+
+For declared endpoint roots `A` and `B`, the complete asymmetric semantics are:
+
+```text
+P1
+    A --rel1--> B
+
+P2
+    B --rel2--> A
+
+rel1 != rel2
+```
+
+The reciprocal topology is part of the same Definition:
+
+```text
+P2.from = P1.to
+P2.to   = P1.from
+```
+
+Each name remains strictly directional:
+
+```text
+E(rel1) = Desc(A) x {rel1} x Desc(B)
+E(rel2) = Desc(B) x {rel2} x Desc(A)
+```
+
+There is no automatic reverse applicability of either individual name.
+
+Example:
+
+```text
+VirtualMachine --runs_on--> Hypervisor
+Hypervisor     --hosts----> VirtualMachine
+```
+
+means:
+
+```text
+VirtualMachine runs_on Hypervisor     -> valid semantic direction
+Hypervisor hosts VirtualMachine       -> valid reciprocal semantic direction
+
+Hypervisor runs_on VirtualMachine     -> not expressed by this Definition
+VirtualMachine hosts Hypervisor       -> not expressed by this Definition
+```
+
+A one-name asymmetric declaration is therefore incomplete rather than a distinct supported relationship shape. Without the second reciprocal name there is no complete asymmetric semantic contract and no reliable distinction from symmetric authoring intent.
+
+This checkpoint is a domain semantic/cardinality decision only. It does **not** yet decide whether the two reciprocal semantic perspectives must be persisted as two autonomous `relationship_resolutions` rows or can be represented by a different compact TO-BE relational structure.
+
+---
+
 # 8. Model-plane cost is intentionally traded for data-plane simplicity
 
 The materialized space can be large.
 
-For one Resolution:
+For one directional semantic perspective:
 
 ```text
-R: A --name--> B
+A --name--> B
 ```
 
 row count is conceptually:
@@ -636,7 +731,7 @@ The intended separation is:
 ```text
 MODEL PLANE
     interpret stable ObjectTemplate inheritance
-    expand declared Resolution spaces
+    expand declared semantic perspective spaces
     detect semantic repetition/conflict
     materialize exact effective semantic cells
     maintain the materialization when the stable model grows/changes
@@ -652,7 +747,7 @@ The materialization is therefore not proposed merely as a query cache. It is can
 
 # 9. Data-plane admission benefit
 
-Without the effective materialization, factual Relationship admission must still interpret whether the concrete Object endpoint templates belong to the two declared Resolution spaces, typically via ancestry membership predicates.
+Without the effective materialization, factual Relationship admission must still interpret whether the concrete Object endpoint templates belong to the directional semantic perspective selected by the caller, typically via ancestry membership predicates.
 
 With the materialized space, after obtaining the two concrete Object `template_id` values, applicability can conceptually reduce to an exact lookup:
 
@@ -672,7 +767,7 @@ WHERE
     AND to_template_id = :actual_to_template_id
 ```
 
-Normal factual admission therefore consumes a model-plane-certified answer instead of reconstructing inheritance semantics.
+Normal factual admission therefore consumes a model-plane-certified directional answer instead of reconstructing inheritance semantics.
 
 The exact factual Relationship model remains intentionally OUT OF SCOPE until this upstream model is stabilized.
 
@@ -710,7 +805,7 @@ The effective space changes when its source stable model changes.
 At minimum, revalidation must account for:
 
 ```text
-new RelationshipDefinition / Resolution declaration
+new RelationshipDefinition / semantic perspective declaration
     -> materialize the new declared spaces
     -> reject if required semantic cells are already owned
 
@@ -718,7 +813,7 @@ RelationshipDefinition deletion
     -> remove its derived semantic cells
 
 new ObjectTemplate descendant
-    -> may add effective semantic cells to every Resolution whose declared
+    -> may add effective semantic cells to every perspective whose declared
        from/to roots admit that new lineage member
 
 ObjectTemplate lineage deletion/change
@@ -731,7 +826,7 @@ Important boundary:
 
 ```text
 relationship_resolutions
-    -> source declaration / true external lineage ownership
+    -> current candidate source declaration / true external lineage ownership
 
 relationship_resolution_space
     -> derived effective closure
@@ -758,7 +853,7 @@ relationship_definitions
         | owns
         v
 
-relationship_resolutions
+relationship_resolutions                            # representation still candidate
     id PK
     relationship_definition_id FK -> relationship_definitions.id
     from_template_id FK -> object_templates.id     # declared root
@@ -801,7 +896,18 @@ relationship_definition_properties
 
 The version/property side is shown only for completeness; it is not yet modified by this redesign intent.
 
-The declared relational picture above remains a **candidate inherited from the current Resolution shape**, except that persistence of stable explicit `relationship_definitions.symmetric` intent is now ratified. The remaining representation question is whether reciprocal semantic perspectives require two stored `relationship_resolutions` or can be represented more compactly.
+The declared relational picture above remains a **candidate inherited from the current Resolution shape**, except that persistence of stable explicit `relationship_definitions.symmetric` intent is ratified. The domain now requires:
+
+```text
+symmetric=true
+    -> one semantic name preserved under reciprocal observation
+
+symmetric=false
+    -> exactly two distinct reciprocal semantic names
+    -> each name owns only its declared direction
+```
+
+The remaining representation question is whether those semantic perspectives require one/two stored `relationship_resolutions` rows or should be represented more compactly.
 
 ---
 
@@ -819,10 +925,12 @@ runtime Relationship CREATE performing lineage-based Resolution applicability
 factual runtime closure being used to compensate for ambiguous/redundant
     Definition semantic coverage
 symmetric distinct-but-overlapping endpoint roots being valid model semantics
-symmetric disjoint endpoint spaces requiring a distinct applicability model from
+symmetric disjoint endpoint spaces requiring a distinct endpoint-pairing model from
     asymmetric cross-domain relationships
 symmetry being inferred from incomplete perspective/request shape rather than
     supplied as explicit authoring intent
+asymmetric Definitions allowing a missing reciprocal semantic name
+an asymmetric semantic name being treated as applicable in both endpoint orientations
 ```
 
 No such supersession is effective yet except for the ratified intent checkpoints explicitly marked above. These remain targeted downstream revalidation inputs until the intent is promoted.
@@ -834,17 +942,20 @@ No such supersession is effective yet except for the ratified intent checkpoints
 The current intent is intentionally incomplete. At least the following points must be reviewed explicitly:
 
 ```text
-1. Symmetric Definition shape
+1. Symmetric Definition persisted shape
     - RATIFIED: endpoint spaces are identical or disjoint, never distinct-but-overlapping
-    - RATIFIED: disjoint symmetric/asymmetric cases share the same reciprocal applicability topology
+    - RATIFIED: disjoint symmetric/asymmetric cases share the same reciprocal endpoint-space pairing at Definition level
+    - RATIFIED: one symmetric name applies in both reciprocal orientations
     - RATIFIED: symmetric is explicit client intent, persisted and stable for Definition lifetime
     - OPEN: minimal persisted representation for same-space symmetric semantics
-    - OPEN: minimal persisted representation for reciprocal disjoint-space perspectives
+    - OPEN: minimal persisted representation for reciprocal disjoint-space symmetric semantics
 
-2. Non-symmetric Definition shape
-    - whether exactly two reciprocal semantic perspectives remains the right domain model
-    - whether same-lineage overlap is meaningful when perspective names differ
-    - minimal persisted representation once perspective semantics are stabilized
+2. Non-symmetric Definition persisted shape
+    - RATIFIED: exactly two reciprocal semantic perspectives
+    - RATIFIED: exactly two distinct stable semantic names
+    - RATIFIED: each name is directional and applies only in its own orientation
+    - OPEN: whether same-lineage endpoint overlap is meaningful/allowed for asymmetric Definitions
+    - OPEN: minimal persisted representation of the two reciprocal semantics
 
 3. Resolution identity
     - continued role of resolution_id once semantic cells are materialized
@@ -857,16 +968,17 @@ The current intent is intentionally incomplete. At least the following points mu
 5. Materialized-space physical realization
     - exact PK/UNIQUE shape implementing the ratified single-owner semantic invariant
     - whether relationship_definition_id is physically denormalized
+    - how ownership is represented if the compact Resolution table changes
     - FK/cascade/rebuild strategy
     - indexes for model conflict, capability and factual admission
 
 6. ObjectTemplate model-growth maintenance
     - efficient incremental expansion on new descendants
     - transactional conflict arbitration when a new descendant creates a
-      semantic-cell collision between already-existing declared Resolutions
+      semantic-cell collision between already-existing declared perspectives
 
 7. RelationshipDefinition version/property interaction
-    - confirm that Resolution topology/name remains definition-stable and outside
+    - confirm that perspective topology/name remains definition-stable and outside
       the RDV lifecycle
 
 8. Factual Relationship redesign
@@ -881,7 +993,7 @@ The current intent is intentionally incomplete. At least the following points mu
 The current draft can be summarized as:
 
 ```text
-RelationshipResolution declaration
+directional semantic perspective
     = compact stable semantic rule
 
     declared from-template root
@@ -899,19 +1011,30 @@ relationship_resolution_space
 
 semantic cell [RATIFIED]
     = (exact from-template, stable name, exact to-template)
+    = ordered/directional semantic identity
 
 semantic ownership invariant [RATIFIED]
-    = one semantic cell has one Resolution owner globally
+    = one semantic cell has one Resolution/perspective owner globally
 
 symmetric endpoint-space domain invariant [RATIFIED]
     = endpoint compatibility spaces are identical or disjoint
     = distinct-but-overlapping spaces are not core relationship semantics
       because they encode an endpoint-presence applicability policy
 
-disjoint-space topology invariant [RATIFIED]
-    = symmetric and asymmetric Definitions use the same reciprocal endpoint
-      applicability topology
-    = symmetry changes reciprocal semantic naming, not endpoint admissibility
+disjoint-space Definition topology [RATIFIED]
+    = symmetric and asymmetric Definitions share the same reciprocal endpoint-space pairing
+    = this equivalence is Definition-level only, not per semantic name
+
+symmetric semantics [RATIFIED]
+    = one stable semantic name
+    = reciprocal observation preserves that name
+    = the same name applies in both required reciprocal orientations
+
+asymmetric semantics [RATIFIED]
+    = exactly two reciprocal semantic perspectives
+    = exactly two distinct stable semantic names
+    = each name applies only in its declared orientation
+    = e.g. VirtualMachine --runs_on--> Hypervisor / Hypervisor --hosts--> VirtualMachine
 
 symmetric authoring intent [RATIFIED]
     = explicit required client intent
@@ -923,7 +1046,7 @@ model plane
     = pays expansion + conflict certification
 
 data plane
-    = consumes exact pre-resolved applicability
+    = consumes exact pre-resolved directional applicability
 ```
 
 This thesis is the basis for the next review pass. It must be challenged with concrete symmetric/non-symmetric/inheritance examples before any downstream factual Relationship work is resumed.
