@@ -448,6 +448,43 @@ symmetric=false
 
 The persisted A/B slots are only a stable way to bind names to endpoint orientation. They do not create a privileged domain `source`, `target`, `forward` or `reverse` side.
 
+## 7.1 RATIFIED — preserve client-declared endpoint orientation; do not canonicalize A/B
+
+The A/B slot assignment preserves the orientation supplied by the client when the Definition is authored.
+
+RATIFIED rule:
+
+```text
+client-declared first endpoint orientation
+    -> persisted as endpoint A
+
+client-declared reciprocal endpoint
+    -> persisted as endpoint B
+
+server
+    -> does not reorder/canonicalize A/B by UUID or another synthetic key
+```
+
+For an asymmetric Definition, the directional names remain bound to that preserved declaration:
+
+```text
+client declares:
+    VirtualMachine --runs_on--> Hypervisor
+    Hypervisor     --hosts----> VirtualMachine
+
+persisted logical slots:
+    A = VirtualMachine
+    B = Hypervisor
+    A -> B name = runs_on
+    B -> A name = hosts
+```
+
+This preserved orientation is stable authoring state, but it does **not** add new relationship semantics and does not make A the privileged source of the relationship. Swapping both endpoint slots and their bound directional names would describe the same complete asymmetric semantic contract; similarly, swapping disjoint symmetric endpoint slots would not create a different relationship meaning.
+
+The server deliberately does not normalize these equivalent compact encodings because normalization would add work without adding semantic information. Semantic repetition/equivalence is already governed by the effective semantic-cell closure and its global single-owner invariant.
+
+Keeping the client orientation also avoids inventing a synthetic ordering rule solely for persistence. Exact public request field names remain OPEN; this checkpoint freezes only the semantic handling of whichever oriented authoring form is chosen.
+
 A possible physical encoding might use fields conceptually equivalent to:
 
 ```text
@@ -632,9 +669,9 @@ ASYMMETRIC
        B --rel2--> A
 ```
 
-The oriented projection is therefore a presentation/navigation view over stable Definition semantics, not evidence that the perspectives need separate persistence identities.
+The stored A/B authoring orientation can naturally provide a deterministic first orientation if the final read contract wants one, but exact array ordering is not ratified yet.
 
-Exact array ordering is also not yet a semantic contract; a deterministic operational order can be chosen later if required.
+The oriented projection is therefore a presentation/navigation view over stable Definition semantics, not evidence that the perspectives need separate persistence identities.
 
 ---
 
@@ -796,6 +833,7 @@ symmetric distinct-but-overlapping endpoint roots being valid core semantics
 asymmetric relationship names being applicable in both orientations
 asymmetric Definitions being allowed to omit the reciprocal name
 cross-Definition conflict being represented only as an abstract overlap predicate
+server-side endpoint canonicalization being required for Definition equivalence
 ```
 
 The factual Relationship WIP remains frozen until these dependencies are revalidated against the stabilized upstream Definition model.
@@ -808,6 +846,7 @@ The current intent is deliberately incomplete. Remaining explicit review points 
 
 ```text
 1. Exact compact relational encoding
+    - RATIFIED: A/B preserves the client-declared endpoint orientation; no synthetic canonical reorder
     - final column names for endpoint slots and names
     - symmetric representation of the single name
     - CHECK/nullability constraints
@@ -855,8 +894,15 @@ RelationshipDefinition
     stable Definition UUID
     + explicit stable symmetric intent
     + two declared endpoint compatibility-space roots
+    + stable client-declared A/B orientation for compact authoring/persistence
     + one stable semantic name if symmetric
       OR two distinct stable reciprocal names if asymmetric
+
+A/B orientation
+    = preserved from client intent
+    = stable binding of endpoint slots and directional names
+    = NOT a privileged source/target domain distinction
+    = NOT canonicalized by synthetic UUID/key ordering
 
 NO autonomous RelationshipResolution entity
 NO resolution_id model identity
