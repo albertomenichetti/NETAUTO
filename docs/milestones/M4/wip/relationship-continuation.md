@@ -217,9 +217,52 @@ items = []
 next_cursor = null
 ```
 
+## C-REL-04 RATIFIED — Object-scoped cursor is bound to the complete filter scope
+
+The opaque keyset cursor is bound to the exact Object-scoped navigation/query scope that produced it.
+
+Post-definition public binding semantics are:
+
+```text
+cursor bound to:
+    this Object-scoped Relationship collection/cursor kind
+    object_id from the route path
+    relationship_definition_id filter value,
+        including the explicit semantic state "filter omitted"
+    name filter value,
+        including the explicit semantic state "filter omitted"
+
+cursor not bound to:
+    limit
+```
+
+Therefore callers may change `limit` while continuing the same traversal, but they may not reuse a cursor across a change in either filter scope.
+
+Examples:
+
+```text
+cursor produced by:
+    /objects/O1/relationships?name=runs_on
+
+is incompatible with:
+    /objects/O1/relationships?name=connected_to
+    /objects/O1/relationships
+```
+
+and likewise a cursor produced under one `relationship_definition_id` value cannot be reused with another value or with the filter omitted.
+
+A malformed cursor or a cursor incompatible with the current collection kind / `object_id` / `relationship_definition_id` / `name` scope is rejected with:
+
+```text
+400 Bad Request
+code: invalid_cursor
+```
+
+The cursor remains opaque. Clients must not parse, construct or infer the internal keyset tuple from it.
+
 Current next micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> revalidate cursor scope binding now that `name` is again part of the public filter scope
+    -> revalidate the internal keyset identity/order tuple against runtime_relationship_cells
 ```
