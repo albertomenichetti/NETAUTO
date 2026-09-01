@@ -1610,7 +1610,7 @@ path parameter:
 query parameters: none
 ```
 
-The M4 TO-BE route intentionally supersedes the AS-IS `/relationships/{relationship_id}/schema-change` path. `SCHEMA_CHANGE` remains the capability/lifecycle name, while `/schema` identifies the exact schema-binding sub-resource being mutated.
+The M4 TO-BE route intentionally supersedes the AS-IS `/relationships/{relationship_id}/schema-change` path. `DATA_CHANGE` remains the capability/lifecycle name, while `/schema` identifies the exact schema-binding sub-resource being mutated.
 
 This aligns the Relationship mutation surface with the already-consolidated Object M4 contract:
 
@@ -2431,3 +2431,76 @@ GET /api/v1/core/objects/{object_id}/relationships
 ```
 
 After the Object-scoped GET revalidation, the factual CREATE selector remains the next reopened public-contract dependency because `resolution_id` no longer exists.
+
+## 14.8 RATIFIED — Object-scoped runtime-cell projection is one-to-one
+
+The post-definition Object-scoped Relationship collection is rooted directly in the factual runtime semantic cells:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+
+runtime_relationship_cells
+    WHERE from_object_id = object_id
+```
+
+RATIFIED mapping:
+
+```text
+one matching runtime_relationship_cells row
+    -> exactly one Object-scoped public Relationship item
+```
+
+No additional grouping or deduplication layer is required between the persisted runtime relation and the Object-relative public projection.
+
+The reason is structural rather than an implementation shortcut. The ratified global semantic-cell uniqueness authority is:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+so two current runtime rows cannot independently express the same exact Object-relative semantic cell:
+
+```text
+(object_id, name, destination_object_id)
+```
+
+The old M4 deduplication requirement was a consequence of the former Resolution/inheritance-expanded runtime model, where multiple exact `runtime_relationship_resolutions` rows could collapse to the same Object-relative public view. That premise is superseded by `runtime_relationship_cells`.
+
+Examples:
+
+```text
+Alice friend_of Bob
+Bob   friend_of Alice
+
+GET /objects/Alice/relationships
+    -> matches only (Alice, friend_of, Bob)
+    -> one item
+```
+
+```text
+Alice friend_of Alice
+
+GET /objects/Alice/relationships
+    -> matches the single self-loop runtime cell
+    -> one item
+```
+
+```text
+VM1 runs_on H1
+H1  hosts    VM1
+
+GET /objects/VM1/relationships
+    -> matches only (VM1, runs_on, H1)
+    -> one item
+```
+
+This read remains data-plane trusted-state projection. It does not reconstruct Definition topology or re-certify why the runtime cell exists.
+
+This checkpoint supersedes the pre-freeze technical baseline statement that Object-scoped projection must deduplicate multiple runtime Resolution rows before pagination.
+
+Current next micro-point:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+    -> revalidate exact ObjectRelationshipItem shape against the 1:1 runtime-cell mapping
+```
