@@ -134,7 +134,7 @@ No schema-column relocation is implied: `name` remains owned by `relationship_re
 
 ---
 
-# 3. Candidate repetition rule — already-expressed relationships cannot be redefined
+# 3. RATIFIED semantic invariant — already-expressed relationships cannot be redefined
 
 The primary semantic objective is not merely to avoid structurally identical Definition rows. It is to avoid expressing a relationship meaning that is already expressed in the model.
 
@@ -148,9 +148,9 @@ At the effective exact-template level, one atomic directed semantic relationship
 )
 ```
 
-Call this tuple a **semantic cell** for the purposes of this intent draft.
+This tuple is the **semantic cell** of the effective Relationship model.
 
-Candidate semantic rule:
+RATIFIED semantic rule:
 
 ```text
 the same semantic cell must not be expressed more than once
@@ -184,6 +184,14 @@ resolution_id
 ```
 
 Those identify owners of meaning; they do not make an already-expressed semantic cell different.
+
+Equivalently, for every two distinct Resolution declarations `R1 != R2`, if `E(R)` denotes the complete effective semantic-cell expansion of `R`, then the model requires:
+
+```text
+E(R1) INTERSECT E(R2) = EMPTY
+```
+
+This invariant is global: it applies both intra-Definition and inter-Definition.
 
 ---
 
@@ -335,9 +343,9 @@ This table is derived effective knowledge, not the compact authoring source.
 
 ---
 
-# 6. Candidate semantic ownership key
+# 6. RATIFIED semantic ownership; physical uniqueness still candidate
 
-Given the stable-name and no-repetition candidates above, the natural semantic ownership key of the materialized space is:
+Given the stable-name direction and the ratified no-repetition invariant above, the semantic ownership key of the effective space is:
 
 ```text
 (
@@ -347,21 +355,11 @@ Given the stable-name and no-repetition candidates above, the natural semantic o
 )
 ```
 
-Strong relational candidate:
-
-```text
-UNIQUE (
-    from_template_id,
-    name,
-    to_template_id
-)
-```
-
-Semantically this means:
+RATIFIED semantic meaning:
 
 ```text
 one exact directed relationship meaning
-    -> exactly one owning Resolution
+    -> exactly one owning Resolution globally
 ```
 
 A collision may be:
@@ -376,9 +374,19 @@ INTER-DEFINITION
     owned by another Definition
 ```
 
-The same mechanism can therefore detect both malformed/redundant internal Definition shape and cross-Definition repetition.
+The same semantic authority therefore detects both malformed/redundant internal Definition shape and cross-Definition repetition.
 
-The exact physical choice between `PRIMARY KEY`, `UNIQUE`, explicit prevalidation plus final unique arbitration, or another DDL realization is still OPEN. What is being captured here is the candidate **semantic uniqueness authority**, not final migration syntax.
+A strong relational realization candidate is:
+
+```text
+UNIQUE (
+    from_template_id,
+    name,
+    to_template_id
+)
+```
+
+The exact physical choice between `PRIMARY KEY`, `UNIQUE`, explicit prevalidation plus final unique arbitration, or another DDL realization remains OPEN. The semantic single-owner invariant itself is ratified; only its exact physical enforcement is not yet closed.
 
 ---
 
@@ -600,7 +608,10 @@ relationship_resolution_space
     name                                            # stable copied semantic name
     to_template_id                                  # exact effective member
 
-    candidate global semantic ownership:
+    ratified semantic ownership:
+        one owner per (from_template_id, name, to_template_id)
+
+    candidate physical enforcement:
         UNIQUE(from_template_id, name, to_template_id)
 
 relationship_definition_versions
@@ -665,7 +676,7 @@ The current intent is intentionally incomplete. At least the following points mu
     - exact fate of RelationshipDefinition.RENAME
 
 5. Materialized-space physical realization
-    - exact PK/UNIQUE shape
+    - exact PK/UNIQUE shape implementing the ratified single-owner semantic invariant
     - whether relationship_definition_id is physically denormalized
     - FK/cascade/rebuild strategy
     - indexes for model conflict, capability and factual admission
@@ -707,10 +718,10 @@ relationship_resolution_space
     + stable name
     + exact to-template
 
-semantic cell
+semantic cell [RATIFIED]
     = (exact from-template, stable name, exact to-template)
 
-candidate invariant
+semantic ownership invariant [RATIFIED]
     = one semantic cell has one Resolution owner globally
 
 model plane
