@@ -2293,3 +2293,44 @@ Remaining global-GET closure points are now:
 deterministic operational ordering, if retained
 index sufficiency / covering-index performance handoff after ordering is known
 ```
+
+## 14.6 RATIFIED — deterministic operational ordering is not a public contract property
+
+The global GET implementation may emit `perspectives[]` in deterministic operational order using the ratified runtime semantic-cell tuple:
+
+```text
+from_object_id
+name
+to_object_id
+```
+
+Conceptually:
+
+```text
+ORDER BY
+    from_object_id,
+    name,
+    to_object_id
+```
+
+This ordering exists only for implementation reproducibility, stable tests/diffs and operational predictability. It introduces no additional Relationship semantics and requires no model-plane read or reconstruction.
+
+RATIFIED public boundary:
+
+```text
+perspectives[]
+    -> complete lossless collection
+    -> no public/domain ordering meaning
+    -> array position is not part of the API contract
+    -> clients must not depend on the emitted position/order
+```
+
+Therefore the exact operational tuple is **not exposed as a public contract property**. The server remains free to change the internal deterministic ordering in a later implementation/optimization without changing the public API, provided collection completeness and item semantics are preserved.
+
+In particular, the GET does not attempt to recover or expose an `A -> B / B -> A` ordering from `RelationshipDefinition`; doing so would reintroduce model-plane work solely for presentation with no additional data-plane meaning.
+
+The remaining global-GET closure point is now limited to:
+
+```text
+index sufficiency / covering-index performance handoff
+```
