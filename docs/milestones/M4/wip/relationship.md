@@ -1,6 +1,34 @@
 # M4 — Factual Relationship working owner
 
-**Status:** ACTIVE REVIEW FRONTIER / WIP / NON-NORMATIVE
+**Status:** REVIEW FROZEN / WIP / NON-NORMATIVE
+
+## Review freeze — upstream RelationshipDefinition revalidation required
+
+The ongoing M4 review of factual `Relationship` is temporarily **FROZEN**.
+
+During the technical/physical revalidation of factual Relationship, evidence emerged that assumptions currently used by the factual/runtime model may depend on a more fundamental upstream issue in the semantics and structure of `RelationshipDefinition` / `RelationshipResolution`. Continuing to refine factual Relationship persistence, runtime closure, conflict ownership, pagination or read-path realization before resolving that upstream model would risk optimizing or ratifying downstream consequences of an unstable definition model.
+
+Therefore the factual Relationship review must not advance until the RelationshipDefinition model has been explicitly re-reviewed and the relevant upstream semantics have been stabilized.
+
+Until that review is completed:
+
+```text
+no new factual Relationship technical/physical checkpoint is to be ratified
+no further runtime-closure/persistence optimization is to be treated as settled
+no Object-scoped Relationship collection technical realization is to advance
+```
+
+Previously ratified factual Relationship public-contract checkpoints and previously recorded technical findings remain preserved in this WIP as review history; this freeze does **not** automatically revoke them. However, any downstream decision that depends on RelationshipDefinition/Resolution topology, runtime-resolution cardinality, factual uniqueness or persistence ownership must be explicitly revalidated after the upstream review and may be reopened if that review changes the foundations.
+
+Current review dependency/frontier:
+
+```text
+RelationshipDefinition / RelationshipResolution semantic-model review
+    -> stabilize upstream definition/resolution semantics
+    -> then resume factual Relationship review
+```
+
+This is a review freeze/dependency marker only. It does not authorize implementation and does not promote any WIP content to normative architecture.
 
 ## Purpose and ownership
 
