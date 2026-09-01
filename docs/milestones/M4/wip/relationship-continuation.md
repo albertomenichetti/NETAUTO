@@ -895,10 +895,36 @@ CANDIDATE B
 
 This strict-body rule does not decide deeper semantic failures such as nonexistent Objects, semantic-cell incompatibility, Definition/version admission, property validation, or runtime semantic-cell ownership conflicts; those remain part of the CREATE failure-taxonomy review.
 
+## C-REL-15 RATIFIED — CREATE success acknowledgement remains unchanged
+
+The factual Relationship CREATE keeps the pre-freeze success acknowledgement unchanged and independent from the still-deferred Definition-selection request shape.
+
+Successful creation returns:
+
+```text
+201 Created
+Location: /api/v1/core/relationships/{new_relationship_id}
+```
+
+with:
+
+```text
+success body: none
+```
+
+The factual `relationship_id` remains server-generated lifetime identity. `Location` is the canonical acknowledgement carrier for the newly created resource identity; the response does not duplicate that identity in a body.
+
+CREATE does not return the global Relationship detail representation. A caller that needs the canonical current factual representation follows the `Location` and uses:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+```
+
+This keeps mutation acknowledgement decoupled from global GET representation richness and applies identically whether architecture closing selects Candidate A or Candidate B for Definition selection.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate success acknowledgement
-       then CREATE failure taxonomy / precedence
+    -> revalidate CREATE failure taxonomy and public precedence
 ```
