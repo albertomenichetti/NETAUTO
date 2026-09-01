@@ -761,3 +761,54 @@ POST /api/v1/core/relationships
     -> revalidate the remaining request-body fields that are independent
        from the deferred explicit-vs-derived Definition selector choice
 ```
+
+## C-REL-12 RATIFIED — CREATE preserves optional exact RelationshipDefinitionVersion selection
+
+The factual Relationship CREATE keeps the pre-freeze `relationship_definition_version` request semantics unchanged.
+
+Public field:
+
+```text
+relationship_definition_version: positive integer, optional
+```
+
+with:
+
+```text
+omitted
+    -> select the current default_version of the owning RelationshipDefinition
+
+present
+    -> select exactly the supplied positive RelationshipDefinitionVersion
+
+explicit null
+    -> invalid request
+
+zero / negative / malformed value
+    -> invalid request
+```
+
+The selected version governs the factual Relationship property-schema binding only. It does not select the semantic perspective, alter endpoint orientation, or replace the required stable semantic `name`.
+
+These semantics apply identically to both still-open Definition-selection candidates:
+
+```text
+CANDIDATE A
+    owning Definition supplied explicitly
+    -> omitted version resolves that Definition's current default_version
+
+CANDIDATE B
+    owning Definition derived from the exact semantic cell
+    -> derive Definition first
+    -> omitted version resolves that Definition's current default_version
+```
+
+Supplying an explicit version remains an exact-version request, not a latest/minimum/compatible-version hint. Exact existence/status/admission and related failure mapping remain separate CREATE review points.
+
+Current next micro-point:
+
+```text
+POST /api/v1/core/relationships
+    -> revalidate properties optional/omission/null semantics
+       independently from the deferred Definition selector choice
+```
