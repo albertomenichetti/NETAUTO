@@ -2334,3 +2334,100 @@ The remaining global-GET closure point is now limited to:
 ```text
 index sufficiency / covering-index performance handoff
 ```
+
+## 14.7 RATIFIED — global GET owner index and post-definition technical closure
+
+The global factual Relationship GET enters the runtime child by factual owner identity:
+
+```text
+relationship_id
+```
+
+The ratified semantic-cell uniqueness key:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+is the authoritative global conflict/ownership identity, but its leading column does not support the root-relative access pattern used by:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+```
+
+M4 therefore ratifies a dedicated runtime-child owner access path:
+
+```text
+INDEX runtime_relationship_cells (relationship_id)
+```
+
+This is a data-plane access index only. It does not add semantic identity and does not change the fact that `relationship_id` is ownership/grouping state rather than part of the semantic-cell key.
+
+No wider covering/order-preserving index such as:
+
+```text
+(relationship_id, from_object_id, name, to_object_id)
+```
+
+is required by the M4 architecture for the global GET. The owner slice is small, operational perspective ordering is not a public API property, and the read must still join the endpoint `objects` rows to obtain current `canonical_name`. A wider covering index may be reconsidered only from measured workload evidence; it is not part of the ratified logical/physical baseline.
+
+The expected normal access path is therefore:
+
+```text
+relationships primary-key lookup by id
+    -> runtime_relationship_cells INDEX (relationship_id)
+    -> objects primary-key lookup for from_object
+    -> objects primary-key lookup for to_object
+```
+
+No model-plane access is introduced.
+
+### Global GET post-definition closure
+
+The global factual Relationship GET is now **CLOSED** again for the M4 discovery pass.
+
+Ratified post-definition result:
+
+```text
+GET /api/v1/core/relationships/{relationship_id}
+
+RelationshipDetail
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+    perspectives[]
+        name
+        from_object { id, canonical_name }
+        to_object   { id, canonical_name }
+```
+
+with:
+
+```text
+complete lossless runtime-cell projection
+one public perspective per runtime semantic cell
+no resolution_id
+semantic name read directly from runtime_relationship_cells
+Object canonical names joined live
+no model-plane read/reconstruction
+one authoritative PostgreSQL statement snapshot
+root absent -> 404
+root present but no runtime cell visible -> 500 persisted-invariant corruption
+optional deterministic operational order only; no public ordering contract
+runtime child owner access through INDEX (relationship_id)
+no required covering index
+```
+
+This closure supersedes earlier `ACTIVE REVALIDATION` / `remaining global-GET closure point` markers in this WIP wherever they refer to the post-definition global GET.
+
+Current factual Relationship review frontier is now:
+
+```text
+GET /api/v1/core/objects/{object_id}/relationships
+    -> revalidate Object-scoped navigation semantics and projection against runtime_relationship_cells
+    -> revalidate filters/pagination only where old Resolution assumptions mattered
+    -> revalidate Object-rooted access path/index shape
+```
+
+After the Object-scoped GET revalidation, the factual CREATE selector remains the next reopened public-contract dependency because `resolution_id` no longer exists.
