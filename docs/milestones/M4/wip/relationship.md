@@ -1,34 +1,52 @@
 # M4 — Factual Relationship working owner
 
-**Status:** REVIEW FROZEN / WIP / NON-NORMATIVE
+**Status:** ACTIVE REVIEW FRONTIER / WIP / NON-NORMATIVE
 
-## Review freeze — upstream RelationshipDefinition revalidation required
+## Review resumed — upstream model-plane semantics sufficiently stabilized
 
-The ongoing M4 review of factual `Relationship` is temporarily **FROZEN**.
+The M4 factual `Relationship` review is now **RESUMED**.
 
-During the technical/physical revalidation of factual Relationship, evidence emerged that assumptions currently used by the factual/runtime model may depend on a more fundamental upstream issue in the semantics and structure of `RelationshipDefinition` / `RelationshipResolution`. Continuing to refine factual Relationship persistence, runtime closure, conflict ownership, pagination or read-path realization before resolving that upstream model would risk optimizing or ratifying downstream consequences of an unstable definition model.
-
-Therefore the factual Relationship review must not advance until the RelationshipDefinition model has been explicitly re-reviewed and the relevant upstream semantics have been stabilized.
-
-Until that review is completed:
+The earlier freeze was introduced because factual/runtime decisions depended on unstable `RelationshipDefinition` / `RelationshipResolution` semantics. The upstream model-plane review has now stabilized the semantics required by the factual data plane far enough to resume this WIP:
 
 ```text
-no new factual Relationship technical/physical checkpoint is to be ratified
-no further runtime-closure/persistence optimization is to be treated as settled
-no Object-scoped Relationship collection technical realization is to advance
+RelationshipDefinition
+    -> compact stable semantic contract
+    -> no autonomous RelationshipResolution entity
+    -> no resolution_id model identity
+    -> stable directional semantic names
+    -> materialized exact-template semantic closure
 ```
 
-Previously ratified factual Relationship public-contract checkpoints and previously recorded technical findings remain preserved in this WIP as review history; this freeze does **not** automatically revoke them. However, any downstream decision that depends on RelationshipDefinition/Resolution topology, runtime-resolution cardinality, factual uniqueness or persistence ownership must be explicitly revalidated after the upstream review and may be reopened if that review changes the foundations.
+This does **not** mean that every `RelationshipDefinition` physical/API detail is closed. Remaining upstream details may still be reviewed separately. The factual review may temporarily return upstream only if a concrete data-plane blocker requires one of those details.
 
-Current review dependency/frontier:
+The review must keep the planes separate:
 
 ```text
-RelationshipDefinition / RelationshipResolution semantic-model review
-    -> stabilize upstream definition/resolution semantics
-    -> then resume factual Relationship review
+MODEL PLANE
+    RelationshipDefinition semantic contract
+    relationship_definition_space exact-template closure
+
+DATA PLANE
+    factual Relationship identity/version/properties
+    concrete Object-level semantic closure
 ```
 
-This is a review freeze/dependency marker only. It does not authorize implementation and does not promote any WIP content to normative architecture.
+The model-plane relational shape is not copied mechanically into factual persistence. The factual schema is reviewed on its own data-plane responsibilities.
+
+Previously ratified factual public-contract checkpoints and technical findings remain preserved below as review history. Any item that depended on autonomous `RelationshipResolution`, `resolution_id`, mutable Resolution names, or the old runtime-row identity is explicitly reopened and must be revalidated against the post-review model-plane semantics.
+
+In particular, the following pre-freeze areas are historical inputs rather than current settled shape until revalidated:
+
+```text
+CREATE selector based on resolution_id
+GET global detail fields based on resolution_id
+runtime_relationship_resolutions row identity
+live join to relationship_resolutions for relationship name
+Object-scoped pagination tie-breakers based on resolution identity
+technical GET/index conclusions whose key shape includes resolution_id
+```
+
+This resumed review remains M4 WIP only. It does not authorize implementation or promote any decision to normative architecture.
 
 ## Purpose and ownership
 
@@ -252,9 +270,9 @@ The functional capability gate is therefore closed. The family remains an ACTIVE
 
 ---
 
-# 4. Persisted factual model and runtime closure
+# 4. RATIFIED post-definition data-plane relational baseline
 
-Current durable ownership is conceptually:
+The `RelationshipDefinition` review changed the model plane, not the factual root responsibilities. The factual data plane therefore keeps the existing root shape conceptually unchanged:
 
 ```text
 relationships
@@ -262,32 +280,295 @@ relationships
     relationship_definition_id
     relationship_definition_version
     properties
+```
 
+RATIFIED meaning:
+
+```text
+id
+    lifetime-global factual Relationship identity
+
+relationship_definition_id
+    stable model-plane Definition binding of the factual Relationship
+
+relationship_definition_version
+    exact version pin for factual property-schema semantics
+
+properties
+    current canonical factual property state
+```
+
+The endpoint pair and complete oriented factual semantics remain materialized in an owned runtime child relation rather than being moved onto the root.
+
+The old child shape depended on autonomous model-plane Resolutions:
+
+```text
 runtime_relationship_resolutions
+    relationship_id
+    relationship_definition_id
     resolution_id
     from_object_id
     to_object_id
+```
+
+That shape is superseded because the post-review model plane has no `RelationshipResolution` entity and no `resolution_id`.
+
+## 4.1 RATIFIED runtime materialization — exact Object-level semantic cells
+
+The factual runtime materialization directly owns the concrete Object-level semantic cells expressed by one factual Relationship.
+
+Working TO-BE relation name:
+
+```text
+runtime_relationship_cells
+```
+
+The exact final SQL table name remains a physical naming detail; the ratified logical row shape is:
+
+```text
+runtime_relationship_cells
     relationship_id
+    from_object_id
+    name
+    to_object_id
+```
+
+One row means exactly:
+
+```text
+from Object
+    -- stable semantic name -->
+to Object
+```
+
+The materialized semantic information is therefore the exact ordered Object-level cell:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+This is the data-plane analogue of, but not the same relation as, the model-plane exact-template closure:
+
+```text
+MODEL PLANE
+relationship_definition_space
     relationship_definition_id
+    from_template_id
+    name
+    to_template_id
+
+DATA PLANE
+runtime_relationship_cells
+    relationship_id
+    from_object_id
+    name
+    to_object_id
 ```
 
-`runtime_relationship_resolutions` is both:
+The model-plane closure certifies which exact-template semantic cells are expressible. The data-plane runtime relation materializes which exact-Object semantic cells are actually expressed by current factual Relationships.
+
+## 4.2 RATIFIED runtime semantic-cell uniqueness and ownership
+
+The semantic/exact-view identity of one current runtime cell is:
 
 ```text
-complete deterministic runtime closure
+(from_object_id, name, to_object_id)
+```
+
+RATIFIED rule:
+
+```text
+one exact Object-level semantic cell
+    -> at most one current factual Relationship owner globally
+```
+
+`relationship_id` is **not** part of the semantic identity. Its role is relational ownership/grouping:
+
+```text
+runtime cell
+    -> belongs to exactly one factual Relationship
+
+relationship_id
+    -> groups the complete runtime closure of that factual Relationship
+    -> supports root-relative reads/delete
+    -> provides the child -> relationships ownership reference
+```
+
+The exact physical realization of the semantic key as `PRIMARY KEY`, `UNIQUE`, or another equivalent relational mechanism remains a later DDL decision. The semantic uniqueness itself is ratified.
+
+## 4.3 RATIFIED — no duplicated RelationshipDefinition identity in runtime child
+
+`relationship_definition_id` is not required in the runtime child.
+
+The owning Definition is already determined transitively and unambiguously:
+
+```text
+runtime_relationship_cells.relationship_id
+    -> relationships.id
+    -> relationships.relationship_definition_id
+```
+
+The old duplicated `relationship_definition_id` existed materially to enforce same-Definition coherence between factual Relationship and autonomous `RelationshipResolution` through composite references. Once `resolution_id` / `RelationshipResolution` disappear, that structural reason disappears as well.
+
+RATIFIED direction:
+
+```text
+runtime_relationship_cells
+    -> do not duplicate relationship_definition_id
+```
+
+Any future proposal to copy it back must be justified as an explicit measured denormalization, not as required semantic state.
+
+## 4.4 RATIFIED — semantic `name` is materialized; Object canonical names are not
+
+The runtime `name` is now part of the stable semantic cell itself. It is **not** a copied mutable display field and no longer requires a live join to a model-plane `relationship_resolutions` table.
+
+Therefore:
+
+```text
+runtime_relationship_cells.name
+    -> materialized stable semantic state
+    -> read directly from the runtime child
+```
+
+Object `canonical_name` remains different:
+
+```text
+objects.canonical_name
+    -> mutable current Object display state
+    -> not part of runtime semantic-cell identity
+    -> not copied into runtime_relationship_cells
+```
+
+GET projections that need current Object display metadata continue to join the two endpoint Object rows live in PostgreSQL.
+
+This preserves the prior M4 decision against Object-name fan-out on Object RENAME while eliminating the old model-plane join that existed only to recover `RelationshipResolution.name`.
+
+## 4.5 Runtime closure examples
+
+Asymmetric Definition:
+
+```text
+VirtualMachine --runs_on--> Hypervisor
+Hypervisor     --hosts----> VirtualMachine
+```
+
+Factual Objects `VM1` and `H1` materialize:
+
+```text
+relationship_id = R1
+VM1  runs_on  H1
+H1   hosts    VM1
+```
+
+Symmetric disjoint-space Definition:
+
+```text
+Router --connected_to--> Switch
+```
+
+Factual Objects `R1` and `S1` materialize:
+
+```text
+relationship_id = R2
+R1  connected_to  S1
+S1  connected_to  R1
+```
+
+Symmetric same-space with distinct Objects:
+
+```text
+Alice friend_of Bob
+```
+
+materializes:
+
+```text
+relationship_id = R3
+Alice  friend_of  Bob
+Bob    friend_of  Alice
+```
+
+Symmetric same-space self-loop:
+
+```text
+Alice friend_of Alice
+```
+
+materializes one exact cell only:
+
+```text
+relationship_id = R4
+Alice  friend_of  Alice
+```
+
+Asymmetric inheritance-overlap example:
+
+```text
+Manager  --manages----> Employee
+Employee --managed_by-> Manager
+```
+
+For two Manager Objects `M1` and `M2` the factual closure is losslessly:
+
+```text
+relationship_id = R5
+M1  manages     M2
+M2  managed_by  M1
+```
+
+## 4.6 Relational responsibilities retained/open
+
+The ratified logical ownership/reference roles are:
+
+```text
+relationship_id
+    -> owned-child reference to relationships
+
+from_object_id
+to_object_id
+    -> references to current Objects
+
+(from_object_id, name, to_object_id)
+    -> global exact semantic-cell uniqueness authority
+```
+
+Exact SQL PK/FK/UNIQUE forms, `ON DELETE` actions, indexes, ordering support and table naming remain physical-design questions unless separately ratified.
+
+The factual runtime child remains both:
+
+```text
+complete deterministic runtime semantic closure
 +
-authoritative exact-view ownership/conflict index
+authoritative exact Object-level semantic-cell ownership/conflict index
 ```
 
-Its exact row identity is:
+M4 should not add a second Relationship-specific materialization/conflict authority for the same data-plane semantic space without new evidence.
+
+Because the runtime relation still references endpoint Objects, its final FK realization remains relevant to Object.DELETE lifetime arbitration and must be revalidated when the physical schema is closed.
+
+## 4.7 Revalidation effect on pre-freeze findings
+
+The following old assumptions are now explicitly superseded:
 
 ```text
-(resolution_id, from_object_id, to_object_id)
+runtime row identity includes resolution_id
+runtime child duplicates relationship_definition_id for Resolution coherence
+GET must join relationship_resolutions to recover relationship name
+runtime name would be a denormalized copy of mutable Resolution metadata
 ```
 
-M4 should not create a second Relationship-specific materialization/conflict table for the same semantic space without new evidence.
+The following higher-level data-plane principles remain valid and are carried forward:
 
-Current factual Relationship persistence also participates in Object lifetime arbitration through database-enforced Object references. Any material change to the Relationship persistence/FK graph must trigger targeted revalidation of reviewed Object.DELETE lifetime assumptions.
+```text
+relationships is the factual root
+runtime closure is owned by the factual root
+closure materialization is complete/all-or-nothing
+GET consumes trusted persisted factual state rather than re-certifying model semantics
+Object canonical names remain live Object-owned display state
+```
+
+Sections 5–14 below retain the detailed pre-freeze review history. Any Resolution-dependent statement in those sections must be interpreted as historical input until explicitly revalidated against this ratified data-plane baseline.
 
 ---
 
@@ -409,6 +690,8 @@ no semantic recertification
 ```
 
 Do not copy mutable `Resolution.name` into runtime closure rows merely to avoid the join.
+
+This section is retained as pre-freeze history. Under the ratified post-definition data-plane baseline, runtime `name` is now stable semantic state already stored in `runtime_relationship_cells`, so the old requirement to join `relationship_resolutions` for the name is superseded. The global GET is the current active revalidation frontier.
 
 ---
 
@@ -582,6 +865,8 @@ performance optimization
 
 The technical findings already retained in sections 4–12 remain input for the later implementation/concurrency/physical sweep; they must not constrain the public contract merely because they were discovered earlier.
 
+**Post-definition revalidation marker:** the route/capability decisions in this section remain review history, but any request/response/filter/pagination field whose justification depends on autonomous `RelationshipResolution`, `resolution_id`, mutable Resolution names, or the old runtime-row key is reopened. Independent route, version/property and success/error decisions are not revoked automatically.
+
 ## 13.1 CREATE — route identity RATIFIED
 
 The CREATE route is ratified as:
@@ -643,6 +928,8 @@ The CREATE command uses `resolution_id` as the fastest unambiguous selector for 
 
 Omission is not `null`: optional fields may be omitted to request default/empty semantics, but explicit `null` is not a valid substitute. Unknown body fields are rejected by the strict public-body contract.
 
+**REOPENED:** this request body cannot survive unchanged because `resolution_id` no longer exists in the model plane. Its replacement selector is deferred until the factual CREATE review resumes after the GET revalidation.
+
 ## 13.3 CREATE — success response RATIFIED
 
 Successful CREATE returns:
@@ -683,6 +970,8 @@ success:
 ```
 
 No CREATE implementation/data-path decision is implied by this contract closure.
+
+**Post-definition status:** route/success acknowledgement remain ratified; the body is reopened solely where it depends on `resolution_id`.
 
 ## 13.5 GET global detail — route/input RATIFIED
 
@@ -758,9 +1047,11 @@ The response shape does not imply that Resolution names or Object canonical name
 
 An implementation may emit `resolutions` in a deterministic order for operational stability, but that order has no domain/public meaning and is not part of the REST contract.
 
+**REOPENED:** the lossless-global-detail objective remains ratified, but the nested closure item must be redefined because there is no `resolution_id`, and `name` is now stable runtime semantic state rather than mutable Resolution display metadata. `ObjectReference {id, canonical_name}` remains a valid previously ratified display projection and is being revalidated against the new runtime relation.
+
 ## 13.7 GET global detail — public contract CLOSED
 
-The complete ratified global-detail contract is therefore:
+The complete pre-freeze global-detail contract was:
 
 ```text
 GET /api/v1/core/relationships/{relationship_id}
@@ -782,7 +1073,9 @@ success:
             to_object   { id, current canonical_name }
 ```
 
-No global-GET implementation/data-path decision is implied by this contract closure.
+No global-GET implementation/data-path decision was implied by this contract closure.
+
+**Post-definition status:** route/input and the requirement for a complete lossless global factual projection remain ratified; the exact nested runtime-cell representation is the current active review frontier.
 
 ## 13.8 GET Object-scoped collection — route/path RATIFIED
 
@@ -834,6 +1127,8 @@ The M4 TO-BE contract does **not** expose the AS-IS `name` query parameter.
 No `resolution_id` replacement filter is introduced automatically. A specific perspective filter would require a concrete caller need before being added to this API.
 
 Textual/perspective-name discovery belongs to the M5 Search API unless a later M4 caller requirement explicitly reopens this boundary.
+
+**REOPENED rationale only:** the original justification based on mutable `RelationshipResolution.name` is superseded because semantic names are now stable. Whether the Object-scoped GET should still omit a `name` filter must be revalidated later from caller/navigation requirements rather than carried forward from the old mutability argument.
 
 ## 13.11 GET Object-scoped collection — keyset cursor RATIFIED
 
@@ -940,6 +1235,8 @@ The path `object_id` is intentionally not repeated in every item. The item also 
 
 Cursor payload/encoding, cursor-to-scope/filter binding rules and invalid-cursor semantics remain OPEN.
 
+**Post-definition revalidation required:** the item intent remains Object-relative, but statements about runtime-resolution collapse, mutable relationship names and resolution identity must be rechecked against `runtime_relationship_cells`.
+
 ## 13.14 GET Object-scoped collection — page envelope RATIFIED
 
 Successful collection reads use the minimal page envelope:
@@ -993,6 +1290,8 @@ relationship_definition_version
 because those values can change while the factual Relationship or its endpoint binding remains the same.
 
 The implementation may use stable fact/endpoint identities plus a stable resolution-derived tie-breaker when more than one distinct Object-relative perspective of the same fact reaches the same destination. The exact internal key tuple is intentionally not part of the public REST contract and remains a technical realization detail; only its stability and opacity are public requirements.
+
+**REOPENED where Resolution-dependent:** `name` is now stable semantic state, not mutable display metadata, and no resolution-derived tie-breaker exists. Exact keyset identity will be revalidated later against the runtime semantic-cell key.
 
 ## 13.16 GET Object-scoped collection — cursor binding and invalid-cursor semantics RATIFIED
 
@@ -1086,6 +1385,8 @@ errors/empty semantics:
 ```
 
 No Object-scoped collection implementation/data-path decision is implied by this contract closure. Exact internal key tuple, cursor payload/encoding, SQL realization, index design and deduplication mechanics remain technical realization concerns subject to the later sweep.
+
+**Post-definition status:** route/basic page semantics remain historical ratified input; name-filter rationale, item semantics where they depend on mutable Resolution names, and keyset realization are reopened for later revalidation.
 
 ## 13.19 DATA_CHANGE — route identity and Object-alignment principle RATIFIED
 
@@ -1650,20 +1951,20 @@ failures:
 
 No DELETE implementation/data-path/concurrency mechanism is implied by this public-contract closure. Exact before-state carrier, lifecycle physical carrier, delete statement shape, locking/retry strategy and persistence/FK realization remain later technical/concurrency decisions.
 
-## 13.33 Exact public REST contract sweep — CLOSED
+## 13.33 Exact public REST contract sweep — PRE-FREEZE CLOSED / PARTIALLY REOPENED
 
-The factual Relationship exact public REST contract sweep is ratified as complete for all six M4 capabilities:
+Before the upstream Definition review, the factual Relationship exact public REST contract sweep was closed for all six M4 capabilities:
 
 ```text
-CREATE                                  CLOSED
-GET global detail by relationship_id    CLOSED
-GET Object-scoped Relationship collection CLOSED
+CREATE                                  PRE-FREEZE CLOSED
+GET global detail by relationship_id    ACTIVE REVALIDATION
+GET Object-scoped Relationship collection REVALIDATION REQUIRED WHERE RESOLUTION-DEPENDENT
 DATA_CHANGE                             CLOSED
 SCHEMA_CHANGE                           CLOSED
 DELETE                                  CLOSED
 ```
 
-The resulting M4 public surface is:
+The route inventory remains:
 
 ```text
 POST   /api/v1/core/relationships
@@ -1674,21 +1975,28 @@ POST   /api/v1/core/relationships/{relationship_id}/schema
 DELETE /api/v1/core/relationships/{relationship_id}
 ```
 
-No additional factual Relationship public capability is introduced by this sweep. Global Relationship discovery remains owned by M5 Search API, Object-scoped single detail remains unnecessary absent a new caller requirement, and endpoint reassignment remains DELETE + CREATE with new factual identity.
+Global Relationship discovery remains owned by M5 Search API, Object-scoped single detail remains unnecessary absent a new caller requirement, and endpoint reassignment remains DELETE + CREATE with new factual identity.
 
-This closure freezes only the reviewed public contracts at the current M4 discovery checkpoint. It does not authorize implementation and does not promote this WIP to normative architecture.
+Current resumed frontier:
 
-The Relationship review frontier now returns to technical realization/concurrency/physical revalidation. Sections 4–12 remain candidate input for that phase and must be revalidated against the now-ratified public contracts rather than treated as automatically approved implementation design.
+```text
+GET /api/v1/core/relationships/{relationship_id}
+    -> revalidate exact lossless response against ratified runtime_relationship_cells schema
+    -> then revalidate Object-scoped Relationship collection
+    -> then revisit CREATE selector
+```
 
 ---
 
 # 14. Technical realization / concurrency / physical revalidation
 
-The exact public REST contract sweep is closed. Technical realization is now revalidated operation-by-operation against those ratified contracts. Findings in sections 4–12 remain inputs but are not promoted automatically.
+The pre-freeze technical sweep below is retained as detailed review history. It was based on the old runtime Resolution model and is superseded wherever it requires `relationship_resolutions`, `resolution_id`, duplicated runtime `relationship_definition_id`, or mutable Resolution-name joins.
 
-## 14.1 GET global detail — materialized closure + live display joins RATIFIED
+The currently ratified factual relational baseline is section 4. The active technical frontier has returned to the global GET.
 
-The global factual Relationship GET keeps the already-materialized factual/runtime split:
+## 14.1 GET global detail — materialized closure + live display joins PRE-FREEZE HISTORY
+
+The global factual Relationship GET kept the then-materialized factual/runtime split:
 
 ```text
 relationships
@@ -1701,9 +2009,9 @@ runtime_relationship_resolutions
     -> exact factual endpoint/resolution identities
 ```
 
-`runtime_relationship_resolutions` remains the durable materialized structural source for the complete exact closure. The GET must consume that closure directly; it does not reconstruct or re-certify closure membership from RelationshipDefinition topology, ObjectTemplate ancestry or endpoint template compatibility.
+`runtime_relationship_resolutions` was the durable materialized structural source for the complete exact closure. The GET consumed that closure directly; it did not reconstruct or re-certify closure membership from RelationshipDefinition topology, ObjectTemplate ancestry or endpoint template compatibility.
 
-Current mutable display metadata is deliberately **not** copied into the runtime closure. In particular M4 does not add:
+Current mutable display metadata was deliberately **not** copied into the runtime closure. In particular pre-freeze M4 did not add:
 
 ```text
 runtime_relationship_resolutions.resolution_name
@@ -1711,7 +2019,7 @@ runtime_relationship_resolutions.from_object_canonical_name
 runtime_relationship_resolutions.to_object_canonical_name
 ```
 
-The normal read path instead uses one live PostgreSQL projection combining:
+The normal read path instead used one live PostgreSQL projection combining:
 
 ```text
 relationships
@@ -1721,7 +2029,7 @@ objects AS from_object
 objects AS to_object
 ```
 
-The live joins supply exactly the mutable current display fields required by the ratified public DTO:
+The live joins supplied:
 
 ```text
 RelationshipResolution.name
@@ -1729,46 +2037,30 @@ from Object.canonical_name
 to Object.canonical_name
 ```
 
-This keeps mutable display state in its existing PostgreSQL owners and avoids rename fan-out/invalidation invariants merely to remove highly selective joins.
+Under the post-review model this specific join shape is superseded: semantic `name` now lives directly in `runtime_relationship_cells`, while Object canonical names remain live joins.
 
-No worker-local cache participates in this GET. Existing M4 cache candidates carry immutable/stable schema, topology or lineage knowledge and do not own the mutable current display values required by the response; using them would not remove a required authoritative current-state read.
-
-Target read character is therefore:
+The higher-level target read character remains useful input:
 
 ```text
 one authoritative PostgreSQL business statement
 one statement snapshot
 trusted persisted factual root
 trusted materialized exact runtime closure
-live current display metadata
-no exact-view deduplication
+live current Object display metadata
 no semantic closure re-derivation
 no schema/DataType/ancestry reads
 no worker cache
-no new GET-specific denormalization
 ```
 
-The exact SQL join polarity is intentionally still OPEN. In particular this checkpoint does not yet decide whether required persisted references should be represented with `INNER JOIN` or root-preserving `LEFT JOIN` plus explicit corruption classification. That integrity/read-projection boundary is the next micro-point.
+## 14.2 GET global detail — hot-path one-statement projection and denormalization PRE-FREEZE HISTORY
 
-Current next technical micro-point:
-
-```text
-GET /api/v1/core/relationships/{relationship_id}
-    -> required-reference join semantics (INNER vs LEFT)
-    -> root/closure corruption handling and 404 vs 500 boundary
-```
-
-## 14.2 GET global detail — hot-path one-statement projection and additional denormalization evaluation RATIFIED
-
-The preceding open join-polarity point is now resolved for the normal GET path. This route is expected to be a potentially very high-frequency data-plane read, so minimizing PostgreSQL round trips is a first-order requirement. The target remains **one business SQL statement** rather than splitting factual/closure state and display metadata into multiple reads.
-
-The logical join shape is:
+The pre-freeze target used:
 
 ```text
 relationships AS r
     LEFT JOIN enriched_runtime_closure AS c
 
-where enriched_runtime_closure is:
+where enriched_runtime_closure was:
 
 runtime_relationship_resolutions AS rr
     INNER JOIN relationship_resolutions AS resolution
@@ -1776,7 +2068,7 @@ runtime_relationship_resolutions AS rr
     INNER JOIN objects AS to_object
 ```
 
-The outer `LEFT JOIN` is required only at the factual-root boundary so the projector can distinguish:
+The root-preserving boundary distinguished:
 
 ```text
 no relationships root row
@@ -1787,207 +2079,70 @@ relationships root exists but no runtime closure row is visible
     -> 500 internal_error
 ```
 
-Inside one existing runtime row, Resolution and endpoint Object references are required FK-backed dependencies. They are therefore consumed through `INNER JOIN` in the normal projection rather than turning every required reference into a nullable public carrier. The GET still does not re-derive expected closure membership from model topology; structurally valid but semantically incomplete persisted closure remains a write/invariant responsibility, not read-time recertification.
-
-Normal successful read character is therefore:
+The old additional-denormalization analysis is now split by semantic ownership:
 
 ```text
-1 PostgreSQL business statement
-1 statement snapshot
-0 follow-up display-name statements
-0 worker-cache dependency
-0 semantic/schema/ancestry reconstruction
-cost proportional only to the small exact runtime closure cardinality
+relationship semantic name
+    -> no longer optional display denormalization
+    -> now intrinsic runtime semantic-cell state
+    -> model-plane name join disappears
+
+Object.canonical_name
+    -> remains mutable Object-owned display state
+    -> copying it would still create Object.RENAME fan-out
+    -> remain live joins unless later evidence proves otherwise
 ```
 
-### Additional display-metadata denormalization explicitly evaluated and not selected
+Thus the old conclusion against copying Object names survives, while the old conclusion against copying `resolution_name` is superseded because there is no Resolution-name copy anymore: the runtime cell owns its stable `name` directly.
 
-M4 explicitly evaluated a further denormalization **on top of** the already-required `runtime_relationship_resolutions` structural materialization, specifically to make this very hot GET even more self-contained. The evaluated direction was conceptually:
+## 14.3 GET global detail — projection/index conclusions PRE-FREEZE HISTORY / REOPENED
 
-```text
-runtime_relationship_resolutions
-    relationship_id
-    relationship_definition_id
-    resolution_id
-    from_object_id
-    to_object_id
-
-    + resolution_name
-    + from_object_canonical_name
-    + to_object_canonical_name
-```
-
-The potential read-side benefit is understood: the GET could eliminate the current-name lookup through `relationship_resolutions` and the two endpoint `objects` PK joins, leaving the factual root plus an almost response-ready runtime closure.
-
-That additional denormalization is **not selected at the current M4 checkpoint** because the expected benefit does not currently justify the new maintenance and consistency obligations:
+The old projector decoded one exact runtime row into one public Resolution item with a row shape containing:
 
 ```text
-runtime closure cardinality per factual Relationship is very small
-current live joins are highly selective/index-backed and remain inside one statement
-RelationshipResolution.name is mutable, even if RENAME is expected to be rare
-Object.canonical_name is mutable data-plane state
-copying Object canonical names would make Object RENAME fan out across every
-    runtime Relationship row in which the Object participates
-all copied display fields would require atomic maintenance/backfill/invariant rules
-mutable display metadata would be mixed into a table whose primary role is
-    structural factual closure + exact-view conflict ownership
-```
-
-The rarity of `RelationshipResolution` rename was considered explicitly. It makes copying `resolution_name` technically feasible, but does not by itself make it advantageous because the saved lookup is already a selective identity join and the two Object display joins would remain unless their canonical names were duplicated as well. Duplicating those Object names has the materially worse write-amplification consequence on `Object.RENAME`.
-
-Therefore the current direction is:
-
-```text
-runtime_relationship_resolutions
-    -> keep structural factual closure only
-
-relationship_resolutions.name
-objects.canonical_name
-    -> remain live mutable PostgreSQL truth
-
-GET global Relationship
-    -> one live joined statement
-```
-
-This is a measured-design checkpoint rather than a permanent prohibition. Additional display denormalization may be reopened later only if realistic high-QPS evidence / `EXPLAIN (ANALYZE, BUFFERS)` / latency profiling shows that these identity joins are a material bottleneck relative to the added write amplification and consistency complexity.
-
-Current next technical micro-point:
-
-```text
-GET /api/v1/core/relationships/{relationship_id}
-    -> exact projection decoding / deterministic operational ordering
-    -> index sufficiency and EXPLAIN/BUFFERS architecture handoff
-    -> final technical closure of the global GET
-```
-
-## 14.3 GET global detail — projection decoding, operational ordering, index sufficiency and technical closure RATIFIED
-
-The global GET projector decodes the one-statement result directly into the ratified exact-detail representation. One successful exact runtime row maps to one public `RelationshipResolutionView`; there is no `RelationshipView` set conversion and no deduplication layer.
-
-Conceptual row shape:
-
-```text
-relationship_id
-relationship_definition_id
-relationship_definition_version
-properties
-
 resolution_id
 resolution_name
-
 from_object_id
 from_canonical_name
-
 to_object_id
 to_canonical_name
 ```
 
-Projection classification is:
+That exact row identity/order/index analysis is reopened because `resolution_id` no longer exists.
+
+The following principles remain useful:
 
 ```text
 zero SQL rows
     -> factual Relationship root absent
     -> 404 resource_not_found
 
-root row present + resolution_id absent
-    -> factual Relationship root exists but complete runtime closure is absent
+root exists + no complete runtime closure
     -> persisted factual invariant corruption
     -> 500 internal_error
 
-normal exact runtime rows
-    -> one public resolution item per exact row
-    -> no exact-row collapse or deduplication
+properties
+    -> trust persisted factual JSON carrier
+    -> no schema/DataType recertification on GET
+
+GET concurrency
+    -> one PostgreSQL statement snapshot
+    -> no explicit locks/generation/retry loop
 ```
 
-`properties` is decoded as persisted factual JSON state and is not revalidated or re-canonicalized against RelationshipDefinitionVersion/DataType semantics. Repeated root columns across joined exact rows must be internally coherent; an impossible disagreement while decoding is `500 internal_error`, not a public domain outcome.
-
-The implementation may emit `resolutions` in deterministic operational order:
+The old operational order and covering-index candidate based on `resolution_id` are superseded and must be reconsidered against:
 
 ```text
-resolution_id
-from_object_id
-to_object_id
+runtime semantic-cell key
+    (from_object_id, name, to_object_id)
 ```
-
-This tuple is the exact runtime-row identity and depends only on stable identities. The ordering exists for reproducibility, testing and operational stability only; it carries no public/domain ordering meaning and clients must not rely on it.
-
-The one-statement snapshot is also the complete GET concurrency model:
-
-```text
-no explicit row locks
-no generation token
-no retry/stabilization loop
-no multi-statement coherent-read wrapper
-
-concurrent factual/display mutation
-    -> GET observes one PostgreSQL statement snapshot before or after the concurrent commit
-```
-
-Current physical access paths are sufficient for correctness and the expected normal plan:
-
-```text
-relationships PK
-    -> root lookup by relationship_id
-
-ix_runtime_resolutions_relationship(relationship_id)
-    -> bounded exact closure lookup
-
-relationship_resolutions PK
-    -> current Resolution display lookup
-
-objects PK
-    -> current from/to Object display lookup
-```
-
-No new index is required by the M4 logical architecture for this GET. Because the route is expected to be potentially very high frequency, architecture/performance work must nevertheless compare the current runtime-closure index with the optional covering/order-preserving candidate:
-
-```text
-ix_runtime_resolutions_relationship_cover
-(
-    relationship_id,
-    resolution_id,
-    from_object_id,
-    to_object_id
-)
-INCLUDE (relationship_definition_id)
-```
-
-The candidate could combine owner lookup, deterministic exact-row order and complete runtime-row projection columns, and may permit index-only access when PostgreSQL visibility conditions allow. It also duplicates columns already present in the runtime-closure PK, enlarges the index and adds CREATE/DELETE/storage/cache-footprint cost.
-
-Therefore:
-
-```text
-existing ix_runtime_resolutions_relationship
-    -> architecture-sufficient default
-
-covering candidate
-    -> performance handoff only
-    -> adopt only if realistic high-QPS benchmarking and
-       EXPLAIN (ANALYZE, BUFFERS) show a material net benefit
-```
-
-The global factual Relationship GET technical sweep is now CLOSED for M4 discovery:
-
-```text
-public contract                     CLOSED
-materialized exact closure source   CLOSED
-live mutable display joins          CLOSED
-cache decision                      CLOSED
-additional display denormalization  EVALUATED / NOT SELECTED
-one-statement hot-path shape         CLOSED
-404 vs corruption boundary          CLOSED
-projection decoding                 CLOSED
-operational ordering                CLOSED
-concurrency model                    CLOSED
-logical index sufficiency           CLOSED
-physical covering-index choice      ARCHITECTURE/PERFORMANCE HANDOFF
-```
-
-This technical closure remains an M4 WIP checkpoint and does not authorize implementation or promote the design to normative architecture.
 
 Current next technical frontier:
 
 ```text
-GET /api/v1/core/objects/{object_id}/relationships
-    -> Object-scoped Relationship collection technical realization
+GET /api/v1/core/relationships/{relationship_id}
+    -> exact lossless public item shape over runtime_relationship_cells
+    -> one-statement join shape with current Object canonical names
+    -> deterministic operational ordering
+    -> index sufficiency only after projection shape is reclosed
 ```
