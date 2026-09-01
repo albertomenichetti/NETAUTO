@@ -697,7 +697,6 @@ means:
 ```text
 VirtualMachine runs_on Hypervisor     -> valid semantic direction
 Hypervisor hosts VirtualMachine       -> valid reciprocal semantic direction
-
 Hypervisor runs_on VirtualMachine     -> not expressed by this Definition
 VirtualMachine hosts Hypervisor       -> not expressed by this Definition
 ```
@@ -705,6 +704,62 @@ VirtualMachine hosts Hypervisor       -> not expressed by this Definition
 A one-name asymmetric declaration is therefore incomplete rather than a distinct supported relationship shape. Without the second reciprocal name there is no complete asymmetric semantic contract and no reliable distinction from symmetric authoring intent.
 
 This checkpoint is a domain semantic/cardinality decision only. It does **not** yet decide whether the two reciprocal semantic perspectives must be persisted as two autonomous `relationship_resolutions` rows or can be represented by a different compact TO-BE relational structure.
+
+---
+
+# 7E. RATIFIED domain invariant — asymmetric endpoint spaces may overlap through inheritance
+
+For an asymmetric RelationshipDefinition, distinct endpoint roles are part of the relationship semantics. Therefore an ancestor/descendant relationship between the two declared endpoint compatibility-space roots is not, by itself, an applicability-policy smell and is not forbidden.
+
+Example:
+
+```text
+Employee
+└── Manager
+
+Manager  --manages----> Employee
+Employee --managed_by-> Manager
+```
+
+This is a coherent asymmetric relationship definition:
+
+```text
+manages
+    -> directional role owned by Desc(Manager) -> Desc(Employee)
+
+managed_by
+    -> reciprocal directional role owned by Desc(Employee) -> Desc(Manager)
+```
+
+Because `Manager <: Employee`, the two endpoint compatibility spaces overlap. That overlap is semantically acceptable because the two directions carry distinct stable names and therefore distinct semantic roles.
+
+For example, a Manager may manage another Manager:
+
+```text
+Manager1 manages Manager2
+Manager2 managed_by Manager1
+```
+
+This follows naturally from subtype admission: `Manager2` is also an `Employee`.
+
+RATIFIED domain decision:
+
+```text
+symmetric = false
+    -> declared endpoint compatibility spaces may be identical, disjoint,
+       or distinct-but-overlapping through inheritance
+    -> overlap alone does not invalidate the Definition
+```
+
+Any additional rule such as:
+
+```text
+"a Manager may manage Employees but not other Managers"
+```
+
+would be an endpoint-applicability policy layered on top of the relationship semantics and is not encoded by the core RelationshipDefinition topology.
+
+The previously ratified semantic-cell uniqueness invariant remains authoritative. An asymmetric Definition is still invalid if one of its effective directional semantic cells collides with an already-owned cell elsewhere in the model; lineage overlap is simply not an independent rejection criterion.
 
 ---
 
@@ -905,6 +960,7 @@ symmetric=true
 symmetric=false
     -> exactly two distinct reciprocal semantic names
     -> each name owns only its declared direction
+    -> endpoint spaces may be identical, disjoint, or overlap through inheritance
 ```
 
 The remaining representation question is whether those semantic perspectives require one/two stored `relationship_resolutions` rows or should be represented more compactly.
@@ -931,6 +987,8 @@ symmetry being inferred from incomplete perspective/request shape rather than
     supplied as explicit authoring intent
 asymmetric Definitions allowing a missing reciprocal semantic name
 an asymmetric semantic name being treated as applicable in both endpoint orientations
+asymmetric ancestor/descendant endpoint overlap being rejected merely because the
+    compatibility spaces intersect
 ```
 
 No such supersession is effective yet except for the ratified intent checkpoints explicitly marked above. These remain targeted downstream revalidation inputs until the intent is promoted.
@@ -954,7 +1012,7 @@ The current intent is intentionally incomplete. At least the following points mu
     - RATIFIED: exactly two reciprocal semantic perspectives
     - RATIFIED: exactly two distinct stable semantic names
     - RATIFIED: each name is directional and applies only in its own orientation
-    - OPEN: whether same-lineage endpoint overlap is meaningful/allowed for asymmetric Definitions
+    - RATIFIED: endpoint spaces may be identical, disjoint, or distinct-but-overlapping through inheritance
     - OPEN: minimal persisted representation of the two reciprocal semantics
 
 3. Resolution identity
@@ -1034,6 +1092,7 @@ asymmetric semantics [RATIFIED]
     = exactly two reciprocal semantic perspectives
     = exactly two distinct stable semantic names
     = each name applies only in its declared orientation
+    = endpoint spaces may be identical, disjoint, or overlap through inheritance
     = e.g. VirtualMachine --runs_on--> Hypervisor / Hypervisor --hosts--> VirtualMachine
 
 symmetric authoring intent [RATIFIED]
