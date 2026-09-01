@@ -631,3 +631,65 @@ POST /api/v1/core/relationships
     -> preserve the already-ratified route/success acknowledgement where unaffected
     -> derive the new selector from the compact stable RelationshipDefinition semantics
 ```
+
+## C-REL-10 RATIFIED — CREATE requires the stable semantic `name`; endpoint orientation alone is insufficient
+
+For factual Relationship CREATE, keeping explicit directional endpoint fields:
+
+```text
+from_object_id
+to_object_id
+```
+
+is necessary to state how the caller is presenting the two Objects, but it is **not sufficient in the general model** to identify the intended semantic perspective.
+
+The counterexample is an asymmetric RelationshipDefinition whose endpoint compatibility spaces are identical or inheritance-overlapping. The same ordered pair of concrete Objects may legally satisfy both reciprocal semantic perspectives.
+
+Example:
+
+```text
+Manager --manages----> Employee
+Employee --managed_by-> Manager
+```
+
+with both factual endpoints being `Manager` Objects:
+
+```text
+from_object_id = M1
+to_object_id   = M2
+```
+
+can correspond to either intended observation:
+
+```text
+M1 --manages----> M2
+```
+
+or:
+
+```text
+M1 --managed_by-> M2
+```
+
+The ordered endpoint IDs alone therefore do not determine the semantic perspective.
+
+RATIFIED CREATE requirement:
+
+```text
+name: string, required
+```
+
+The supplied `name` is the stable semantic name of the perspective the caller intends to express from `from_object_id` toward `to_object_id`. It is command semantic input, not an autonomous Resolution identity and not a mutable display label.
+
+This requirement applies to the general CREATE contract even though some particular Definitions with disjoint endpoint spaces could infer a unique perspective from endpoint compatibility alone. The public command shape must be unambiguous for every allowed RelationshipDefinition topology and must not change depending on whether a particular Definition happens to be inferable from its endpoints.
+
+This checkpoint does **not** yet decide whether `relationship_definition_id` must also be supplied explicitly. That is the next selector-boundary question.
+
+Current next micro-point:
+
+```text
+POST /api/v1/core/relationships
+    -> determine whether relationship_definition_id is required public input
+       or can be derived unambiguously from the exact Object-template semantic cell
+       selected by (from_object_id, name, to_object_id)
+```
