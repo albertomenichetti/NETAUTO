@@ -148,9 +148,78 @@ OR exists but yields no Object-visible factual Relationship
 
 because `relationship_definition_id` is a collection filter, not a parent/resource selector on this route.
 
+## C-REL-03 RATIFIED — Object-scoped `name` exact-match filter is restored
+
+The post-definition Object-scoped collection exposes the optional public filter:
+
+```text
+name: string, optional
+```
+
+with **exact-match semantic filtering** over the stable semantic name already materialized in the factual runtime cell:
+
+```text
+runtime_relationship_cells.name = supplied name
+```
+
+Conceptually:
+
+```text
+runtime_relationship_cells AS c
+JOIN relationships AS r
+    ON r.id = c.relationship_id
+
+WHERE c.from_object_id = :object_id
+  AND c.name = :name                         # when supplied
+  AND r.relationship_definition_id = :relationship_definition_id  # when supplied
+```
+
+This reverses the pre-freeze M4 removal of the `name` filter. The old removal rationale depended on `RelationshipResolution.name` being mutable model-plane/display state. Under the ratified post-definition model, `name` is instead stable semantic state of the exact Object-level runtime cell, so exact filtering is now a direct navigation predicate over the collection being represented.
+
+Semantics are:
+
+```text
+name omitted
+    -> do not restrict Object-visible factual Relationship perspectives by semantic name
+
+name present
+    -> return only runtime cells visible from object_id whose stable semantic name
+       exactly equals the supplied value
+```
+
+`name` need not be globally unique. Multiple matching factual Relationships are returned normally. It composes naturally with `relationship_definition_id`:
+
+```text
+?name=connected_to
+    -> all matching Object-visible perspectives across Definitions
+
+?relationship_definition_id=D1&name=connected_to
+    -> matching Object-visible perspectives restricted to D1
+```
+
+This endpoint does **not** become a textual/search surface. M4 does not add:
+
+```text
+prefix matching
+substring/contains matching
+regex matching
+fuzzy matching
+case-insensitive search semantics
+```
+
+Those broader discovery semantics remain outside this navigation contract and belong to M5 Search API unless separately justified.
+
+A supplied `name` that matches no current Object-visible runtime cell yields the normal empty collection:
+
+```text
+200 OK
+items = []
+next_cursor = null
+```
+
 Current next micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> revalidate whether a `name` query filter remains omitted now that name is stable semantic state
+    -> revalidate cursor scope binding now that `name` is again part of the public filter scope
 ```
