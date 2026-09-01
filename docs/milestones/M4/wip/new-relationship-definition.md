@@ -23,8 +23,8 @@ IN SCOPE
     model-plane vs data-plane responsibility split
 
 NOT YET CLOSED
-    final symmetric Definition shape/cardinality
-    final non-symmetric Definition shape/cardinality
+    final symmetric Definition persisted shape/cardinality
+    final non-symmetric Definition persisted shape/cardinality
     final public RelationshipDefinition API
     exact CREATE/DELETE/REVISE lifecycle changes
     physical DDL/FK/index realization
@@ -433,14 +433,12 @@ Therefore the same exact relationship meaning is expressed twice **inside the De
 
 This is a strong signal that the earlier runtime symptom (multiple equivalent runtime rows) is downstream of a model-plane semantic overlap.
 
-This intent does **not yet freeze** the final symmetric-shape rule. The important current observation is only:
+This intent does **not yet freeze** the final symmetric persisted shape. The important observation is:
 
 ```text
-a candidate Definition whose own effective Resolution expansions collide
+a candidate Definition whose own effective perspective expansions collide
 is semantically redundant before any factual Relationship exists
 ```
-
-The exact allowed symmetric topology/cardinality will be revalidated separately against this general rule.
 
 ---
 
@@ -487,7 +485,7 @@ With the current single-inheritance ObjectTemplate model:
 
 ```text
 A == B
-    -> allowed candidate shape
+    -> allowed
 
 A ancestor-of B, A != B
     -> forbidden symmetric declaration
@@ -506,7 +504,55 @@ symmetric endpoint compatibility spaces
 
 This rule is semantic/domain-driven. It is not justified by an inability to materialize the overlap: the model can represent the resulting fact space, but that fact space is considered an endpoint-applicability policy and therefore belongs outside the core RelationshipDefinition concept.
 
-The case of symmetric Definitions over **disjoint** endpoint spaces remains OPEN and must be reviewed separately. This checkpoint also does not yet decide whether allowed symmetric Definitions require one or two persisted Resolution declarations.
+---
+
+# 7B. RATIFIED domain invariant — disjoint endpoint spaces have the same applicability topology regardless of symmetry
+
+Let the two endpoint compatibility spaces be disjoint:
+
+```text
+Desc(A) INTERSECT Desc(B) = EMPTY
+```
+
+A RelationshipDefinition between those spaces is a genuine cross-domain relationship: every admitted fact necessarily connects one member of `Desc(A)` with one member of `Desc(B)`.
+
+RATIFIED domain decision:
+
+```text
+for disjoint endpoint spaces, symmetric and asymmetric Definitions have the
+same endpoint-applicability topology
+```
+
+Both cases require the same two reciprocal directed effective spaces:
+
+```text
+Desc(A) -> Desc(B)
+Desc(B) -> Desc(A)
+```
+
+The difference is semantic naming, not endpoint applicability:
+
+```text
+SYMMETRIC
+    A --rel--> B
+    B --rel--> A
+    same stable semantic name in both directions
+
+ASYMMETRIC
+    A --rel1--> B
+    B --rel2--> A
+    distinct stable semantic names for the two perspectives
+```
+
+Because the endpoint spaces are disjoint, the two reciprocal expansions cannot collide merely by reversing direction. For a symmetric Definition they occupy different ordered semantic cells even though the name is the same:
+
+```text
+(A', rel, B') != (B', rel, A')
+```
+
+This means symmetry must not introduce a special applicability algorithm for the disjoint-lineage case. The model-plane effective closure treats symmetric and asymmetric cross-domain relationships uniformly; symmetry only determines whether the reciprocal perspectives carry the same or different semantic names.
+
+This checkpoint deliberately does **not** decide the persisted representation. In particular, it does not yet decide whether reciprocal effective perspectives require two stored `relationship_resolutions`, can be derived from one compact declaration, or whether `relationship_definitions.symmetric` remains the best primitive field. Those are the next representation questions to revalidate from the domain semantics above.
 
 ---
 
@@ -556,7 +602,7 @@ With the materialized space, after obtaining the two concrete Object `template_i
 ```text
 resolution_id = requested Resolution
 from_template_id = actual from Object template
- to_template_id = actual to Object template
+to_template_id = actual to Object template
 ```
 
 Equivalent conceptual predicate:
@@ -698,6 +744,8 @@ relationship_definition_properties
 
 The version/property side is shown only for completeness; it is not yet modified by this redesign intent.
 
+The declared relational picture above remains a **candidate inherited from the current shape**. The ratified disjoint-space semantics explicitly reopen whether two reciprocal perspective rows and the `symmetric` boolean are the minimal TO-BE representation.
+
 ---
 
 # 13. What this candidate would supersede if eventually ratified
@@ -714,6 +762,8 @@ runtime Relationship CREATE performing lineage-based Resolution applicability
 factual runtime closure being used to compensate for ambiguous/redundant
     Definition semantic coverage
 symmetric distinct-but-overlapping endpoint roots being valid model semantics
+symmetric disjoint endpoint spaces requiring a distinct applicability model from
+    asymmetric cross-domain relationships
 ```
 
 No such supersession is effective yet except for the ratified intent checkpoints explicitly marked above. These remain targeted downstream revalidation inputs until the intent is promoted.
@@ -726,14 +776,16 @@ The current intent is intentionally incomplete. At least the following points mu
 
 ```text
 1. Symmetric Definition shape
-    - RATIFIED: overlapping endpoint spaces must be identical
-    - OPEN: same-template vs disjoint endpoint spaces as complete allowed set
-    - OPEN: one vs two declared Resolutions
-    - OPEN: exact meaning/materialization of symmetric semantic cells
+    - RATIFIED: endpoint spaces are identical or disjoint, never distinct-but-overlapping
+    - RATIFIED: disjoint symmetric/asymmetric cases share the same reciprocal applicability topology
+    - OPEN: minimal persisted representation for same-space symmetric semantics
+    - OPEN: minimal persisted representation for reciprocal disjoint-space perspectives
+    - OPEN: whether `symmetric` remains a primitive field or can be derived from perspective semantics
 
 2. Non-symmetric Definition shape
-    - whether exactly two reciprocal declared Resolutions remains the right model
-    - whether same-lineage overlap is always meaningful when names differ
+    - whether exactly two reciprocal semantic perspectives remains the right domain model
+    - whether same-lineage overlap is meaningful when perspective names differ
+    - minimal persisted representation once perspective semantics are stabilized
 
 3. Resolution identity
     - continued role of resolution_id once semantic cells are materialized
@@ -792,10 +844,15 @@ semantic cell [RATIFIED]
 semantic ownership invariant [RATIFIED]
     = one semantic cell has one Resolution owner globally
 
-symmetric overlap domain invariant [RATIFIED]
+symmetric endpoint-space domain invariant [RATIFIED]
     = endpoint compatibility spaces are identical or disjoint
     = distinct-but-overlapping spaces are not core relationship semantics
       because they encode an endpoint-presence applicability policy
+
+disjoint-space topology invariant [RATIFIED]
+    = symmetric and asymmetric Definitions use the same reciprocal endpoint
+      applicability topology
+    = symmetry changes reciprocal semantic naming, not endpoint admissibility
 
 model plane
     = pays expansion + conflict certification
