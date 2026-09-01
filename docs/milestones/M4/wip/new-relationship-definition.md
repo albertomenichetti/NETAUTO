@@ -219,7 +219,8 @@ At this checkpoint:
 
 ```text
 relationship_definitions
-    -> stable Definition root / grouping and symmetric classification
+    -> stable Definition root / grouping
+    -> persisted explicit symmetric/asymmetric authoring intent
 
 relationship_resolutions
     -> compact declared semantic perspectives
@@ -552,7 +553,63 @@ Because the endpoint spaces are disjoint, the two reciprocal expansions cannot c
 
 This means symmetry must not introduce a special applicability algorithm for the disjoint-lineage case. The model-plane effective closure treats symmetric and asymmetric cross-domain relationships uniformly; symmetry only determines whether the reciprocal perspectives carry the same or different semantic names.
 
-This checkpoint deliberately does **not** decide the persisted representation. In particular, it does not yet decide whether reciprocal effective perspectives require two stored `relationship_resolutions`, can be derived from one compact declaration, or whether `relationship_definitions.symmetric` remains the best primitive field. Those are the next representation questions to revalidate from the domain semantics above.
+This checkpoint deliberately does **not** decide the persisted representation. In particular, it does not yet decide whether reciprocal effective perspectives require two stored `relationship_resolutions` or can be derived from a more compact declaration.
+
+---
+
+# 7C. RATIFIED authoring invariant — symmetry is explicit client intent and persisted stable Definition state
+
+Once a complete Definition exists, symmetric/asymmetric semantics may be recognizable from the complete reciprocal perspective naming. That derivability does not remove the need for explicit client intent at Definition authoring time.
+
+If a client supplies only one semantic name, the server cannot safely infer whether:
+
+```text
+1. the client intends a symmetric relationship
+or
+2. the client intends an asymmetric relationship but omitted the reciprocal name
+```
+
+RATIFIED domain/API-authoring decision:
+
+```text
+symmetric is required explicit client intent
+```
+
+The server therefore does not infer symmetry from request shape or omitted reciprocal naming.
+
+The intent is persisted on the stable Definition root:
+
+```text
+relationship_definitions.symmetric
+```
+
+and is stable for the Definition lifetime.
+
+Its semantic role is:
+
+```text
+symmetric = true
+    reciprocal observation preserves the same semantic name
+
+symmetric = false
+    reciprocal observation requires a distinct semantic name
+```
+
+Definition CREATE must validate the complete perspective semantics against the explicitly supplied intent. `symmetric` may therefore be redundant with an already-complete certified Definition state, but that redundancy is intentional:
+
+```text
+client intent
+    -> explicit
+    -> never inferred from omission
+
+persisted Definition state
+    -> records that intent directly
+
+perspective semantics
+    -> must be coherent with the persisted intent
+```
+
+This checkpoint does not yet close the exact public request DTO or the minimal persisted Resolution-row cardinality.
 
 ---
 
@@ -693,7 +750,7 @@ Current intent draft:
 ```text
 relationship_definitions
     id PK
-    symmetric
+    symmetric                                        # RATIFIED stable explicit intent
     default_version
 
         1
@@ -744,7 +801,7 @@ relationship_definition_properties
 
 The version/property side is shown only for completeness; it is not yet modified by this redesign intent.
 
-The declared relational picture above remains a **candidate inherited from the current shape**. The ratified disjoint-space semantics explicitly reopen whether two reciprocal perspective rows and the `symmetric` boolean are the minimal TO-BE representation.
+The declared relational picture above remains a **candidate inherited from the current Resolution shape**, except that persistence of stable explicit `relationship_definitions.symmetric` intent is now ratified. The remaining representation question is whether reciprocal semantic perspectives require two stored `relationship_resolutions` or can be represented more compactly.
 
 ---
 
@@ -764,6 +821,8 @@ factual runtime closure being used to compensate for ambiguous/redundant
 symmetric distinct-but-overlapping endpoint roots being valid model semantics
 symmetric disjoint endpoint spaces requiring a distinct applicability model from
     asymmetric cross-domain relationships
+symmetry being inferred from incomplete perspective/request shape rather than
+    supplied as explicit authoring intent
 ```
 
 No such supersession is effective yet except for the ratified intent checkpoints explicitly marked above. These remain targeted downstream revalidation inputs until the intent is promoted.
@@ -778,9 +837,9 @@ The current intent is intentionally incomplete. At least the following points mu
 1. Symmetric Definition shape
     - RATIFIED: endpoint spaces are identical or disjoint, never distinct-but-overlapping
     - RATIFIED: disjoint symmetric/asymmetric cases share the same reciprocal applicability topology
+    - RATIFIED: symmetric is explicit client intent, persisted and stable for Definition lifetime
     - OPEN: minimal persisted representation for same-space symmetric semantics
     - OPEN: minimal persisted representation for reciprocal disjoint-space perspectives
-    - OPEN: whether `symmetric` remains a primitive field or can be derived from perspective semantics
 
 2. Non-symmetric Definition shape
     - whether exactly two reciprocal semantic perspectives remains the right domain model
@@ -853,6 +912,12 @@ disjoint-space topology invariant [RATIFIED]
     = symmetric and asymmetric Definitions use the same reciprocal endpoint
       applicability topology
     = symmetry changes reciprocal semantic naming, not endpoint admissibility
+
+symmetric authoring intent [RATIFIED]
+    = explicit required client intent
+    = persisted stable Definition state
+    = never inferred from an omitted reciprocal name/request field
+    = complete perspective semantics must validate against that intent
 
 model plane
     = pays expansion + conflict certification
