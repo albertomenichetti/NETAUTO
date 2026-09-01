@@ -835,10 +835,70 @@ The candidate property map is semantically validated and canonicalized against t
 
 These semantics apply identically to both still-open Definition-selection candidates. Unknown/invalid property names and invalid values remain semantic-validation concerns against the selected exact RelationshipDefinitionVersion; the strict-body/unknown top-level field rules and full failure taxonomy remain separate CREATE review points.
 
+## C-REL-14 RATIFIED — CREATE keeps strict body rules and directional endpoint command semantics
+
+The factual Relationship CREATE keeps explicit directional endpoint fields:
+
+```text
+from_object_id: UUID, required
+to_object_id: UUID, required
+```
+
+Together with the already-ratified required semantic `name`, the command is interpreted as the requested concrete observation:
+
+```text
+from_object_id --name--> to_object_id
+```
+
+`from_object_id` and `to_object_id` therefore express only the orientation of the CREATE command relative to the supplied stable semantic `name`. They do **not** create or preserve an autonomous factual A/B endpoint identity, do not encode the RelationshipDefinition authoring-side A/B slots, and do not imply that the factual Relationship root stores a distinguished creation direction after admission.
+
+The server uses that oriented command input to validate/admit the selected semantic perspective and materialize the complete factual runtime closure. Once created, the factual Relationship is represented by its root plus all owned `runtime_relationship_cells`; the creation-side `from`/`to` presentation is not retained as separate factual identity state.
+
+RATIFIED structural request rules common to both still-open Definition-selection candidates are:
+
+```text
+name
+    required string
+    explicit null invalid
+
+from_object_id
+    required UUID
+    explicit null invalid
+
+to_object_id
+    required UUID
+    explicit null invalid
+
+relationship_definition_version
+    optional positive integer
+    explicit null invalid when present
+
+properties
+    optional object
+    explicit null invalid when present
+
+unknown top-level fields
+    invalid request
+```
+
+The final allowed top-level field set depends on the Definition-selection candidate chosen at architecture closing:
+
+```text
+CANDIDATE A
+    relationship_definition_id is also required UUID
+    explicit null invalid
+
+CANDIDATE B
+    relationship_definition_id is not part of the request shape
+    and would therefore be an unknown top-level field
+```
+
+This strict-body rule does not decide deeper semantic failures such as nonexistent Objects, semantic-cell incompatibility, Definition/version admission, property validation, or runtime semantic-cell ownership conflicts; those remain part of the CREATE failure-taxonomy review.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate strict-body / null / unknown top-level field rules
-       and endpoint-field directional semantics
+    -> revalidate success acknowledgement
+       then CREATE failure taxonomy / precedence
 ```
