@@ -445,9 +445,98 @@ in this runtime index. Those values remain owned by `relationships` / `objects` 
 
 The exact semantic-uniqueness DDL carrier remains OPEN between the previously identified relational forms, subject to the requirement that the chosen realization can provide the ratified B-tree key plus `INCLUDE (relationship_id)` payload.
 
+## C-REL-08 RATIFIED — Object-scoped GET keeps one root-preserving PostgreSQL statement
+
+The post-definition Object-scoped collection preserves the existing parent-existence semantics without introducing a separate preliminary Object-existence query.
+
+Ratified public boundary remains:
+
+```text
+object_id does not identify a current Object
+    -> 404 Not Found
+       resource_type = object
+
+object_id identifies a current Object but the effective Relationship collection is empty
+    -> 200 OK
+       items = []
+       next_cursor = null
+```
+
+The empty-collection case includes zero matches caused by the optional `relationship_definition_id` and/or exact `name` filters and normal keyset continuation exhaustion.
+
+M4 ratifies retaining a **single authoritative PostgreSQL business statement** rooted at the source `objects` row and preserving that root while the paged Relationship projection is optional.
+
+Conceptually:
+
+```text
+objects AS source_object
+    LEFT JOIN LATERAL (
+        runtime_relationship_cells AS c
+            JOIN relationships AS r
+                ON r.id = c.relationship_id
+            JOIN objects AS destination_object
+                ON destination_object.id = c.to_object_id
+
+        WHERE c.from_object_id = source_object.id
+          [AND c.name = :name]
+          [AND r.relationship_definition_id = :relationship_definition_id]
+          [AND keyset boundary over (c.name, c.to_object_id)]
+
+        ORDER BY c.name, c.to_object_id
+        LIMIT :limit_plus_one
+    ) AS page
+```
+
+The exact SQL syntax/aggregation carrier may differ in implementation, but the required read boundary is:
+
+```text
+source Object root preserved
++
+optional paged runtime-cell projection
++
+one PostgreSQL statement snapshot
+```
+
+Operational interpretation is:
+
+```text
+no source_object root row
+    -> 404 resource_not_found(object)
+
+source_object root row exists + no page item
+    -> 200 empty ObjectRelationshipPage
+
+source_object root row exists + page item(s)
+    -> normal ObjectRelationshipPage projection
+```
+
+The statement remains entirely data-plane for factual Relationship navigation:
+
+```text
+objects AS source_object
+runtime_relationship_cells
+relationships
+objects AS destination_object
+```
+
+There is no read-time model-plane reconstruction or semantic recertification:
+
+```text
+NO relationship_definitions join required for navigation semantics
+NO relationship_definition_space read
+NO ObjectTemplate ancestry read
+NO RDV/DataType semantic read
+NO worker cache
+NO explicit locks
+NO generation token
+NO retry loop for the normal GET
+```
+
+The page continues to use the already-ratified keyset tuple `(name, to_object_id)` and `limit + 1` style continuation detection may be used internally to derive `next_cursor`; those mechanics do not alter the public contract.
+
 Current next micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> revalidate one-statement query shape / Object existence boundary against the new runtime-cell projection
+    -> determine whether any post-definition Object-scoped GET point remains open before technical/public closure
 ```
