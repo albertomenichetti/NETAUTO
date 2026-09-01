@@ -994,12 +994,71 @@ RATIFIED public precedence boundary at this stage is:
 
 This checkpoint deliberately does **not** yet close the individual `409` cases or their finer precedence. In particular, default-version availability, exact-version lifecycle admission and current runtime semantic-cell ownership conflict remain the next CREATE failure micro-points.
 
+## C-REL-17 RATIFIED — CREATE preserves `default_version_unavailable` for omitted version selection
+
+The factual Relationship CREATE preserves the existing implicit-version state-conflict semantics.
+
+When:
+
+```text
+relationship_definition_version is omitted
++
+the owning RelationshipDefinition has been resolved
++
+that Definition currently has no default_version
+```
+
+the command fails with:
+
+```text
+409 Conflict
+code: default_version_unavailable
+```
+
+This is a current-state conflict rather than semantic invalidity. The caller has requested a valid implicit-version operation, but the current RelationshipDefinition state does not provide the default exact version needed to complete that request. The same semantic intent may become admissible after the Definition acquires a default version.
+
+The rule applies identically to both still-open Definition-selection candidates:
+
+```text
+CANDIDATE A
+    resolve the explicitly supplied RelationshipDefinition
+    -> omitted version requires that Definition's current default_version
+
+CANDIDATE B
+    derive the owning RelationshipDefinition from the requested semantic cell
+    -> omitted version requires that derived Definition's current default_version
+```
+
+`default_version_unavailable` is impossible when `relationship_definition_version` is explicitly supplied. In that case CREATE performs exact-version selection and never consults default availability as part of the public command semantics.
+
+RATIFIED local precedence is:
+
+```text
+static request invalidity
+    -> 400 invalid_request
+
+absent explicit command operands needed to interpret the request
+    -> 422 referenced_resource_not_found
+
+requested oriented semantic observation not admitted by the owning Definition/model
+    -> 422 semantic_validation_failed
+
+owning Definition resolved + version omitted + no current default_version
+    -> 409 default_version_unavailable
+
+selected exact RelationshipDefinitionVersion admission
+    -> later checkpoint
+
+property candidate validation / runtime factual conflict
+    -> later checkpoints
+```
+
+This checkpoint does not yet decide `dependency_not_admissible` or `relationship_fact_conflict`.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate current-state 409 cases:
-       default_version_unavailable
-       dependency_not_admissible
-       relationship_fact_conflict
+    -> revalidate exact RelationshipDefinitionVersion lifecycle admission
+       and 409 dependency_not_admissible
 ```
