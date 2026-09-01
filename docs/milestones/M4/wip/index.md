@@ -115,19 +115,27 @@ Object-relative factual Relationship and Lifecycle surfaces are not reopened as 
 
 ## ACTIVE REVIEW FRONTIER
 
-The next data-plane construct in the top-down sequence is:
+The current upstream review frontier is now:
 
 ```text
-factual Relationship
+RelationshipDefinition / RelationshipResolution semantic-model redesign
 ```
 
-The factual Relationship pass now has one active WIP owner:
+The dedicated intent owner is:
+
+```text
+new-relationship-definition.md
+```
+
+It records the candidate TO-BE semantic and relational model being used to revalidate stable Resolution names, effective semantic-space materialization and duplicate/repetition semantics before downstream factual Relationship work resumes.
+
+The factual Relationship owner remains present but is explicitly **REVIEW FROZEN** pending this upstream revalidation:
 
 ```text
 relationship.md
 ```
 
-It absorbs the previously distributed factual Relationship route/data-path micro-WIPs while remaining an ACTIVE REVIEW FRONTIER rather than a reviewed baseline. Route decisions must continue to be revalidated explicitly inside that owner.
+Previously ratified factual Relationship public-contract checkpoints and recorded technical findings remain preserved as review history; Definition/Resolution-dependent assumptions must be revalidated after the upstream intent stabilizes.
 
 # 2. Current M4 spine
 
@@ -364,6 +372,12 @@ objecttemplate-validation-loader-handoff.md
 
 ## RelationshipDefinition
 
+### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE REVIEW FRONTIER
+
+Current upstream intent owner for the RelationshipDefinition/RelationshipResolution redesign. It records the candidate stable Resolution-name semantics, the compact declared Resolution source, the materialized `relationship_resolution_space`, semantic-cell uniqueness and model-plane/data-plane responsibility split. It is explicitly non-normative and leaves symmetric/non-symmetric final shape, physical DDL/FKs/indexes, lifecycle and factual Relationship consequences OPEN.
+
+Existing distributed discovery remains active input/source for revalidation:
+
 ```text
 relationshipdefinition-create-discovery.md
 relationshipdefinition-create-next-discovery.md
@@ -383,15 +397,17 @@ relationshipdefinition-clear-default-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-# 5. Factual Relationship — ACTIVE REVIEW FRONTIER
+# 5. Factual Relationship — REVIEW FROZEN
 
-### [`relationship.md`](relationship.md) — ACTIVE REVIEW FRONTIER / single factual Relationship WIP owner
+### [`relationship.md`](relationship.md) — REVIEW FROZEN / single factual Relationship WIP owner
 
-This file is the only live factual Relationship WIP owner. It absorbs the former route/data-path micro-WIPs for CREATE, runtime closure/conflicts, global GET, Object-scoped Relationship collection, DATA_CHANGE, SCHEMA_CHANGE, DELETE and the Object-relative Relationship API exploration.
+This file remains the single factual Relationship WIP owner and preserves the previously consolidated route/data-path work for CREATE, runtime closure/conflicts, global GET, Object-scoped Relationship collection, DATA_CHANGE, SCHEMA_CHANGE, DELETE and Object-relative Relationship API exploration.
 
-The absorbed files were removed after consolidation; Git history remains their historical source. New factual Relationship micro-points must be recorded in `relationship.md` rather than creating additional route-specific WIP documents.
+The factual Relationship review is currently frozen because technical revalidation exposed a possible upstream semantic-model problem in `RelationshipDefinition` / `RelationshipResolution`. No new factual Relationship technical/physical checkpoint should be ratified until `new-relationship-definition.md` has been reviewed and the relevant upstream model is stabilized.
 
-The M4 factual Relationship **functional capability coverage gate is CLOSED**. Ratified required capabilities are:
+Previously ratified factual Relationship public-contract checkpoints remain preserved as review history. Any downstream assumption depending on Definition/Resolution topology, Resolution-name mutability, runtime-resolution cardinality, factual uniqueness or persistence ownership must be explicitly revalidated after the upstream review.
+
+The M4 factual Relationship functional capability coverage gate remains recorded as CLOSED with the required capabilities:
 
 ```text
 CREATE
@@ -402,7 +418,7 @@ SCHEMA_CHANGE
 DELETE
 ```
 
-Additional coverage decisions:
+Additional recorded coverage decisions remain:
 
 ```text
 NO Object-scoped single-Relationship detail for now
@@ -417,16 +433,7 @@ endpoint reassignment/repointing
     -> DELETE + CREATE with a new relationship_id
 ```
 
-The current ACTIVE REVIEW FRONTIER is now the **exact public REST contract pass**, one ratified API at a time. That pass defines only:
-
-```text
-exact HTTP method/path
-exact path/query input parameters
-exact request body when present
-exact success output body when present
-```
-
-It deliberately does not decide application/data-path realization, SQL, persistence/FKs, caches, indexes, locking/concurrency, transactions, DML shape, denormalization or performance optimization. Existing technical findings remain parked in `relationship.md` for the later technical sweep and must not constrain the public contract implicitly.
+These checkpoints are not automatically revoked by the freeze, but Definition-dependent semantics may be reopened by the upstream redesign.
 
 # 6. Lifecycle — ACTIVE INPUT with reviewed mutation payload inputs
 
