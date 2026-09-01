@@ -260,9 +260,82 @@ code: invalid_cursor
 
 The cursor remains opaque. Clients must not parse, construct or infer the internal keyset tuple from it.
 
+## C-REL-05 RATIFIED — Object-scoped internal keyset boundary is `(name, to_object_id)`
+
+Within one Object-scoped collection, the route fixes:
+
+```text
+from_object_id = object_id
+```
+
+and the ratified global runtime semantic-cell uniqueness authority is:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+Therefore the minimal stable row identity remaining inside one fixed Object scope is:
+
+```text
+(name, to_object_id)
+```
+
+RATIFIED internal keyset/order tuple:
+
+```text
+name
+to_object_id
+```
+
+Conceptually, without a `name` filter:
+
+```text
+WHERE from_object_id = :object_id
+ORDER BY name, to_object_id
+```
+
+and with an exact `name` filter:
+
+```text
+WHERE from_object_id = :object_id
+  AND name = :name
+ORDER BY to_object_id
+```
+
+No `relationship_id` tie-breaker is required. Two current factual Relationships cannot both own the same exact Object-relative semantic cell:
+
+```text
+(object_id, same_name, same_to_object_id)
+```
+
+because the global semantic-cell uniqueness rule forbids it.
+
+The following values are **not** part of the keyset boundary:
+
+```text
+object_id
+    -> cursor scope binding fixed by the route
+
+relationship_definition_id
+name filter state
+    -> cursor scope/filter binding
+
+relationship_id
+    -> factual owner identity, unnecessary as a row tie-breaker under semantic-cell uniqueness
+
+relationship_definition_version
+properties
+Object.canonical_name
+    -> mutable/current factual or display state, not stable row identity
+```
+
+The internal tuple remains opaque and has no public/domain ordering meaning. Clients must not infer or rely on `(name, to_object_id)` from the cursor representation.
+
+This supersedes the pre-freeze Resolution-derived tie-breaker/keyset assumptions.
+
 Current next micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> revalidate the internal keyset identity/order tuple against runtime_relationship_cells
+    -> revalidate the Object-rooted index shape against the new keyset tuple and filters
 ```
