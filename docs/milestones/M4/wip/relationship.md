@@ -2256,3 +2256,40 @@ index sufficiency / covering-index performance handoff after ordering is known
 ```
 
 This checkpoint supersedes the old Resolution-based global GET item shape and the old `relationship_resolutions` name join while preserving the previously ratified lossless-global-detail objective and live Object canonical-name projection.
+
+## 14.5 RATIFIED — global GET collection label is `perspectives`
+
+The public nested collection in the global factual Relationship GET is named:
+
+```text
+perspectives
+```
+
+RATIFIED response shape:
+
+```text
+RelationshipDetail
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+    perspectives[]
+        name
+        from_object
+            id
+            canonical_name
+        to_object
+            id
+            canonical_name
+```
+
+`perspectives` describes the oriented semantic projections exposed by the factual Relationship without implying autonomous item identity and without leaking the physical `runtime_relationship_cells` table name into the HTTP contract.
+
+This checkpoint supersedes the OPEN collection-label marker in section 14.4. It does not change the already-ratified one-runtime-cell-to-one-public-item mapping, lossless semantics, or lack of public/domain ordering meaning.
+
+Remaining global-GET closure points are now:
+
+```text
+deterministic operational ordering, if retained
+index sufficiency / covering-index performance handoff after ordering is known
+```
