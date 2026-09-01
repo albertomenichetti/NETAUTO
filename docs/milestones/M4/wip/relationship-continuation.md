@@ -693,3 +693,71 @@ POST /api/v1/core/relationships
        or can be derived unambiguously from the exact Object-template semantic cell
        selected by (from_object_id, name, to_object_id)
 ```
+
+## C-REL-11 RATIFIED — CREATE keeps both Definition-selection shapes open until architecture closing
+
+M4 does not close the `relationship_definition_id` selector boundary during the current factual CREATE review.
+
+Two public-body candidates remain intentionally alive:
+
+```text
+CANDIDATE A — explicit Definition selector
+    relationship_definition_id: UUID   required
+    name: string                        required
+    from_object_id: UUID               required
+    to_object_id: UUID                 required
+    relationship_definition_version    optional
+    properties                         optional
+```
+
+and:
+
+```text
+CANDIDATE B — derived Definition owner
+    name: string                        required
+    from_object_id: UUID               required
+    to_object_id: UUID                 required
+    relationship_definition_version    optional
+    properties                         optional
+```
+
+Both candidates preserve the already-ratified requirement that `name` is mandatory semantic command input. The difference is only who supplies/resolves the owning RelationshipDefinition.
+
+Candidate A makes the owning Definition explicit in the request. This can reduce CREATE-side model-plane lookup work and makes the intended Definition binding directly available to the backend, at the cost of carrying information that is semantically redundant with the exact model-plane semantic cell when global semantic-cell ownership is unique.
+
+Candidate B lets the caller express only the concrete semantic observation:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+The backend resolves both Objects to their exact ObjectTemplates and then resolves the corresponding exact template-level semantic cell:
+
+```text
+(from_template_id, name, to_template_id)
+```
+
+whose owning RelationshipDefinition is globally unique by the ratified model-plane invariant. This yields a cleaner semantic command shape but may add model-plane lookup/materialization work on the CREATE path.
+
+M4 explicitly defers the final choice to **architecture closing**, where the two shapes must be compared against the finalized CREATE data path, physical access paths, cache/materialization decisions and measured/expected operational cost.
+
+This deferral must not be interpreted as permission for two simultaneous production request shapes. Architecture closing must choose one final public contract unless new evidence independently justifies multiple variants.
+
+The following CREATE body points remain independent of this deferred selector choice and can continue to be revalidated now:
+
+```text
+from_object_id / to_object_id directional semantics
+relationship_definition_version optional exact-version/default behavior
+properties optional / omission semantics
+strict-body / null / unknown-field rules
+success acknowledgement
+failure taxonomy and precedence
+```
+
+Current next micro-point:
+
+```text
+POST /api/v1/core/relationships
+    -> revalidate the remaining request-body fields that are independent
+       from the deferred explicit-vs-derived Definition selector choice
+```
