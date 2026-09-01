@@ -922,9 +922,84 @@ GET /api/v1/core/relationships/{relationship_id}
 
 This keeps mutation acknowledgement decoupled from global GET representation richness and applies identically whether architecture closing selects Candidate A or Candidate B for Definition selection.
 
+## C-REL-16 RATIFIED — CREATE failure boundary keeps static 400, no normal 404, and 422 for absent referenced operands
+
+The factual Relationship CREATE keeps the project-wide failure-class boundary between structural invalidity, absent command operands and semantic candidate invalidity.
+
+Because:
+
+```text
+POST /api/v1/core/relationships
+```
+
+has no existing resource identity selected by its URI/path, CREATE has **no normal `404 resource_not_found` case**. `404 resource_not_found` remains reserved for an absent resource identity selected by the request path.
+
+RATIFIED first failure layer:
+
+```text
+400 invalid_request
+    malformed JSON / wrong body carrier
+    missing required public fields
+    malformed UUID/string/positive-integer carrier
+    explicit null where forbidden
+    unknown top-level fields
+    any query parameter
+    other static request invalidity decidable without persisted-state interpretation
+```
+
+RATIFIED absent explicit command-operand layer:
+
+```text
+422 referenced_resource_not_found
+    from_object_id does not identify a current Object
+    to_object_id does not identify a current Object
+
+    Candidate A only:
+        supplied relationship_definition_id does not identify a RelationshipDefinition
+
+    either candidate, when relationship_definition_version is explicitly supplied:
+        the exact selected RelationshipDefinitionVersion does not exist
+```
+
+The Definition-selection candidates differ when the caller does **not** explicitly reference a Definition.
+
+For Candidate B, if both Objects exist but the exact template-level semantic cell implied by:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+has no owning RelationshipDefinition, this is **not** `referenced_resource_not_found`: the client did not reference a missing Definition identity. It is instead semantic inadmissibility of the requested fact:
+
+```text
+422 semantic_validation_failed
+    requested concrete semantic observation is not expressible by the current model
+```
+
+Likewise, under Candidate A, an existing supplied Definition whose stable semantic contract does not admit the oriented `(from_object_id, name, to_object_id)` observation is a semantic-validation failure rather than a not-found result.
+
+RATIFIED public precedence boundary at this stage is:
+
+```text
+1. static transport/request validation
+    -> 400 invalid_request
+
+2. existence of explicit referenced command operands needed to interpret the request
+    -> 422 referenced_resource_not_found
+
+3. semantic admission of the requested fact
+    -> 422 semantic_validation_failed
+       OR a later-ratified current-state 409 conflict
+```
+
+This checkpoint deliberately does **not** yet close the individual `409` cases or their finer precedence. In particular, default-version availability, exact-version lifecycle admission and current runtime semantic-cell ownership conflict remain the next CREATE failure micro-points.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate CREATE failure taxonomy and public precedence
+    -> revalidate current-state 409 cases:
+       default_version_unavailable
+       dependency_not_admissible
+       relationship_fact_conflict
 ```
