@@ -444,6 +444,72 @@ The exact allowed symmetric topology/cardinality will be revalidated separately 
 
 ---
 
+# 7A. RATIFIED domain invariant — symmetric overlapping endpoint spaces must coincide
+
+The symmetric topology question is first a domain question, not a relational-model capability question.
+
+Assume:
+
+```text
+A <: B
+```
+
+Then the following symmetric declarations express three different admissible fact spaces:
+
+```text
+A --rel--> A
+    -> both endpoints belong to Desc(A)
+
+A --rel--> B
+    -> both endpoints belong to Desc(B)
+       and at least one endpoint belongs to Desc(A)
+
+B --rel--> B
+    -> both endpoints belong to Desc(B)
+```
+
+The middle form is therefore not merely a broader/narrower ordinary relationship type. It encodes an applicability policy of the form:
+
+```text
+at least one endpoint must belong to subtype-space A
+```
+
+RATIFIED domain decision:
+
+```text
+a symmetric RelationshipDefinition is not the model-plane construct used to
+encode such endpoint-presence policies
+```
+
+Therefore, whenever the two declared symmetric endpoint compatibility spaces overlap, they must be identical.
+
+With the current single-inheritance ObjectTemplate model:
+
+```text
+A == B
+    -> allowed candidate shape
+
+A ancestor-of B, A != B
+    -> forbidden symmetric declaration
+
+B ancestor-of A, A != B
+    -> forbidden symmetric declaration
+```
+
+Equivalently:
+
+```text
+symmetric endpoint compatibility spaces
+    -> IDENTICAL or DISJOINT
+    -> never DISTINCT-BUT-OVERLAPPING
+```
+
+This rule is semantic/domain-driven. It is not justified by an inability to materialize the overlap: the model can represent the resulting fact space, but that fact space is considered an endpoint-applicability policy and therefore belongs outside the core RelationshipDefinition concept.
+
+The case of symmetric Definitions over **disjoint** endpoint spaces remains OPEN and must be reviewed separately. This checkpoint also does not yet decide whether allowed symmetric Definitions require one or two persisted Resolution declarations.
+
+---
+
 # 8. Model-plane cost is intentionally traded for data-plane simplicity
 
 The materialized space can be large.
@@ -647,9 +713,10 @@ same-Definition Resolution overlap being automatically tolerated and delegated
 runtime Relationship CREATE performing lineage-based Resolution applicability
 factual runtime closure being used to compensate for ambiguous/redundant
     Definition semantic coverage
+symmetric distinct-but-overlapping endpoint roots being valid model semantics
 ```
 
-No such supersession is effective yet. These are explicit revalidation targets only.
+No such supersession is effective yet except for the ratified intent checkpoints explicitly marked above. These remain targeted downstream revalidation inputs until the intent is promoted.
 
 ---
 
@@ -659,9 +726,10 @@ The current intent is intentionally incomplete. At least the following points mu
 
 ```text
 1. Symmetric Definition shape
-    - same-template only vs same/disjoint endpoint spaces
-    - one vs two declared Resolutions
-    - exact meaning of symmetric semantic cells
+    - RATIFIED: overlapping endpoint spaces must be identical
+    - OPEN: same-template vs disjoint endpoint spaces as complete allowed set
+    - OPEN: one vs two declared Resolutions
+    - OPEN: exact meaning/materialization of symmetric semantic cells
 
 2. Non-symmetric Definition shape
     - whether exactly two reciprocal declared Resolutions remains the right model
@@ -723,6 +791,11 @@ semantic cell [RATIFIED]
 
 semantic ownership invariant [RATIFIED]
     = one semantic cell has one Resolution owner globally
+
+symmetric overlap domain invariant [RATIFIED]
+    = endpoint compatibility spaces are identical or disjoint
+    = distinct-but-overlapping spaces are not core relationship semantics
+      because they encode an endpoint-presence applicability policy
 
 model plane
     = pays expansion + conflict certification
