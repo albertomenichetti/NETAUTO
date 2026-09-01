@@ -2146,3 +2146,113 @@ GET /api/v1/core/relationships/{relationship_id}
     -> deterministic operational ordering
     -> index sufficiency only after projection shape is reclosed
 ```
+
+## 14.4 RATIFIED post-definition GET global lossless projection
+
+The global factual Relationship GET continues to represent the fact **globally and losslessly**. It consumes the ratified data-plane runtime closure directly and does not collapse it into an Object-relative navigation view.
+
+RATIFIED logical response content is:
+
+```text
+RelationshipDetail
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+    <runtime-cell collection>[]
+        name
+        from_object
+            id
+            canonical_name
+        to_object
+            id
+            canonical_name
+```
+
+The exact public field name of the runtime-cell collection remains OPEN. This checkpoint ratifies the collection semantics and item content, not whether the final label is `cells`, `perspectives`, or another name.
+
+One public nested item corresponds exactly to one persisted `runtime_relationship_cells` row:
+
+```text
+runtime_relationship_cells
+    from_object_id
+    name
+    to_object_id
+```
+
+with current Object display metadata added live:
+
+```text
+from_object
+    id             <- runtime_relationship_cells.from_object_id
+    canonical_name <- objects.canonical_name
+
+to_object
+    id             <- runtime_relationship_cells.to_object_id
+    canonical_name <- objects.canonical_name
+
+name               <- runtime_relationship_cells.name
+```
+
+There is:
+
+```text
+NO resolution_id
+NO autonomous runtime-item identity beyond the semantic cell itself
+NO exact-row deduplication
+NO model-plane RelationshipDefinition reconstruction
+NO relationship_definition_space read
+NO relationship_resolutions join
+NO ObjectTemplate ancestry read
+NO RDV/DataType semantic recertification
+```
+
+The `relationship_definition_id`, exact version pin and factual `properties` remain root state read from `relationships`; they are not repeated inside each runtime item.
+
+Object `canonical_name` remains current mutable display state and is therefore projected live from `objects`, not copied into `runtime_relationship_cells`.
+
+### One-statement target
+
+The normal GET remains one authoritative PostgreSQL business statement conceptually rooted as:
+
+```text
+relationships AS r
+    LEFT JOIN enriched_runtime_cells AS c
+
+where enriched_runtime_cells is:
+
+runtime_relationship_cells AS c
+    INNER JOIN objects AS from_object
+    INNER JOIN objects AS to_object
+```
+
+The former model-plane join used only to retrieve `RelationshipResolution.name` is eliminated because `name` is now intrinsic stable data-plane semantic state.
+
+### Trusted-state and failure boundary
+
+The pre-freeze trusted-read rule survives:
+
+```text
+no relationships root row
+    -> 404 resource_not_found
+
+relationships root exists but no runtime cell is visible
+    -> persisted factual invariant corruption
+    -> 500 internal_error
+```
+
+The GET does not re-derive the expected closure from model-plane semantics to prove completeness. Complete/all-or-nothing closure certification remains a write-side invariant; the GET trusts persisted current factual state and only detects impossible structural absence exposed by its legal projection path.
+
+`properties` is returned as persisted factual JSON state without schema/DataType revalidation or re-canonicalization.
+
+The normal read concurrency model remains one PostgreSQL statement snapshot with no explicit locks, generation token, retry loop or multi-statement coherent-read wrapper.
+
+### Still OPEN before final GET closure
+
+```text
+exact public name for the nested runtime-cell collection
+deterministic operational ordering, if retained
+index sufficiency / covering-index performance handoff after ordering is known
+```
+
+This checkpoint supersedes the old Resolution-based global GET item shape and the old `relationship_resolutions` name join while preserving the previously ratified lossless-global-detail objective and live Object canonical-name projection.
