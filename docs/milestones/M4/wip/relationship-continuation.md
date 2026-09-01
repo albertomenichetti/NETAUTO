@@ -534,9 +534,100 @@ NO retry loop for the normal GET
 
 The page continues to use the already-ratified keyset tuple `(name, to_object_id)` and `limit + 1` style continuation detection may be used internally to derive `next_cursor`; those mechanics do not alter the public contract.
 
-Current next micro-point:
+## C-REL-09 RATIFIED — Object-scoped GET post-definition revalidation is CLOSED
+
+The Object-scoped factual Relationship collection is now **CLOSED again** for the M4 discovery pass after revalidation against the post-`RelationshipResolution` model and `runtime_relationship_cells` persistence.
+
+Ratified public contract is:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> determine whether any post-definition Object-scoped GET point remains open before technical/public closure
+
+path:
+    object_id: UUID, required
+
+query:
+    relationship_definition_id: UUID, optional
+    name: string, optional, exact match
+    cursor: opaque string, optional
+    limit: positive integer 1..500, optional, default 100
+
+body: none
+
+success:
+    200 OK
+    ObjectRelationshipPage
+        items: array<ObjectRelationshipItem>
+            relationship_id
+            relationship_definition_id
+            relationship_definition_version
+            properties
+            name
+            destination_object { id, canonical_name }
+        next_cursor: opaque string | null
+```
+
+Post-definition semantics are:
+
+```text
+one runtime_relationship_cells row with from_object_id = object_id
+    -> exactly one public item
+    -> no deduplication
+
+name
+    -> stable semantic name from runtime_relationship_cells
+
+relationship_definition_id filter
+    -> exact factual-root filter through relationships
+
+name filter
+    -> exact semantic-name filter on runtime_relationship_cells.name
+    -> no prefix/substring/regex/fuzzy/case-insensitive search semantics
+
+cursor scope
+    -> collection kind
+    -> object_id
+    -> relationship_definition_id value or omitted state
+    -> name value or omitted state
+    -> NOT bound to limit
+
+internal keyset boundary
+    -> (name, to_object_id)
+    -> opaque / no public ordering meaning
+```
+
+Ratified technical read target is:
+
+```text
+one root-preserving PostgreSQL statement
+    objects AS source root
+    -> runtime_relationship_cells
+    -> relationships
+    -> objects AS destination
+
+missing source Object
+    -> 404 resource_not_found(object)
+
+existing source Object with zero effective matches
+    -> 200 empty page
+```
+
+The runtime semantic-cell uniqueness B-tree is sufficient for the Object-rooted access path when realized over:
+
+```text
+(from_object_id, name, to_object_id)
+INCLUDE (relationship_id)
+```
+
+so no separate Object-page index is required by the current M4 architecture. The exact relational carrier of semantic uniqueness (`PRIMARY KEY` vs `UNIQUE`/equivalent) remains a broader physical-DDL point and does not keep this GET review open.
+
+This closure supersedes the pre-freeze Resolution-dependent assumptions concerning runtime-row deduplication, mutable Resolution names, Resolution-derived keyset tie-breakers and the old dedicated Object-page index shape.
+
+Current factual Relationship review frontier moves to:
+
+```text
+POST /api/v1/core/relationships
+    -> replace the obsolete resolution_id CREATE selector
+    -> preserve the already-ratified route/success acknowledgement where unaffected
+    -> derive the new selector from the compact stable RelationshipDefinition semantics
 ```
