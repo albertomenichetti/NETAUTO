@@ -1610,7 +1610,7 @@ path parameter:
 query parameters: none
 ```
 
-The M4 TO-BE route intentionally supersedes the AS-IS `/relationships/{relationship_id}/schema-change` path. `DATA_CHANGE` remains the capability/lifecycle name, while `/schema` identifies the exact schema-binding sub-resource being mutated.
+The M4 TO-BE route intentionally supersedes the AS-IS `/relationships/{relationship_id}/schema-change` path. `SCHEMA_CHANGE` remains the capability/lifecycle name, while `/schema` identifies the exact schema-binding sub-resource being mutated.
 
 This aligns the Relationship mutation surface with the already-consolidated Object M4 contract:
 
