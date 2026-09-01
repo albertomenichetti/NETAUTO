@@ -4,450 +4,203 @@
 
 ## Purpose
 
-This document is the upstream intent owner for the current M4 revalidation of `RelationshipDefinition` / `RelationshipResolution` semantics and relational representation.
+This document is the upstream intent owner for the current M4 revalidation of `RelationshipDefinition` semantics and relational representation.
 
-It exists because the factual Relationship review exposed downstream anomalies whose root cause may be the current Definition/Resolution model rather than the factual Relationship implementation itself. The factual `relationship.md` review is therefore frozen until this upstream model has been made coherent enough to revalidate its assumptions.
+It exists because the factual Relationship review exposed downstream anomalies whose root cause may be the current Definition/Resolution model rather than the factual Relationship implementation itself. The factual `relationship.md` review therefore remains frozen until this upstream model is coherent enough to revalidate its assumptions.
 
-This file is deliberately an **intent draft**, not a normative architecture decision and not an implementation authorization. It records the candidate model we have derived so far so that it can be inspected for missing cases before any downstream contract, persistence, runtime-closure or concurrency work is resumed.
+This file is deliberately an **intent draft**. It is not normative architecture and does not authorize implementation. It records the TO-BE direction and the checkpoints explicitly ratified during the M4 review so that the model can be stress-tested for missing cases before downstream work resumes.
 
-Current scope is intentionally narrow:
+Current scope:
 
 ```text
 IN SCOPE
-    semantic meaning of RelationshipResolution
-    stable vs mutable Resolution attributes
+    stable RelationshipDefinition semantics
+    symmetric/asymmetric domain meaning
+    stable directional semantic names
+    endpoint compatibility spaces
     what it means for a relationship meaning to be already expressed
-    compact declared Resolution representation
-    effective materialized Resolution semantic space
-    relational candidate for that materialization
+    compact Definition source of truth
+    effective materialized semantic closure over ObjectTemplate inheritance
+    relational direction for Definition + closure
     model-plane vs data-plane responsibility split
+    ability to expose oriented read projections without autonomous Resolution persistence
 
 NOT YET CLOSED
-    final symmetric Definition persisted shape/cardinality
-    final non-symmetric Definition persisted shape/cardinality
-    final public RelationshipDefinition API
-    exact CREATE/DELETE/REVISE lifecycle changes
-    physical DDL/FK/index realization
-    concurrency/locking protocol
-    factual Relationship relational model
-    runtime factual Relationship closure
+    exact public RelationshipDefinition request/response DTOs
+    exact physical column names/nullability/check constraints
+    exact PK/FK/index realization
+    CREATE/DELETE/version lifecycle concurrency protocol
+    ObjectTemplate-growth maintenance protocol
+    factual Relationship selector and persistence after removal of resolution_id
+    factual Relationship runtime representation
 ```
 
 ---
 
-# 1. Starting semantic objective
+# 1. Domain primitive — a RelationshipDefinition owns one relationship meaning
 
-A `RelationshipResolution` expresses one directed semantic relationship over two ObjectTemplate compatibility spaces.
+A `RelationshipDefinition` represents one relationship type between two declared ObjectTemplate compatibility-space roots.
 
-Conceptually, a declared Resolution is:
+For review notation, call them `A` and `B`.
 
-```text
-A --rel1--> B
-```
-
-where:
-
-```text
-A
-    declared from-template compatibility-space root
-
-B
-    declared to-template compatibility-space root
-
-rel1
-    semantic name of this specific Resolution/perspective
-```
-
-Because ObjectTemplate inheritance is lineage-polymorphic, the declaration applies not only to the exact roots `A` and `B`, but to every exact descendant pair admitted by those roots.
-
-Let:
+ObjectTemplate inheritance is lineage-polymorphic. Define:
 
 ```text
 Desc(T) = T + every current stable ObjectTemplate descendant of T
 ```
 
-Then the effective semantic meaning of:
+A directional semantic perspective:
 
 ```text
 A --rel1--> B
 ```
 
-is the complete set:
-
-```text
-for every A' in Desc(A)
-for every B' in Desc(B)
-
-    A' --rel1--> B'
-```
-
-The model-plane therefore has a compact declaration and an effective semantic closure.
-
----
-
-# 2. Candidate invariant — Resolution `name` is stable semantic state
-
-The current redesign candidate treats `RelationshipResolution.name` as part of the stable semantic contract of that specific Resolution.
-
-Candidate meaning:
-
-```text
-RelationshipResolution
-    id                          stable identity
-    relationship_definition_id stable membership
-    from_template_id            stable declared compatibility-space root
-    to_template_id              stable declared compatibility-space root
-    name                         stable semantic name
-```
-
-`name` remains an attribute of the **specific Resolution**, not a name of the `RelationshipDefinition` root.
-
-Example non-symmetric Definition:
-
-```text
-Resolution R1
-    VM --runs_on--> Hypervisor
-
-Resolution R2
-    Hypervisor --hosts--> VM
-```
-
-`runs_on` and `hosts` are the stable semantic names of the two distinct perspectives.
-
-Under this candidate, changing a Resolution name is not a display-metadata rename of the same semantic contract. A change such as:
-
-```text
-hosts -> runs
-```
-
-changes the expressed relationship meaning and therefore cannot be treated as an ordinary mutable `RelationshipDefinition.RENAME` operation preserving the same semantic Definition contract.
-
-The exact lifecycle consequence is still OPEN, but the direction is:
-
-```text
-Resolution semantic name changes
-    -> semantic contract changes
-    -> do not silently mutate an already-admitted stable Resolution meaning
-```
-
-No schema-column relocation is implied: `name` remains owned by `relationship_resolutions`.
-
----
-
-# 3. RATIFIED semantic invariant — already-expressed relationships cannot be redefined
-
-The primary semantic objective is not merely to avoid structurally identical Definition rows. It is to avoid expressing a relationship meaning that is already expressed in the model.
-
-At the effective exact-template level, one atomic directed semantic relationship is represented by:
-
-```text
-(
-    exact_from_template_id,
-    stable_resolution_name,
-    exact_to_template_id
-)
-```
-
-This tuple is the **semantic cell** of the effective Relationship model.
-
-RATIFIED semantic rule:
-
-```text
-the same semantic cell must not be expressed more than once
-```
-
-Therefore two declared Resolutions are repetitive/conflicting whenever their effective expansions contain at least one identical semantic cell, regardless of whether they belong to:
-
-```text
-the same RelationshipDefinition
-or
-two different RelationshipDefinitions
-```
-
-This gives one general notion of repetition:
-
-```text
-same exact from-template
-+
-same stable Resolution name
-+
-same exact to-template
-
-=> same relationship meaning is being expressed again
-```
-
-The rule deliberately depends on semantic meaning, not on:
-
-```text
-relationship_definition_id
-resolution_id
-```
-
-Those identify owners of meaning; they do not make an already-expressed semantic cell different.
-
-Equivalently, for every two distinct Resolution declarations `R1 != R2`, if `E(R)` denotes the complete effective semantic-cell expansion of `R`, then the model requires:
-
-```text
-E(R1) INTERSECT E(R2) = EMPTY
-```
-
-This invariant is global: it applies both intra-Definition and inter-Definition.
-
----
-
-# 4. Declared source of truth
-
-The compact declaration remains the authoritative source model.
-
-Candidate declared shape, preserving the current basic table ownership:
-
-```text
-relationship_definitions
-    id
-    symmetric
-    default_version
-
-relationship_resolutions
-    id
-    relationship_definition_id
-    from_template_id
-    to_template_id
-    name
-```
-
-At this checkpoint:
-
-```text
-relationship_definitions
-    -> stable Definition root / grouping
-    -> persisted explicit symmetric/asymmetric authoring intent
-
-relationship_resolutions
-    -> compact declared semantic perspectives
-    -> declared endpoint compatibility-space roots
-    -> stable semantic Resolution names
-```
-
-The existing version/property family remains conceptually separate and is not redesigned by this draft yet:
-
-```text
-relationship_definition_versions
-relationship_definition_properties
-```
-
-No decision in this intent currently changes their version/property responsibilities.
-
----
-
-# 5. Effective materialized semantic closure
-
-The redesign introduces a candidate model-plane materialization of the complete exact-template semantic space generated by every declared Resolution.
-
-Working name:
-
-```text
-relationship_resolution_space
-```
-
-Conceptual rows:
-
-```text
-relationship_resolution_space
-    relationship_definition_id
-    resolution_id
-    from_template_id
-    name
-    to_template_id
-```
-
-Here:
-
-```text
-resolution_id
-    owner declared Resolution
-
-relationship_definition_id
-    owner Definition identity / convenient coherence carrier
-
-from_template_id
-    exact effective ObjectTemplate member of the declared from-space
-
-name
-    stable semantic name inherited from the owning Resolution
-
-to_template_id
-    exact effective ObjectTemplate member of the declared to-space
-```
-
-For one declared directional semantic perspective:
-
-```text
-R1: A --rel1--> B
-```
-
-its materialized rows are exactly:
+means the complete effective set:
 
 ```text
 Desc(A) x {rel1} x Desc(B)
 ```
 
-Example:
+A semantic name is directional unless symmetric semantics explicitly require the same name in the reciprocal orientation.
 
-```text
-A
-├── A1
-└── A2
-
-B
-├── B1
-└── B2
-```
-
-produces for `R1`:
-
-```text
-A   rel1 B
-A   rel1 B1
-A   rel1 B2
-A1  rel1 B
-A1  rel1 B1
-A1  rel1 B2
-A2  rel1 B
-A2  rel1 B1
-A2  rel1 B2
-```
-
-If the Definition also has the reciprocal distinct semantic perspective:
-
-```text
-R2: B --rel2--> A
-```
-
-then `R2` materializes independently as:
-
-```text
-Desc(B) x {rel2} x Desc(A)
-```
-
-for example:
-
-```text
-B   rel2 A
-B   rel2 A1
-B1  rel2 A
-B1  rel2 A2
-B2  rel2 A1
-...
-```
-
-A semantic name does not automatically materialize in the reverse direction. The reverse orientation exists only when the Definition semantics require it, either under the same name for a symmetric relationship or under the distinct reciprocal name for an asymmetric relationship.
-
-This table is derived effective knowledge, not the compact authoring source.
+The two endpoint roots and the complete semantic naming contract are stable Definition-level state. They are not versioned property-schema state.
 
 ---
 
-# 6. RATIFIED semantic ownership; physical uniqueness still candidate
+# 2. RATIFIED — semantic names are stable Definition semantics
 
-Given the stable-name direction and the ratified no-repetition invariant above, the semantic ownership key of the effective space is:
+Semantic names are not mutable display labels.
+
+A name identifies the meaning of a specific directional perspective inside the Definition and is stable for the Definition lifetime.
+
+Example asymmetric Definition:
 
 ```text
-(
-    from_template_id,
-    name,
-    to_template_id
+VirtualMachine --runs_on--> Hypervisor
+Hypervisor     --hosts----> VirtualMachine
+```
+
+`runs_on` and `hosts` are distinct stable meanings.
+
+Changing:
+
+```text
+hosts -> runs
+```
+
+or any other semantic-name replacement changes the relationship contract rather than renaming an existing contract.
+
+Consequences to revalidate downstream:
+
+```text
+RelationshipDefinition.RENAME
+    -> current AS-IS semantics no longer fit this model
+    -> exact public route removal/replacement is a later API checkpoint
+
+name mutation
+    -> does not preserve the same stable Definition meaning
+    -> a genuinely different semantic contract requires a different Definition
+```
+
+The earlier idea that names belong to autonomous `RelationshipResolution` entities is superseded by the relational direction ratified later in this document: names remain perspective-specific semantics, but their owner is the `RelationshipDefinition` itself.
+
+---
+
+# 3. RATIFIED — semantic cell and no-repetition invariant
+
+At the effective exact-template level, one atomic directed relationship meaning is:
+
+```text
+semantic cell = (
+    exact_from_template_id,
+    stable_name,
+    exact_to_template_id
 )
 ```
 
-RATIFIED semantic meaning:
+The order of the endpoint templates is part of the semantic identity.
+
+RATIFIED rule:
 
 ```text
-one exact directed relationship meaning
-    -> exactly one owning Resolution globally
+the same semantic cell must not be expressed more than once in the model
 ```
 
-A collision may be:
+Therefore:
+
+```text
+(T1, name, T2)
+```
+
+and:
+
+```text
+(T2, name, T1)
+```
+
+are distinct cells unless `T1 == T2`.
+
+Different names also mean different semantic cells even when the endpoint pair is the same. NETAUTO does not attempt synonym inference:
+
+```text
+(Server, hosts, VM)
+!=
+(Server, runs, VM)
+```
+
+The global rule is based on meaning, not owner identity. Two different Definitions cannot make an already-owned cell distinct merely by having different UUIDs.
+
+This invariant applies both:
 
 ```text
 INTRA-DEFINITION
-    two Resolution expansions of the same Definition attempt to express
-    the same semantic cell
+    -> one Definition must not express the same cell twice through its own semantics
 
 INTER-DEFINITION
-    a candidate Definition attempts to express a semantic cell already
-    owned by another Definition
-```
-
-The same semantic authority therefore detects both malformed/redundant internal Definition shape and cross-Definition repetition.
-
-A strong relational realization candidate is:
-
-```text
-UNIQUE (
-    from_template_id,
-    name,
-    to_template_id
-)
-```
-
-The exact physical choice between `PRIMARY KEY`, `UNIQUE`, explicit prevalidation plus final unique arbitration, or another DDL realization remains OPEN. The semantic single-owner invariant itself is ratified; only its exact physical enforcement is not yet closed.
-
----
-
-# 7. Derived observation — symmetric overlap problem moves to the model plane
-
-The materialized semantic-space representation exposes why some currently-admitted symmetric shapes may be intrinsically redundant.
-
-Suppose:
-
-```text
-A
-└── B
-```
-
-and a symmetric Definition is represented by reciprocal semantic perspectives with the same stable name:
-
-```text
-P1: A --rel--> B
-P2: B --rel--> A
-```
-
-Then:
-
-```text
-P1 -> Desc(A) x {rel} x Desc(B)
-P2 -> Desc(B) x {rel} x Desc(A)
-```
-
-Because:
-
-```text
-Desc(B) is a subset of Desc(A)
-```
-
-both expansions contain identical semantic cells in the overlap, for example:
-
-```text
-(B1, rel, B2)
-```
-
-when `B1` and `B2` are descendants of `B`.
-
-Therefore the same exact relationship meaning is expressed twice **inside the Definition itself**.
-
-This is a strong signal that the earlier runtime symptom (multiple equivalent runtime rows) is downstream of a model-plane semantic overlap.
-
-This intent does **not yet freeze** the final symmetric persisted shape. The important observation is:
-
-```text
-a candidate Definition whose own effective perspective expansions collide
-is semantically redundant before any factual Relationship exists
+    -> a new/existing Definition must not re-express a cell already owned elsewhere
 ```
 
 ---
 
-# 7A. RATIFIED domain invariant — symmetric overlapping endpoint spaces must coincide
+# 4. RATIFIED — `symmetric` is explicit stable client intent
 
-The symmetric topology question is first a domain question, not a relational-model capability question.
+Symmetry may be derivable after a complete Definition has been certified, but it cannot be safely inferred during authoring.
+
+If a client supplies one name, the server cannot know whether:
+
+```text
+1. symmetric=true was intended
+or
+2. symmetric=false was intended but the reciprocal name was accidentally omitted
+```
+
+Therefore:
+
+```text
+symmetric
+    -> required explicit client intent
+    -> persisted on relationship_definitions
+    -> stable for Definition lifetime
+    -> never inferred from omission
+```
+
+Semantic meaning:
+
+```text
+symmetric = true
+    reciprocal observation preserves the same semantic name
+
+symmetric = false
+    reciprocal observation requires a different semantic name
+```
+
+Definition CREATE must validate the complete semantic contract against this explicit intent.
+
+---
+
+# 5. RATIFIED — symmetric endpoint-space semantics
+
+## 5.1 Same/overlapping lineage
 
 Assume:
 
@@ -455,7 +208,7 @@ Assume:
 A <: B
 ```
 
-Then the following symmetric declarations express three different admissible fact spaces:
+These three symmetric declarations describe different fact spaces:
 
 ```text
 A --rel--> A
@@ -463,193 +216,102 @@ A --rel--> A
 
 A --rel--> B
     -> both endpoints belong to Desc(B)
-       and at least one endpoint belongs to Desc(A)
+    -> at least one endpoint belongs to Desc(A)
 
 B --rel--> B
     -> both endpoints belong to Desc(B)
 ```
 
-The middle form is therefore not merely a broader/narrower ordinary relationship type. It encodes an applicability policy of the form:
+The middle shape expresses an endpoint-presence applicability policy:
 
 ```text
 at least one endpoint must belong to subtype-space A
 ```
 
-RATIFIED domain decision:
+That is not considered core RelationshipDefinition semantics.
+
+RATIFIED rule:
 
 ```text
-a symmetric RelationshipDefinition is not the model-plane construct used to
-encode such endpoint-presence policies
+for symmetric Definitions, endpoint compatibility spaces are:
+    IDENTICAL
+    OR
+    DISJOINT
+
+never DISTINCT-BUT-OVERLAPPING
 ```
 
-Therefore, whenever the two declared symmetric endpoint compatibility spaces overlap, they must be identical.
-
-With the current single-inheritance ObjectTemplate model:
+With the current single-inheritance model:
 
 ```text
 A == B
     -> allowed
 
 A ancestor-of B, A != B
-    -> forbidden symmetric declaration
+    -> forbidden for symmetric Definition
 
 B ancestor-of A, A != B
-    -> forbidden symmetric declaration
+    -> forbidden for symmetric Definition
 ```
 
-Equivalently:
+The rule is domain-driven, not a storage limitation.
 
-```text
-symmetric endpoint compatibility spaces
-    -> IDENTICAL or DISJOINT
-    -> never DISTINCT-BUT-OVERLAPPING
-```
+## 5.2 Disjoint endpoint spaces
 
-This rule is semantic/domain-driven. It is not justified by an inability to materialize the overlap: the model can represent the resulting fact space, but that fact space is considered an endpoint-applicability policy and therefore belongs outside the core RelationshipDefinition concept.
-
----
-
-# 7B. RATIFIED domain invariant — disjoint endpoint spaces share Definition-level reciprocal topology, while semantic-name applicability remains directional
-
-Let the two endpoint compatibility spaces be disjoint:
+If:
 
 ```text
 Desc(A) INTERSECT Desc(B) = EMPTY
 ```
 
-A RelationshipDefinition between those spaces is a genuine cross-domain relationship: every admitted fact necessarily connects one member of `Desc(A)` with one member of `Desc(B)`.
+then a symmetric Definition is a valid cross-domain relationship.
 
-RATIFIED domain decision:
-
-```text
-for disjoint endpoint spaces, symmetric and asymmetric Definitions share the
-same reciprocal endpoint-space pairing at Definition level
-```
-
-At the Definition level both describe a fact connecting the two spaces:
+Example:
 
 ```text
-Desc(A) <-> Desc(B)
+Router --connected_to--> Switch
+Switch --connected_to--> Router
 ```
 
-This does **not** mean that every semantic name is applicable in both directions.
-
-For a symmetric Definition, reciprocal observation preserves the same name, so that one semantic name covers both orientations:
+The same stable name applies to both reciprocal orientations:
 
 ```text
-SYMMETRIC
-    A --rel--> B
-    B --rel--> A
-
-effective cells for rel:
-    Desc(A) x {rel} x Desc(B)
-    UNION
-    Desc(B) x {rel} x Desc(A)
+Desc(A) x {rel} x Desc(B)
+UNION
+Desc(B) x {rel} x Desc(A)
 ```
 
-For an asymmetric Definition, each semantic name is directional and covers exactly one reciprocal orientation:
-
-```text
-ASYMMETRIC
-    A --rel1--> B
-    B --rel2--> A
-    rel1 != rel2
-
-rel1 effective cells:
-    Desc(A) x {rel1} x Desc(B)
-
-rel2 effective cells:
-    Desc(B) x {rel2} x Desc(A)
-```
-
-Therefore an asymmetric Definition does **not** imply:
-
-```text
-B --rel1--> A
-or
-A --rel2--> B
-```
-
-For example:
-
-```text
-VirtualMachine --runs_on--> Hypervisor
-Hypervisor     --hosts----> VirtualMachine
-```
-
-admits `runs_on` only in the `VirtualMachine -> Hypervisor` orientation and `hosts` only in the reciprocal `Hypervisor -> VirtualMachine` orientation.
-
-Because the endpoint spaces are disjoint, a symmetric Definition can materialize the same name in both reciprocal orientations without creating a duplicate semantic cell:
+Because the spaces are disjoint:
 
 ```text
 (A', rel, B') != (B', rel, A')
 ```
 
-The persisted representation is still OPEN. In particular, this checkpoint does not decide whether the reciprocal semantic perspectives require two stored `relationship_resolutions` or can be derived from a more compact declaration.
+so reciprocal materialization does not duplicate a semantic cell.
+
+## 5.3 Same endpoint space
+
+For:
+
+```text
+A --rel--> A
+```
+
+symmetric semantics require only one logical perspective. Its effective closure is:
+
+```text
+Desc(A) x {rel} x Desc(A)
+```
+
+There is no reason to generate a duplicate reciprocal declaration when source and destination compatibility spaces are the same.
 
 ---
 
-# 7C. RATIFIED authoring invariant — symmetry is explicit client intent and persisted stable Definition state
+# 6. RATIFIED — asymmetric semantics
 
-Once a complete Definition exists, symmetric/asymmetric semantics may be recognizable from the complete reciprocal perspective naming. That derivability does not remove the need for explicit client intent at Definition authoring time.
+An asymmetric Definition represents one fact whose endpoint roles are not semantic peers.
 
-If a client supplies only one semantic name, the server cannot safely infer whether:
-
-```text
-1. the client intends a symmetric relationship
-or
-2. the client intends an asymmetric relationship but omitted the reciprocal name
-```
-
-RATIFIED domain/API-authoring decision:
-
-```text
-symmetric is required explicit client intent
-```
-
-The server therefore does not infer symmetry from request shape or omitted reciprocal naming.
-
-The intent is persisted on the stable Definition root:
-
-```text
-relationship_definitions.symmetric
-```
-
-and is stable for the Definition lifetime.
-
-Its semantic role is:
-
-```text
-symmetric = true
-    reciprocal observation preserves the same semantic name
-
-symmetric = false
-    reciprocal observation requires a distinct semantic name
-```
-
-Definition CREATE must validate the complete perspective semantics against the explicitly supplied intent. `symmetric` may therefore be redundant with an already-complete certified Definition state, but that redundancy is intentional:
-
-```text
-client intent
-    -> explicit
-    -> never inferred from omission
-
-persisted Definition state
-    -> records that intent directly
-
-perspective semantics
-    -> must be coherent with the persisted intent
-```
-
-This checkpoint does not yet close the exact public request DTO or the minimal persisted Resolution-row cardinality.
-
----
-
-# 7D. RATIFIED domain invariant — asymmetric Definitions require exactly two distinct reciprocal semantic names
-
-An asymmetric RelationshipDefinition represents one relationship fact whose two endpoint roles are not semantically peers.
-
-RATIFIED domain decision:
+Therefore:
 
 ```text
 symmetric = false
@@ -657,33 +319,22 @@ symmetric = false
     -> exactly two distinct stable semantic names
 ```
 
-For declared endpoint roots `A` and `B`, the complete asymmetric semantics are:
+For endpoint roots `A` and `B`:
 
 ```text
-P1
-    A --rel1--> B
-
-P2
-    B --rel2--> A
-
+A --rel1--> B
+B --rel2--> A
 rel1 != rel2
 ```
 
-The reciprocal topology is part of the same Definition:
-
-```text
-P2.from = P1.to
-P2.to   = P1.from
-```
-
-Each name remains strictly directional:
+Each name is strictly directional:
 
 ```text
 E(rel1) = Desc(A) x {rel1} x Desc(B)
 E(rel2) = Desc(B) x {rel2} x Desc(A)
 ```
 
-There is no automatic reverse applicability of either individual name.
+There is no implicit reverse applicability of either name.
 
 Example:
 
@@ -692,24 +343,25 @@ VirtualMachine --runs_on--> Hypervisor
 Hypervisor     --hosts----> VirtualMachine
 ```
 
-means:
+Valid meanings:
 
 ```text
-VirtualMachine runs_on Hypervisor     -> valid semantic direction
-Hypervisor hosts VirtualMachine       -> valid reciprocal semantic direction
-Hypervisor runs_on VirtualMachine     -> not expressed by this Definition
-VirtualMachine hosts Hypervisor       -> not expressed by this Definition
+VirtualMachine runs_on Hypervisor
+Hypervisor hosts VirtualMachine
 ```
 
-A one-name asymmetric declaration is therefore incomplete rather than a distinct supported relationship shape. Without the second reciprocal name there is no complete asymmetric semantic contract and no reliable distinction from symmetric authoring intent.
+Not expressed by the Definition:
 
-This checkpoint is a domain semantic/cardinality decision only. It does **not** yet decide whether the two reciprocal semantic perspectives must be persisted as two autonomous `relationship_resolutions` rows or can be represented by a different compact TO-BE relational structure.
+```text
+Hypervisor runs_on VirtualMachine
+VirtualMachine hosts Hypervisor
+```
 
----
+A one-name asymmetric declaration is incomplete, not a separate supported shape.
 
-# 7E. RATIFIED domain invariant — asymmetric endpoint spaces may overlap through inheritance
+## 6.1 Asymmetric endpoint spaces may overlap
 
-For an asymmetric RelationshipDefinition, distinct endpoint roles are part of the relationship semantics. Therefore an ancestor/descendant relationship between the two declared endpoint compatibility-space roots is not, by itself, an applicability-policy smell and is not forbidden.
+Unlike symmetric semantics, asymmetric endpoint roles may be identical, disjoint, or ancestor/descendant-overlapping.
 
 Example:
 
@@ -721,218 +373,382 @@ Manager  --manages----> Employee
 Employee --managed_by-> Manager
 ```
 
-This is a coherent asymmetric relationship definition:
+This is coherent because the two names represent distinct directional roles.
 
-```text
-manages
-    -> directional role owned by Desc(Manager) -> Desc(Employee)
-
-managed_by
-    -> reciprocal directional role owned by Desc(Employee) -> Desc(Manager)
-```
-
-Because `Manager <: Employee`, the two endpoint compatibility spaces overlap. That overlap is semantically acceptable because the two directions carry distinct stable names and therefore distinct semantic roles.
-
-For example, a Manager may manage another Manager:
+It naturally admits:
 
 ```text
 Manager1 manages Manager2
 Manager2 managed_by Manager1
 ```
 
-This follows naturally from subtype admission: `Manager2` is also an `Employee`.
+because a Manager is also an Employee.
 
-RATIFIED domain decision:
+RATIFIED rule:
 
 ```text
 symmetric = false
-    -> declared endpoint compatibility spaces may be identical, disjoint,
-       or distinct-but-overlapping through inheritance
-    -> overlap alone does not invalidate the Definition
+    -> endpoint spaces may be identical, disjoint, or distinct-but-overlapping
+    -> overlap alone is not a rejection condition
 ```
 
-Any additional rule such as:
+A restriction such as:
 
 ```text
-"a Manager may manage Employees but not other Managers"
+"a Manager may manage Employees but not Managers"
 ```
 
-would be an endpoint-applicability policy layered on top of the relationship semantics and is not encoded by the core RelationshipDefinition topology.
+would be an applicability policy layered on top of relationship semantics, not something encoded by the core Definition topology.
 
-The previously ratified semantic-cell uniqueness invariant remains authoritative. An asymmetric Definition is still invalid if one of its effective directional semantic cells collides with an already-owned cell elsewhere in the model; lineage overlap is simply not an independent rejection criterion.
+The global semantic-cell uniqueness invariant remains authoritative: overlap is allowed, but an effective cell still cannot collide with an already-owned cell.
 
 ---
 
-# 8. Model-plane cost is intentionally traded for data-plane simplicity
+# 7. RATIFIED relational direction — no autonomous RelationshipResolution persistence
 
-The materialized space can be large.
+The review found no independent domain lifetime or identity for a directional perspective.
 
-For one directional semantic perspective:
+A perspective exists only as part of one immutable RelationshipDefinition semantic contract. Its endpoint roots and name cannot evolve independently from that Definition.
+
+RATIFIED TO-BE direction:
+
+```text
+remove autonomous relationship_resolutions persistence
+remove resolution_id as model-plane semantic identity
+persist the complete compact relationship contract on relationship_definitions
+materialize the effective inheritance-expanded cells in a derived closure table
+```
+
+This is a relational/model direction, not final DDL. Exact column names, nullability and CHECK constraints remain architecture work.
+
+Logical Definition source-of-truth state is:
+
+```text
+RelationshipDefinition
+    id
+    symmetric
+    endpoint A template root
+    endpoint B template root
+    semantic naming contract
+    default_version
+```
+
+The naming contract is:
+
+```text
+symmetric=true
+    -> exactly one stable semantic name
+    -> same name used under reciprocal observation
+
+symmetric=false
+    -> exactly two distinct stable semantic names
+    -> one name maps A -> B
+    -> the reciprocal name maps B -> A
+```
+
+The persisted A/B slots are only a stable way to bind names to endpoint orientation. They do not create a privileged domain `source`, `target`, `forward` or `reverse` side.
+
+A possible physical encoding might use fields conceptually equivalent to:
+
+```text
+relationship_definitions
+    id
+    symmetric
+    endpoint_a_template_id
+    endpoint_b_template_id
+    name_a_to_b
+    name_b_to_a       # asymmetric only, or otherwise represented compactly
+    default_version
+```
+
+but this exact column layout is **not yet frozen**.
+
+The existing version/property family remains conceptually separate:
+
+```text
+relationship_definition_versions
+relationship_definition_properties
+```
+
+No checkpoint here changes their property-schema responsibilities.
+
+---
+
+# 8. Derived effective semantic closure
+
+Working table name:
+
+```text
+relationship_definition_space
+```
+
+Conceptual rows:
+
+```text
+relationship_definition_space
+    relationship_definition_id
+    from_template_id
+    name
+    to_template_id
+```
+
+The table contains the complete exact-template semantic closure generated by the compact Definition through ObjectTemplate inheritance.
+
+There is no `resolution_id` because there is no longer an autonomous Resolution owner. Every row is owned directly by one RelationshipDefinition.
+
+## 8.1 Asymmetric example
+
+Source Definition:
+
+```text
+VirtualMachine --runs_on--> Hypervisor
+Hypervisor     --hosts----> VirtualMachine
+```
+
+Closure:
+
+```text
+for every VM' in Desc(VirtualMachine)
+for every H'  in Desc(Hypervisor)
+
+    (D, VM', runs_on, H')
+    (D, H',  hosts,   VM')
+```
+
+## 8.2 Symmetric disjoint-space example
+
+Source Definition:
+
+```text
+Router --connected_to--> Switch
+```
+
+with disjoint spaces materializes:
+
+```text
+for every R' in Desc(Router)
+for every S' in Desc(Switch)
+
+    (D, R', connected_to, S')
+    (D, S', connected_to, R')
+```
+
+## 8.3 Symmetric same-space example
+
+Source Definition:
+
+```text
+Person --friend_of--> Person
+```
+
+materializes exactly:
+
+```text
+Desc(Person) x {friend_of} x Desc(Person)
+```
+
+with no duplicate reciprocal generation.
+
+---
+
+# 9. RATIFIED semantic ownership; physical uniqueness still OPEN
+
+With autonomous Resolution identity removed, the earlier single-owner rule becomes simpler:
+
+```text
+one semantic cell
+    -> exactly one owning RelationshipDefinition globally
+```
+
+Semantic ownership key:
+
+```text
+(from_template_id, name, to_template_id)
+```
+
+A strong physical realization candidate is:
+
+```text
+UNIQUE (
+    from_template_id,
+    name,
+    to_template_id
+)
+```
+
+This would make the closure table the final relational arbitration authority for semantic repetition.
+
+However the exact physical enforcement remains OPEN. M4 has not yet selected among:
+
+```text
+PRIMARY KEY
+UNIQUE constraint/index
+explicit candidate prevalidation + final UNIQUE arbitration
+other equivalent PostgreSQL realization
+```
+
+The semantic invariant is ratified; only the DDL mechanism is not.
+
+---
+
+# 10. RATIFIED direction — oriented GET projection is derived, not persisted
+
+Removing `relationship_resolutions` does not require losing an oriented RelationshipDefinition representation.
+
+The public API already treats read DTOs as semantic projections rather than persistence-row mirrors. The TO-BE domain can therefore derive oriented perspectives directly from the compact Definition.
+
+Candidate logical read projection:
+
+```text
+RelationshipDefinition
+    id
+    symmetric
+    default_version
+    perspectives[]
+        name
+        from_template_id
+        to_template_id
+```
+
+Exact public field naming remains OPEN; in particular this checkpoint does not yet decide whether the final API keeps a legacy `resolutions` label or adopts `perspectives`.
+
+`resolution_id` is not present in the TO-BE projection because there is no autonomous Resolution identity.
+
+Domain construction rules are simple and deterministic:
+
+```text
+SYMMETRIC + same endpoint space
+    -> one oriented item
+       A --rel--> A
+
+SYMMETRIC + disjoint endpoint spaces
+    -> two reciprocal oriented items
+       A --rel--> B
+       B --rel--> A
+
+ASYMMETRIC
+    -> two reciprocal oriented items
+       A --rel1--> B
+       B --rel2--> A
+```
+
+The oriented projection is therefore a presentation/navigation view over stable Definition semantics, not evidence that the perspectives need separate persistence identities.
+
+Exact array ordering is also not yet a semantic contract; a deterministic operational order can be chosen later if required.
+
+---
+
+# 11. Model-plane cost is intentionally traded for data-plane simplicity
+
+For one directional perspective:
 
 ```text
 A --name--> B
 ```
 
-row count is conceptually:
+the materialized row count is conceptually:
 
 ```text
 |Desc(A)| * |Desc(B)|
 ```
 
-This expansion is accepted as a serious but potentially desirable design trade-off because it is model-plane work over stable semantic knowledge.
+A symmetric disjoint-space Definition adds the reciprocal set under the same name. An asymmetric Definition adds the reciprocal set under the second name.
 
-The intended separation is:
+This can produce a large closure, but the cost is deliberately model-plane work over stable semantic knowledge.
+
+Intended split:
 
 ```text
 MODEL PLANE
-    interpret stable ObjectTemplate inheritance
-    expand declared semantic perspective spaces
-    detect semantic repetition/conflict
-    materialize exact effective semantic cells
-    maintain the materialization when the stable model grows/changes
+    interpret ObjectTemplate inheritance
+    expand stable Definition semantics
+    certify no semantic-cell repetition
+    materialize exact effective cells
+    maintain closure when model topology changes
 
 DATA PLANE
-    consume already-resolved effective semantic knowledge
-    avoid ancestry traversal/reinterpretation for normal factual admission
+    consume already-resolved exact semantic applicability
+    avoid ancestry traversal and Definition reinterpretation on normal factual admission
 ```
 
-The materialization is therefore not proposed merely as a query cache. It is candidate **certified effective model knowledge**.
+This materialization is therefore not merely a cache. It is candidate **certified effective model knowledge**.
 
 ---
 
-# 9. Data-plane admission benefit
+# 12. Data-plane and capability benefits
 
-Without the effective materialization, factual Relationship admission must still interpret whether the concrete Object endpoint templates belong to the directional semantic perspective selected by the caller, typically via ancestry membership predicates.
+Once concrete Object endpoint template IDs are known, factual Relationship admission should be able to consume an exact closure answer instead of reinterpreting inheritance.
 
-With the materialized space, after obtaining the two concrete Object `template_id` values, applicability can conceptually reduce to an exact lookup:
+The exact factual CREATE selector is deliberately reopened because `resolution_id` disappears.
 
-```text
-resolution_id = requested Resolution
-from_template_id = actual from Object template
-to_template_id = actual to Object template
-```
-
-Equivalent conceptual predicate:
+Possible later selector inputs include some combination of:
 
 ```text
-EXISTS relationship_resolution_space row
-WHERE
-    resolution_id = :resolution_id
-    AND from_template_id = :actual_from_template_id
-    AND to_template_id = :actual_to_template_id
+relationship_definition_id
+semantic name
+actual from/to Object identities/templates
 ```
 
-Normal factual admission therefore consumes a model-plane-certified directional answer instead of reconstructing inheritance semantics.
+but the exact public/data-plane contract is OUT OF SCOPE until this upstream model stabilizes.
 
-The exact factual Relationship model remains intentionally OUT OF SCOPE until this upstream model is stabilized.
-
----
-
-# 10. Additional consumers of the same materialization
-
-The same effective space could potentially serve several model/data-plane consumers without duplicating semantic interpretation.
-
-Candidate consumers:
+The same closure can also support:
 
 ```text
 RelationshipDefinition CREATE/conflict admission
-    -> candidate semantic-cell acquisition vs current occupied space
+    -> candidate cell acquisition against current occupied space
 
-Relationship capability lookup for an exact ObjectTemplate
-    -> direct rows where from_template_id = selected exact template
+ObjectTemplate relationship-capability lookup
+    -> exact rows where from_template_id = selected template
 
 factual Relationship CREATE admission
-    -> exact Resolution + concrete endpoint-template lookup
+    -> exact Definition/name/from-template/to-template applicability
 
 future model analysis/search
-    -> concrete representation of which directed relationship meanings
-       are currently expressible for exact ObjectTemplate pairs
+    -> concrete representation of all currently expressible directed meanings
 ```
 
-This consolidation is considered an architectural benefit: multiple operations consume the same certified effective model instead of independently reimplementing lineage predicates.
+This avoids independently reimplementing inheritance predicates in several consumers.
 
 ---
 
-# 11. Maintenance triggers and derived-state boundary
+# 13. Maintenance triggers and derived-state boundary
 
-The effective space changes when its source stable model changes.
+The compact Definition is source of truth. `relationship_definition_space` is derived effective knowledge.
 
-At minimum, revalidation must account for:
+At minimum, revalidation must cover:
 
 ```text
-new RelationshipDefinition / semantic perspective declaration
-    -> materialize the new declared spaces
-    -> reject if required semantic cells are already owned
+new RelationshipDefinition
+    -> derive every required semantic cell
+    -> reject if any cell is already owned
+    -> persist compact Definition + complete closure atomically
 
 RelationshipDefinition deletion
-    -> remove its derived semantic cells
+    -> remove its derived cells
 
 new ObjectTemplate descendant
-    -> may add effective semantic cells to every perspective whose declared
-       from/to roots admit that new lineage member
+    -> may introduce new cells for every Definition whose endpoint roots admit it
+    -> may reveal a semantic collision between already-existing Definitions
 
 ObjectTemplate lineage deletion/change
-    -> must keep derived space exactly synchronized with the stable lineage model
+    -> derived space must remain synchronized with the stable lineage model
 ```
 
-The exact supported ObjectTemplate topology-mutation lifecycle is not decided here; this section records only the dependency.
+The new-descendant case is particularly important and remains OPEN at the execution/concurrency layer: ObjectTemplate model growth may need to reject a topology change if expanding existing Definitions would create a semantic-cell collision.
 
-Important boundary:
+Derived rows must not accidentally acquire stronger lifetime semantics than the compact declaration. Materializing a descendant template in a cell does not mean the RelationshipDefinition explicitly owns that descendant lineage in the same sense as its declared endpoint roots.
 
-```text
-relationship_resolutions
-    -> current candidate source declaration / true external lineage ownership
-
-relationship_resolution_space
-    -> derived effective closure
-```
-
-The derived table must **not accidentally create stronger model-lifetime semantics than the declaration itself**. In particular, materializing a descendant template as an effective cell must not automatically mean that the RelationshipDefinition now owns that descendant lineage in the same sense as its explicitly declared endpoint roots.
-
-Therefore the exact FK / ON DELETE behavior from `relationship_resolution_space.from_template_id` and `.to_template_id` to `object_templates` is explicitly OPEN and must be designed as derived-state maintenance, not inferred mechanically from the declared Resolution FK policy.
+Exact FK/ON DELETE/rebuild behavior for closure endpoint IDs remains architecture work.
 
 ---
 
-# 12. Candidate relational picture
+# 14. RelationshipDefinitionVersion/property boundary
 
-Current intent draft:
+The redesign currently changes only stable Definition topology/naming and its effective closure.
+
+The existing versioned property-schema family remains conceptually:
 
 ```text
-relationship_definitions
-    id PK
-    symmetric                                        # RATIFIED stable explicit intent
-    default_version
-
-        1
-        |
-        | owns
-        v
-
-relationship_resolutions                            # representation still candidate
-    id PK
-    relationship_definition_id FK -> relationship_definitions.id
-    from_template_id FK -> object_templates.id     # declared root
-    to_template_id   FK -> object_templates.id     # declared root
-    name                                             # STABLE semantic attribute
-
-        1
-        |
-        | expands to
-        v
-
-relationship_resolution_space
-    relationship_definition_id
-    resolution_id
-    from_template_id                                # exact effective member
-    name                                            # stable copied semantic name
-    to_template_id                                  # exact effective member
-
-    ratified semantic ownership:
-        one owner per (from_template_id, name, to_template_id)
-
-    candidate physical enforcement:
-        UNIQUE(from_template_id, name, to_template_id)
-
 relationship_definition_versions
     relationship_definition_id
     version
@@ -949,157 +765,133 @@ relationship_definition_properties
     value_mode
 ```
 
-The version/property side is shown only for completeness; it is not yet modified by this redesign intent.
-
-The declared relational picture above remains a **candidate inherited from the current Resolution shape**, except that persistence of stable explicit `relationship_definitions.symmetric` intent is ratified. The domain now requires:
+Current intended boundary:
 
 ```text
-symmetric=true
-    -> one semantic name preserved under reciprocal observation
+Definition stable state
+    -> symmetric intent
+    -> endpoint roots
+    -> stable semantic names
 
-symmetric=false
-    -> exactly two distinct reciprocal semantic names
-    -> each name owns only its declared direction
-    -> endpoint spaces may be identical, disjoint, or overlap through inheritance
+DefinitionVersion state
+    -> property schema only
 ```
 
-The remaining representation question is whether those semantic perspectives require one/two stored `relationship_resolutions` rows or should be represented more compactly.
+A later checkpoint must confirm this separation explicitly against CREATE_NEXT/REVISE/PUBLISH semantics, but no current evidence requires endpoint topology or semantic names to be versioned.
 
 ---
 
-# 13. What this candidate would supersede if eventually ratified
+# 15. Downstream assumptions that must be revalidated
 
-If this intent is later ratified and promoted, it would require targeted revalidation of assumptions currently based on:
+If this intent is promoted, the following AS-IS/current-review assumptions cannot survive unchanged:
 
 ```text
-RelationshipResolution.name as mutable metadata
-RelationshipDefinition.RENAME preserving the same semantic Definition
-abstract overlap predicates as the only cross-Definition conflict representation
-same-Definition Resolution overlap being automatically tolerated and delegated
-    to factual runtime closure
-runtime Relationship CREATE performing lineage-based Resolution applicability
-factual runtime closure being used to compensate for ambiguous/redundant
-    Definition semantic coverage
-symmetric distinct-but-overlapping endpoint roots being valid model semantics
-symmetric disjoint endpoint spaces requiring a distinct endpoint-pairing model from
-    asymmetric cross-domain relationships
-symmetry being inferred from incomplete perspective/request shape rather than
-    supplied as explicit authoring intent
-asymmetric Definitions allowing a missing reciprocal semantic name
-an asymmetric semantic name being treated as applicable in both endpoint orientations
-asymmetric ancestor/descendant endpoint overlap being rejected merely because the
-    compatibility spaces intersect
+relationship_resolutions as autonomous persistence
+resolution_id as stable model-plane perspective identity
+RelationshipDefinition.RENAME mutating semantic names
+runtime Relationship CREATE selecting an autonomous Resolution UUID
+runtime closure compensating for ambiguous/redundant Definition overlap
+same-Definition overlap being delegated to factual runtime closure
+symmetric distinct-but-overlapping endpoint roots being valid core semantics
+asymmetric relationship names being applicable in both orientations
+asymmetric Definitions being allowed to omit the reciprocal name
+cross-Definition conflict being represented only as an abstract overlap predicate
 ```
 
-No such supersession is effective yet except for the ratified intent checkpoints explicitly marked above. These remain targeted downstream revalidation inputs until the intent is promoted.
+The factual Relationship WIP remains frozen until these dependencies are revalidated against the stabilized upstream Definition model.
 
 ---
 
-# 14. OPEN questions before downstream review can resume
+# 16. OPEN questions
 
-The current intent is intentionally incomplete. At least the following points must be reviewed explicitly:
+The current intent is deliberately incomplete. Remaining explicit review points include:
 
 ```text
-1. Symmetric Definition persisted shape
-    - RATIFIED: endpoint spaces are identical or disjoint, never distinct-but-overlapping
-    - RATIFIED: disjoint symmetric/asymmetric cases share the same reciprocal endpoint-space pairing at Definition level
-    - RATIFIED: one symmetric name applies in both reciprocal orientations
-    - RATIFIED: symmetric is explicit client intent, persisted and stable for Definition lifetime
-    - OPEN: minimal persisted representation for same-space symmetric semantics
-    - OPEN: minimal persisted representation for reciprocal disjoint-space symmetric semantics
+1. Exact compact relational encoding
+    - final column names for endpoint slots and names
+    - symmetric representation of the single name
+    - CHECK/nullability constraints
+    - endpoint-root FK behavior
 
-2. Non-symmetric Definition persisted shape
-    - RATIFIED: exactly two reciprocal semantic perspectives
-    - RATIFIED: exactly two distinct stable semantic names
-    - RATIFIED: each name is directional and applies only in its own orientation
-    - RATIFIED: endpoint spaces may be identical, disjoint, or distinct-but-overlapping through inheritance
-    - OPEN: minimal persisted representation of the two reciprocal semantics
+2. Physical relationship_definition_space realization
+    - PK/UNIQUE choice
+    - indexes for conflict/capability/factual admission
+    - FK/cascade/rebuild semantics
+    - storage/fan-out evidence gate
 
-3. Resolution identity
-    - continued role of resolution_id once semantic cells are materialized
-    - whether callers still select by resolution_id in the final TO-BE API
+3. ObjectTemplate model-growth maintenance
+    - efficient incremental expansion
+    - atomic collision certification on new descendants
+    - concurrency with Definition CREATE/DELETE
 
-4. Stable-name lifecycle
-    - immutable from Definition CREATE vs editable only in a pre-admission phase
-    - exact fate of RelationshipDefinition.RENAME
+4. Stable-name lifecycle/API
+    - exact removal/replacement of RelationshipDefinition.RENAME
+    - migration/backfill from AS-IS Resolution rows
 
-5. Materialized-space physical realization
-    - exact PK/UNIQUE shape implementing the ratified single-owner semantic invariant
-    - whether relationship_definition_id is physically denormalized
-    - how ownership is represented if the compact Resolution table changes
-    - FK/cascade/rebuild strategy
-    - indexes for model conflict, capability and factual admission
+5. RelationshipDefinition public GET/list
+    - exact `perspectives`/legacy naming
+    - exact list vs detail projection richness
+    - deterministic operational ordering if required
 
-6. ObjectTemplate model-growth maintenance
-    - efficient incremental expansion on new descendants
-    - transactional conflict arbitration when a new descendant creates a
-      semantic-cell collision between already-existing declared perspectives
+6. Factual Relationship redesign
+    - replacement for resolution_id CREATE selector
+    - factual endpoint identity/uniqueness
+    - need, if any, for derived runtime rows after Definition closure exists
+    - GET and Object-scoped collection realization
+    - concurrency and lifecycle payloads
 
-7. RelationshipDefinition version/property interaction
-    - confirm that perspective topology/name remains definition-stable and outside
-      the RDV lifecycle
-
-8. Factual Relationship redesign
-    - only after this upstream model is stable, revalidate factual endpoint
-      identity, runtime rows, uniqueness, GETs and concurrency
+7. Version/property interaction
+    - confirm stable topology/name remains outside RDV lifecycle
 ```
 
 ---
 
-# 15. Current working thesis
-
-The current draft can be summarized as:
+# 17. Current working thesis
 
 ```text
-directional semantic perspective
-    = compact stable semantic rule
+RelationshipDefinition
+    = complete compact stable relationship contract
 
-    declared from-template root
-    + stable name
-    + declared to-template root
+    stable Definition UUID
+    + explicit stable symmetric intent
+    + two declared endpoint compatibility-space roots
+    + one stable semantic name if symmetric
+      OR two distinct stable reciprocal names if asymmetric
 
-        ↓ model-plane expansion through stable ObjectTemplate inheritance
+NO autonomous RelationshipResolution entity
+NO resolution_id model identity
 
-relationship_resolution_space
+        ↓ model-plane expansion through ObjectTemplate inheritance
+
+relationship_definition_space
     = complete exact effective semantic closure
 
+    relationship_definition_id
     exact from-template
-    + stable name
-    + exact to-template
+    stable semantic name
+    exact to-template
 
 semantic cell [RATIFIED]
     = (exact from-template, stable name, exact to-template)
     = ordered/directional semantic identity
 
-semantic ownership invariant [RATIFIED]
-    = one semantic cell has one Resolution/perspective owner globally
+semantic ownership [RATIFIED]
+    = one semantic cell belongs to exactly one RelationshipDefinition globally
 
-symmetric endpoint-space domain invariant [RATIFIED]
-    = endpoint compatibility spaces are identical or disjoint
-    = distinct-but-overlapping spaces are not core relationship semantics
-      because they encode an endpoint-presence applicability policy
+symmetric [RATIFIED]
+    = explicit persisted client intent
+    = reciprocal observation preserves one stable name
+    = endpoint spaces identical or disjoint
+    = never distinct-but-overlapping
 
-disjoint-space Definition topology [RATIFIED]
-    = symmetric and asymmetric Definitions share the same reciprocal endpoint-space pairing
-    = this equivalence is Definition-level only, not per semantic name
+asymmetric [RATIFIED]
+    = exactly two distinct reciprocal stable names
+    = each name applies only in its own direction
+    = endpoint spaces may be identical, disjoint, or inheritance-overlapping
 
-symmetric semantics [RATIFIED]
-    = one stable semantic name
-    = reciprocal observation preserves that name
-    = the same name applies in both required reciprocal orientations
-
-asymmetric semantics [RATIFIED]
-    = exactly two reciprocal semantic perspectives
-    = exactly two distinct stable semantic names
-    = each name applies only in its declared orientation
-    = endpoint spaces may be identical, disjoint, or overlap through inheritance
-    = e.g. VirtualMachine --runs_on--> Hypervisor / Hypervisor --hosts--> VirtualMachine
-
-symmetric authoring intent [RATIFIED]
-    = explicit required client intent
-    = persisted stable Definition state
-    = never inferred from an omitted reciprocal name/request field
-    = complete perspective semantics must validate against that intent
+oriented GET
+    = domain/API projection derived from Definition semantics
+    = does not require autonomous perspective persistence
 
 model plane
     = pays expansion + conflict certification
@@ -1108,4 +900,4 @@ data plane
     = consumes exact pre-resolved directional applicability
 ```
 
-This thesis is the basis for the next review pass. It must be challenged with concrete symmetric/non-symmetric/inheritance examples before any downstream factual Relationship work is resumed.
+This thesis is the basis for the next review pass and must continue to be challenged with concrete domain and lineage examples before downstream factual Relationship work resumes.
