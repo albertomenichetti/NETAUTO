@@ -805,10 +805,40 @@ CANDIDATE B
 
 Supplying an explicit version remains an exact-version request, not a latest/minimum/compatible-version hint. Exact existence/status/admission and related failure mapping remain separate CREATE review points.
 
+## C-REL-13 RATIFIED — CREATE preserves optional `properties` omission semantics
+
+The factual Relationship CREATE keeps the pre-freeze `properties` request semantics unchanged.
+
+Public field:
+
+```text
+properties: object, optional
+```
+
+with:
+
+```text
+omitted
+    -> equivalent to an empty factual property candidate {}
+
+present
+    -> use the supplied object as the complete candidate factual property map
+
+explicit null
+    -> invalid request
+
+non-object value
+    -> invalid request
+```
+
+The candidate property map is semantically validated and canonicalized against the exact RelationshipDefinitionVersion selected for the new factual Relationship. `properties` does not participate in semantic perspective selection, Definition ownership selection, or endpoint compatibility.
+
+These semantics apply identically to both still-open Definition-selection candidates. Unknown/invalid property names and invalid values remain semantic-validation concerns against the selected exact RelationshipDefinitionVersion; the strict-body/unknown top-level field rules and full failure taxonomy remain separate CREATE review points.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate properties optional/omission/null semantics
-       independently from the deferred Definition selector choice
+    -> revalidate strict-body / null / unknown top-level field rules
+       and endpoint-field directional semantics
 ```
