@@ -1144,10 +1144,104 @@ property candidate validation / runtime factual ownership conflict
     -> later checkpoints
 ```
 
+## C-REL-19 RATIFIED — CREATE validates and canonicalizes the complete property candidate before factual conflict arbitration
+
+After the owning RelationshipDefinition has been resolved and the selected exact RelationshipDefinitionVersion has passed current lifecycle admission, CREATE validates the complete initial `properties` candidate against that exact version before evaluating current factual semantic-cell ownership conflicts.
+
+The already-ratified omission rule remains:
+
+```text
+properties omitted
+    -> candidate {}
+```
+
+The candidate is validated and canonicalized against the exact selected RelationshipDefinitionVersion semantic schema. Caller-attributable property failures map to:
+
+```text
+422 semantic_validation_failed
+```
+
+including, where applicable:
+
+```text
+property name not declared by the exact RDV
+null runtime value
+wrong SCALAR/LIST value shape
+primitive validation or canonicalization failure
+exact DataTypeVersion constraint violation
+```
+
+The factual Relationship property schema currently has no required-property dimension, so CREATE does not introduce an Object-style "missing required property" rule solely for Relationship.
+
+A PUBLISHED RelationshipDefinitionVersion is already a certified model-plane artifact. Therefore a missing/corrupt exact DataType dependency, malformed persisted constraint set, invalid persisted RDV property declaration, or other contradiction of certification invariants discovered while resolving its runtime property semantics is not caller semantic validation. It maps to:
+
+```text
+500 internal_error
+```
+
+RATIFIED ordering is:
+
+```text
+exact RDV selected and admitted
+    -> resolve exact immutable property semantics
+    -> validate/canonicalize complete initial properties candidate
+    -> only then evaluate current runtime semantic-cell ownership / factual conflict
+```
+
+Thus an invalid property candidate is rejected as `422 semantic_validation_failed` even if the requested semantic cells would also collide with an existing factual Relationship. CREATE does not perform factual-conflict arbitration first merely to return a different failure for a candidate that is not itself semantically valid.
+
+## C-REL-20 RATIFIED — CREATE uses an immutable exact-RDV semantic cache after PostgreSQL admission
+
+The exact RelationshipDefinitionVersion semantic payload used for factual property validation is a cache candidate with the same architectural boundary intended for exact ObjectTemplate schema semantics.
+
+RATIFIED direction:
+
+```text
+ImmutableRelationshipDefinitionVersionCache[
+    (relationship_definition_id, relationship_definition_version)
+]
+```
+
+Conceptual cached payload includes only immutable exact-version semantics needed by the data plane, for example:
+
+```text
+ordered Relationship property declarations
+exact DataTypeVersion pins
+value modes
+canonical/compiled RuntimePropertySpec equivalents
+compiled primitive/DataType validators where useful
+```
+
+The cache must **not** own mutable current admission state such as:
+
+```text
+RelationshipDefinition.default_version
+RelationshipDefinitionVersion.status
+```
+
+CREATE therefore keeps the authority split:
+
+```text
+PostgreSQL
+    -> resolve current owning Definition/default when needed
+    -> prove exact RDV existence
+    -> prove current exact RDV status == PUBLISHED for a new binding
+
+immutable exact-RDV cache
+    -> supply already-resolved immutable schema semantics
+    -> validate/canonicalize the candidate properties efficiently
+```
+
+Cache presence never proves that the exact RDV still exists or is currently admissible for CREATE. A lifecycle transition from PUBLISHED to DEPRECATED changes current admission but does not change the already-certified exact semantic payload; the cache entry can remain semantically valid while PostgreSQL rejects that version for a new binding.
+
+A cache miss may load/resolve the immutable exact-version semantic payload from authoritative persisted model state and populate the cache. If that load discovers persisted state contradicting PUBLISHED-version certification invariants, the outcome is `500 internal_error`, not a caller error.
+
+This checkpoint promotes the earlier M4 exact-RDV cache candidate into the factual CREATE technical direction. Exact cache implementation, process topology, warm-up policy, capacity/eviction and shared-vs-local realization remain architecture-closing/implementation details.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate property-candidate semantic failures
-       then current runtime semantic-cell ownership / relationship_fact_conflict
+    -> revalidate current runtime semantic-cell ownership
+       and 409 relationship_fact_conflict
 ```
