@@ -1055,10 +1055,99 @@ property candidate validation / runtime factual conflict
 
 This checkpoint does not yet decide `dependency_not_admissible` or `relationship_fact_conflict`.
 
+## C-REL-18 RATIFIED — CREATE admits only an exact PUBLISHED RelationshipDefinitionVersion
+
+Factual Relationship CREATE is a new model binding and therefore follows the same admission rule already used by Object CREATE and the other versioned model-resource bindings:
+
+```text
+selected exact RelationshipDefinitionVersion must currently be PUBLISHED
+```
+
+The exact selected version may originate from either request mode:
+
+```text
+explicit selection
+    relationship_definition_version supplied
+
+implicit selection
+    relationship_definition_version omitted
+    -> owning RelationshipDefinition.default_version
+```
+
+For an **explicit** exact version selector:
+
+```text
+exact RDV absent
+    -> 422 referenced_resource_not_found
+
+exact RDV exists but status != PUBLISHED
+    -> 409 dependency_not_admissible
+
+exact RDV exists and status == PUBLISHED
+    -> version lifecycle admission succeeds
+```
+
+`DRAFT` and `DEPRECATED` are therefore not valid targets for a newly created factual Relationship binding.
+
+For an **implicit/default** selector, M4 carries forward the versioned model-resource invariant that a non-null current `default_version` points to an exact current `PUBLISHED` version. Consequently:
+
+```text
+default_version is null
+    -> 409 default_version_unavailable
+
+default_version is non-null
+    -> selected exact default target is expected to exist and be PUBLISHED
+```
+
+If persisted state instead contains:
+
+```text
+non-null default_version -> missing exact RDV
+OR
+non-null default_version -> exact RDV whose status != PUBLISHED
+```
+
+that is an invariant/integrity failure and maps to:
+
+```text
+500 internal_error
+```
+
+rather than exposing `dependency_not_admissible` for an implicit selector. The client did not explicitly request an inadmissible exact version; the model-plane default pointer itself is corrupt/incoherent.
+
+This is consistent with the existing model lifecycle: publication may establish a default when none exists, and the current default version cannot be deprecated while it remains the default.
+
+The rule applies identically after the owning Definition has been resolved under Candidate A or Candidate B.
+
+RATIFIED local ordering remains:
+
+```text
+static request invalidity
+    -> 400 invalid_request
+
+absent explicit operands
+    -> 422 referenced_resource_not_found
+
+semantic perspective / endpoint admission
+    -> 422 semantic_validation_failed
+
+implicit version requested but no default
+    -> 409 default_version_unavailable
+
+explicit exact RDV exists but is not PUBLISHED
+    -> 409 dependency_not_admissible
+
+implicit default target violates model-plane default invariants
+    -> 500 internal_error
+
+property candidate validation / runtime factual ownership conflict
+    -> later checkpoints
+```
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate exact RelationshipDefinitionVersion lifecycle admission
-       and 409 dependency_not_admissible
+    -> revalidate property-candidate semantic failures
+       then current runtime semantic-cell ownership / relationship_fact_conflict
 ```
