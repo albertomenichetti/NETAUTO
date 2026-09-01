@@ -384,9 +384,70 @@ solely to serve the Object-scoped GET. A second Object-rooted index would requir
 
 Whether `relationship_id` should be added as an `INCLUDE` payload to that index is a separate optimization question and is not ratified by this checkpoint.
 
+## C-REL-07 RATIFIED — semantic-cell uniqueness B-tree includes `relationship_id` as non-key payload
+
+For the physical semantic-cell uniqueness B-tree over:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+M4 ratifies carrying:
+
+```text
+INCLUDE (relationship_id)
+```
+
+as non-key payload.
+
+Conceptual physical target:
+
+```text
+semantic-cell uniqueness B-tree
+    KEY
+        from_object_id
+        name
+        to_object_id
+    INCLUDE
+        relationship_id
+```
+
+`relationship_id` remains factual ownership/grouping state. It is **not** part of:
+
+```text
+semantic-cell uniqueness
+Object-scoped keyset identity
+Object-scoped ordering semantics
+```
+
+The purpose of the included UUID is read-path access only. The Object-scoped GET already locates/page-orders runtime cells using the semantic key, but each public item also needs the owning factual root:
+
+```text
+relationship_id
+    -> relationships
+    -> relationship_definition_id
+    -> relationship_definition_version
+    -> properties
+```
+
+Including `relationship_id` allows the runtime-side page projection to obtain the owner identifier directly from the same B-tree when PostgreSQL can use an index-only path, without widening the semantic key or requiring a separate Object-rooted page index.
+
+M4 does **not** include factual-root or display fields such as:
+
+```text
+relationship_definition_id
+relationship_definition_version
+properties
+Object.canonical_name
+```
+
+in this runtime index. Those values remain owned by `relationships` / `objects` and are reached through the normal joins; copying them into the runtime index would be unnecessary denormalization and/or excessive payload.
+
+The exact semantic-uniqueness DDL carrier remains OPEN between the previously identified relational forms, subject to the requirement that the chosen realization can provide the ratified B-tree key plus `INCLUDE (relationship_id)` payload.
+
 Current next micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> assess whether INCLUDE (relationship_id) is justified on the semantic-uniqueness B-tree
+    -> revalidate one-statement query shape / Object existence boundary against the new runtime-cell projection
 ```
