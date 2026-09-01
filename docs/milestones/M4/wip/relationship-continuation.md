@@ -333,9 +333,60 @@ The internal tuple remains opaque and has no public/domain ordering meaning. Cli
 
 This supersedes the pre-freeze Resolution-derived tie-breaker/keyset assumptions.
 
+## C-REL-06 RATIFIED — no separate Object-rooted page index is required when semantic uniqueness uses the same B-tree tuple
+
+The Object-scoped collection requires an access path beginning with the route-fixed runtime source Object and continuing in the ratified keyset order:
+
+```text
+from_object_id
+name
+to_object_id
+```
+
+The already-ratified global semantic-cell uniqueness authority is the same logical tuple:
+
+```text
+(from_object_id, name, to_object_id)
+```
+
+Therefore, **if** the physical semantic-uniqueness mechanism is realized by a PostgreSQL B-tree index over that tuple, the same index is sufficient for the Object-rooted navigation access pattern and no second dedicated page index is required merely for:
+
+```text
+WHERE from_object_id = :object_id
+ORDER BY name, to_object_id
+```
+
+or:
+
+```text
+WHERE from_object_id = :object_id
+  AND name = :name
+ORDER BY to_object_id
+```
+
+This checkpoint deliberately does **not** choose whether semantic uniqueness is physically represented as:
+
+```text
+PRIMARY KEY
+UNIQUE constraint
+explicit unique index
+```
+
+That exact DDL form remains OPEN. The ratified point is index sufficiency conditional on the chosen uniqueness realization providing the same B-tree ordering.
+
+Accordingly, M4 does not require recreating a separate successor of the pre-freeze:
+
+```text
+ix_runtime_resolutions_from_object_page
+```
+
+solely to serve the Object-scoped GET. A second Object-rooted index would require independent measured workload evidence or a physical requirement not already satisfied by the semantic-uniqueness B-tree.
+
+Whether `relationship_id` should be added as an `INCLUDE` payload to that index is a separate optimization question and is not ratified by this checkpoint.
+
 Current next micro-point:
 
 ```text
 GET /api/v1/core/objects/{object_id}/relationships
-    -> revalidate the Object-rooted index shape against the new keyset tuple and filters
+    -> assess whether INCLUDE (relationship_id) is justified on the semantic-uniqueness B-tree
 ```
