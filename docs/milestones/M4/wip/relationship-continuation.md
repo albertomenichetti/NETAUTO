@@ -2197,3 +2197,155 @@ Relationship DATA_CHANGE
     -> assess post-definition DATA_CHANGE discovery closure
        and enumerate only any decisions intentionally deferred to architecture closing
 ```
+
+## C-REL-30 RATIFIED — post-definition Relationship DATA_CHANGE discovery is complete
+
+The post-definition factual/domain discovery pass for:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/properties
+```
+
+is complete.
+
+Current status is:
+
+```text
+DISCOVERY COMPLETE
+PUBLIC CONTRACT CLOSED
+ARCHITECTURE CLOSING PENDING
+```
+
+The already-ratified public contract remains unchanged:
+
+```text
+path:
+    relationship_id: UUID, required
+
+query:
+    none
+
+body:
+    operations: PropertyOperation[1..N]
+    SET    { op, property, value }
+    REMOVE { op, property }
+    same property at most once
+    array order has no mutation-order meaning
+    atomic / no partial success
+
+success:
+    204 No Content
+    no body
+
+no-op:
+    204 No Content
+    cheaply recognized no-op may elide root UPDATE and DATA_CHANGE lifecycle
+
+failures:
+    malformed/static request
+        -> 400 invalid_request
+
+    missing Relationship
+        -> 404 resource_not_found
+
+    invalid requested property effect/value
+        -> 422 semantic_validation_failed
+
+    persisted invariant/infrastructure or bounded stabilization failure
+        -> 500 internal_error
+
+    no normal 409
+```
+
+Post-definition execution semantics are now also discovery-complete:
+
+```text
+observe current factual generation:
+    relationship_definition_id = D
+    relationship_definition_version = V
+    properties = P
+    revision = R
+
+resolve immutable semantic validation snapshot:
+    ImmutableRelationshipDefinitionVersionCache[(D, V)]
+
+cache miss:
+    full exact D@V load
+    + complete declarations
+    + every exact referenced DataTypeVersion semantic dependency
+    -> one resolved immutable validation snapshot
+
+validate/canonicalize candidate:
+    against that resolved exact snapshot
+
+real mutation:
+    properties := P_after
+    revision := R + 1
+    complete RELATIONSHIP_DATA_CHANGE event set
+    -> atomic commit against expected_revision = R
+```
+
+DATA_CHANGE performs no new model-plane admission and is invariant to lifecycle status of the already-pinned exact schema:
+
+```text
+NO RelationshipDefinition.default_version read
+NO RDV PUBLISHED/default/latest admission
+NO DataTypeVersion lifecycle admission
+NO dependency_not_admissible outcome
+```
+
+It also performs no factual topology recertification:
+
+```text
+NO RelationshipResolution read
+NO RelationshipDefinition topology re-proof
+NO relationship_definition_space read
+NO ObjectTemplate ancestry read
+NO runtime semantic-closure reconstruction
+NO semantic-view deduplication
+```
+
+The lifecycle boundary remains:
+
+```text
+before_state = {
+    relationship_definition_version: V,
+    properties: P_before
+}
+
+after_state = {
+    relationship_definition_version: V,
+    properties: P_after
+}
+
+relationships.revision
+    -> private technical generation state
+    -> excluded from historical factual snapshots
+
+one runtime_relationship_cells row
+    -> one RELATIONSHIP_DATA_CHANGE event row
+```
+
+No additional factual DATA_CHANGE capability or semantic/public-contract decision is currently known to be missing.
+
+The remaining work is intentionally architecture/physical realization only:
+
+```text
+exact semantic-cache implementation and process topology
+cache capacity / eviction / warm-up policy
+exact cache-miss PostgreSQL statement and batching realization
+relationships.revision type / CHECK / default DDL details
+exact CAS and PostgreSQL row-lock/wait realization
+bounded retry count / backoff policy
+coherent endpoint canonical_name projection mechanism
+lifecycle batch INSERT and DML sequencing
+```
+
+Those decisions must preserve the ratified public/factual semantics and must not reopen DATA_CHANGE merely to choose an implementation mechanism.
+
+Current factual Relationship review frontier moves to:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/schema
+    -> post-definition SCHEMA_CHANGE revalidation
+```
