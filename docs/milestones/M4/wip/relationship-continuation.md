@@ -1366,10 +1366,144 @@ unless a future caller requirement independently justifies them.
 
 Exact owner-selection determinism when multiple owners collide, exact race/retry mechanics and the final physical arbitration strategy remain OPEN until that architecture/concurrency closing pass.
 
+## C-REL-23 RATIFIED — after exact semantic-cell admission, factual runtime closure derives without another ancestry walk
+
+Factual Relationship CREATE separates model-plane polymorphic admission from data-plane factual closure materialization.
+
+The caller expresses one oriented concrete observation:
+
+```text
+from_object_id --name--> to_object_id
+```
+
+with exact endpoint ObjectTemplates:
+
+```text
+from_template_id = template(from_object_id)
+to_template_id   = template(to_object_id)
+```
+
+Model-plane admission first proves that the exact template-level semantic cell:
+
+```text
+(from_template_id, name, to_template_id)
+```
+
+is currently expressible and identifies its unique owning RelationshipDefinition under the ratified global semantic-cell ownership invariant. `relationship_definition_space` is the model-plane closure that may serve this exact admission/owner-resolution role.
+
+Once that exact semantic cell has been admitted, factual closure derivation does **not** perform another ObjectTemplate ancestry walk and does not enumerate every model-plane cell of the Definition that happens to be compatible with the two concrete endpoint templates.
+
+Instead, the complete factual runtime closure derives only from:
+
+```text
+the admitted oriented concrete observation
++
+the compact stable semantic contract of the owning RelationshipDefinition
+```
+
+RATIFIED closure rules are:
+
+```text
+ASYMMETRIC
+    input:
+        O1 --name1--> O2
+
+    closure:
+        O1 --name1--> O2
+        O2 --name2--> O1
+
+    where name2 is the distinct stable reciprocal name
+    of the same owning RelationshipDefinition
+```
+
+The rule also holds when asymmetric endpoint compatibility spaces overlap or are identical. Concrete endpoint-template compatibility with both semantic perspectives does not cause additional runtime cells to be generated.
+
+```text
+SYMMETRIC, DISJOINT ENDPOINT SPACES
+    input:
+        O1 --name--> O2
+
+    closure:
+        O1 --name--> O2
+        O2 --name--> O1
+```
+
+```text
+SYMMETRIC, SAME ENDPOINT SPACE, O1 != O2
+    closure:
+        O1 --name--> O2
+        O2 --name--> O1
+```
+
+```text
+SYMMETRIC, SAME ENDPOINT SPACE, O1 == O2
+    closure:
+        O1 --name--> O1
+
+    exactly one cell
+```
+
+The self-loop contains one row because reciprocal materialization would produce the exact same Object-level semantic cell.
+
+Therefore the complete runtime-closure cardinality is bounded by the stable Definition topology:
+
+```text
+asymmetric
+    -> exactly 2 cells
+
+symmetric disjoint-space
+    -> exactly 2 cells
+
+symmetric same-space with distinct Objects
+    -> exactly 2 cells
+
+symmetric same-space self-loop
+    -> exactly 1 cell
+```
+
+The critical overlap example remains:
+
+```text
+Manager  --manages----> Employee
+Employee --managed_by-> Manager
+```
+
+with `M1` and `M2` both Manager Objects. A CREATE command:
+
+```text
+M1 --manages--> M2
+```
+
+materializes only:
+
+```text
+M1 manages M2
+M2 managed_by M1
+```
+
+It does not additionally materialize every other semantic perspective that the same exact endpoint templates could independently satisfy.
+
+RATIFIED responsibility split is:
+
+```text
+relationship_definition_space
+    -> certify/admit the exact template-level semantic cell
+    -> identify the unique owning RelationshipDefinition
+
+compact RelationshipDefinition
+    -> determine the reciprocal stable semantic perspective/name
+
+runtime_relationship_cells
+    -> materialize only the concrete Object-level semantic cells
+       of this single admitted factual Relationship
+```
+
+This supersedes the old `derive_runtime_closure()` dependency on autonomous `selected_resolution_id` plus repeated ObjectTemplate ancestry walking. Exact admission SQL/cache realization remains architecture work; the semantic rule is that ancestry is an admission concern and is not repeated merely to expand a factual closure whose reciprocal semantics are already fixed by the owning compact Definition.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate deterministic runtime-closure derivation/materialization
-       against the compact post-definition semantic contract
+    -> revalidate CREATE write materialization boundary:
+       factual root + complete runtime closure are persisted atomically
 ```
