@@ -705,7 +705,7 @@ CANDIDATE A — explicit Definition selector
     relationship_definition_id: UUID   required
     name: string                        required
     from_object_id: UUID               required
-    to_object_id: UUID                 required
+    to_object_id: UUID                  required
     relationship_definition_version    optional
     properties                         optional
 ```
@@ -2568,4 +2568,180 @@ Relationship SCHEMA_CHANGE
     -> derive the Relationship property migration matrix
        from the already-ratified Object SCHEMA_CHANGE matrix
        by removing Object-only required/migration_default/inheritance/component semantics
+```
+
+## C-REL-32 RATIFIED — Relationship SCHEMA_CHANGE property migration matrix is target-oriented and preservation-or-block
+
+Relationship SCHEMA_CHANGE inherits the already-ratified Object SCHEMA_CHANGE property-migration discipline and removes the Object-only required/default/inheritance branches.
+
+Historical semantic identity for a Relationship property is:
+
+```text
+RelationshipPropertySemanticKey
+    = (relationship_definition_id, name)
+```
+
+Within one RelationshipDefinition, remove/re-add of the same property name preserves the same historical semantic identity and does not reset evolution constraints. `position` is presentation/order state and does not participate in migration identity.
+
+The exact-pair `RelationshipDefinitionMigrationPlan(D, VS, VT)` is target-oriented:
+
+```text
+target_properties = {}
+
+for each TARGET semantic property:
+    identify the matching SOURCE semantic property, if any
+    derive the TARGET candidate from current SOURCE factual information
+    validate/canonicalize the candidate under TARGET exact semantics
+```
+
+Canonical cases are:
+
+```text
+TARGET-only property
+    -> absent
+
+SOURCE-only property
+    -> omitted from TARGET factual state
+
+continuous property + SOURCE value absent
+    -> absent
+
+continuous property + SOURCE value present
+    -> preserve all factual information
+    -> apply only the exact shape transformation required by SOURCE/TARGET modes
+    -> validate/canonicalize under TARGET exact DataTypeVersion semantics
+    -> incompatibility blocks the migration
+```
+
+Relationship properties have no:
+
+```text
+required
+nullable factual state
+create default
+migration_default
+```
+
+so no Object-style requiredness/default branch exists and no model-plane default may invent factual Relationship data during migration.
+
+The SCALAR/LIST matrix is inherited from Object exact-pair migration where applicable.
+
+```text
+SCALAR -> SCALAR
+    SOURCE x
+        -> x
+        -> validate/canonicalize under TARGET exact DTV
+
+LIST -> LIST
+    SOURCE [x, y, ...]
+        -> preserve order and multiplicity
+        -> validate/canonicalize every item under TARGET exact DTV
+
+SCALAR -> LIST
+    SOURCE x
+        -> [x]
+        -> TARGET validation/canonicalization
+```
+
+M4 exact-target semantics also require a controlled reverse `LIST -> SCALAR` factual migration even though normal model-plane publication evolution historically allows only `SCALAR -> LIST`.
+
+The reason is that numeric direction has no runtime migration-admission meaning and a current fact may explicitly migrate from a later exact LIST-bearing RDV to an earlier exact SCALAR-bearing PUBLISHED RDV.
+
+RATIFIED conditional lossless rule:
+
+```text
+LIST -> SCALAR
+
+SOURCE property absent
+    -> TARGET property absent
+
+SOURCE value = [x]
+    -> TARGET candidate x
+    -> validate/canonicalize under TARGET exact DTV
+
+SOURCE list cardinality > 1
+    -> information loss would be required
+    -> 409 schema_change_blocked
+```
+
+Cardinality is literal:
+
+```text
+[x, x]
+    -> two items
+    -> not lossless
+    -> schema_change_blocked
+```
+
+SCHEMA_CHANGE never performs:
+
+```text
+first-item selection
+last-item selection
+arbitrary item selection
+deduplicate-then-collapse
+drop incompatible existing information merely because TARGET permits absence
+replacement of incompatible information with a default
+```
+
+For one continuous semantic property, the stable `datatype_id` lineage is preserved by model-plane publication history while the exact `datatype_version` may differ between SOURCE and TARGET.
+
+Therefore:
+
+```text
+existing factual information
+    -> preserve
+    -> apply the required SCALAR/LIST shape transformation
+    -> validate/canonicalize against TARGET exact DataTypeVersion
+```
+
+If the concrete value is not representable under TARGET exact constraints:
+
+```text
+-> 409 schema_change_blocked
+```
+
+No cross-DataType-lineage or cross-PrimitiveType conversion is invented by factual migration. If supposedly certified immutable SOURCE/TARGET RDV semantics violate the model-plane historical identity/evolution invariants, the runtime observes persisted certification corruption:
+
+```text
+-> 500 internal_error
+```
+
+not a normal factual migration class.
+
+Intermediate versions are irrelevant to runtime planning. Example:
+
+```text
+D@1: property p present
+D@2: property p absent
+D@3: property p present
+```
+
+A direct `D@1 -> D@3` plan treats `p` as one continuous semantic property because `(D, p)` is its historical identity. The operation does not replay D@2 and does not walk publication history at runtime.
+
+Unlike Object SCHEMA_CHANGE, Relationship SCHEMA_CHANGE has no component/structural exact-pair relation that can make an otherwise certified pair categorically non-migrable before considering factual state.
+
+Accordingly, for same-Definition certified immutable RDV pairs:
+
+```text
+pair semantics coherent + concrete factual state migrable
+    -> produce canonical TARGET candidate
+
+pair semantics coherent + concrete current information not losslessly representable
+    -> 409 schema_change_blocked
+
+supposedly certified pair semantics internally incoherent
+    -> 500 internal_error
+```
+
+No additional normal `422 semantic_validation_failed` pair-class is introduced for Relationship SCHEMA_CHANGE. This preserves the already-closed Relationship SCHEMA_CHANGE public failure catalog.
+
+The MigrationPlan may precompile all immutable continuity, SOURCE/TARGET value-mode transformation and TARGET exact-validation rules. Applying that plan to one factual Relationship is the only step that decides concrete `schema_change_blocked` outcomes.
+
+Current next micro-point:
+
+```text
+Relationship SCHEMA_CHANGE
+    -> revalidate RELATIONSHIP_SCHEMA_CHANGE lifecycle fan-out / factual snapshot boundary
+       against stable runtime_relationship_cells and relationships.revision
 ```
