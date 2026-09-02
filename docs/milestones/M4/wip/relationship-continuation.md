@@ -1769,3 +1769,151 @@ root + complete closure + complete CREATED event set atomically committed
 No additional factual CREATE capability or semantic decision is currently known to be missing.
 
 This checkpoint is a review-status closure only. It does not authorize implementation and does not pre-decide any of the architecture-closing choices above.
+
+## C-REL-27 RATIFIED — `relationships.revision` is the universal factual-root generation token
+
+M4 aligns factual Relationship intrinsic mutation freshness with the already-ratified Object intrinsic-generation direction by introducing one technical generation token on the factual Relationship root:
+
+```text
+relationships
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+    revision
+```
+
+`revision` identifies the committed generation of the mutable factual Relationship root.
+
+Canonical interpretation is:
+
+```text
+Relationship.revision
+    = universal technical factual-root generation token
+
+Relationship.revision
+    != RelationshipDefinitionVersion.version
+    != RelationshipDefinitionVersion.revision
+    != lifecycle event sequence
+    != runtime semantic-cell identity
+    != public Relationship identity
+```
+
+The generation token is internal technical concurrency/persistence state. Existing public Relationship request/response DTOs do not expose it and mutation routes do not accept a caller-supplied `expected_revision` merely because the persistence root carries one.
+
+CREATE materializes the first factual-root generation explicitly:
+
+```text
+new Relationship
+    -> revision = 1
+```
+
+This is persistence alignment only and does not reopen the already-completed factual CREATE discovery/public semantics.
+
+Every Relationship mutation whose candidate is derived from a previously observed factual root generation carries the observed revision internally as:
+
+```text
+expected_revision = R
+```
+
+A real factual-root mutation may commit only if that same generation is still current:
+
+```text
+current revision == R
+    -> operation may commit if its own semantic admissions succeed
+
+current revision != R
+    -> stale internal attempt
+    -> no factual-root mutation from that attempt
+    -> no lifecycle transition from that attempt
+    -> bounded retry from a fresh factual-root generation
+```
+
+Every committed mutation that writes a new `relationships` root generation increments revision atomically with that root mutation:
+
+```text
+new_revision = R + 1
+```
+
+Current cross-operation alignment is:
+
+```text
+CREATE
+    -> revision = 1
+
+DATA_CHANGE real persisted mutation
+    -> properties change
+    -> revision R -> R + 1
+    -> DATA_CHANGE lifecycle transition in the same successful commit
+
+DATA_CHANGE cheap semantic no-op elided
+    -> no root UPDATE
+    -> no lifecycle event
+    -> revision remains R
+
+SCHEMA_CHANGE distinct target with real persisted migration
+    -> relationship_definition_version and properties change atomically
+    -> revision R -> R + 1
+    -> SCHEMA_CHANGE lifecycle transition in the same successful commit
+
+SCHEMA_CHANGE target already current
+    -> semantic no-op
+    -> no root UPDATE
+    -> no lifecycle event
+    -> revision remains R
+
+DELETE
+    -> removes the current factual-root generation
+    -> no surviving row exists on which to persist R + 1
+```
+
+The revision is intentionally one conservative generation token for all mutable factual-root state. In particular, a DATA_CHANGE prepared from:
+
+```text
+relationship_definition_version = V
+properties = P
+revision = R
+```
+
+cannot commit that prepared candidate after a concurrent SCHEMA_CHANGE has advanced the same factual root to another generation. A revision mismatch triggers a fresh attempt, which re-observes the current exact pin and validates the requested DATA_CHANGE against the schema semantics of that current generation.
+
+Likewise, a SCHEMA_CHANGE candidate prepared from one exact pin/property generation cannot overwrite a concurrent DATA_CHANGE generation without first becoming stale and being retried.
+
+The token deliberately covers only state physically owned by `relationships`:
+
+```text
+relationship_definition_version
+properties
+```
+
+`relationship_definition_id` is the stable Definition binding for the factual lifetime and is not reassigned by M4 factual mutations, but it remains part of the same root row.
+
+The revision does **not** turn `runtime_relationship_cells` into mutable revisioned state. The already-ratified runtime semantic closure is created atomically with the fact, remains stable across DATA_CHANGE and SCHEMA_CHANGE, and is removed with DELETE. Therefore:
+
+```text
+Relationship.revision does not represent
+    runtime closure generation
+    endpoint Object generation
+    RelationshipDefinition lifecycle
+    RelationshipDefinitionVersion lifecycle
+    model-plane semantic-cell ownership
+```
+
+Operation-specific admission remains separate. Revision freshness proves only that the observed factual-root generation has not been replaced by another committed factual-root mutation; it does not prove target RDV PUBLISHED admission for SCHEMA_CHANGE, property semantic validity, or any model/data fact outside the `relationships` row.
+
+Revision mismatch is internal concurrency control, not a normal public business conflict. DATA_CHANGE keeps no normal `409`; bounded retry exhaustion remains an internal stabilization failure mapped to `500 internal_error`. The corresponding SCHEMA_CHANGE concurrency treatment must preserve the same internal stale-attempt principle when that action is post-definition revalidated.
+
+Exact SQL type, CHECK/default DDL, CAS statement form, PostgreSQL row-lock/wait realization, retry count/backoff and related physical details remain architecture-closing work. The direction architecture must preserve is:
+
+```text
+first factual-root generation starts explicitly at revision 1
+one revision token covers the mutable factual Relationship root
+real root mutation advances revision atomically
+stale expected revision cannot commit factual state or lifecycle
+stale mismatch is handled by bounded internal retry
+no-op elision does not advance revision
+DELETE terminates the current generation without a surviving increment
+revision stays private technical state unless a later public contract explicitly changes that boundary
+```
+
+Current factual review frontier remains DATA_CHANGE, with the next micro-point focused on exact pinned-schema semantic loading/caching and property validation without model-plane recertification or lifecycle-status admission.
