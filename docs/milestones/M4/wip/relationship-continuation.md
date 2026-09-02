@@ -716,7 +716,7 @@ and:
 CANDIDATE B — derived Definition owner
     name: string                        required
     from_object_id: UUID               required
-    to_object_id: UUID                  required
+    to_object_id: UUID                 required
     relationship_definition_version    optional
     properties                         optional
 ```
@@ -1708,3 +1708,64 @@ POST /api/v1/core/relationships
     -> assess post-definition CREATE review closure
        and enumerate only the decisions intentionally deferred to architecture closing
 ```
+
+## C-REL-26 RATIFIED — post-definition factual CREATE discovery is complete; architecture closing remains pending
+
+The factual/domain discovery pass for:
+
+```text
+POST /api/v1/core/relationships
+```
+
+is complete after revalidation against the compact post-`RelationshipResolution` model and the `runtime_relationship_cells` data-plane representation.
+
+Current status is explicitly:
+
+```text
+DISCOVERY COMPLETE
+ARCHITECTURE CLOSING PENDING
+PUBLIC CONTRACT NOT YET CLOSED
+```
+
+The public contract is not yet CLOSED because architecture closing must choose exactly one of the two still-open Definition-selection request shapes:
+
+```text
+CANDIDATE A
+    explicit relationship_definition_id
+
+CANDIDATE B
+    derive the owning Definition from the admitted exact semantic cell
+```
+
+All remaining CREATE work is intentionally architectural/physical rather than a missing factual-domain rule. Architecture closing must resolve only the deferred points already identified by this discovery pass:
+
+```text
+1. choose Candidate A vs Candidate B as the single final public request contract
+2. finalize the exact semantic-cell admission / owning-Definition access path
+3. finalize the immutable exact-RDV cache realization
+4. choose the physical relational carrier of runtime semantic-cell uniqueness
+5. choose the legal conflict-arbitration and DML strategy
+   including pre-check vs unique-index-first and physical write ordering
+6. close concurrency behavior:
+   rollback, race rendezvous, current-owner reclassification and bounded retry/restart
+7. revalidate C-REL-22 details.relationship_id against that final efficient path;
+   do not add diagnostic-only work merely to preserve the detail
+8. finalize coherent lifecycle canonical_name projection and event batch/write realization
+```
+
+Those decisions must preserve all already-ratified factual semantics, including:
+
+```text
+required oriented name/from/to command semantics
+exact-version/default selection semantics
+PUBLISHED-only new binding admission
+immutable exact-RDV property validation semantics
+complete deterministic 1-or-2-cell runtime closure
+one exact Object-level semantic cell -> at most one current factual owner
+409 relationship_fact_conflict with no CREATE convergence
+root + complete closure + complete CREATED event set atomically committed
+```
+
+No additional factual CREATE capability or semantic decision is currently known to be missing.
+
+This checkpoint is a review-status closure only. It does not authorize implementation and does not pre-decide any of the architecture-closing choices above.
