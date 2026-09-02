@@ -1238,10 +1238,68 @@ A cache miss may load/resolve the immutable exact-version semantic payload from 
 
 This checkpoint promotes the earlier M4 exact-RDV cache candidate into the factual CREATE technical direction. Exact cache implementation, process topology, warm-up policy, capacity/eviction and shared-vs-local realization remain architecture-closing/implementation details.
 
+## C-REL-21 RATIFIED — CREATE conflicts on any already-owned candidate runtime semantic cell
+
+After Definition/perspective admission, exact RelationshipDefinitionVersion lifecycle admission and complete initial property validation/canonicalization have succeeded, CREATE derives the complete deterministic candidate factual runtime semantic closure:
+
+```text
+candidate_runtime_closure = set of exact Object-level semantic cells
+
+(from_object_id, name, to_object_id)
+```
+
+The already-ratified global factual uniqueness authority applies directly to every candidate cell:
+
+```text
+one exact Object-level semantic cell
+    -> at most one current factual Relationship owner globally
+```
+
+RATIFIED conflict rule:
+
+```text
+if ANY cell in candidate_runtime_closure
+is already owned by a current factual Relationship
+    -> 409 Conflict
+    -> code: relationship_fact_conflict
+    -> no factual mutation
+    -> no lifecycle event
+```
+
+This is true regardless of how much of the candidate closure overlaps current factual state. In particular:
+
+```text
+all candidate cells are already owned by one current Relationship
+    -> relationship_fact_conflict
+
+only one/subset of candidate cells is already owned
+    -> relationship_fact_conflict
+
+candidate cells are already owned across more than one current Relationship
+    -> relationship_fact_conflict
+```
+
+CREATE therefore has **no factual convergence/idempotent-create success path**. Attempting to recreate exactly the same currently represented fact still returns `409 relationship_fact_conflict`; it does not return the existing Relationship and does not reinterpret the request as success.
+
+The exact RelationshipDefinitionVersion pin and the candidate `properties` map do not participate in factual uniqueness and cannot create a parallel fact once any required semantic cell is already owned. They are state of the factual root after admission, not a dimension of runtime semantic-cell identity.
+
+This rule applies identically whether architecture closing selects Candidate A or Candidate B for Definition ownership selection. Once the owning Definition and complete deterministic closure are known, factual arbitration is purely data-plane over `runtime_relationship_cells`.
+
+This checkpoint deliberately does **not** yet ratify:
+
+```text
+exact bounded public details for relationship_fact_conflict
+which conflicting owner id(s) are exposed when multiple cells/owners collide
+physical pre-check vs unique-index-first arbitration
+race/retry/transaction rendezvous mechanics
+```
+
+Those remain separate public-detail and technical/concurrency micro-points.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate current runtime semantic-cell ownership
-       and 409 relationship_fact_conflict
+    -> define bounded public details for 409 relationship_fact_conflict
+       without adding diagnostic-only backend work
 ```
