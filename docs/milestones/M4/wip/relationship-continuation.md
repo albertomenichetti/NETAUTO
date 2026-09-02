@@ -2956,3 +2956,261 @@ Relationship SCHEMA_CHANGE
     -> assess post-definition SCHEMA_CHANGE discovery closure
        against the already-closed public contract and the ratified Object-derived execution baseline
 ```
+
+## C-REL-34 RATIFIED — post-definition Relationship SCHEMA_CHANGE discovery is complete
+
+The post-definition factual/domain discovery pass for:
+
+```text
+POST /api/v1/core/relationships/{relationship_id}/schema
+```
+
+is complete.
+
+Current status is:
+
+```text
+DISCOVERY COMPLETE
+PUBLIC CONTRACT CLOSED
+ARCHITECTURE CLOSING PENDING
+```
+
+The already-ratified public contract remains unchanged:
+
+```text
+path:
+    relationship_id: UUID, required
+
+query:
+    none
+
+body:
+    target_version: positive integer, required
+
+semantics:
+    exact TARGET within the current stable RelationshipDefinition
+    numeric version direction has no migration-admission meaning
+    no intermediate-version replay
+
+success:
+    204 No Content
+    no body
+
+equal TARGET:
+    204 No Content
+    no MigrationPlan
+    no root UPDATE
+    no revision increment
+    no SCHEMA_CHANGE lifecycle
+
+distinct TARGET:
+    exact TARGET must exist and remain PUBLISHED through commit
+    direct SOURCE -> TARGET migration
+    preserve current information where losslessly representable
+
+failures:
+    malformed/static request
+        -> 400 invalid_request
+
+    missing Relationship
+        -> 404 resource_not_found
+
+    missing distinct TARGET
+        -> 422 referenced_resource_not_found
+
+    non-PUBLISHED distinct TARGET
+        -> 409 dependency_not_admissible
+
+    concrete factual information not losslessly representable
+        -> 409 schema_change_blocked
+
+    persisted certification/infrastructure or bounded stabilization failure
+        -> 500 internal_error
+```
+
+Relationship SCHEMA_CHANGE inherits the already-full-swept Object SCHEMA_CHANGE execution architecture by delta rather than defining a parallel pattern.
+
+Canonical execution boundary is:
+
+```text
+STEP 1 — authoritative current-generation observation
+    relationship_definition_id = D
+    source_version = VS
+    properties = P
+    revision = R
+    + optional early distinct TARGET existence/status observation
+
+STEP 2 — immutable exact-pair semantic preparation
+    RelationshipDefinitionMigrationPlanCache[(D, VS, VT)]
+        built/reused from fully resolved immutable exact-RDV semantic snapshots
+
+    apply plan to P
+        -> complete canonical target_properties
+        OR
+        -> 409 schema_change_blocked
+
+STEP 3 — short real-migration UoW
+    final protected TARGET PUBLISHED admission
+    + expected_revision = R freshness
+    + relationship_definition_version := VT
+    + properties := target_properties
+    + revision := R + 1
+    + complete RELATIONSHIP_SCHEMA_CHANGE event set
+    -> one atomic COMMIT
+```
+
+The migration plan is immutable and reusable for one exact pair:
+
+```text
+RelationshipDefinitionMigrationPlan(D, VS, VT)
+    = f(
+        ImmutableRelationshipDefinitionVersionCache[(D, VS)],
+        ImmutableRelationshipDefinitionVersionCache[(D, VT)]
+      )
+```
+
+Cache presence never proves current TARGET admission. PostgreSQL remains authority for current TARGET existence/PUBLISHED status, final protection through binding commit, factual generation freshness and atomic persistence.
+
+The Relationship property migration matrix is target-oriented and preservation-or-block:
+
+```text
+RelationshipPropertySemanticKey
+    = (relationship_definition_id, name)
+
+TARGET-only property
+    -> absent
+
+SOURCE-only property
+    -> removed from TARGET state
+
+continuous property + SOURCE value absent
+    -> absent
+
+continuous property + SOURCE value present
+    -> preserve information
+    -> apply SOURCE/TARGET value-mode transformation
+    -> validate/canonicalize under TARGET exact DTV
+    -> incompatibility => 409 schema_change_blocked
+```
+
+Supported exact-pair factual shape handling is:
+
+```text
+SCALAR -> SCALAR
+LIST   -> LIST
+SCALAR -> LIST
+
+LIST -> SCALAR
+    absent -> absent
+    [x]    -> x + TARGET validation/canonicalization
+    cardinality > 1 -> 409 schema_change_blocked
+```
+
+Relationship properties have no required/default/migration-default branch, and Relationship SCHEMA_CHANGE has no Object-style component/inheritance structural pair blocker. Therefore no additional normal categorical `422 semantic_validation_failed` pair class is introduced.
+
+For supposedly certified immutable SOURCE/TARGET semantics:
+
+```text
+coherent pair + migrable factual state
+    -> canonical TARGET candidate
+
+coherent pair + concrete information not losslessly representable
+    -> 409 schema_change_blocked
+
+certification contradiction / corrupt immutable semantic state
+    -> 500 internal_error
+```
+
+No historical publication walk, intermediate-version replay or runtime topology re-proof belongs to SCHEMA_CHANGE preparation.
+
+The universal factual-root generation protocol remains:
+
+```text
+revision mismatch
+    -> stale internal attempt
+    -> no mutation / no lifecycle
+    -> bounded fresh retry
+
+fresh SOURCE unchanged
+    -> reuse exact-pair MigrationPlan and reapply to fresh properties
+
+fresh SOURCE changed
+    -> resolve/build plan for the fresh SOURCE and requested TARGET
+
+fresh SOURCE == requested TARGET
+    -> 204 semantic no-op
+
+bounded retry exhaustion
+    -> 500 internal_error
+```
+
+The runtime semantic closure remains unchanged by SCHEMA_CHANGE:
+
+```text
+runtime_relationship_cells
+    -> stable across migration
+    -> no reconstruction
+    -> no semantic recertification
+```
+
+The lifecycle boundary is:
+
+```text
+before_state = {
+    relationship_definition_version: VS,
+    properties: P_before
+}
+
+after_state = {
+    relationship_definition_version: VT,
+    properties: P_after
+}
+
+VS != VT
+P_before may equal P_after
+
+relationships.revision
+    -> private technical generation state
+    -> excluded from historical snapshots
+
+one runtime_relationship_cells row
+    -> one RELATIONSHIP_SCHEMA_CHANGE event row
+```
+
+M4 supersedes the historical forward-only lifecycle invariant. Lifecycle validation requires only exact-version distinctness:
+
+```text
+before.relationship_definition_version
+    != after.relationship_definition_version
+```
+
+and attaches no `>`/`<` semantic meaning to version numbers.
+
+No additional factual SCHEMA_CHANGE capability or semantic/public-contract decision is currently known to be missing.
+
+Remaining work is intentionally architecture/physical realization only:
+
+```text
+exact STEP-1 PostgreSQL carrier
+MigrationPlan/cache layout, local fill coordination, capacity/eviction
+bounded exact-RDV/DTV semantic-loader realization
+final TARGET PUBLISHED protection mechanism
+relationships.revision DDL and exact CAS/row-lock/wait realization
+bounded retry count/backoff
+exact root UPDATE / statement fusion-decomposition
+coherent endpoint canonical_name projection
+lifecycle batch INSERT sequencing
+lifecycle DB/decoder realization of version != rather than >
+constraint/SQLSTATE -> public failure translation
+physical indexes and EXPLAIN/BUFFERS evidence
+JSONB/TOAST/WAL/latency/contention measurements
+```
+
+Those decisions must preserve the ratified factual/public semantics and must not reopen SCHEMA_CHANGE merely to choose an implementation mechanism.
+
+Current factual Relationship review frontier moves to:
+
+```text
+DELETE /api/v1/core/relationships/{relationship_id}
+    -> post-definition DELETE revalidation
+```
