@@ -1599,10 +1599,112 @@ The semantic requirement is only that the final legal realization preserves the 
 
 The CREATED lifecycle event belongs to the same successful mutation transaction in the existing architecture, but exact event payload/construction is kept outside this checkpoint and remains a separate lifecycle-detail question.
 
+## C-REL-25 RATIFIED — CREATE lifecycle fan-out is one-to-one with runtime semantic cells
+
+A successful factual Relationship CREATE persists its complete `RELATIONSHIP_CREATED` lifecycle event set in the same PostgreSQL transaction as the factual root and complete runtime semantic closure.
+
+RATIFIED atomic boundary:
+
+```text
+successful CREATE transaction
+    factual root
+    + complete runtime_relationship_cells closure
+    + complete RELATIONSHIP_CREATED event set
+    -> one atomic COMMIT
+```
+
+Therefore any rollback of the CREATE attempt, including `relationship_fact_conflict`, leaves:
+
+```text
+no factual Relationship root
+no runtime semantic cells
+no RELATIONSHIP_CREATED event rows
+```
+
+The Relationship lifecycle transition semantics remain:
+
+```text
+RELATIONSHIP_CREATED
+    before_state = null
+    after_state = {
+        relationship_definition_version,
+        properties
+    }
+```
+
+The factual snapshot remains self-contained historical state and does not require `resolution_id` or another model-plane perspective identity.
+
+Each persisted runtime semantic cell already is one exact Object-relative semantic view:
+
+```text
+runtime_relationship_cells
+    relationship_id
+    from_object_id
+    name
+    to_object_id
+```
+
+so CREATE lifecycle fan-out is directly:
+
+```text
+one runtime_relationship_cells row
+    -> one RELATIONSHIP_CREATED event item
+```
+
+with semantic projection:
+
+```text
+relationship_id
+    -> factual Relationship lifetime identity
+
+relationship_definition_id
+    -> owning factual Definition binding
+
+object_id
+    -> runtime cell from_object_id
+
+relationship_name
+    -> runtime cell stable semantic name
+
+destination_object_id
+    -> runtime cell to_object_id
+
+canonical_name / destination_canonical_name
+    -> coherent Object display observations captured for the event
+
+before_state
+    -> null
+
+after_state
+    -> exact factual version/property snapshot
+```
+
+There is no `resolution_id` in the lifecycle event contract.
+
+Because `runtime_relationship_cells` already stores semantic cells rather than lower-level normalization rows, the old semantic-view deduplication stage is no longer required for CREATE lifecycle fan-out. Runtime persistence normalization must not introduce additional event rows beyond the actual semantic-cell closure.
+
+RATIFIED event-set cardinality therefore matches the factual closure exactly:
+
+```text
+asymmetric
+    -> 2 RELATIONSHIP_CREATED event rows
+
+symmetric disjoint-space
+    -> 2 rows
+
+symmetric same-space with distinct Objects
+    -> 2 rows
+
+symmetric same-space self-loop
+    -> 1 row
+```
+
+The exact physical mechanism used to capture coherent current `canonical_name` values, build the event batch and order the INSERT work remains architecture-closing implementation design. This checkpoint freezes only the lifecycle semantic shape, the 1:1 fan-out with runtime semantic cells and the shared atomic transaction boundary.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate CREATE lifecycle event boundary
-       against the post-definition factual representation
+    -> assess post-definition CREATE review closure
+       and enumerate only the decisions intentionally deferred to architecture closing
 ```
