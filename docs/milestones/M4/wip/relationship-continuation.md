@@ -716,7 +716,7 @@ and:
 CANDIDATE B — derived Definition owner
     name: string                        required
     from_object_id: UUID               required
-    to_object_id: UUID                  required
+    to_object_id: UUID                 required
     relationship_definition_version    optional
     properties                         optional
 ```
@@ -2348,4 +2348,224 @@ Current factual Relationship review frontier moves to:
 ```text
 POST /api/v1/core/relationships/{relationship_id}/schema
     -> post-definition SCHEMA_CHANGE revalidation
+```
+
+## C-REL-31 RATIFIED — Relationship SCHEMA_CHANGE inherits the M4 Object SCHEMA_CHANGE execution pattern by delta
+
+Relationship SCHEMA_CHANGE does not define an independent execution architecture from first principles. M4 ratifies the already-full-swept Object SCHEMA_CHANGE design as the baseline pattern and requires Relationship SCHEMA_CHANGE to reuse that pattern wherever the two domains are semantically equivalent.
+
+The governing review rule is:
+
+```text
+Object SCHEMA_CHANGE full sweep
+    -> baseline
+
+Relationship SCHEMA_CHANGE
+    -> preserve shared patterns
+    -> remove Object-only concerns
+    -> introduce a divergence only when a concrete Relationship-domain requirement justifies it
+```
+
+This delta-oriented rule prevents repeated reinvention of patterns already analyzed and keeps analogous versioned factual mutations architecturally coherent.
+
+For Relationship factual state:
+
+```text
+SOURCE = D@VS
+TARGET = D@VT
+
+current factual generation:
+    relationship_definition_id = D
+    relationship_definition_version = VS
+    properties = P
+    revision = R
+```
+
+The shared Object-derived three-stage execution skeleton is RATIFIED.
+
+```text
+STEP 1 — authoritative current-generation observation
+
+    read one coherent factual Relationship generation:
+        relationship_definition_id = D
+        source_version = VS
+        properties = P
+        revision = R
+
+    the same bounded current-state read may also observe
+    requested distinct TARGET D@VT existence/current status
+    without requiring a standalone preliminary TARGET round trip
+
+    Relationship absent
+        -> 404 resource_not_found
+
+    VT == VS
+        -> 204 semantic no-op
+        -> no MigrationPlan work
+        -> no final mutation UoW
+        -> no revision increment
+        -> no SCHEMA_CHANGE lifecycle
+
+    VT != VS + TARGET absent
+        -> 422 referenced_resource_not_found
+
+    VT != VS + TARGET currently non-PUBLISHED
+        -> 409 dependency_not_admissible
+```
+
+The early TARGET observation is only an early current-state filter. A successful real distinct-target mutation still requires final TARGET PUBLISHED admission/protection through commit.
+
+```text
+STEP 2 — immutable exact-pair semantic preparation
+
+    obtain/build READY RelationshipDefinitionMigrationPlan(D, VS, VT)
+
+    apply the plan to current properties P
+
+    derive:
+        complete canonical target_properties
+        concrete semantic migration blocker, if any
+        lifecycle before/after factual transition inputs
+
+    build one prepared candidate carrying:
+        relationship_id
+        relationship_definition_id = D
+        source_version = VS
+        target_version = VT
+        expected_revision = R
+        target_properties
+        lifecycle transition inputs
+```
+
+The exact-pair migration plan is immutable and factual-Relationship-independent:
+
+```text
+RelationshipDefinitionMigrationPlan(D, VS, VT)
+    = f(
+        ImmutableRelationshipDefinitionVersionCache[(D, VS)],
+        ImmutableRelationshipDefinitionVersionCache[(D, VT)]
+      )
+```
+
+Conceptual reusable cache:
+
+```text
+RelationshipDefinitionMigrationPlanCache[(D, VS, VT)]
+```
+
+A READY plan may contain compiled immutable SOURCE/TARGET property-continuity, shape-transformation and TARGET validation/canonicalization rules. It must not contain one factual Relationship's mutable:
+
+```text
+properties
+revision
+current TARGET lifecycle status
+runtime_relationship_cells
+endpoint Object state
+```
+
+Plan resolution follows the same READY path as Object SCHEMA_CHANGE:
+
+```text
+HIT
+    -> consume exact-pair plan
+
+MISS
+    -> make required exact SOURCE/TARGET RDV semantic snapshots READY
+       using the C-REL-28 full resolved immutable cache boundary
+    -> compile/cache exact-pair plan
+    -> consume plan
+```
+
+Thus cold Relationship planning reuses the existing immutable exact-RDV snapshot cache rather than reconstructing model semantics through a one-off SCHEMA_CHANGE path.
+
+```text
+STEP 3 — short real-migration mutation UoW
+
+    final protected exact D@VT PUBLISHED admission
+    + require current relationships.revision == expected_revision R
+    + atomically persist:
+        relationships.relationship_definition_version := VT
+        relationships.properties := complete target_properties
+        relationships.revision := R + 1
+        complete RELATIONSHIP_SCHEMA_CHANGE lifecycle event set
+    -> COMMIT
+```
+
+No cache fill, MigrationPlan compilation, SOURCE/TARGET schema comparison, property transformation or TARGET value validation belongs inside the final protected path.
+
+The same universal C-REL-27 retry rule is inherited from Object SCHEMA_CHANGE:
+
+```text
+revision mismatch
+    -> stale internal attempt
+    -> no mutation/lifecycle from that attempt
+    -> bounded fresh retry from STEP 1
+
+fresh SOURCE == previous SOURCE
+    -> reuse READY MigrationPlan(D, SOURCE, TARGET)
+    -> reapply to fresh properties
+
+fresh SOURCE != previous SOURCE
+    -> old exact-pair plan is not applicable
+    -> resolve/build MigrationPlan(D, fresh_SOURCE, requested_TARGET)
+
+fresh SOURCE == requested TARGET
+    -> 204 semantic no-op
+    -> no new mutation/revision/lifecycle
+
+bounded retry exhaustion
+    -> 500 internal_error
+```
+
+The authority split is likewise inherited:
+
+```text
+PostgreSQL/current-state authority
+    current factual Relationship generation
+    distinct TARGET existence
+    distinct TARGET current PUBLISHED admission
+    final TARGET PUBLISHED protection through binding commit
+    revision freshness
+    atomic persistence
+
+immutable semantic caches
+    exact SOURCE/TARGET resolved RDV semantics
+    exact-pair migration relation / reusable MigrationPlan
+```
+
+Cache presence never proves current TARGET admission.
+
+Relationship SCHEMA_CHANGE is a strict simplification of Object SCHEMA_CHANGE. The following Object-specific concerns are absent from Relationship migration and must not be recreated speculatively:
+
+```text
+NO ObjectTemplate inheritance/effective-schema traversal
+NO stable ancestry cache
+NO component-slot migration matrix
+NO object_component_slots delta
+NO object_components child/membership scan
+NO slot target narrowing/unrelated analysis
+NO edge -> slot FK migration blocker/arbitration
+NO ownership graph work
+```
+
+Likewise, the post-RelationshipDefinition redesign leaves factual runtime semantic closure stable across SCHEMA_CHANGE:
+
+```text
+runtime_relationship_cells
+    -> unchanged
+    -> no reconstruction
+    -> no topology recertification
+```
+
+The exact public Relationship SCHEMA_CHANGE contract remains the already-ratified one: exact target, numeric direction without admission meaning, equal-target no-op, distinct TARGET PUBLISHED admission, direct SOURCE -> TARGET migration and bounded domain failure classes.
+
+This checkpoint ratifies the shared execution/pattern baseline and the delta-only review method. It does not yet freeze the Relationship-specific property migration matrix, lifecycle fan-out details or physical SQL/locking/cache realization.
+
+Current next micro-point:
+
+```text
+Relationship SCHEMA_CHANGE
+    -> derive the Relationship property migration matrix
+       from the already-ratified Object SCHEMA_CHANGE matrix
+       by removing Object-only required/migration_default/inheritance/component semantics
 ```
