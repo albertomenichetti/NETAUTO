@@ -716,7 +716,7 @@ and:
 CANDIDATE B — derived Definition owner
     name: string                        required
     from_object_id: UUID               required
-    to_object_id: UUID                  required
+    to_object_id: UUID                 required
     relationship_definition_version    optional
     properties                         optional
 ```
@@ -1917,3 +1917,137 @@ revision stays private technical state unless a later public contract explicitly
 ```
 
 Current factual review frontier remains DATA_CHANGE, with the next micro-point focused on exact pinned-schema semantic loading/caching and property validation without model-plane recertification or lifecycle-status admission.
+
+## C-REL-28 RATIFIED — DATA_CHANGE validates against a fully resolved immutable exact-RDV semantic cache
+
+Relationship DATA_CHANGE derives its property-validation semantics from the exact RelationshipDefinitionVersion already pinned by the current factual Relationship generation. It does not perform a new model-plane admission.
+
+For an observed current factual root generation:
+
+```text
+relationship_definition_id = D
+relationship_definition_version = V
+properties = P
+revision = R
+```
+
+DATA_CHANGE resolves the immutable semantic validation snapshot under:
+
+```text
+ImmutableRelationshipDefinitionVersionCache[(D, V)]
+```
+
+The cache entry is a fully resolved immutable execution snapshot, not merely the raw RDV header/declaration rows. Conceptually it contains everything needed to validate and canonicalize Relationship runtime properties without further model-plane reads, including:
+
+```text
+exact RelationshipDefinitionVersion identity (D, V)
+ordered property declarations
+property value modes
+exact DataTypeVersion pins for every declaration
+resolved primitive/base semantics
+exact DataTypeVersion constraints / enum semantics where applicable
+compiled RuntimePropertySpec / validator / canonicalizer equivalents where useful
+```
+
+On a cache hit:
+
+```text
+DATA_CHANGE performs no RDV/DataType model-plane read
+```
+
+On a cache miss, the loader performs one complete semantic materialization for that exact RDV:
+
+```text
+load exact RelationshipDefinitionVersion D@V
++
+load the complete declaration set of D@V
++
+load all exact DataTypeVersion dependencies referenced by those declarations
++
+load the constraint/enum/semantic payload required by those exact DataTypeVersions
++
+validate persisted immutable-schema invariants
++
+build one resolved immutable semantic snapshot
++
+populate cache[(D, V)]
+```
+
+The physical number/form of PostgreSQL statements used by the cache-miss loader remains architecture work; the semantic requirement is that the miss resolves the complete exact dependency set needed for runtime validation rather than causing per-property/per-value model lookups during mutation validation.
+
+DATA_CHANGE is lifecycle-status invariant with respect to the already-pinned schema. Therefore neither cache hit nor cache miss performs admission checks such as:
+
+```text
+NO RelationshipDefinition.default_version read
+NO RelationshipDefinitionVersion.status == PUBLISHED check
+NO DataTypeVersion current lifecycle-status admission check
+NO dependency_not_admissible outcome
+```
+
+The reason is that DATA_CHANGE does not create or rebind a model-plane dependency. `D@V` and every exact DataTypeVersion dependency reachable from its certified property schema were admitted when the factual binding became valid. Subsequent lifecycle transitions such as PUBLISHED -> DEPRECATED do not change the immutable semantic payload governing that already-existing fact.
+
+Accordingly, a factual Relationship pinned to a now-DEPRECATED exact RDV remains property-mutable, and a cached immutable snapshot remains valid across such lifecycle-status changes.
+
+If a cache miss discovers that an exact persisted dependency required by the already-admitted factual pin is missing, malformed or contradicts immutable publication/certification invariants, that is persisted invariant corruption rather than caller semantic invalidity or current lifecycle inadmissibility:
+
+```text
+-> 500 internal_error
+```
+
+After obtaining the resolved semantic snapshot, DATA_CHANGE applies the requested SET/REMOVE operations to the complete current property map `P`, then validates and canonicalizes the resulting candidate using that snapshot.
+
+Caller-attributable property failures keep the already-ratified public boundary:
+
+```text
+422 semantic_validation_failed
+```
+
+including undeclared property names, SET null, wrong SCALAR/LIST shape, primitive/canonicalization failures and exact DataTypeVersion constraint violations.
+
+For the real-write branch, the candidate belongs to factual generation `R` and therefore uses the C-REL-27 generation protocol:
+
+```text
+expected_revision = R
+
+if current revision == R
+    -> properties := canonical candidate
+    -> revision := R + 1
+    -> DATA_CHANGE lifecycle set
+    -> atomic commit
+
+if current revision != R
+    -> stale internal attempt
+    -> no mutation/event from that attempt
+    -> bounded retry from a fresh factual generation
+```
+
+A fresh retry re-observes the current exact RDV pin and uses the cache entry for that exact `(D,V)` generation, loading a different exact snapshot only if a concurrent SCHEMA_CHANGE changed the factual pin.
+
+Cheap semantic no-op elision remains unchanged:
+
+```text
+candidate properties == current canonical properties
+    -> 204 No Content
+    -> no factual-root UPDATE
+    -> no DATA_CHANGE lifecycle event
+    -> revision does not advance
+```
+
+DATA_CHANGE does not revalidate or reconstruct factual Relationship topology while doing this work. In particular:
+
+```text
+NO RelationshipDefinition semantic/topology recertification
+NO relationship_definition_space read
+NO ObjectTemplate ancestry read
+NO runtime_relationship_cells reconstruction or semantic re-proof
+```
+
+Those facts belong to the already-admitted stable factual Relationship and are not changed by property mutation.
+
+Current next micro-point:
+
+```text
+Relationship DATA_CHANGE
+    -> revalidate lifecycle event fan-out / snapshot boundary
+       against stable runtime_relationship_cells and relationships.revision
+```
