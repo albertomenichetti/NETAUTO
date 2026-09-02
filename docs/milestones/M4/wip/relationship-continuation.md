@@ -716,7 +716,7 @@ and:
 CANDIDATE B — derived Definition owner
     name: string                        required
     from_object_id: UUID               required
-    to_object_id: UUID                 required
+    to_object_id: UUID                  required
     relationship_definition_version    optional
     properties                         optional
 ```
@@ -1302,4 +1302,74 @@ Current next micro-point:
 POST /api/v1/core/relationships
     -> define bounded public details for 409 relationship_fact_conflict
        without adding diagnostic-only backend work
+```
+
+## C-REL-22 RATIFIED / REVALIDATE AT ARCHITECTURE CLOSING — `relationship_fact_conflict` may expose one current owner without diagnostic-only reads
+
+The current M4 target for factual Relationship CREATE conflict details is:
+
+```text
+409 Conflict
+code: relationship_fact_conflict
+details:
+    relationship_id: UUID
+```
+
+`details.relationship_id` identifies **one current factual Relationship** that owns at least one exact Object-level semantic cell in the candidate runtime closure. It does not promise to enumerate every conflicting owner when several candidate cells collide with more than one current Relationship.
+
+The governing constraint is:
+
+```text
+NO PostgreSQL statement
+NO cache/model lookup
+NO aggregate recertification
+```
+
+may be introduced **solely** to enrich the public conflict details.
+
+The owner id may be exposed only when it falls out of the legal semantic arbitration/classification path already required to determine that a current conflict really exists.
+
+The ratified runtime semantic-cell access path already supports this direction:
+
+```text
+(from_object_id, name, to_object_id)
+INCLUDE (relationship_id)
+```
+
+so a set-based current-owner lookup over the candidate semantic cells can return the owning `relationship_id` directly from the data-plane conflict authority without joining the factual root or re-reading model-plane semantics.
+
+For a collision first discovered by the PostgreSQL uniqueness authority, a fresh post-rollback current-owner classification is not considered diagnostic-only work when it is required to distinguish:
+
+```text
+current owner still exists
+    -> real current-state 409 relationship_fact_conflict
+
+colliding winner already disappeared
+    -> no stale conflict response
+    -> bounded retry/restart may be required
+```
+
+If that required classification naturally yields a current owner id, the same id may populate `details.relationship_id` with no additional diagnostic read.
+
+M4 deliberately does not expose richer conflict diagnostics such as:
+
+```text
+relationship_ids[]
+conflicting_cells[]
+conflict_count
+from_object_id/name/to_object_id diagnostic payloads
+```
+
+unless a future caller requirement independently justifies them.
+
+**Mandatory architecture-closing revalidation:** this public detail is not allowed to force the final physical CREATE path. During architecture closing, after the exact pre-check/unique-index/race-classification strategy is chosen, `details.relationship_id` must be revalidated against the final efficient legal path. If the final realization cannot obtain a current owner id without an otherwise unnecessary diagnostic-only query, the public detail must be reduced/revised rather than adding that query merely to preserve this M4 candidate shape.
+
+Exact owner-selection determinism when multiple owners collide, exact race/retry mechanics and the final physical arbitration strategy remain OPEN until that architecture/concurrency closing pass.
+
+Current next micro-point:
+
+```text
+POST /api/v1/core/relationships
+    -> revalidate deterministic runtime-closure derivation/materialization
+       against the compact post-definition semantic contract
 ```
