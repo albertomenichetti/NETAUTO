@@ -2051,3 +2051,149 @@ Relationship DATA_CHANGE
     -> revalidate lifecycle event fan-out / snapshot boundary
        against stable runtime_relationship_cells and relationships.revision
 ```
+
+## C-REL-29 RATIFIED — DATA_CHANGE lifecycle snapshot excludes revision and fans out one-to-one with runtime semantic cells
+
+A real factual Relationship DATA_CHANGE preserves the historical Relationship factual snapshot shape already established by the lifecycle contract:
+
+```text
+before_state = {
+    relationship_definition_version: V,
+    properties: P_before
+}
+
+after_state = {
+    relationship_definition_version: V,
+    properties: P_after
+}
+```
+
+with:
+
+```text
+P_before != P_after
+```
+
+A cheaply recognized semantic no-op emits no lifecycle event, so a persisted `RELATIONSHIP_DATA_CHANGE` transition always represents a real factual property-state change while keeping the exact RelationshipDefinitionVersion pin unchanged.
+
+The technical factual-root generation token does not enter historical semantic state:
+
+```text
+relationships.revision
+    -> private current-state freshness / CAS metadata
+    -> NOT part of before_state
+    -> NOT part of after_state
+```
+
+Historical lifecycle snapshots therefore remain about semantic factual state rather than the implementation generation used to protect a write.
+
+The stable post-definition runtime closure is already stored directly as exact Object-relative semantic cells:
+
+```text
+runtime_relationship_cells
+    relationship_id
+    from_object_id
+    name
+    to_object_id
+```
+
+DATA_CHANGE does not mutate that closure. Therefore lifecycle fan-out is directly:
+
+```text
+one runtime_relationship_cells row
+    -> one RELATIONSHIP_DATA_CHANGE event row
+```
+
+No Resolution-derived projection or semantic-view deduplication stage remains necessary.
+
+RATIFIED event-set cardinality matches the persisted factual closure exactly:
+
+```text
+asymmetric
+    -> 2 RELATIONSHIP_DATA_CHANGE event rows
+
+symmetric disjoint-space
+    -> 2 rows
+
+symmetric same-space with distinct Objects
+    -> 2 rows
+
+symmetric same-space self-loop
+    -> 1 row
+```
+
+Each event row carries the Object-relative semantic metadata of its exact runtime cell:
+
+```text
+relationship_id
+relationship_definition_id
+
+object_id
+    <- runtime_relationship_cells.from_object_id
+
+relationship_name
+    <- runtime_relationship_cells.name
+
+destination_object_id
+    <- runtime_relationship_cells.to_object_id
+
+canonical_name
+destination_canonical_name
+    <- coherent historical Object display observations captured for this transition
+```
+
+`relationship_name` is the stable semantic name persisted in the runtime cell. There is no RelationshipResolution read and no mutable relationship-name lookup.
+
+The historical endpoint `canonical_name` values remain Object-owned display observations. All endpoint names captured for one Relationship transition must come from one coherent observation boundary; the writer must not assemble one event set from incompatible independently observed Object generations. The exact SQL/projection mechanism used to achieve that coherence remains architecture work.
+
+For the real-write branch, C-REL-27 and this lifecycle boundary compose as:
+
+```text
+observed factual generation R
++
+P_before
++
+validated canonical P_after
++
+expected_revision = R
+
+successful commit:
+    relationships.properties := P_after
+    relationships.revision := R + 1
+    +
+    complete RELATIONSHIP_DATA_CHANGE event set
+        every row carries identical before_state / after_state
+    -> one atomic COMMIT
+```
+
+Any failure before that commit leaves:
+
+```text
+properties unchanged
+revision unchanged
+no RELATIONSHIP_DATA_CHANGE event row from the failed attempt
+```
+
+A revision mismatch is likewise a stale internal attempt and emits no lifecycle transition before bounded retry from a fresh factual generation.
+
+DATA_CHANGE lifecycle construction does not reopen model-plane or runtime-topology validation:
+
+```text
+NO RelationshipResolution read
+NO semantic-view deduplication
+NO RelationshipDefinition topology read
+NO relationship_definition_space read
+NO ObjectTemplate ancestry read
+NO runtime closure reconstruction or semantic re-proof
+NO revision in historical factual snapshots
+```
+
+Exact projection statement shape, sequencing around the final CAS/write, batch INSERT realization and physical lifecycle-table details remain architecture-closing work.
+
+Current next micro-point:
+
+```text
+Relationship DATA_CHANGE
+    -> assess post-definition DATA_CHANGE discovery closure
+       and enumerate only any decisions intentionally deferred to architecture closing
+```
