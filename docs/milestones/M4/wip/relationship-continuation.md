@@ -1500,10 +1500,109 @@ runtime_relationship_cells
 
 This supersedes the old `derive_runtime_closure()` dependency on autonomous `selected_resolution_id` plus repeated ObjectTemplate ancestry walking. Exact admission SQL/cache realization remains architecture work; the semantic rule is that ancestry is an admission concern and is not repeated merely to expand a factual closure whose reciprocal semantics are already fixed by the owning compact Definition.
 
+## C-REL-24 RATIFIED — CREATE persists factual root and complete runtime closure atomically
+
+The factual Relationship remains one transactional aggregate whose authoritative current state is split between:
+
+```text
+relationships
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+
++
+
+runtime_relationship_cells
+    complete deterministic runtime semantic closure
+```
+
+A successful CREATE may become visible only as the complete aggregate.
+
+RATIFIED persistence boundary:
+
+```text
+one factual Relationship CREATE
+    -> one PostgreSQL transaction
+    -> persist the factual root
+    -> persist every runtime semantic cell in the complete derived closure
+    -> commit only when the complete aggregate is valid and persisted
+```
+
+The write is strictly all-or-nothing:
+
+```text
+SUCCESS
+    factual root persisted
+    +
+    every required runtime_relationship_cells row persisted
+    -> COMMIT
+
+ANY FAILURE
+    root persistence failure
+    OR
+    any runtime-cell persistence failure
+    OR
+    runtime semantic-cell uniqueness conflict
+    OR
+    any other integrity failure before commit
+    -> ROLLBACK the complete CREATE attempt
+```
+
+Therefore no committed state may contain:
+
+```text
+Relationship root without its runtime closure
+partial runtime closure
+runtime cell without its owning Relationship root
+only one cell of an otherwise two-cell factual closure
+```
+
+Example:
+
+```text
+candidate closure:
+    O1 --runs_on--> O2
+    O2 --hosts----> O1
+```
+
+If persistence of the reciprocal cell collides after earlier writes in the same attempt:
+
+```text
+insert factual root
+insert O1 --runs_on--> O2
+insert O2 --hosts----> O1
+    -> semantic-cell uniqueness conflict
+```
+
+then the result is:
+
+```text
+rollback factual root
+rollback first runtime cell
+no partial factual Relationship remains
+-> public conflict handling follows the already-ratified relationship_fact_conflict boundary
+```
+
+This checkpoint deliberately does **not** choose the physical DML/arbitration order. The following remain architecture/concurrency-closing decisions:
+
+```text
+root-first vs another legal physical order
+pre-check vs unique-index-first arbitration
+single statement / CTE vs multiple statements in one transaction
+bulk/batch INSERT realization
+savepoint use
+exact race/retry/rendezvous mechanics
+```
+
+The semantic requirement is only that the final legal realization preserves the same atomic aggregate boundary.
+
+The CREATED lifecycle event belongs to the same successful mutation transaction in the existing architecture, but exact event payload/construction is kept outside this checkpoint and remains a separate lifecycle-detail question.
+
 Current next micro-point:
 
 ```text
 POST /api/v1/core/relationships
-    -> revalidate CREATE write materialization boundary:
-       factual root + complete runtime closure are persisted atomically
+    -> revalidate CREATE lifecycle event boundary
+       against the post-definition factual representation
 ```
