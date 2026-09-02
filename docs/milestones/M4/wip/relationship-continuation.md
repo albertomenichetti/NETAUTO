@@ -2745,3 +2745,214 @@ Relationship SCHEMA_CHANGE
     -> revalidate RELATIONSHIP_SCHEMA_CHANGE lifecycle fan-out / factual snapshot boundary
        against stable runtime_relationship_cells and relationships.revision
 ```
+
+## C-REL-33 RATIFIED — SCHEMA_CHANGE lifecycle uses exact factual snapshots, 1:1 runtime-cell fan-out, and non-equal version transition semantics
+
+A real factual Relationship SCHEMA_CHANGE preserves the established Relationship lifecycle snapshot contract rather than adopting the Object-specific delta payload shape.
+
+For a prepared and successfully committed exact migration:
+
+```text
+SOURCE
+    relationship_definition_version = VS
+    properties = P_before
+    revision = R
+
+TARGET
+    relationship_definition_version = VT
+    properties = P_after
+```
+
+with:
+
+```text
+VT != VS
+```
+
+the canonical historical factual transition is:
+
+```text
+before_state = {
+    relationship_definition_version: VS,
+    properties: P_before
+}
+
+after_state = {
+    relationship_definition_version: VT,
+    properties: P_after
+}
+```
+
+`P_before` and `P_after` may be equal. A distinct exact-version pin is itself a real factual schema transition and therefore produces `RELATIONSHIP_SCHEMA_CHANGE` even when canonical property state is unchanged.
+
+The technical factual-root generation token remains excluded from historical semantic state:
+
+```text
+relationships.revision
+    -> private freshness / CAS metadata
+    -> NOT part of before_state
+    -> NOT part of after_state
+```
+
+The post-definition factual runtime semantic closure is stable across SCHEMA_CHANGE:
+
+```text
+runtime_relationship_cells
+    relationship_id
+    from_object_id
+    name
+    to_object_id
+```
+
+Therefore lifecycle fan-out is directly:
+
+```text
+one runtime_relationship_cells row
+    -> one RELATIONSHIP_SCHEMA_CHANGE event row
+```
+
+with no Resolution-derived projection or semantic-view deduplication stage.
+
+RATIFIED event-set cardinality matches the persisted closure exactly:
+
+```text
+asymmetric
+    -> 2 RELATIONSHIP_SCHEMA_CHANGE event rows
+
+symmetric disjoint-space
+    -> 2 rows
+
+symmetric same-space with distinct Objects
+    -> 2 rows
+
+symmetric same-space self-loop
+    -> 1 row
+```
+
+Each event row carries the Object-relative semantic metadata of its exact runtime cell:
+
+```text
+relationship_id
+relationship_definition_id
+
+object_id
+    <- runtime_relationship_cells.from_object_id
+
+relationship_name
+    <- runtime_relationship_cells.name
+
+destination_object_id
+    <- runtime_relationship_cells.to_object_id
+
+canonical_name
+destination_canonical_name
+    <- coherent historical Object display observations captured for this transition
+```
+
+`relationship_name` is stable semantic state persisted directly in the runtime cell. There is no RelationshipResolution read and no mutable relationship-name lookup.
+
+Endpoint `canonical_name` values remain historical Object display observations and must be captured from one coherent transition observation boundary. Exact projection/statement realization remains architecture work.
+
+For the real-write branch, C-REL-27/C-REL-31 compose with this lifecycle boundary as:
+
+```text
+final TARGET PUBLISHED admission
++
+expected_revision = R
++
+relationships.relationship_definition_version := VT
+relationships.properties := P_after
+relationships.revision := R + 1
++
+complete RELATIONSHIP_SCHEMA_CHANGE event set
+    every row carries identical before_state / after_state
+
+-> one atomic COMMIT
+```
+
+Any failed/blocked/stale attempt leaves:
+
+```text
+source pin unchanged
+source properties unchanged
+revision unchanged
+runtime_relationship_cells unchanged
+no RELATIONSHIP_SCHEMA_CHANGE event row from that attempt
+```
+
+This includes:
+
+```text
+TARGET absent/inadmissible
+schema_change_blocked
+revision mismatch before successful retry
+persistence/lifecycle failure causing rollback
+```
+
+Equal-target semantics remain:
+
+```text
+VT == VS
+    -> 204 No Content
+    -> no MigrationPlan work
+    -> no root UPDATE
+    -> no revision increment
+    -> no RELATIONSHIP_SCHEMA_CHANGE lifecycle
+```
+
+M4 explicitly supersedes the historical forward-only lifecycle transition invariant.
+
+The old decoder/persistence rule:
+
+```text
+RELATIONSHIP_SCHEMA_CHANGE
+    after.relationship_definition_version
+        > before.relationship_definition_version
+```
+
+is no longer valid because M4 exact-target semantics permit a real migration to an exact numerically lower PUBLISHED target.
+
+RATIFIED lifecycle invariant becomes:
+
+```text
+RELATIONSHIP_SCHEMA_CHANGE
+    before != null
+    after != null
+    before.relationship_definition_version
+        != after.relationship_definition_version
+```
+
+No `>` or `<` ordering relation between the two exact version numbers has lifecycle meaning.
+
+Example:
+
+```text
+before.version = 5
+after.version  = 3
+```
+
+is a valid historical `RELATIONSHIP_SCHEMA_CHANGE` when `D@3` was an admitted exact target and the factual state migrated successfully.
+
+Lifecycle reads/decoders must therefore validate distinctness of the exact pin rather than forward numeric direction. This change is required by the already-ratified public exact-target contract and is not a new migration capability.
+
+SCHEMA_CHANGE lifecycle construction performs no:
+
+```text
+RelationshipResolution read
+semantic-view deduplication
+RelationshipDefinition topology read
+relationship_definition_space read
+ObjectTemplate ancestry read
+runtime closure reconstruction
+revision persistence inside historical factual snapshots
+```
+
+Exact coherent canonical-name projection, event batch insertion, SQL/CAS sequencing and physical lifecycle-table checks remain architecture-closing work.
+
+Current next micro-point:
+
+```text
+Relationship SCHEMA_CHANGE
+    -> assess post-definition SCHEMA_CHANGE discovery closure
+       against the already-closed public contract and the ratified Object-derived execution baseline
+```
