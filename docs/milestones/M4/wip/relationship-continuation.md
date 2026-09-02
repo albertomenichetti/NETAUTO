@@ -716,7 +716,7 @@ and:
 CANDIDATE B — derived Definition owner
     name: string                        required
     from_object_id: UUID               required
-    to_object_id: UUID                 required
+    to_object_id: UUID                  required
     relationship_definition_version    optional
     properties                         optional
 ```
