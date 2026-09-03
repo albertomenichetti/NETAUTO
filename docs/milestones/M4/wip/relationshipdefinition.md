@@ -634,28 +634,169 @@ The GET-family REST contract is considered closed for the current review unless 
 
 ---
 
-# 9. Next review frontier
+# 9. RD-CREATE-01 — CREATE RelationshipDefinition
+
+**State:** REST CONTRACT PARTIALLY REVIEWED / ROUTE + SUCCESS + TOPOLOGY BODY REVIEWED / PROPERTY INPUT + FAILURE SEMANTICS OPEN
+
+## Route
+
+```http
+POST /api/v1/core/relationship-definitions
+```
+
+Query: none.
+
+The command creates one new stable RelationshipDefinition together with its initial exact RelationshipDefinitionVersion:
+
+```text
+version = 1
+status = DRAFT
+revision = 1
+default_version = null
+```
+
+The Definition and its exact v1 are one atomic operation-owned creation result even though the success response does not re-project both resources.
+
+## Success contract
+
+```text
+201 Created
+Location: /api/v1/core/relationship-definitions/{new_relationship_definition_id}
+body: none
+```
+
+`Location` communicates the only server-allocated identity the caller needs to continue with the stable Definition resource. The initial exact version number/status/revision are deterministic command semantics, not additional generated result values requiring a response body.
+
+CREATE therefore does not reconstruct the richer Definition GET detail or exact-version GET projection after mutation solely for response convenience.
+
+## Topology authoring body
+
+The current public topology authoring shape is flat and command-oriented:
+
+```text
+RelationshipDefinitionCreate
+    symmetric: bool
+    from_template_id: UUID
+    to_template_id: UUID
+    name: string
+    reciprocal_name: string | conditionally omitted
+    properties[]
+```
+
+There is deliberately no nested `perspective` object and no complete reciprocal `perspectives[]` authoring array.
+
+The caller declares one oriented semantic statement directly:
+
+```text
+from_template_id --name--> to_template_id
+```
+
+and, only for asymmetric semantics, supplies the reciprocal semantic name.
+
+### Symmetric form
+
+```text
+symmetric = true
+name required
+reciprocal_name forbidden
+```
+
+The reciprocal orientation necessarily uses the same semantic name.
+
+Example:
+
+```json
+{
+  "symmetric": true,
+  "from_template_id": "<Router>",
+  "to_template_id": "<Switch>",
+  "name": "connected_to",
+  "properties": []
+}
+```
+
+### Asymmetric form
+
+```text
+symmetric = false
+name required
+reciprocal_name required
+reciprocal_name != name
+```
+
+Example:
+
+```json
+{
+  "symmetric": false,
+  "from_template_id": "<VirtualMachine>",
+  "to_template_id": "<Hypervisor>",
+  "name": "runs_on",
+  "reciprocal_name": "hosts",
+  "properties": []
+}
+```
+
+This expresses the complete semantic pair:
+
+```text
+VirtualMachine --runs_on--> Hypervisor
+Hypervisor     --hosts----> VirtualMachine
+```
+
+without requiring the caller to duplicate reciprocal endpoint ids in a second object.
+
+## Internal A/B mapping
+
+The public `from/to` fields express the caller's authored orientation. The compact internal A/B representation may preserve that orientation without exposing storage-oriented A/B terminology in the REST contract:
+
+```text
+A = from_template_id
+B = to_template_id
+name_a_to_b = name
+
+symmetric = true
+    -> name_b_to_a = name
+
+symmetric = false
+    -> name_b_to_a = reciprocal_name
+```
+
+A/B remains stable authoring/persistence orientation, not privileged domain source/target meaning. The server does not canonicalize/reorder the caller-declared orientation merely to obtain a synthetic storage order.
+
+The upstream topology rules remain authoritative and will be classified in CREATE failure semantics rather than encoded by alternative DTO shapes. In particular:
+
+```text
+symmetric Definitions
+    -> endpoint spaces must be identical or disjoint
+    -> distinct-but-overlapping endpoint spaces are invalid
+
+asymmetric Definitions
+    -> endpoint spaces may be identical, disjoint or overlapping
+```
+
+## Still open inside CREATE
+
+```text
+properties[] exact public input carrier
+DataType exact/default selection semantics in that carrier
+omission vs [] for initial property schema
+full 400 / 409 / 422 failure vocabulary
+semantic equivalence / semantic-cell conflict public classification
+```
+
+---
+
+# 10. Current next review frontier
 
 Current next family micro-point:
 
 ```text
-RelationshipDefinition CREATE
-    -> review exact public route/body
-    -> reconcile compact stable semantic contract
-    -> initial v1 DRAFT property schema
-    -> success acknowledgement / Location
-    -> failure vocabulary
+RelationshipDefinition CREATE properties[]
+    -> exact public property input carrier
+    -> DataType exact/default selection
+    -> omission/null/[] semantics
+    -> preserved caller array order -> internal ordinal
 ```
 
-The CREATE review must consume, not redefine silently:
-
-```text
-stable semantic-name contract
-explicit symmetric intent
-allowed endpoint-space topology
-NO autonomous Resolution identity
-shared version allocation
-public property order through array order, not explicit position
-```
-
-Later mutation reviews will cover CREATE_NEXT, REVISE, PUBLISH, default management, DEPRECATE and deletion separately.
+The remaining CREATE review then closes the finite public failure vocabulary before moving to CREATE_NEXT, REVISE, PUBLISH, default management, DEPRECATE and deletion.
