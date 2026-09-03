@@ -156,7 +156,7 @@ without a `resource_kind` discriminator. A future change to the UUID allocation 
 
 # 2. Current review frontier
 
-After completion of this consistency sweep, the immediate review frontier is intentionally moved to the Relationship **model plane**:
+After completion of this consistency sweep, the immediate review frontier is the Relationship **model plane**:
 
 ```text
 RelationshipDefinition model-plane review
@@ -170,15 +170,23 @@ new-relationship-definition.md
 
 plus the distributed `relationshipdefinition-*-discovery.md` inputs listed below.
 
-The top-down data-plane sequence remains conceptually:
+The current-state data-plane discovery baseline is already closed:
 
 ```text
-Object         -> REVIEWED BASELINE
-Relationship   -> REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
-Lifecycle      -> NEXT DATA-PLANE FRONTIER
+Object
+    -> REVIEWED BASELINE
+    -> current-state data-plane sweep complete
+
+factual Relationship
+    -> REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
+    -> current-state data-plane sweep complete
 ```
 
-but Lifecycle is intentionally queued while the Relationship model-plane family is reviewed next. A material model-plane change must reopen only the reviewed Object/factual-Relationship dependencies it actually affects.
+There is therefore no remaining **current-state data-plane family** waiting to be reviewed in the top-down sweep.
+
+Lifecycle is deliberately classified separately. It is historical/audit state, not current authoritative Object/Relationship data-plane state. Its own family review remains open, but it must not be described as a remaining or next current-state data-plane frontier.
+
+A material model-plane change must reopen only the reviewed Object/factual-Relationship dependencies it actually affects.
 
 # 3. Current M4 spine
 
@@ -506,7 +514,11 @@ These are architecture/physical decisions and do not reopen route-local factual 
 
 Global Relationship discovery/query remains deferred to M5 Search API. Object-scoped single-Relationship detail remains unnecessary absent a new caller requirement. Endpoint reassignment/repointing remains DELETE + CREATE with a new factual identity.
 
-# 7. Lifecycle — QUEUED NEXT DATA-PLANE FRONTIER
+# 7. Lifecycle — OPEN HISTORICAL/AUDIT FAMILY
+
+Lifecycle is not current authoritative Object/Relationship data-plane state. It is historical/audit state with its own APIs, persistence and read projections.
+
+Its family review remains open, but that open work does **not** mean that the current-state data-plane sweep is incomplete.
 
 Current Lifecycle discovery inputs:
 
