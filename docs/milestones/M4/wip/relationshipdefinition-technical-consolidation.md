@@ -885,7 +885,89 @@ Mutation statement count is constant in property count.
 
 ---
 
-# 7. Current technical frontier
+# 7. SET_DEFAULT — technical discovery CLOSED except concurrency/physical realization
+
+`SET_DEFAULT` changes only current mutable selection state on the RelationshipDefinition lineage.
+
+Admission:
+
+```text
+RelationshipDefinition exists
+selected exact RDV exists in the same Definition
+selected exact RDV status == PUBLISHED
+```
+
+No semantic-preparation phase is required. The operation does not consume RDV properties, DTV semantics, compiled caches, topology, ancestry, history or revision.
+
+Logical short-UoW path:
+
+```text
+current admission
+    Definition exists
+    exact target exists/status == PUBLISHED
+
+mutation
+    default_version = selected version
+
+commit
+```
+
+The command is idempotent when the selected version is already the current default. The `204 No Content` response requires no aggregate reconstruction or post-write reload.
+
+No cache fill/invalidation or `relationship_definition_space` maintenance occurs.
+
+Concurrency handoff:
+
+```text
+SET_DEFAULT(D@V) vs DEPRECATE(D@V)
+
+SET_DEFAULT wins
+    -> V becomes current default
+    -> DEPRECATE cannot commit while V remains default
+
+DEPRECATE wins
+    -> V no longer PUBLISHED
+    -> SET_DEFAULT cannot commit V as default
+```
+
+Exact rendezvous realization remains architecture work.
+
+---
+
+# 8. CLEAR_DEFAULT — technical discovery CLOSED except concurrency/physical realization
+
+`CLEAR_DEFAULT` changes only the current mutable default pointer and has no exact-version operand.
+
+Admission:
+
+```text
+RelationshipDefinition exists
+```
+
+Mutation:
+
+```text
+default_version -> NULL
+```
+
+The command is idempotent when the default is already NULL. A physical implementation may avoid a real row rewrite in that case, but must still distinguish an absent Definition (404) from a present Definition whose default is already NULL (204).
+
+No semantic preparation, exact-version read, property/DTV/history/topology/space read, cache interaction, new denormalization or post-write reload is required.
+
+External concurrency handoff:
+
+```text
+after CLEAR_DEFAULT commits
+    -> a new factual Relationship.CREATE implicit-version resolution
+       cannot obtain the old default
+    -> absent current default yields default_version_unavailable
+```
+
+The fate of a factual CREATE that had already resolved an exact default before CLEAR_DEFAULT commits belongs to later cross-family concurrency closure.
+
+---
+
+# 9. Current technical frontier
 
 Closed in this consolidation pass:
 
@@ -899,13 +981,13 @@ GET exact RDV
 CREATE_NEXT
 REVISE
 PUBLISH
+SET_DEFAULT
+CLEAR_DEFAULT
 ```
 
 Still to review technically:
 
 ```text
-SET_DEFAULT
-CLEAR_DEFAULT
 DEPRECATE
 DELETE_DRAFT
 DELETE root
