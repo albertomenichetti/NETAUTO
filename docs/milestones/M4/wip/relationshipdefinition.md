@@ -1,6 +1,6 @@
 # M4 WIP — RelationshipDefinition model-plane review owner
 
-**Status:** ACTIVE REVIEW FRONTIER / SINGLE FAMILY OWNER / REST CONTRACT REVIEW COMPLETE / ARCHITECTURE CLOSING PENDING / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** ACTIVE REVIEW FRONTIER / SINGLE FAMILY OWNER / REST CONTRACT REVIEW COMPLETE / TECHNICAL DISCOVERY CONSOLIDATION PENDING / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose and ownership
 
@@ -20,7 +20,9 @@ later data-path / cache / persistence / concurrency handoff
 
 Everything under `wip/` remains globally non-normative and does not authorize implementation.
 
-The current review starts caller-first from the REST contract. SQL, cache, lock/FK/UNIQUE arbitration, final DDL, migration/backfill and measured physical evidence remain later review/architecture work unless a public-contract decision intrinsically requires a semantic choice.
+The caller-first REST sweep is complete. The next step is **not** architecture closure: it is to revalidate and consolidate the technical discovery for this family — logical operation data paths, persistence/materialization candidates, cache boundaries, cost/over-fetch findings and explicit concurrency/architecture handoffs — until `RelationshipDefinition` reaches the same `REVIEWED BASELINE` discovery level already reached by Object and factual Relationship.
+
+Final SQL, physical DDL, exact PK/FK/UNIQUE/index realization, lock/wait/retry/deadlock design, migration/backfill and other architecture-closing choices remain later work. They must not be silently frozen during this technical consolidation pass.
 
 ## Precedence and source material
 
@@ -1790,7 +1792,7 @@ root delete_blocked diagnostic exposes blocker type, not total count
 mutation success responses avoid response-only GET reconstruction
 ```
 
-This closure remains M4 WIP and non-normative. It does not freeze physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL or migration/backfill.
+This REST closure remains M4 WIP and non-normative. It does not mean the RelationshipDefinition family has reached the consolidated discovery baseline of Object/factual Relationship, and it does not freeze physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL or migration/backfill.
 
 Any downstream finding that materially invalidates one of these caller-visible semantics must explicitly reopen the affected micro-contract under the normal M4 retroactive-revalidation rule.
 
@@ -1800,18 +1802,45 @@ Any downstream finding that materially invalidates one of these caller-visible s
 
 No RelationshipDefinition REST capability remains unreviewed in the current retained family surface.
 
-The next family frontier is architecture-closing / model-plane handoff rather than another REST route:
+The next family frontier is **consolidated technical discovery / revalidation**, with the explicit goal of bringing `RelationshipDefinition` to the same M4 `REVIEWED BASELINE` discovery level already reached by Object and factual Relationship. This is not architecture closure.
 
 ```text
-RelationshipDefinition architecture-closing review
-    -> reconcile reviewed REST semantics with compact source-of-truth model
-    -> close relationship_definition_space materialization boundary
-    -> revalidate operation data paths against the final REST contracts
-    -> close immutable RDV runtime-cache boundary
-    -> close persistence / FK / UNIQUE ownership realization
-    -> close concurrency rendezvous and arbitration across
-       CREATE / CREATE_NEXT / REVISE / PUBLISH / DEFAULT / DEPRECATE / DELETE
-    -> preserve GP-05 bounded diagnostics and no diagnostic-only backend work
+RelationshipDefinition technical discovery consolidation
+    -> rebase every distributed relationshipdefinition-*-discovery finding
+       on the reviewed REST contracts and post-Resolution semantic model
+
+    -> consolidate route-local logical data paths
+       reads / writes / admission predicates / response-only work
+       and remove stale autonomous-Resolution assumptions
+
+    -> consolidate the discovery-level logical persistence model
+       compact RelationshipDefinition source of truth
+       RelationshipDefinitionVersion/property ownership
+       shared no-reuse version allocation
+       relationship_definition_space derived semantic closure
+
+    -> revalidate the relationship_definition_space materialization boundary
+       against actual GET / CREATE / factual-Relationship consumers
+       without freezing final DDL
+
+    -> consolidate cache boundaries
+       immutable exact-RDV runtime semantics
+       stable/current Definition semantics where justified
+       PostgreSQL authority for mutable lifecycle/default state
+
+    -> re-run operation-level cost / over-fetch / materialization challenges
+       using the now-final REST response and error contracts
+       including GP-05 bounded diagnostics
+
+    -> carry final PK/FK/UNIQUE/index choices,
+       lock/wait/retry/deadlock realization and other concurrency arbitration
+       forward as explicit architecture handoffs rather than solving them here
+
+    -> run a consistency sweep against reviewed Object and factual Relationship
+       and promote RelationshipDefinition to REVIEWED BASELINE only when
+       no material semantic/data-path/cache contradiction remains
 ```
+
+Only after this family reaches that reviewed discovery baseline should M4 proceed to the broader architecture-closing work shared with Object and factual Relationship.
 
 Implementation remains forbidden until the normal M4 Contract -> Architecture -> Steps freeze sequence authorizes it.
