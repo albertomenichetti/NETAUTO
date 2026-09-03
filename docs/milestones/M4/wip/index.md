@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This file maps the current M4 working set and the progress of the ongoing top-down review.
+This file maps the current M4 working set and the progress of the ongoing review.
 
 Everything under `wip/` remains globally non-normative. `CLOSED`, `FROZEN`, `REVIEWED BASELINE` or similar wording in this directory is only an M4 discovery/review checkpoint and never authorizes implementation by itself.
 
@@ -32,6 +32,8 @@ ACTIVE REVIEW FRONTIER
 ```
 
 `SPINE` answers **where to read**. `REVIEWED BASELINE` / `ACTIVE REVIEW FRONTIER` answers **how far review has progressed**.
+
+The classification in this index is the current navigation/review-state classification. Some owner headers retain wording describing the phase in which the file originated; such header wording does not override the current classification recorded here.
 
 ## External interpretation anchors
 
@@ -68,43 +70,117 @@ object-template-ancestry-cache.md
 
 The route-level Object sweep is complete and consolidated in `object.md`, with cross-operation Object generation/component persistence responsibilities remaining in their dedicated reviewed owners.
 
-The factual Relationship top-down sweep is also complete at the discovery/revalidation level and has been losslessly consolidated back into the single owner:
+The factual Relationship sweep is also complete at the discovery/revalidation level and has been losslessly consolidated back into the single owner:
 
 ```text
 relationship.md
 ```
 
-The temporary `relationship-continuation.md` and `relationship-continuation-2.md` files have been merged back and removed. `relationship.md` now contains the ordered post-definition checkpoints through `C-REL-35`, including the global/Object-scoped reads, CREATE, DATA_CHANGE, SCHEMA_CHANGE and DELETE closures.
+The temporary Relationship continuation files were merged back and removed. `relationship.md` contains the ordered post-definition checkpoints through `C-REL-35`, including global/Object-scoped reads, CREATE, DATA_CHANGE, SCHEMA_CHANGE and DELETE.
 
-`REVIEWED BASELINE` here remains a WIP review state only. Factual Relationship still has architecture-closing decisions, most notably the final CREATE Definition-selection request shape and the global physical/cache/concurrency realization.
+`REVIEWED BASELINE` remains a WIP review state only. Object and factual Relationship still contain architecture-closing handoffs; factual Relationship in particular still has the final CREATE Definition-selection request choice and global physical/cache/concurrency realization open.
 
-## ACTIVE REVIEW FRONTIER
+## CONSISTENCY SWEEP — CLOSED FOR CURRENT REVIEWED BASELINE
 
-The current top-down data-plane review frontier is now:
+A bidirectional consistency sweep has been completed across this index and every current reviewed owner/support listed above.
 
-```text
-Lifecycle
-```
-
-Current Lifecycle inputs:
+Checked boundaries include:
 
 ```text
-object-lifecycle-read-discovery.md
-lifecycle-list-detail-api-discovery.md
-lifecycle-summary-data-path-discovery.md
+version identity/allocation semantics
+Object intrinsic revision and mutation freshness
+Object component-slot materialization and ownership edge identity
+ObjectTemplate stable ancestry cache semantics
+factual Relationship root/runtime-cell ownership
+factual Relationship revision and migration freshness
+Object <-> factual Relationship lifetime composition
+operation-owned lifecycle payload boundaries
+no-diagnostic-only-work principle
+route/cost/cache ownership boundaries
+architecture handoffs vs already-ratified semantics
 ```
 
-The top-down order is therefore now:
+Current result:
+
+```text
+no unresolved semantic contradiction among reviewed owners
+no missing reviewed owner from this index
+no temporary consolidation file remains
+```
+
+Two explicit precedence rules are important when reading the historical sections retained inside `relationship.md`:
+
+```text
+C-REL-27
+    supersedes earlier factual-root snapshots that predate relationships.revision
+
+C-REL-35
+    forbids factual self-reference
+    and supersedes every earlier self-loop branch/example/cardinality
+```
+
+Therefore the current factual root is:
+
+```text
+relationships
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+    revision
+```
+
+and current factual admission requires:
+
+```text
+from_object_id != to_object_id
+```
+
+Historical pre-supersession passages remain review history; they are not competing current candidates.
+
+The shared version allocator has also been revalidated against identity allocation. Current versioned lineage IDs:
+
+```text
+DataType.id
+ObjectTemplate.id
+RelationshipDefinition.id
+```
+
+are kernel-generated UUIDv4 identities treated as belonging to one practical cross-family UUID namespace. Therefore the reviewed logical allocator remains:
+
+```text
+last_versions(id, last_version)
+```
+
+without a `resource_kind` discriminator. A future change to the UUID allocation invariant reopens that key shape.
+
+# 2. Current review frontier
+
+After completion of this consistency sweep, the immediate review frontier is intentionally moved to the Relationship **model plane**:
+
+```text
+RelationshipDefinition model-plane review
+```
+
+Primary intent/input owner:
+
+```text
+new-relationship-definition.md
+```
+
+plus the distributed `relationshipdefinition-*-discovery.md` inputs listed below.
+
+The top-down data-plane sequence remains conceptually:
 
 ```text
 Object         -> REVIEWED BASELINE
 Relationship   -> REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
-Lifecycle      -> ACTIVE REVIEW FRONTIER
+Lifecycle      -> NEXT DATA-PLANE FRONTIER
 ```
 
-Model-plane families remain active inputs in parallel and may still trigger targeted revalidation when a material upstream decision changes a reviewed data-plane assumption.
+but Lifecycle is intentionally queued while the Relationship model-plane family is reviewed next. A material model-plane change must reopen only the reviewed Object/factual-Relationship dependencies it actually affects.
 
-# 2. Current M4 spine
+# 3. Current M4 spine
 
 ## Cross-cutting principles and method
 
@@ -123,7 +199,13 @@ failure semantics/details derive from the efficient legal execution path
 
 ### [`version-allocation.md`](version-allocation.md) — SPINE / REVIEWED BASELINE
 
-Current owner for shared monotonic/no-reuse version allocation and the logical `last_versions(id,last_version)` direction.
+Current owner for shared monotonic/no-reuse version allocation and the logical:
+
+```text
+last_versions(id, last_version)
+```
+
+direction. The single `id` key relies on the reviewed cross-family UUIDv4 namespace invariant for versioned lineages.
 
 ### [`discovery.md`](discovery.md) — SPINE / discovery framing / NOT REVIEWED BASELINE
 
@@ -137,7 +219,7 @@ Method used to close routes from public contract through data path, cache, seman
 
 Governance input requiring milestone closure to document the resulting relational schema; not a current DDL freeze.
 
-# 3. Object current owners
+# 4. Object current owners
 
 ### [`object.md`](object.md) — SPINE / REVIEWED BASELINE / Object family owner
 
@@ -175,11 +257,57 @@ object-template-ancestry-cache.md
 
 The Object family closure is dependency-aware. Material future changes to certified effective-property/effective-component semantics or stable ancestry trigger only the targeted revalidations recorded by the Object owner.
 
-# 4. Model-plane families — ACTIVE INPUT sets
+### [`object-revision.md`](object-revision.md) — SPINE / REVIEWED BASELINE
+
+Owner for the universal intrinsic `objects.revision` generation/CAS protocol:
+
+```text
+CREATE -> revision = 1
+prepared intrinsic mutation -> expected_revision
+persisted intrinsic mutation -> revision + 1 atomically
+stale generation -> no mutation/lifecycle + bounded retry
+DELETE -> terminates current generation without surviving increment
+revision scope excludes ownership/Relationship facts outside objects
+```
+
+### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / REVIEWED BASELINE
+
+Owner for current component/ownership persistence:
+
+```text
+object_component_slots
+    object_id
+    slot_declaring_template_id
+    slot_name
+    target_template_id
+
+object_components
+    child_object_id
+    parent_object_id
+    slot_declaring_template_id
+    slot_name
+```
+
+It owns semantic slot identity, materialization invariant, edge -> current semantic-slot dependency, relational blocker arbitration and physical architecture handoff. Route-local semantics/cost remain owned by `object.md`.
+
+### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / REVIEWED BASELINE SUPPORT
+
+Reusable stable ObjectTemplate lineage ancestry/compatibility cache backed by:
+
+```text
+object_template_ancestry
+    descendant_template_id
+    ancestor_template_id
+    depth
+```
+
+A source becomes READY only after its complete stable ancestor/neighborship set, including self, is loaded. Exact physical/cache realization remains architecture work.
+
+# 5. Model-plane families
 
 These families remain non-normative active input unless/until consolidated and promoted by the milestone architecture process.
 
-## DataType
+## DataType — ACTIVE INPUT
 
 ```text
 datatype-create-next-discovery.md
@@ -197,7 +325,7 @@ datatype-set-description-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-## ObjectTemplate
+## ObjectTemplate — ACTIVE INPUT
 
 ```text
 objecttemplate-create-discovery.md
@@ -224,15 +352,15 @@ Support/handoff:
 objecttemplate-validation-loader-handoff.md
 ```
 
-## RelationshipDefinition
+## RelationshipDefinition — ACTIVE REVIEW FRONTIER
 
-### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE INPUT / ARCHITECTURE HANDOFF
+### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE REVIEW FRONTIER
 
-This remains the upstream intent owner for the RelationshipDefinition redesign that removed autonomous `RelationshipResolution` identity from the current candidate direction and established stable directional semantic names plus materialized exact-template semantic space.
+Current upstream intent/input owner for the RelationshipDefinition redesign that removed autonomous `RelationshipResolution` identity from the current candidate direction and introduced stable directional semantic names plus materialized exact-template semantic space.
 
-Its stabilized semantics were sufficient to complete the downstream factual Relationship revalidation. Remaining model-plane API/physical/lifecycle details no longer freeze the factual owner by default; a future material change reopens only affected dependencies.
+Its stabilized subset was sufficient for the factual Relationship review, but the Relationship model-plane family is now the immediate analysis frontier. Its API, exact semantic contract, lifecycle/version interactions, relational closure and physical handoff must be re-evaluated without silently importing stale `RelationshipResolution` assumptions.
 
-Existing distributed discovery remains active input/source for revalidation:
+Existing distributed discovery remains active input/source for that review:
 
 ```text
 relationshipdefinition-create-discovery.md
@@ -253,11 +381,11 @@ relationshipdefinition-clear-default-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-# 5. Factual Relationship — REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
+# 6. Factual Relationship — REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
 
 ### [`relationship.md`](relationship.md) — SPINE / REVIEWED BASELINE / single factual Relationship WIP owner
 
-`relationship.md` is again the single factual Relationship WIP owner. The former temporary continuations have been losslessly absorbed and removed.
+`relationship.md` is the single factual Relationship WIP owner. Former temporary continuations have been losslessly absorbed and removed.
 
 The post-definition full sweep covers exactly the M4 factual capabilities:
 
@@ -270,27 +398,33 @@ SCHEMA_CHANGE
 DELETE
 ```
 
-Current reviewed data-plane direction includes:
+Current reviewed data-plane direction is:
 
 ```text
 relationships
-    -> factual root
-    -> relationship_definition_id
-    -> exact relationship_definition_version
-    -> properties
-    -> private revision generation token
+    id
+    relationship_definition_id
+    relationship_definition_version
+    properties
+    revision
 
 runtime_relationship_cells
-    -> owned exact Object-level semantic cells
-    -> (relationship_id, from_object_id, name, to_object_id)
+    relationship_id
+    from_object_id
+    name
+    to_object_id
 
-semantic-cell uniqueness
-    -> (from_object_id, name, to_object_id)
+semantic-cell identity/uniqueness
+    (from_object_id, name, to_object_id)
     -> at most one current factual Relationship owner
 
 semantic name
     -> stable runtime semantic state
     -> no autonomous RelationshipResolution / resolution_id
+
+factual self-reference
+    -> forbidden
+    -> from_object_id != to_object_id
 ```
 
 Key reviewed route-level conclusions include:
@@ -303,9 +437,18 @@ global GET
 
 Object-scoped GET
     -> 1:1 runtime-cell projection
-    -> exact name filter restored
+    -> exact name filter
     -> keyset (name, to_object_id)
     -> semantic-cell B-tree reused for navigation
+
+CREATE
+    -> required oriented name/from/to semantics
+    -> exact/default RDV selection
+    -> PUBLISHED-only new binding
+    -> immutable exact-RDV validation cache
+    -> semantic-cell uniqueness conflict authority
+    -> atomic root + complete runtime closure + CREATED lifecycle
+    -> final Definition-selection request shape still architecture-closing
 
 DATA_CHANGE
     -> immutable exact-RDV semantic cache
@@ -326,18 +469,6 @@ DELETE
     -> no DELETE revision protocol
     -> one-business-statement target + atomic lifecycle
 ```
-
-Factual-domain delta discovered during the DELETE pass:
-
-```text
-from_object_id != to_object_id
-
-self-reference
-    -> 422 semantic_validation_failed
-    -> rule = self_reference
-```
-
-This supersedes earlier factual self-loop candidates. Consumers of admitted persisted state do not recertify this invariant.
 
 Remaining architecture-closing items include at least:
 
@@ -371,13 +502,13 @@ final lifecycle physical carriers
 EXPLAIN/BUFFERS/storage/JSONB/WAL/latency/contention evidence
 ```
 
-These are architecture/physical decisions and do not reopen route-local factual discovery merely to choose a mechanism. A material new semantic dependency remains a valid targeted reopen trigger.
+These are architecture/physical decisions and do not reopen route-local factual discovery merely to choose a mechanism. A material new model-plane semantic dependency remains a valid targeted reopen trigger.
 
 Global Relationship discovery/query remains deferred to M5 Search API. Object-scoped single-Relationship detail remains unnecessary absent a new caller requirement. Endpoint reassignment/repointing remains DELETE + CREATE with a new factual identity.
 
-# 6. Lifecycle — ACTIVE REVIEW FRONTIER
+# 7. Lifecycle — QUEUED NEXT DATA-PLANE FRONTIER
 
-Current Lifecycle discovery:
+Current Lifecycle discovery inputs:
 
 ```text
 object-lifecycle-read-discovery.md
@@ -385,7 +516,7 @@ lifecycle-list-detail-api-discovery.md
 lifecycle-summary-data-path-discovery.md
 ```
 
-Reviewed Object and factual Relationship mutation owners now provide the operation-owned lifecycle inputs that this pass must consume rather than redefine.
+Reviewed Object and factual Relationship mutation owners provide the operation-owned lifecycle inputs that the Lifecycle pass must consume rather than redefine.
 
 Object baseline inputs include:
 
@@ -436,7 +567,7 @@ Relationship event fan-out
 
 The Lifecycle pass owns final collection/detail DTOs, discriminated event-detail carriers, persistence decoding/read paths, summary-vs-detail payload boundaries and its own physical/read optimization handoff.
 
-# 7. Source-material cleanup notes
+# 8. Source-material cleanup notes
 
 Former route-specific Object WIP families and focused component/SCHEMA_CHANGE source files were removed after their lossless absorption into reviewed Object owners. Git history remains historical evidence.
 
@@ -444,7 +575,7 @@ The factual Relationship temporary continuation files were likewise removed afte
 
 Source material is evidence only. If it conflicts with a reviewed owner/general principle, revalidate explicitly rather than treating the source as authority.
 
-# 8. Maintenance rules
+# 9. Maintenance rules
 
 When a new WIP is created:
 
@@ -482,7 +613,7 @@ revalidate the specific point explicitly
 record the result in the correct owner
 ```
 
-# 9. Current-state precedence
+# 10. Current-state precedence
 
 Use this order to reconstruct M4 today:
 
@@ -509,6 +640,8 @@ SUPPORT / HANDOFF
 SOURCE MATERIAL
     -> evidence/explicit revalidation only
 ```
+
+Within one ordered family owner, later explicit ratifications supersede earlier candidate/history passages where they conflict. This is particularly relevant to `relationship.md`, where `C-REL-27` and `C-REL-35` supersede earlier root/self-loop snapshots.
 
 Review-state classification never changes topic ownership; it states whether the owner is safe to reuse as a closed baseline for subsequent review work.
 
