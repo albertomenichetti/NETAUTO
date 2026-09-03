@@ -697,7 +697,7 @@ The concurrency realization must also ensure that a newly committed incompatible
 
 ---
 
-# 6. PUBLISH RelationshipDefinitionVersion — active technical review
+# 6. PUBLISH RelationshipDefinitionVersion — technical discovery CLOSED except concurrency/physical realization
 
 ## 6.1 Semantic preparation outside mutation UoW — RATIFIED
 
@@ -829,6 +829,60 @@ compiled READY
 
 `relationship_definition_properties` already stores the complete exact schema snapshot. PUBLISH does not justify another persisted copy merely to accelerate runtime compilation. Optimization is worker-local immutable cache reuse.
 
+## 6.6 Default interaction and DML/cost closure — RATIFIED
+
+`default_version` is not a semantic-preparation input and does not require a pre-read.
+
+PUBLISH owns one conditional current-state transition at its final publication boundary:
+
+```text
+if Definition.default_version is still NULL
+    -> set default_version = this published version
+
+otherwise
+    -> leave the current non-null default unchanged
+```
+
+Logical mutation direction:
+
+```text
+1. final generation/dependency/history admission
+2. UPDATE exact RDV DRAFT -> PUBLISHED, revision unchanged
+3. conditional UPDATE Definition
+       SET default_version = :version
+       WHERE id = :definition_id
+         AND default_version IS NULL
+4. COMMIT
+```
+
+The conditional default update may affect one or zero rows. Zero rows does not invalidate publication; it means a default already exists. The `204 No Content` response does not require learning or re-projecting which case occurred.
+
+Concurrent publications against an initially NULL default must preserve a NULL-only claim invariant: at most one publication establishes the first default, while another publication may still succeed without replacing it. Exact serialization remains architecture work.
+
+PUBLISH should own this narrow first-default transition directly rather than routing through the public `SET_DEFAULT` helper if that helper introduces command-specific reads/admission/reloads not required by publication.
+
+Cost shape:
+
+```text
+READ / PREPARATION
+    O(P) exact property snapshot
+    bounded/bulk exact-DTV semantic preparation
+    set-based history probe
+
+MUTATION DML
+    1 RDV status UPDATE
+    <= 1 conditional Definition default UPDATE
+
+property writes
+    0
+relationship_definition_space writes
+    0
+post-mutation reads
+    0
+```
+
+Mutation statement count is constant in property count.
+
 ---
 
 # 7. Current technical frontier
@@ -844,14 +898,12 @@ GET RDV LIST
 GET exact RDV
 CREATE_NEXT
 REVISE
+PUBLISH
 ```
-
-PUBLISH already has ratified preparation/cache checkpoints but still needs its default-interaction and logical DML/cost closure before the operation is marked technically closed.
 
 Still to review technically:
 
 ```text
-PUBLISH default interaction / DML cost closure
 SET_DEFAULT
 CLEAR_DEFAULT
 DEPRECATE
