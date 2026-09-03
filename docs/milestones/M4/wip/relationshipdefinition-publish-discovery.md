@@ -1,6 +1,6 @@
 # RelationshipDefinition PUBLISH — M4 discovery
 
-Status: **ACTIVE TECHNICAL REVIEW / RATIFIED PREPARATION + CACHE CHECKPOINTS / WIP / NON-NORMATIVE**
+Status: **TECHNICAL DISCOVERY CLOSED / CONCURRENCY-PHYSICAL REALIZATION DEFERRED / WIP / NON-NORMATIVE**
 
 This note is operation-specific source/evidence subordinate to the current RelationshipDefinition family owner and to the technical consolidation ledger. It persists the PUBLISH technical-discovery checkpoints ratified during the current M4 sweep; it does not authorize implementation or freeze architecture-level locking/DDL choices.
 
@@ -264,9 +264,112 @@ root DELETE
 
 ---
 
+# RATIFIED PUBLISH-TECH-05 — default interaction and logical DML/cost closure
+
+`default_version` does not need to be read during semantic preparation. Publication does not decide the default outcome from a stale pre-read; it owns one conditional current-state transition at the publication boundary:
+
+```text
+if Definition.default_version is still NULL
+    -> set default_version = published version
+
+otherwise
+    -> leave the existing non-null default unchanged
+```
+
+Logical mutation direction:
+
+```text
+1. perform final generation/dependency/history admission
+
+2. UPDATE exact RDV
+       DRAFT -> PUBLISHED
+       revision unchanged
+
+3. conditional UPDATE RelationshipDefinition
+       SET default_version = :version
+       WHERE id = :definition_id
+         AND default_version IS NULL
+
+4. COMMIT
+```
+
+The conditional default mutation may affect one or zero rows:
+
+```text
+1 row
+    -> this publication established the first current default
+
+0 rows
+    -> another/default value already exists
+    -> publication remains valid
+```
+
+The `204 No Content` response does not require learning which branch occurred and does not justify a post-mutation Definition reload.
+
+For concurrent publications while the default is initially NULL, at most one publication may claim the NULL -> exact-version transition; another publication may still succeed without replacing the already-established default. Exact serialization/locking remains architecture work.
+
+PUBLISH owns this narrow first-default transition directly rather than invoking the public `SET_DEFAULT` command/helper if that helper would introduce command-specific reads/admission/reloads not required by publication.
+
+Cost shape:
+
+```text
+READ / PREPARATION
+    O(P) exact property snapshot
+    bounded/bulk exact-DTV semantic preparation
+    set-based historical conflict probe
+
+MUTATION DML
+    1 RDV status UPDATE
+    <= 1 conditional Definition default UPDATE
+
+property writes
+    0
+
+relationship_definition_space writes
+    0
+
+post-mutation reads
+    0
+```
+
+Statement count for mutation is constant in property count.
+
+---
+
 ## No new relational denormalization at PUBLISH
 
 No additional relational materialization is justified merely by PUBLISH. `relationship_definition_properties` already persists the complete exact schema snapshot. Runtime optimization is worker-local immutable compilation/cache reuse, not another relational copy of the same RDV schema.
+
+## PUBLISH technical closure checkpoint
+
+PUBLISH technical discovery is closed for the current M4 pass, except for architecture/concurrency/physical realization.
+
+Ratified direction:
+
+```text
+outside mutation UoW
+    -> load exact DRAFT generation
+    -> load + compile all pinned exact DTV semantics
+    -> prepare immutable RDV runtime/cache candidate
+    -> optional early set-based history fail-fast
+
+inside short mutation UoW
+    -> exact DRAFT/expected_revision gate
+    -> every pinned DTV still PUBLISHED
+    -> committed-history datatype-lineage continuity still valid
+    -> DRAFT -> PUBLISHED, revision unchanged
+    -> conditional NULL-only first-default establishment
+
+post commit
+    -> publish immutable RDV cache entry
+
+NO
+    -> relationship_definition_space work
+    -> property rewrite
+    -> DTV recompilation inside mutation UoW
+    -> default pre-read requirement
+    -> response-only post-commit reload
+```
 
 ## Still deferred
 
@@ -278,7 +381,7 @@ PUBLISH vs concurrent REVISE
 PUBLISH vs PUBLISH of another exact version in the same Definition
 PUBLISH vs DTV DEPRECATE
 PUBLISH vs SET_DEFAULT/CLEAR_DEFAULT/DEPRECATE
-exact first-default conditional statement
+exact first-default conditional SQL/lock realization
 physical indexes/constraints
 ```
 
