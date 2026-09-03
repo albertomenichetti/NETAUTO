@@ -156,7 +156,7 @@ without a `resource_kind` discriminator. A future change to the UUID allocation 
 
 # 2. Current review frontier
 
-After completion of this consistency sweep, the immediate review frontier is the Relationship **model plane**:
+The immediate review frontier remains the Relationship **model plane**:
 
 ```text
 RelationshipDefinition model-plane review
@@ -174,9 +174,22 @@ Primary semantic-intent input:
 new-relationship-definition.md
 ```
 
+The caller-first RelationshipDefinition REST family review is now complete. The family is **not yet `REVIEWED BASELINE`**: the next step is the consolidated technical discovery/revalidation needed to bring it to the same discovery level already reached by Object and factual Relationship.
+
+That pass must consolidate/revalidate at least:
+
+```text
+route-local logical data paths
+persistence/materialization candidates
+relationship_definition_space boundary
+immutable/current cache authority
+cost / over-fetch / response-only work
+explicit concurrency and physical architecture handoffs
+```
+
 The distributed `relationshipdefinition-*-discovery.md` files remain source material / operation-specific evidence and are subordinate to the current family owner where older assumptions conflict.
 
-The current-state data-plane discovery baseline is already closed:
+The current-state data-plane discovery baseline is already reviewed:
 
 ```text
 Object
@@ -184,11 +197,11 @@ Object
     -> current-state data-plane sweep complete
 
 factual Relationship
-    -> REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
+    -> REVIEWED BASELINE
     -> current-state data-plane sweep complete
 ```
 
-There is therefore no remaining **current-state data-plane family** waiting to be reviewed in the top-down sweep.
+This does **not** mean Object or factual Relationship are architecturally closed. Both still carry explicit later architecture/physical handoffs. The current RelationshipDefinition goal is first to reach the same reviewed discovery baseline before the broader architecture-closing work proceeds.
 
 Lifecycle is deliberately classified separately. It is historical/audit state, not current authoritative Object/Relationship data-plane state. Its own family review remains open, but it must not be described as a remaining or next current-state data-plane frontier.
 
@@ -372,38 +385,47 @@ objecttemplate-validation-loader-handoff.md
 
 This is the current RelationshipDefinition family review owner.
 
-It owns the current caller-first REST/API review and subsequent model-plane review decisions. The GET family is now REST-contract reviewed there, including:
+The caller-first REST family is now reviewed in full:
 
 ```text
-GET /relationship-definitions
-    -> compact paginated summaries
-
-GET /relationship-definitions/{id}
-    -> compact Definition detail
-    -> factored complete current applicability closure
-
-GET /relationship-definitions/{id}/versions
-    -> paginated version summaries
-    -> optional status filter
-
-GET /relationship-definitions/{id}/versions/{version}
-    -> exact version detail
-    -> ordered property declarations
+4 GET capabilities
+9 retained mutations
+1 removed mutation: RENAME
 ```
 
-Current API deltas already recorded by the owner include:
+Current reviewed REST/model-plane deltas include:
 
 ```text
-REMOVE RelationshipDefinition.RENAME
-NO autonomous Resolution / resolution_id REST identity
-ObjectTemplate references expose id + qualified_name
-Definition detail exposes factored applicability by perspective
-version LIST/detail do not repeat relationship_definition_id
-property DataType pins expose id + qualified_name + exact version
-property position remains internal ordering metadata and is not public input/output
+NO autonomous RelationshipResolution / resolution_id public identity
+stable semantic names; no RENAME
+explicit symmetric intent
+compact authored topology
+factored complete current applicability on Definition detail
+shared monotonic/no-reuse RelationshipDefinitionVersion allocation
+ordered property authoring without public position
+DRAFT revision / expected_revision semantics
+CREATE_NEXT immutable-source clone semantics
+PUBLISH current DataType admission and first-default semantics
+separate idempotent SET_DEFAULT / CLEAR_DEFAULT
+DEPRECATE current-default protection
+DELETE_DRAFT no version-number reuse
+root DELETE blocked by current factual Relationships
+bounded relationship_definition_conflict witness
+bounded delete_blocked blocker type without total count
 ```
 
-Current next micro-point is RelationshipDefinition CREATE.
+The current next step is **not architecture closure**. It is the consolidated technical discovery/revalidation pass needed to bring this family to `REVIEWED BASELINE` alongside Object and factual Relationship:
+
+```text
+rebase distributed operation discovery on final REST semantics
+consolidate logical data paths and candidate costs
+consolidate logical persistence/materialization boundaries
+revalidate relationship_definition_space materialization
+consolidate immutable/current cache authority
+preserve final DDL / PK-FK-UNIQUE / lock-wait-retry-deadlock
+as later architecture handoffs
+run cross-family consistency sweep before REVIEWED BASELINE promotion
+```
 
 ### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE INPUT / SEMANTIC SOURCE
 
