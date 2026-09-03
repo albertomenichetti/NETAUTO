@@ -1,6 +1,6 @@
 # RelationshipDefinition PUBLISH — M4 discovery
 
-Status: **ACTIVE TECHNICAL REVIEW / RATIFIED PREPARATION CHECKPOINT / WIP / NON-NORMATIVE**
+Status: **ACTIVE TECHNICAL REVIEW / RATIFIED PREPARATION + CACHE CHECKPOINTS / WIP / NON-NORMATIVE**
 
 This note is operation-specific source/evidence subordinate to the current RelationshipDefinition family owner and to the technical consolidation ledger. It persists the PUBLISH technical-discovery checkpoints ratified during the current M4 sweep; it does not authorize implementation or freeze architecture-level locking/DDL choices.
 
@@ -189,7 +189,78 @@ RelationshipDefinition.default_version
 
 Cache presence never proves current existence or lifecycle admission.
 
-A later `PUBLISHED -> DEPRECATED` transition does not change the immutable exact property/compiled semantics; the lifecycle/cache behavior is the next focused PUBLISH/DEPRECATE checkpoint and is not further frozen here.
+---
+
+# RATIFIED PUBLISH-TECH-04 — immutable cache lifecycle across DEPRECATE/DELETE
+
+The immutable exact-RDV cache follows semantic immutability, not current lifecycle state.
+
+```text
+DRAFT
+    -> not eligible for immutable RDV cache publication
+
+PUBLISHED
+    -> immutable exact RDV cacheable
+
+PUBLISHED -> DEPRECATED
+    -> immutable cache entry remains valid
+    -> no semantic cache invalidation
+```
+
+DEPRECATE changes only current admission state. It does not change:
+
+```text
+ordered properties
+ordinal
+exact DTV pins
+value_mode
+compiled validators/runtime specs
+immutable exact semantic payload
+```
+
+This allows the same immutable entry to serve at least:
+
+```text
+existing factual Relationships pinned to a DEPRECATED exact RDV
+CREATE_NEXT whose source may be PUBLISHED or DEPRECATED
+```
+
+The cache is never authority for:
+
+```text
+RDV current existence
+RDV current PUBLISHED/DEPRECATED status
+RelationshipDefinition current existence
+RelationshipDefinition.default_version
+```
+
+Therefore complete RelationshipDefinition deletion does not require correctness-driven distributed invalidation. An old local entry may be evicted opportunistically; it cannot prove resource existence, and lineage UUID/exact-version identities are not reused for another semantic resource.
+
+Cache facets remain independent:
+
+```text
+snapshot READY
+    -> sufficient for CREATE_NEXT cloning
+
+compiled READY
+    -> required by factual runtime consumers that need compiled validation semantics
+```
+
+PUBLISH normally makes both facets READY. A bounded cold loader may later complete a missing facet without invalidating or rebuilding an already READY immutable facet.
+
+Lifecycle interaction summary:
+
+```text
+PUBLISH
+    -> publish/complete immutable entry only after successful commit
+
+DEPRECATE
+    -> no semantic cache mutation/invalidation
+
+root DELETE
+    -> optional local eviction only
+    -> not a correctness prerequisite
+```
 
 ---
 
