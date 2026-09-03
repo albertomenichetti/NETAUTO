@@ -162,13 +162,19 @@ After completion of this consistency sweep, the immediate review frontier is the
 RelationshipDefinition model-plane review
 ```
 
-Primary intent/input owner:
+Current family owner:
+
+```text
+relationshipdefinition.md
+```
+
+Primary semantic-intent input:
 
 ```text
 new-relationship-definition.md
 ```
 
-plus the distributed `relationshipdefinition-*-discovery.md` inputs listed below.
+The distributed `relationshipdefinition-*-discovery.md` files remain source material / operation-specific evidence and are subordinate to the current family owner where older assumptions conflict.
 
 The current-state data-plane discovery baseline is already closed:
 
@@ -362,13 +368,50 @@ objecttemplate-validation-loader-handoff.md
 
 ## RelationshipDefinition — ACTIVE REVIEW FRONTIER
 
-### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE REVIEW FRONTIER
+### [`relationshipdefinition.md`](relationshipdefinition.md) — SPINE / ACTIVE REVIEW FRONTIER / single family owner
 
-Current upstream intent/input owner for the RelationshipDefinition redesign that removed autonomous `RelationshipResolution` identity from the current candidate direction and introduced stable directional semantic names plus materialized exact-template semantic space.
+This is the current RelationshipDefinition family review owner.
 
-Its stabilized subset was sufficient for the factual Relationship review, but the Relationship model-plane family is now the immediate analysis frontier. Its API, exact semantic contract, lifecycle/version interactions, relational closure and physical handoff must be re-evaluated without silently importing stale `RelationshipResolution` assumptions.
+It owns the current caller-first REST/API review and subsequent model-plane review decisions. The GET family is now REST-contract reviewed there, including:
 
-Existing distributed discovery remains active input/source for that review:
+```text
+GET /relationship-definitions
+    -> compact paginated summaries
+
+GET /relationship-definitions/{id}
+    -> compact Definition detail
+    -> factored complete current applicability closure
+
+GET /relationship-definitions/{id}/versions
+    -> paginated version summaries
+    -> optional status filter
+
+GET /relationship-definitions/{id}/versions/{version}
+    -> exact version detail
+    -> ordered property declarations
+```
+
+Current API deltas already recorded by the owner include:
+
+```text
+REMOVE RelationshipDefinition.RENAME
+NO autonomous Resolution / resolution_id REST identity
+ObjectTemplate references expose id + qualified_name
+Definition detail exposes factored applicability by perspective
+version LIST/detail do not repeat relationship_definition_id
+property DataType pins expose id + qualified_name + exact version
+property position remains internal ordering metadata and is not public input/output
+```
+
+Current next micro-point is RelationshipDefinition CREATE.
+
+### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE INPUT / SEMANTIC SOURCE
+
+Upstream semantic-intent input for the redesign that removed autonomous `RelationshipResolution` identity from the current candidate direction and introduced stable directional semantic names plus materialized exact-template semantic space.
+
+Its stabilized subset was sufficient for the factual Relationship review and now acts as semantic input to `relationshipdefinition.md`. It is no longer the navigation owner for the active family review.
+
+Existing distributed discovery remains source material / operation-specific evidence:
 
 ```text
 relationshipdefinition-create-discovery.md
@@ -386,6 +429,8 @@ relationshipdefinition-revise-discovery.md
 relationshipdefinition-set-default-discovery.md
 relationshipdefinition-clear-default-discovery.md
 ```
+
+Those files may retain historical assumptions such as autonomous Resolution identity, mutable names, `max(existing)+1` allocation or public `position`; such assumptions are not current authority when they conflict with the active owner or reviewed cross-domain owners.
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
@@ -585,6 +630,8 @@ Former route-specific Object WIP families and focused component/SCHEMA_CHANGE so
 
 The factual Relationship temporary continuation files were likewise removed after the ordered checkpoints through `C-REL-35` were consolidated into `relationship.md`.
 
+RelationshipDefinition distributed discovery files remain in place while `relationshipdefinition.md` is the active family owner. They are retained as operation-specific evidence until the family review is complete enough for a later consolidation/cleanup decision.
+
 Source material is evidence only. If it conflicts with a reviewed owner/general principle, revalidate explicitly rather than treating the source as authority.
 
 # 9. Maintenance rules
@@ -654,6 +701,8 @@ SOURCE MATERIAL
 ```
 
 Within one ordered family owner, later explicit ratifications supersede earlier candidate/history passages where they conflict. This is particularly relevant to `relationship.md`, where `C-REL-27` and `C-REL-35` supersede earlier root/self-loop snapshots.
+
+For the current RelationshipDefinition review, `relationshipdefinition.md` is the family owner; `new-relationship-definition.md` is semantic intent input and distributed `relationshipdefinition-*-discovery.md` files are source material/evidence.
 
 Review-state classification never changes topic ownership; it states whether the owner is safe to reuse as a closed baseline for subsequent review work.
 
