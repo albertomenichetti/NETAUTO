@@ -56,6 +56,8 @@ version-allocation.md
 object.md
 object-revision.md
 object-components-persistence.md
+
+relationship.md
 ```
 
 ## REVIEWED BASELINE SUPPORT
@@ -64,78 +66,43 @@ object-components-persistence.md
 object-template-ancestry-cache.md
 ```
 
-The route-level Object sweep is now complete. `object.md` directly owns the reviewed Object public routes, while cross-operation responsibilities remain intentionally separate in their dedicated owners.
+The route-level Object sweep is complete and consolidated in `object.md`, with cross-operation Object generation/component persistence responsibilities remaining in their dedicated reviewed owners.
 
-The focused SCHEMA_CHANGE, component-slot GET, ATTACH, DETACH and GET-owner closures are all losslessly represented in `object.md`, including:
-
-```text
-POST /objects/{id}/schema
-GET /objects/{parent_object_id}/components/{slot_name}
-POST /objects/{parent_object_id}/components/{slot_name}/attach
-POST /objects/{parent_object_id}/components/{slot_name}/detach
-GET /objects/{child_object_id}/owner
-```
-
-including their public contracts, logical data paths, cache behavior, failure semantics, concurrency outcomes, cost profiles and architecture handoffs.
-
-Additional reviewed Object-family decisions now explicitly represented in `object.md` are:
-
-```text
-GET /objects/{id}
-    -> complete first-level Object representation
-    -> direct-child fan-out deliberately unbounded
-    -> no pagination, truncation or backend cardinality guard on this route
-
-Object UUID identity
-    -> lifetime-global semantic identity
-    -> never reusable after allocation, including after DELETE
-    -> positive ObjectLineageCache entries may safely outlive current existence
-
-future ObjectTemplate sweep
-    -> material changes to effective-property, effective-component or stable-ancestry contracts
-       trigger targeted revalidation of dependent Object routes
-    -> unaffected Object routes remain reviewed baseline
-```
-
-The former ATTACH/DETACH route-local source families, the shared ownership-command route-shape checkpoint, the dedicated component read-projection source and the superseded component-persistence exploration source family have been removed after explicit lossless absorption and reference cleanup; Git history remains the historical reasoning record.
-
-Cross-operation responsibilities remain intentionally separate:
-
-```text
-object-revision.md
-    -> intrinsic Object generation / expected_revision protocol
-
-object-components-persistence.md
-    -> current component-slot / ownership persistence boundary
-```
-
-The dedicated SCHEMA_CHANGE/fingerprint micro-WIP family was already removed after its earlier lossless consolidation; its non-superseded findings are represented by `object.md`, the cross-operation owners above and lifecycle discovery consumers.
-
-Object-relative factual Relationship and Lifecycle surfaces are not reopened as Object routes merely because their URLs are Object-rooted; they remain owned by their later top-down family passes.
-
-## ACTIVE REVIEW FRONTIER
-
-The current upstream review frontier is now:
-
-```text
-RelationshipDefinition / RelationshipResolution semantic-model redesign
-```
-
-The dedicated intent owner is:
-
-```text
-new-relationship-definition.md
-```
-
-It records the candidate TO-BE semantic and relational model being used to revalidate stable Resolution names, effective semantic-space materialization and duplicate/repetition semantics before downstream factual Relationship work resumes.
-
-The factual Relationship owner remains present but is explicitly **REVIEW FROZEN** pending this upstream revalidation:
+The factual Relationship top-down sweep is also complete at the discovery/revalidation level and has been losslessly consolidated back into the single owner:
 
 ```text
 relationship.md
 ```
 
-Previously ratified factual Relationship public-contract checkpoints and recorded technical findings remain preserved as review history; Definition/Resolution-dependent assumptions must be revalidated after the upstream intent stabilizes.
+The temporary `relationship-continuation.md` and `relationship-continuation-2.md` files have been merged back and removed. `relationship.md` now contains the ordered post-definition checkpoints through `C-REL-35`, including the global/Object-scoped reads, CREATE, DATA_CHANGE, SCHEMA_CHANGE and DELETE closures.
+
+`REVIEWED BASELINE` here remains a WIP review state only. Factual Relationship still has architecture-closing decisions, most notably the final CREATE Definition-selection request shape and the global physical/cache/concurrency realization.
+
+## ACTIVE REVIEW FRONTIER
+
+The current top-down data-plane review frontier is now:
+
+```text
+Lifecycle
+```
+
+Current Lifecycle inputs:
+
+```text
+object-lifecycle-read-discovery.md
+lifecycle-list-detail-api-discovery.md
+lifecycle-summary-data-path-discovery.md
+```
+
+The top-down order is therefore now:
+
+```text
+Object         -> REVIEWED BASELINE
+Relationship   -> REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
+Lifecycle      -> ACTIVE REVIEW FRONTIER
+```
+
+Model-plane families remain active inputs in parallel and may still trigger targeted revalidation when a material upstream decision changes a reviewed data-plane assumption.
 
 # 2. Current M4 spine
 
@@ -164,9 +131,7 @@ Initial M4 motivation, workload hypotheses and design exploration.
 
 ### [`top-down-api-closure-sweep.md`](top-down-api-closure-sweep.md) — SPINE / operating method / NOT REVIEWED BASELINE
 
-Method used to close routes from public contract through data path, cache, concurrency, persistence and architecture handoff. It also owns the cross-family review default that mutation acknowledgement must be evaluated independently from the richness/cost of the corresponding GET projection; exact success status/body remains a route-by-route family-owner decision.
-
-The former `mutation-response-semantics-discovery.md` file was removed after that reusable review rule was absorbed here. Its Object-specific conclusions are already owned by `object.md`; Git history remains the historical source for the superseded brainstorming.
+Method used to close routes from public contract through data path, cache, semantic concurrency, persistence implications, cost and architecture handoff.
 
 ### [`milestone-relational-schema-closure-requirement.md`](milestone-relational-schema-closure-requirement.md) — SUPPORT / HANDOFF
 
@@ -195,135 +160,24 @@ GET /objects/{child}/owner
 DELETE /objects/{id}
 ```
 
-For `GET /objects/{id}`, use the GET-Object section in `object.md` for the complete first-level representation and its deliberately unbounded direct-child fan-out. The route returns every current effective slot and every current direct child without pagination, truncation or a backend cardinality guard; cost remains `O(P + S + C)`.
-
-For `POST /objects/{id}/schema`, use the SCHEMA_CHANGE section in `object.md` for:
+Use `object.md` for route contracts/data paths/cost/concurrency/handoffs. Cross-operation responsibilities remain intentionally separate:
 
 ```text
-exact-target and equal-target no-op semantics
-SOURCE/TARGET exact effective-schema comparison
-property/component migration matrix
-immutable MigrationPlan and bounded semantic cache fills
-single-generation Object preparation
-expected_revision retry/reprepare
-final TARGET PUBLISHED admission
-current slot-delta maintenance/FK arbitration
-failure taxonomy and precedence
-operation-owned lifecycle binding + changed-property delta
-no-op/warm/cold cost character
-architecture handoff
+object-revision.md
+    -> intrinsic Object generation / expected_revision protocol
+
+object-components-persistence.md
+    -> current component-slot / ownership persistence boundary
+
+object-template-ancestry-cache.md
+    -> reusable stable ObjectTemplate ancestry/compatibility cache support
 ```
 
-For `GET /objects/{parent}/components/{slot}`, use the component-slot GET section in `object.md` for:
-
-```text
-explicit one-slot nested collection contract
-slot absent vs empty semantics
-child {id, canonical_name} page
-semantic-slot cursor identity
-SCHEMA_CHANGE cursor continuity/replacement rules
-one-statement current data path
-failure precedence
-bounded 0/1-statement cost profile
-physical plan/index handoff
-```
-
-For the ownership mutation pair, use the shared command-surface rationale immediately before the ATTACH section in `object.md`. It owns why ATTACH/DETACH are explicit symmetric semantic commands rather than generic CRUD on the `components` read projection or DELETE-with-body semantics.
-
-For `POST /objects/{parent}/components/{slot}/attach`, use the ATTACH section in `object.md` for:
-
-```text
-explicit /attach command route
-strict atomic batch 1..100 + 204 success
-parent vs nested-slot 404 distinction
-positive-only ObjectLineageCache[object_id] -> template_id
-lifetime-global non-reusable Object UUID identity
-no semantic negative Object-existence cache
-full READY stable ancestry/neighborship cache from object_template_ancestry
-protected ownerlessness + root-only cycle admission
-no mutable root materialization
-strict bulk edge insert
-child lifetime FK current-existence authority
-semantic-slot FK ownership_slot_unavailable arbitration
-PK/self-edge CHECK unexpected-failure classification after successful admission
-required parent/child historical canonical_name read after successful edge insertion
-one ATTACH_TO lifecycle row per committed ownership edge
-execution-path failure precedence + no diagnostic-only rereads/default retry
-warm 6 / full-cold 8 logical statement baseline
-architecture cache/SQL/FK/lock/index handoff
-```
-
-For `POST /objects/{parent}/components/{slot}/detach`, use the DETACH section in `object.md` for:
-
-```text
-explicit /detach command route
-strict atomic batch 1..100 + 204 success
-parent-before-self-reference precedence
-persisted ownership edge as semantic slot-identity authority
-no current-slot/schema/cache/ancestry/graph/revision preparation
-no requested-child existence scan solely for diagnostics
-all incomplete exact-edge states -> 409 ownership_conflict
-one-statement delete-first strict-batch certification
-required parent/child historical canonical_name capture during deletion
-conditional fused DETACH_FROM lifecycle, one event per committed removed edge
-no lifecycle work for inadmissible batches
-one PostgreSQL business-statement + COMMIT success baseline
-route-local lock-order policy deferred to architecture/core LockPlanner
-```
-
-For `GET /objects/{child}/owner`, use the GET-owner section in `object.md` for:
-
-```text
-strict no-query/no-body GET surface
-child absent -> 404 resource_not_found
-child present + ownerless -> 200 null
-owned DTO = parent ObjectReference {id, canonical_name} + slot_name
-slot_declaring_template_id excluded from public DTO
-one child-rooted current-state PostgreSQL statement
-no object_component_slots/model/cache/revision/lock/lifecycle work
-ordinary statement-snapshot concurrency semantics
-constant bounded one-statement cost profile
-no new relational/materialization/cache requirement
-physical plan/index handoff
-```
-
-The Object family closure is explicitly dependency-aware. A material future change to ObjectTemplate certified exact effective-property semantics, certified exact effective-component semantics or stable complete ancestry reopens only the dependent Object routes identified by the revalidation-trigger section in `object.md`.
-
-Current component persistence mechanics are owned by `object-components-persistence.md`; intrinsic Object generation by `object-revision.md`; reusable stable ObjectTemplate ancestry-cache semantics by `object-template-ancestry-cache.md`.
-
-### [`object-revision.md`](object-revision.md) — SPINE / REVIEWED BASELINE
-
-Owner for the universal intrinsic `objects.revision` generation/CAS protocol:
-
-```text
-CREATE -> revision=1
-prepared intrinsic mutation -> expected_revision
-persisted intrinsic mutation -> revision+1 atomically
-stale generation -> no mutation/lifecycle + bounded retry
-revision scope excludes ownership/Relationship facts outside objects
-```
-
-### [`object-components-persistence.md`](object-components-persistence.md) — SPINE / REVIEWED BASELINE
-
-Owner for current component/ownership persistence:
-
-```text
-object_component_slots
-object_components
-semantic slot identity
-materialization invariant
-edge -> current semantic-slot dependency
-relational blocker arbitration
-architecture physical-design handoff
-```
-
-### [`object-template-ancestry-cache.md`](object-template-ancestry-cache.md) — SUPPORT / REVIEWED BASELINE SUPPORT
-
-Reusable stable ObjectTemplate lineage ancestry/compatibility cache backed by the denormalized `object_template_ancestry` closure. A source becomes READY only after its complete ancestor/neighborship set is loaded. Exact physical/cache implementation remains architecture work.
+The Object family closure is dependency-aware. Material future changes to certified effective-property/effective-component semantics or stable ancestry trigger only the targeted revalidations recorded by the Object owner.
 
 # 4. Model-plane families — ACTIVE INPUT sets
 
-These families do not yet have one consolidated reviewed owner comparable to the Object owners above. The following filename sets represent their current distributed working state.
+These families remain non-normative active input unless/until consolidated and promoted by the milestone architecture process.
 
 ## DataType
 
@@ -372,9 +226,11 @@ objecttemplate-validation-loader-handoff.md
 
 ## RelationshipDefinition
 
-### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE REVIEW FRONTIER
+### [`new-relationship-definition.md`](new-relationship-definition.md) — INTENT DRAFT / ACTIVE INPUT / ARCHITECTURE HANDOFF
 
-Current upstream intent owner for the RelationshipDefinition/RelationshipResolution redesign. It records the candidate stable Resolution-name semantics, the compact declared Resolution source, the materialized `relationship_resolution_space`, semantic-cell uniqueness and model-plane/data-plane responsibility split. It is explicitly non-normative and leaves symmetric/non-symmetric final shape, physical DDL/FKs/indexes, lifecycle and factual Relationship consequences OPEN.
+This remains the upstream intent owner for the RelationshipDefinition redesign that removed autonomous `RelationshipResolution` identity from the current candidate direction and established stable directional semantic names plus materialized exact-template semantic space.
+
+Its stabilized semantics were sufficient to complete the downstream factual Relationship revalidation. Remaining model-plane API/physical/lifecycle details no longer freeze the factual owner by default; a future material change reopens only affected dependencies.
 
 Existing distributed discovery remains active input/source for revalidation:
 
@@ -397,17 +253,13 @@ relationshipdefinition-clear-default-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-# 5. Factual Relationship — REVIEW FROZEN
+# 5. Factual Relationship — REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
 
-### [`relationship.md`](relationship.md) — REVIEW FROZEN / single factual Relationship WIP owner
+### [`relationship.md`](relationship.md) — SPINE / REVIEWED BASELINE / single factual Relationship WIP owner
 
-This file remains the single factual Relationship WIP owner and preserves the previously consolidated route/data-path work for CREATE, runtime closure/conflicts, global GET, Object-scoped Relationship collection, DATA_CHANGE, SCHEMA_CHANGE, DELETE and Object-relative Relationship API exploration.
+`relationship.md` is again the single factual Relationship WIP owner. The former temporary continuations have been losslessly absorbed and removed.
 
-The factual Relationship review is currently frozen because technical revalidation exposed a possible upstream semantic-model problem in `RelationshipDefinition` / `RelationshipResolution`. No new factual Relationship technical/physical checkpoint should be ratified until `new-relationship-definition.md` has been reviewed and the relevant upstream model is stabilized.
-
-Previously ratified factual Relationship public-contract checkpoints remain preserved as review history. Any downstream assumption depending on Definition/Resolution topology, Resolution-name mutability, runtime-resolution cardinality, factual uniqueness or persistence ownership must be explicitly revalidated after the upstream review.
-
-The M4 factual Relationship functional capability coverage gate remains recorded as CLOSED with the required capabilities:
+The post-definition full sweep covers exactly the M4 factual capabilities:
 
 ```text
 CREATE
@@ -418,26 +270,114 @@ SCHEMA_CHANGE
 DELETE
 ```
 
-Additional recorded coverage decisions remain:
+Current reviewed data-plane direction includes:
 
 ```text
-NO Object-scoped single-Relationship detail for now
-    -> global detail + Object-scoped collection are sufficient
+relationships
+    -> factual root
+    -> relationship_definition_id
+    -> exact relationship_definition_version
+    -> properties
+    -> private revision generation token
 
-global Relationship discovery/query
-    -> real need, deferred to M5 Search API
-    -> no generic root Relationship collection required in M4
+runtime_relationship_cells
+    -> owned exact Object-level semantic cells
+    -> (relationship_id, from_object_id, name, to_object_id)
 
-endpoint reassignment/repointing
-    -> changes the fact
-    -> DELETE + CREATE with a new relationship_id
+semantic-cell uniqueness
+    -> (from_object_id, name, to_object_id)
+    -> at most one current factual Relationship owner
+
+semantic name
+    -> stable runtime semantic state
+    -> no autonomous RelationshipResolution / resolution_id
 ```
 
-These checkpoints are not automatically revoked by the freeze, but Definition-dependent semantics may be reopened by the upstream redesign.
+Key reviewed route-level conclusions include:
 
-# 6. Lifecycle — ACTIVE INPUT with reviewed mutation payload inputs
+```text
+global GET
+    -> complete lossless perspectives[]
+    -> one authoritative PostgreSQL statement
+    -> no model-plane recertification
 
-Current lifecycle discovery:
+Object-scoped GET
+    -> 1:1 runtime-cell projection
+    -> exact name filter restored
+    -> keyset (name, to_object_id)
+    -> semantic-cell B-tree reused for navigation
+
+DATA_CHANGE
+    -> immutable exact-RDV semantic cache
+    -> relationships.revision freshness
+    -> no new model-plane admission
+
+SCHEMA_CHANGE
+    -> exact SOURCE/TARGET pair
+    -> numeric version direction has no migration meaning
+    -> exact-pair MigrationPlan
+    -> lossless conditional LIST -> SCALAR
+    -> revision freshness + final TARGET PUBLISHED admission
+
+DELETE
+    -> explicit root-only DELETE
+    -> owned runtime cells removed by FK ON DELETE CASCADE
+    -> no closure recertification
+    -> no DELETE revision protocol
+    -> one-business-statement target + atomic lifecycle
+```
+
+Factual-domain delta discovered during the DELETE pass:
+
+```text
+from_object_id != to_object_id
+
+self-reference
+    -> 422 semantic_validation_failed
+    -> rule = self_reference
+```
+
+This supersedes earlier factual self-loop candidates. Consumers of admitted persisted state do not recertify this invariant.
+
+Remaining architecture-closing items include at least:
+
+```text
+C-REL-26
+    final CREATE request choice:
+        Candidate A -> explicit relationship_definition_id
+        Candidate B -> derive owning Definition from admitted semantic cell
+
+C-REL-22
+    revalidate optional relationship_fact_conflict owner detail
+    against the final efficient arbitration path
+
+final relational DDL
+    relationships.revision
+    runtime_relationship_cells PK/UNIQUE/FKs/CASCADE
+    physical indexes
+
+final cache realization
+    immutable exact RDV semantics
+    migration plans
+
+final concurrency realization
+    lock/wait/FK/UNIQUE arbitration
+    retry/rendezvous/deadlock proof
+
+final lifecycle physical carriers
+    coherent Object canonical-name observations
+    batch persistence/decoding
+
+EXPLAIN/BUFFERS/storage/JSONB/WAL/latency/contention evidence
+```
+
+These are architecture/physical decisions and do not reopen route-local factual discovery merely to choose a mechanism. A material new semantic dependency remains a valid targeted reopen trigger.
+
+Global Relationship discovery/query remains deferred to M5 Search API. Object-scoped single-Relationship detail remains unnecessary absent a new caller requirement. Endpoint reassignment/repointing remains DELETE + CREATE with a new factual identity.
+
+# 6. Lifecycle — ACTIVE REVIEW FRONTIER
+
+Current Lifecycle discovery:
 
 ```text
 object-lifecycle-read-discovery.md
@@ -445,7 +385,9 @@ lifecycle-list-detail-api-discovery.md
 lifecycle-summary-data-path-discovery.md
 ```
 
-The files remain ACTIVE INPUT as complete documents, but mutation-owned payload semantics already ratified by reviewed Object owners are baseline inputs, including:
+Reviewed Object and factual Relationship mutation owners now provide the operation-owned lifecycle inputs that this pass must consume rather than redefine.
+
+Object baseline inputs include:
 
 ```text
 RENAME
@@ -457,113 +399,50 @@ DATA_CHANGE
 SCHEMA_CHANGE
     -> exact binding transition + actual changed-property delta
 
-ATTACH
-    -> edge semantic identity
-       child_object_id
-       parent_object_id
-       slot_declaring_template_id
-       slot_name
-    -> required historical child/parent canonical_name display metadata
-    -> exactly one ATTACH_TO event per committed ownership edge
+ATTACH / DETACH
+    -> exact ownership-edge semantic identity
+    -> required coherent historical Object display metadata
+    -> one event per real edge transition
 
-DETACH
-    -> exact removed edge semantic identity
-       child_object_id
-       parent_object_id
-       slot_declaring_template_id
-       slot_name
-    -> required historical child/parent canonical_name display metadata
-    -> exactly one DETACH_FROM event per committed removed edge
+Object CREATE / DELETE
+    -> broader creation/deletion snapshot where operation responsibility justifies it
 ```
 
-The lifecycle API pass still owns final collection/detail DTOs, discriminated detail carrier, persistence decoding and read-side physical realization.
+Factual Relationship baseline inputs include:
 
-# 7. Object source material retained behind current owners
+```text
+RELATIONSHIP_CREATED
+    before_state = null
+    after_state  = { relationship_definition_version, properties }
+
+RELATIONSHIP_DATA_CHANGE
+    before/after exact factual snapshots
+    same exact version
+
+RELATIONSHIP_SCHEMA_CHANGE
+    before/after exact factual snapshots
+    before.version != after.version
+    no numeric direction meaning
+
+RELATIONSHIP_DELETED
+    before_state = { relationship_definition_version, properties }
+    after_state  = null
+
+Relationship event fan-out
+    -> one event row per persisted runtime semantic cell
+    -> coherent historical Object canonical-name observations
+    -> revision excluded from historical factual state
+```
+
+The Lifecycle pass owns final collection/detail DTOs, discriminated event-detail carriers, persistence decoding/read paths, summary-vs-detail payload boundaries and its own physical/read optimization handoff.
+
+# 7. Source-material cleanup notes
+
+Former route-specific Object WIP families and focused component/SCHEMA_CHANGE source files were removed after their lossless absorption into reviewed Object owners. Git history remains historical evidence.
+
+The factual Relationship temporary continuation files were likewise removed after the ordered checkpoints through `C-REL-35` were consolidated into `relationship.md`.
 
 Source material is evidence only. If it conflicts with a reviewed owner/general principle, revalidate explicitly rather than treating the source as authority.
-
-## Component navigation / ownership route source cleanup
-
-The former dedicated navigation cursor/data-path files, broad Object-components brainstorming files, focused component-slot GET route owner, dedicated component read-projection source and shared ownership-command route-shape checkpoint were removed after lossless consolidation into:
-
-```text
-object.md / Object family route semantics and ownership command-surface rationale
-object-components-persistence.md / shared persistence boundary
-```
-
-`object-components-reads-discovery.md` was removed after the GET-owner full sweep confirmed that its route-local owner projection was fully absorbed by `object.md` and its still-relevant persistence/read consequences were already represented by `object-components-persistence.md`.
-
-`object-ownership-command-routes.md` was removed after its remaining unique rationale was absorbed into the shared ownership command-surface note in `object.md`: ATTACH/DETACH are explicit symmetric semantic commands; DETACH of a caller-selected child subset is not represented as DELETE of the slot collection with a request body; a future detach-all capability would be a distinct semantic operation.
-
-Git history is their historical source.
-
-## ATTACH source-family cleanup
-
-The former route-specific files matching:
-
-```text
-object-attach-*.md
-to-be-api-object-attach-*.md
-```
-
-were removed after the ATTACH full sweep, explicit lossless absorption into `object.md` / reviewed cross-operation owners, and reference cleanup. They are no longer part of the live M4 working set and cannot compete with the reviewed ATTACH owner.
-
-Git history is the historical source for the earlier rationale and superseded mechanisms.
-
-## DETACH source-family cleanup
-
-The former route-specific files matching:
-
-```text
-object-detach-*.md
-to-be-api-object-detach-*.md
-```
-
-were removed after the DETACH full sweep, explicit lossless absorption into `object.md` / reviewed cross-operation owners, and reference cleanup. They are no longer part of the live M4 working set and cannot compete with the reviewed DETACH owner.
-
-Git history is the historical source for the earlier rationale and superseded mechanisms.
-
-## Component-persistence source-family cleanup
-
-The former focused component-persistence exploration files:
-
-```text
-object-component-slots-data-plane-materialization.md
-object-component-slots-fk-arbitration.md
-object-components-runtime-schema-discovery.md
-object-components-physical-index-candidate.md
-object-components-physical-schema-discovery.md
-```
-
-were removed after an explicit final lossless check against:
-
-```text
-object-components-persistence.md
-    -> shared current persistence/materialization owner
-    -> retained architecture physical-design/evidence handoff
-
-object.md
-    -> full-swept route-local consequences
-```
-
-`object-components-persistence.md` already records the consolidated current materialization shape, fields deliberately omitted, semantic/public identities, lifetime composition, edge-to-slot dependency, PostgreSQL FK-arbitration evidence, cross-operation consequences, storage/workload trade-off, migration/backfill direction, physical candidate alternatives and the required `EXPLAIN`/storage/write evidence gate. Exact PK/UNIQUE/FK/index DDL remains architecture work.
-
-The removed source files included first-phase or intermediate candidates that are now superseded where they differ from the consolidated owners; for example, older ATTACH cost variants and the earlier edge-only direction must not compete with current route/persistence ownership.
-
-Git history remains the historical source for their earlier rationale and superseded alternatives.
-
-## SCHEMA_CHANGE source family cleanup
-
-The former dedicated SCHEMA_CHANGE/fingerprint micro-WIP family and the focused SCHEMA_CHANGE route owner were removed after the full sweep and lossless consolidation into:
-
-```text
-object.md
-object-revision.md
-object-components-persistence.md
-lifecycle discovery consumers
-```
-
-Git history is the historical source.
 
 # 8. Maintenance rules
 
