@@ -1,82 +1,129 @@
 # RelationshipDefinition SET_DEFAULT — M4 discovery
 
-Status: WIP / NON-NORMATIVE
+Status: **TECHNICAL DISCOVERY CLOSED EXCEPT CONCURRENCY/PHYSICAL REALIZATION / WIP / NON-NORMATIVE**
 
-## Scope
+This note is operation-specific source/evidence subordinate to `relationshipdefinition.md` and to the current RelationshipDefinition technical consolidation ledger.
 
-This note records the M4 discovery findings for `RelationshipDefinition.SET_DEFAULT` only. It is not a frozen contract or implementation authorization.
+## Ratified M4 technical direction
 
-## Current semantic need
+`SET_DEFAULT` changes only current mutable selection state on the RelationshipDefinition lineage.
 
-`SET_DEFAULT` changes only current mutable selection state on the RelationshipDefinition lineage. The selected exact version must exist in the same Definition and be currently `PUBLISHED`.
+The selected exact version must:
 
-The public response is the complete current `RelationshipDefinition` DTO, including:
+```text
+exist in the same RelationshipDefinition
+status == PUBLISHED
+```
 
-- `id`
-- `symmetric`
-- `default_version`
-- complete current Resolution set with current mutable names and stable endpoint identities
+The reviewed M4 REST success contract is:
 
-Therefore this operation differs from ObjectTemplate SET_DEFAULT: the response cannot be reconstructed from a stable topology cache alone because Resolution `name` is mutable/current metadata.
+```text
+204 No Content
+```
 
-## AS-IS data path
+Therefore older AS-IS/discovery work that reloaded and returned the complete RelationshipDefinition aggregate after mutation is superseded.
 
-Current application behavior conceptually performs:
+## No semantic-preparation phase
 
-1. lock Definition header and target exact version;
-2. load the complete target RelationshipDefinitionVersion;
-3. require target status `PUBLISHED`;
-4. update `relationship_definitions.default_version`;
-5. reload the complete RelationshipDefinition aggregate, including all Resolutions, for the response.
+`SET_DEFAULT` does not require worker-side semantic preparation.
 
-The exact target property schema is over-read: SET_DEFAULT requires only target existence and current lifecycle status.
+It does not consume:
 
-## M4 candidate data path
+```text
+RDV property declarations
+DataType / DataTypeVersion semantic payload
+compiled RDV cache
+relationship_definition_space
+ObjectTemplate ancestry
+historical property continuity
+RDV revision
+```
 
-Target a single PostgreSQL mutation/projection statement which:
+PostgreSQL remains the authority for the complete current admission predicate.
 
-1. distinguishes Definition absence, exact-version absence, and exact target not currently `PUBLISHED`;
-2. updates `default_version` only for an admissible exact target;
-3. returns the complete current RelationshipDefinition projection, including current Resolution names.
-
-A data-modifying CTE or equivalent one-statement projection is a candidate realization. Exact SQL shape remains implementation/design work, and concurrency correctness against DEPRECATE is deferred to the global M4 concurrency phase.
+## Logical short-UoW path
 
 Conceptually:
 
 ```text
-candidate exact version
-        ↓
-current exact existence/status check
-        ↓
-UPDATE default_version
-        ↓
-project current Definition + complete Resolutions
+SET_DEFAULT(definition_id, version)
+
+current admission
+    RelationshipDefinition exists
+    exact RDV exists in same Definition
+    exact RDV status == PUBLISHED
+
+mutation
+    RelationshipDefinition.default_version = version
+
+commit
 ```
 
-## Cache assessment
+The operation is idempotent on current value:
 
-No cache is required or desirable for this operation.
+```text
+default_version == version
+    -> successful 204
+```
 
-A stable RelationshipDefinition topology cache may contain:
+No response-only aggregate reconstruction or post-write reload is required.
 
-- Definition id
-- symmetry
-- Resolution id
-- from_template_id
-- to_template_id
+## Cache/materialization boundary
 
-but should not contain mutable Resolution names or `default_version`.
+No cache fill, cache invalidation or new denormalization is justified.
 
-The public SET_DEFAULT response requires those current mutable fields, so PostgreSQL remains the correct source for the returned aggregate. Do not expand the stable cache only to avoid this rare model-plane read.
+The immutable exact-RDV cache deliberately excludes lifecycle status and Definition default state, so it cannot prove SET_DEFAULT admission and does not need modification when the default pointer changes.
 
-## Denormalization assessment
+`relationship_definition_space` is independent from `default_version` and is untouched.
 
-No new denormalization is justified by SET_DEFAULT.
+## Concurrency handoff
 
-## Deferred concurrency question
+The material race is:
 
-Whether the target one-statement mutation is sufficient as the complete concurrency rendezvous with concurrent DEPRECATE must be proven in the later global concurrency phase. Do not redesign locks during this discovery phase.
+```text
+SET_DEFAULT(D@V)
+vs
+DEPRECATE(D@V)
+```
 
-## Candidate decision
+Required serializable outcome:
 
-`RelationshipDefinition.SET_DEFAULT` should avoid loading the target property schema and should aim for a one-statement PostgreSQL validation + update + aggregate projection. Preserve current diagnostic distinctions and the complete public response. No cache fill, cache invalidation, or new denormalization is needed.
+```text
+SET_DEFAULT wins
+    -> V becomes current default
+    -> DEPRECATE cannot commit while V remains default
+
+DEPRECATE wins
+    -> V is no longer PUBLISHED
+    -> SET_DEFAULT cannot commit V as default
+```
+
+Exact locking/rendezvous/statement realization remains architecture/concurrency work.
+
+## Technical closure checkpoint
+
+```text
+RD SET_DEFAULT
+
+semantic preparation
+    -> NONE
+
+authoritative state
+    -> PostgreSQL only
+
+reads/admission
+    -> Definition existence
+    -> exact target existence/status only
+
+writes
+    -> default_version only
+
+cache
+    -> NONE
+
+post-write reload
+    -> NONE
+
+response
+    -> 204
+```
