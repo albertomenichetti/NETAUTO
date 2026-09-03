@@ -1,6 +1,6 @@
 # M4 WIP — Cross-domain exact-version allocation
 
-**Status:** ACTIVE CROSS-DOMAIN DISCOVERY OWNER / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** REVIEWED BASELINE / CROSS-DOMAIN DISCOVERY OWNER / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose
 
@@ -116,13 +116,51 @@ last_version
 
 The table is intentionally shared by all versioned domain families; separate allocator tables per family are not required.
 
-Examples of consumers include versioned DataType, ObjectTemplate and Relationship-domain lineages/resources.
-
-The allocator does not need to know the semantic type of the owning resource. It owns only the mapping:
+Current versioned lineage consumers are:
 
 ```text
-versioned UUID -> last allocated numeric version
+DataType
+ObjectTemplate
+RelationshipDefinition
 ```
+
+The allocator does not need to persist the semantic type of the owning resource. It owns only the mapping:
+
+```text
+versioned lineage UUID -> last allocated numeric version
+```
+
+## 3.1 Cross-family UUID namespace invariant
+
+The single-column allocator key relies on the project-wide UUID allocation convention:
+
+```text
+kernel-generated entity UUIDs
+    -> Python uuid4
+    -> one undifferentiated practical UUID namespace across families
+```
+
+For the versioned lineage families relevant to this allocator:
+
+```text
+DataType.id
+ObjectTemplate.id
+RelationshipDefinition.id
+```
+
+are treated by NETAUTO as globally unique across those families. The same UUID value is not a supported identity for two different lineages, even when the lineages belong to different model families.
+
+Consequently:
+
+```text
+last_versions.id
+```
+
+is sufficient to identify one version-allocation sequence and no `resource_kind` discriminator is required merely to avoid cross-family ambiguity.
+
+This does **not** mean that public API resource type can be inferred from an arbitrary UUID without route/type context. It is an internal identity-allocation invariant: cross-family UUID collision or intentional UUID reuse is unsupported internal state rather than a legitimate pair of resources.
+
+If the project ever changes away from this shared UUID allocation invariant, the `last_versions` key shape must be revalidated.
 
 # 4. Allocation rule
 
@@ -210,4 +248,4 @@ FK or no-FK realization across heterogeneous owning tables
 migration/backfill from existing versioned data
 ```
 
-The current discovery decision is only that one shared logical allocator is sufficient and that version numbers never move backward or get reused within one lineage.
+The current discovery decision is only that one shared logical allocator is sufficient, that the relevant lineage UUIDs share one cross-family UUID namespace, and that version numbers never move backward or get reused within one lineage.
