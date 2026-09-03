@@ -956,17 +956,317 @@ Downstream data-path/physical/concurrency work may choose how to realize these s
 
 ---
 
-# 10. Current next review frontier
+# 10. RD-CREATE-NEXT-01 — CREATE_NEXT RelationshipDefinitionVersion
+
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
+
+## Route and request
+
+```http
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/create-next
+```
+
+Query: none.
+
+Body:
+
+```text
+RelationshipDefinitionCreateNext
+    source_version: positive integer
+```
+
+`source_version` remains a command operand rather than a path target because the route operates on the stable RelationshipDefinition and asks the server to create a new exact version from one selected source.
+
+## Source eligibility and clone semantics
+
+The selected source exact RelationshipDefinitionVersion must exist in the same Definition and have lifecycle status:
+
+```text
+PUBLISHED | DEPRECATED
+```
+
+A DRAFT source is not eligible.
+
+CREATE_NEXT clones the complete exact property declaration snapshot, including the preserved internal property order. It does not reinterpret the property schema through current defaults and does not treat worker cache state as the authoritative clone source.
+
+The newly created version is:
+
+```text
+version
+    -> allocated through the shared monotonic/no-reuse lineage allocator
+
+revision = 1
+status = DRAFT
+properties = exact clone of source declaration snapshot
+```
+
+The source does not need to be numerically highest. Version-number magnitude is allocation identity/order only and does not encode migration direction or preferred source semantics.
+
+## Clone, not re-certify
+
+CREATE_NEXT does not re-run new-binding admission against exact DataType pins already present in an eligible immutable source merely because their current lifecycle state may have changed since source publication.
+
+In particular:
+
+```text
+source property exact DataType pin
+    -> cloned as historical exact semantic state
+    -> current DataTypeVersion need not still be PUBLISHED merely to clone
+```
+
+The new result is DRAFT and may later be revised before PUBLISH. PUBLISH owns the later certification boundary for making that exact candidate newly consumable as a published model version.
+
+If an exact dependency referenced by a persisted eligible source is physically missing, that is persisted-state corruption and therefore an internal failure rather than a caller operand error.
+
+## Success contract
+
+```text
+201 Created
+Location: /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{new_version}
+body: none
+```
+
+The exact-version Location exposes the newly allocated version identity. No response-only GET reconstruction is required.
+
+## Failure semantics
+
+```text
+400 invalid_request
+    malformed relationship_definition_id
+    source_version missing / null / malformed / non-positive
+    query parameter supplied
+    unknown/repeated body fields
+
+404 resource_not_found
+    path RelationshipDefinition absent
+
+422 referenced_resource_not_found
+    path Definition exists
+    + selected source exact RelationshipDefinitionVersion absent
+
+409 version_source_conflict
+    selected source exists
+    + source status is not PUBLISHED or DEPRECATED
+
+500 internal_error
+    persisted source/dependency invariant corruption
+    persistence / infrastructure failure
+```
+
+CREATE_NEXT does not normally expose:
+
+```text
+dependency_not_admissible
+default_version_unavailable
+semantic_validation_failed
+```
+
+because it clones an already-certified immutable source snapshot rather than creating or rebinding property dependencies from caller declarations.
+
+## CREATE_NEXT REST closure checkpoint
+
+```text
+POST /relationship-definitions/{id}/create-next
+    -> body source_version
+    -> source PUBLISHED | DEPRECATED
+    -> exact property snapshot clone
+    -> no DataType re-admission solely for clone
+    -> shared no-reuse version allocation
+    -> new DRAFT revision 1
+    -> 201 + exact-version Location
+    -> no response body
+```
+
+---
+
+# 11. RD-REVISE-01 — REVISE RelationshipDefinitionVersion
+
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
+
+## Route and request
+
+```http
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/revise
+```
+
+Query:
+
+```text
+expected_revision: positive integer required
+```
+
+Body:
+
+```text
+RelationshipDefinitionRevise
+    properties: required array of RelationshipDefinitionPropertyInput
+```
+
+REVISE is a complete replacement command for one exact DRAFT property's declaration candidate. It is not a patch.
+
+Therefore:
+
+```text
+properties omitted
+    -> invalid_request
+
+properties = null
+    -> invalid_request
+
+properties = []
+    -> valid complete replacement with an empty property schema
+```
+
+The property input carrier is exactly the same authoring carrier established for CREATE:
+
+```text
+RelationshipDefinitionPropertyInput
+    name: string
+    datatype_id: UUID
+    datatype_version: positive integer | omitted
+    value_mode: SCALAR | LIST
+```
+
+`position` remains absent from public input. The order of `properties[]` defines the new preserved internal ordinal order.
+
+## DataType selection semantics
+
+For every submitted property declaration:
+
+```text
+datatype_version present
+    -> select the explicit exact DataTypeVersion
+
+datatype_version omitted
+    -> resolve the current DataType.default_version
+    -> materialize that exact pin in the revised DRAFT
+
+datatype_version = null
+    -> invalid_request
+```
+
+Omission never means "preserve the current exact pin" for an already-existing property. It is always an explicit default-based selection instruction, aligned with the common ObjectTemplate authoring semantics.
+
+Current lifecycle admission applies only when REVISE creates or changes an exact DataType binding. An unchanged exact pin is historical/current candidate state and is not rejected merely because that exact DataTypeVersion is no longer PUBLISHED today.
+
+## Historical property continuity
+
+REVISE preserves the existing complete committed-history semantics across all PUBLISHED/DEPRECATED RelationshipDefinitionVersion generations, independently of numeric publication/version order.
+
+For a property name with committed history, at minimum:
+
+```text
+historical DataType lineage
+    -> cannot change
+
+once any committed historical declaration is LIST
+    -> later candidate SCALAR is forbidden
+```
+
+These are candidate semantic-validation rules. A later data-path implementation may detect a single violating historical fact set-based rather than loading all historical versions, but must preserve the same complete-history meaning.
+
+## Generation semantics
+
+The target must currently be DRAFT and the caller must present the exact current `expected_revision`.
+
+Every successful REVISE consumes exactly one DRAFT generation:
+
+```text
+status remains DRAFT
+revision = previous revision + 1
+```
+
+This happens even when the canonical complete replacement is identical to the current candidate.
+
+Therefore an identical replacement is not a no-op. This is intentionally aligned with ObjectTemplateVersion REVISE: `revision` represents the exact mutable DRAFT generation consumed by optimistic concurrency, not merely a count of semantic differences.
+
+## Success contract
+
+```text
+204 No Content
+body: none
+```
+
+The caller already selected the exact resource and supplied the complete replacement candidate. REVISE does not reconstruct the exact-version GET DTO solely for mutation response convenience.
+
+## Failure semantics
+
+```text
+400 invalid_request
+    malformed relationship_definition_id / version
+    expected_revision missing / null / malformed / non-positive
+    properties omitted / null
+    malformed datatype_id / datatype_version / value_mode
+    datatype_version = null
+    unknown/repeated query or body fields
+
+404 resource_not_found
+    RelationshipDefinition absent
+    OR exact target RelationshipDefinitionVersion absent
+
+422 referenced_resource_not_found
+    newly selected DataType lineage absent
+    OR newly selected explicit exact DataTypeVersion absent
+
+422 semantic_validation_failed
+    complete candidate violates an intrinsic RDV rule
+    duplicate property names
+    property naming rule violation
+    historical DataType-lineage continuity violation
+    historical LIST -> SCALAR violation
+
+409 lifecycle_state_conflict
+    exact target exists but is not DRAFT
+
+409 stale_revision
+    exact target is DRAFT
+    + expected_revision != current revision
+
+409 default_version_unavailable
+    datatype_version omitted
+    + selected DataType exists
+    + no current default can be resolved
+
+409 dependency_not_admissible
+    new/changed exact DataType binding exists
+    + is not currently admissible for new binding
+
+500 internal_error
+    persisted dependency/history invariant corruption
+    persistence / infrastructure failure
+```
+
+REVISE has no normal `relationship_definition_conflict` outcome because property-schema editing does not alter the stable Definition topology/name semantic-cell ownership contract.
+
+## REVISE REST closure checkpoint
+
+```text
+POST /relationship-definitions/{id}/versions/{version}/revise
+    -> required expected_revision query token
+    -> required complete properties[] replacement
+    -> same flat DataType authoring carrier as CREATE
+    -> omitted datatype_version always resolves current default
+    -> array order defines internal ordinal
+    -> target must be DRAFT
+    -> successful call ALWAYS revision + 1
+    -> identical canonical replacement is still a new generation
+    -> 204, no body
+```
+
+---
+
+# 12. Current next review frontier
 
 Current next family micro-point:
 
 ```text
-RelationshipDefinition CREATE_NEXT
-    -> exact route/body
-    -> source-version eligibility
-    -> shared monotonic/no-reuse target version allocation
-    -> success acknowledgement / Location
+RelationshipDefinition PUBLISH
+    -> exact route/request shape
+    -> expected_revision generation consumption
+    -> publication certification boundary
+    -> DataType dependency admission
+    -> success acknowledgement
     -> finite public failure vocabulary
 ```
 
-Then continue with REVISE, PUBLISH, default management, DEPRECATE and deletion separately.
+Then continue with default management, DEPRECATE and deletion separately.
