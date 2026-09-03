@@ -636,7 +636,7 @@ The GET-family REST contract is considered closed for the current review unless 
 
 # 9. RD-CREATE-01 — CREATE RelationshipDefinition
 
-**State:** REST CONTRACT PARTIALLY REVIEWED / ROUTE + SUCCESS + TOPOLOGY BODY REVIEWED / PROPERTY INPUT + FAILURE SEMANTICS OPEN
+**State:** REST CONTRACT PARTIALLY REVIEWED / ROUTE + SUCCESS + TOPOLOGY BODY + PROPERTY INPUT REVIEWED / FAILURE SEMANTICS OPEN
 
 ## Route
 
@@ -775,14 +775,83 @@ asymmetric Definitions
     -> endpoint spaces may be identical, disjoint or overlapping
 ```
 
+## Property authoring body
+
+The initial v1 DRAFT property schema uses a flat command carrier aligned with the common ObjectTemplate property-authoring pattern where the two domains share semantics:
+
+```text
+RelationshipDefinitionPropertyInput
+    name: string
+    datatype_id: UUID
+    datatype_version: positive integer | omitted
+    value_mode: SCALAR | LIST
+```
+
+`position` is not a public field. The caller expresses presentation/order intent through the order of `properties[]`; CREATE derives and stores the internal ordinal from that array order.
+
+DataType selection semantics:
+
+```text
+datatype_id
+    -> required stable DataType lineage selector
+
+datatype_version present
+    -> select that exact DataTypeVersion
+
+datatype_version omitted
+    -> resolve the current DataType.default_version
+    -> materialize the resulting exact pin in the new RDV declaration
+
+datatype_version = null
+    -> invalid request
+```
+
+New RelationshipDefinitionVersion property bindings admit only an exact DataTypeVersion that is currently valid for new model binding according to the owning DataType lifecycle contract; the exact selected pin is persisted regardless of whether it was explicit or resolved through the current default.
+
+Initial property-list omission semantics:
+
+```text
+properties omitted
+    -> exactly empty initial property schema
+
+properties = []
+    -> exactly empty initial property schema
+
+properties = null
+    -> invalid request
+```
+
+Property names remain unique within the exact version; property historical semantic identity remains name-based. `value_mode` remains explicit caller intent and is not inferred.
+
+### Cross-family ObjectTemplate alignment
+
+The RelationshipDefinition property command intentionally shares the common flat authoring subset with ObjectTemplate:
+
+```text
+name
+datatype_id
+datatype_version?    # omission resolves current DataType default
+value_mode
+```
+
+ObjectTemplate adds only domain-owned fields that do not apply to RelationshipDefinition:
+
+```text
+required
+migration_default
+```
+
+This is deliberate semantic uniformity rather than forced DTO identity.
+
+The current delivered ObjectTemplate wire still exposes explicit `position`. M4 has now classified RelationshipDefinition `position` as internal ordering metadata and removed it from public input/output. That difference is recorded as a targeted ObjectTemplate REST revalidation point when the ObjectTemplate family receives its own caller-first contract sweep; it does not reopen the RelationshipDefinition decision and does not silently change ObjectTemplate here.
+
 ## Still open inside CREATE
 
 ```text
-properties[] exact public input carrier
-DataType exact/default selection semantics in that carrier
-omission vs [] for initial property schema
 full 400 / 409 / 422 failure vocabulary
 semantic equivalence / semantic-cell conflict public classification
+missing/invalid ObjectTemplate endpoint classification
+missing/invalid DataType/default/exact-version classification
 ```
 
 ---
@@ -792,11 +861,10 @@ semantic equivalence / semantic-cell conflict public classification
 Current next family micro-point:
 
 ```text
-RelationshipDefinition CREATE properties[]
-    -> exact public property input carrier
-    -> DataType exact/default selection
-    -> omission/null/[] semantics
-    -> preserved caller array order -> internal ordinal
+RelationshipDefinition CREATE failure semantics
+    -> finite public 400 / 409 / 422 vocabulary
+    -> classify malformed body vs missing dependencies vs semantic invalidity vs model conflict
+    -> preserve no-diagnostic-only-work principle
 ```
 
-The remaining CREATE review then closes the finite public failure vocabulary before moving to CREATE_NEXT, REVISE, PUBLISH, default management, DEPRECATE and deletion.
+Once CREATE failures are closed, proceed to CREATE_NEXT, REVISE, PUBLISH, default management, DEPRECATE and deletion separately.
