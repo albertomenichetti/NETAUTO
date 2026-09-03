@@ -636,7 +636,7 @@ The GET-family REST contract is considered closed for the current review unless 
 
 # 9. RD-CREATE-01 — CREATE RelationshipDefinition
 
-**State:** REST CONTRACT PARTIALLY REVIEWED / ROUTE + SUCCESS + TOPOLOGY BODY + PROPERTY INPUT REVIEWED / FAILURE SEMANTICS OPEN
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
 
 ## Route
 
@@ -764,7 +764,7 @@ symmetric = false
 
 A/B remains stable authoring/persistence orientation, not privileged domain source/target meaning. The server does not canonicalize/reorder the caller-declared orientation merely to obtain a synthetic storage order.
 
-The upstream topology rules remain authoritative and will be classified in CREATE failure semantics rather than encoded by alternative DTO shapes. In particular:
+The upstream topology rules remain authoritative and are classified through CREATE semantic validation rather than alternative DTO shapes. In particular:
 
 ```text
 symmetric Definitions
@@ -845,14 +845,114 @@ This is deliberate semantic uniformity rather than forced DTO identity.
 
 The current delivered ObjectTemplate wire still exposes explicit `position`. M4 has now classified RelationshipDefinition `position` as internal ordering metadata and removed it from public input/output. That difference is recorded as a targeted ObjectTemplate REST revalidation point when the ObjectTemplate family receives its own caller-first contract sweep; it does not reopen the RelationshipDefinition decision and does not silently change ObjectTemplate here.
 
-## Still open inside CREATE
+## Failure semantics
+
+CREATE has no normal `404` outcome because the route targets the collection rather than an existing RelationshipDefinition path resource.
 
 ```text
-full 400 / 409 / 422 failure vocabulary
-semantic equivalence / semantic-cell conflict public classification
-missing/invalid ObjectTemplate endpoint classification
-missing/invalid DataType/default/exact-version classification
+400 invalid_request
+    malformed/invalid JSON or command shape
+    symmetric not a strict boolean
+    malformed UUID / datatype_version / value_mode
+    reciprocal_name missing when symmetric=false
+    reciprocal_name present when symmetric=true
+    properties = null
+    datatype_version = null
+    unknown fields / other statically invalid wire input
+
+422 referenced_resource_not_found
+    from_template_id lineage absent
+    to_template_id lineage absent
+    datatype_id lineage absent
+    explicitly selected exact datatype_version absent
+
+422 semantic_validation_failed
+    candidate violates an intrinsic RelationshipDefinition/RDV rule
+    examples include:
+        symmetric endpoint spaces are distinct-but-overlapping
+        asymmetric name == reciprocal_name
+        duplicate property names
+        semantic/property naming grammar violation
+
+409 default_version_unavailable
+    datatype_version omitted
+    + DataType lineage exists
+    + no current default can be selected
+
+409 dependency_not_admissible
+    selected exact DataTypeVersion exists
+    + is not currently admissible for a new model binding
+
+409 relationship_definition_conflict
+    candidate is intrinsically valid
+    + at least one candidate semantic cell is already owned by current model state
+
+500 internal_error
+    persisted invariant corruption / persistence / infrastructure failure
 ```
+
+The old public distinction:
+
+```text
+relationship_definition_equivalent
+relationship_definition_conflict
+```
+
+is removed from the current M4 candidate. A complete semantic-equivalence collision is simply the maximal case of semantic-cell ownership conflict and therefore uses the single code:
+
+```text
+relationship_definition_conflict
+```
+
+## `relationship_definition_conflict` bounded witness
+
+The conflict details expose at most one sufficient semantic-cell witness:
+
+```text
+details
+    relationship_definition_id
+    semantic_cell
+        from_template_id
+        name
+        to_template_id
+```
+
+Example shape:
+
+```json
+{
+  "code": "relationship_definition_conflict",
+  "message": "The requested RelationshipDefinition conflicts with existing relationship semantics.",
+  "details": {
+    "relationship_definition_id": "<existing-definition-id>",
+    "semantic_cell": {
+      "from_template_id": "<template-id>",
+      "name": "hosts",
+      "to_template_id": "<template-id>"
+    }
+  }
+}
+```
+
+If multiple cells or Definitions conflict, the public contract does not promise which valid witness is returned. The operation does not enumerate all conflicts and does not perform additional backend work solely to enrich the diagnostic. The witness must derive from the ordinary efficient certification/arbitration path.
+
+## CREATE REST closure checkpoint
+
+The CREATE REST contract is reviewed for the current M4 candidate:
+
+```text
+POST /relationship-definitions
+    -> flat semantic topology body
+    -> optional initial properties[]
+    -> DataType default-or-exact selection
+    -> array-order -> internal ordinal
+    -> atomic stable Definition + v1 DRAFT revision 1
+    -> 201 + stable Definition Location
+    -> no response body
+    -> one model semantic-cell conflict code
+```
+
+Downstream data-path/physical/concurrency work may choose how to realize these semantics but must not silently reintroduce autonomous Resolution identity, public `position`, Definition-equivalent error branching or response-only aggregate reconstruction.
 
 ---
 
@@ -861,10 +961,12 @@ missing/invalid DataType/default/exact-version classification
 Current next family micro-point:
 
 ```text
-RelationshipDefinition CREATE failure semantics
-    -> finite public 400 / 409 / 422 vocabulary
-    -> classify malformed body vs missing dependencies vs semantic invalidity vs model conflict
-    -> preserve no-diagnostic-only-work principle
+RelationshipDefinition CREATE_NEXT
+    -> exact route/body
+    -> source-version eligibility
+    -> shared monotonic/no-reuse target version allocation
+    -> success acknowledgement / Location
+    -> finite public failure vocabulary
 ```
 
-Once CREATE failures are closed, proceed to CREATE_NEXT, REVISE, PUBLISH, default management, DEPRECATE and deletion separately.
+Then continue with REVISE, PUBLISH, default management, DEPRECATE and deletion separately.
