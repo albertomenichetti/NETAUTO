@@ -1,72 +1,121 @@
 # RelationshipDefinition CLEAR_DEFAULT — M4 discovery
 
-Status: WIP / NON-NORMATIVE
+Status: **TECHNICAL DISCOVERY CLOSED EXCEPT CONCURRENCY/PHYSICAL REALIZATION / WIP / NON-NORMATIVE**
 
-## Scope
+This note is operation-specific source/evidence subordinate to `relationshipdefinition.md` and to the current RelationshipDefinition technical consolidation ledger.
 
-Audit of `RelationshipDefinition.CLEAR_DEFAULT` for M4 data-access, denormalization and cache implications. Concurrency realization is intentionally deferred to the global concurrency phase.
+## Ratified M4 technical direction
 
-## Current behavior
+`CLEAR_DEFAULT` changes only current mutable selection state on the RelationshipDefinition lineage.
 
-The current application path:
+The reviewed M4 REST success contract is:
 
-1. acquires the RelationshipDefinition header lock;
-2. sets `default_version = NULL`;
-3. reloads the complete RelationshipDefinition aggregate;
-4. commits and returns the complete aggregate.
+```text
+204 No Content
+```
 
-The reload is required by the current public response shape, which returns the complete RelationshipDefinition including current Resolution names.
+Therefore older AS-IS/discovery work that reloaded and returned the complete RelationshipDefinition aggregate after mutation is superseded.
 
-## M4 candidate
+## No semantic-preparation phase
 
-No exact RelationshipDefinitionVersion state is needed for CLEAR_DEFAULT. There is no target version, lifecycle validation, property-schema validation, or dependency resolution.
+`CLEAR_DEFAULT` has no exact-version operand and needs no worker-side semantic preparation.
 
-Prefer a single PostgreSQL mutation/projection statement that:
+It does not consume:
 
-- targets the requested RelationshipDefinition;
-- sets `default_version = NULL`;
-- distinguishes missing Definition from success;
-- returns the complete current RelationshipDefinition projection, including current Resolutions, in the same statement.
+```text
+RelationshipDefinitionVersion state
+RDV properties
+DataType / DataTypeVersion semantics
+historical property continuity
+relationship_definition_space
+ObjectTemplate ancestry
+immutable RDV cache
+```
+
+PostgreSQL is authoritative only for current RelationshipDefinition existence and current `default_version` state.
+
+## Logical short-UoW path
 
 Conceptually:
 
 ```text
-UPDATE relationship_definitions
-SET default_version = NULL
-WHERE id = :definition_id
-        ↓
-project updated Definition + current Resolution set
+CLEAR_DEFAULT(definition_id)
+
+admission
+    RelationshipDefinition exists
+
+mutation
+    RelationshipDefinition.default_version = NULL
+
+commit
 ```
 
-A data-modifying CTE or equivalent projection can realize the exact SQL shape later.
-
-## Cache
-
-Do not use or widen the stable RelationshipDefinition topology cache for this operation.
-
-The candidate stable cache intentionally excludes mutable fields:
-
-- `default_version`;
-- `RelationshipResolution.name`.
-
-The public response requires current Resolution names, so PostgreSQL remains the correct source for the returned aggregate.
-
-## Denormalization
-
-No new denormalization is justified by CLEAR_DEFAULT.
-
-## Deferred concurrency question
-
-The semantic rendezvous with factual `Relationship.CREATE` when the caller omits an explicit RelationshipDefinitionVersion remains open for the global concurrency phase:
+The operation is idempotent:
 
 ```text
-CLEAR_DEFAULT
-      ↕
-Relationship.CREATE using implicit current default
+default_version already NULL
+    -> successful 204
 ```
 
-Do not redesign this locking interaction during the current operation-by-operation data-access audit.
+A physical implementation may avoid a real row rewrite when the value is already NULL, but it must still distinguish:
 
-## Candidate finding
+```text
+Definition absent
+    -> 404 resource_not_found
 
-`RelationshipDefinition.CLEAR_DEFAULT` can target one PostgreSQL `UPDATE + complete aggregate projection` statement. It needs no exact-version read, no cache interaction and no new denormalization. Concurrency with implicit-default factual Relationship creation remains deferred.
+Definition present + default already NULL
+    -> 204 No Content
+```
+
+Exact statement shape remains architecture/physical work.
+
+## Cache/materialization boundary
+
+No cache fill, cache invalidation or new denormalization is justified.
+
+The immutable exact-RDV cache excludes `default_version`; changing the pointer does not alter exact RDV semantics.
+
+`relationship_definition_space` is independent from `default_version` and is untouched.
+
+No post-write aggregate reload is required for the `204` response.
+
+## Concurrency handoff
+
+The material external consumer is factual `Relationship.CREATE` when the caller omits an explicit RelationshipDefinitionVersion and therefore resolves the owning Definition's current `default_version`.
+
+Required current-state consequence:
+
+```text
+after CLEAR_DEFAULT is committed
+    -> a new implicit version resolution cannot obtain the old default
+    -> absent current default yields default_version_unavailable
+```
+
+The fate of a factual CREATE that had already resolved a legitimate exact default before CLEAR_DEFAULT commits belongs to the later cross-family concurrency closure; this operation-specific discovery does not invent the rendezvous mechanism.
+
+## Technical closure checkpoint
+
+```text
+RD CLEAR_DEFAULT
+
+semantic preparation
+    -> NONE
+
+authoritative state
+    -> PostgreSQL only
+
+reads/admission
+    -> Definition existence only
+
+writes
+    -> default_version -> NULL only
+
+cache/materialization
+    -> NONE
+
+post-write reload
+    -> NONE
+
+response
+    -> 204
+```
