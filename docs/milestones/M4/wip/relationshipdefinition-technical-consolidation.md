@@ -697,44 +697,137 @@ The concurrency realization must also ensure that a newly committed incompatible
 
 ---
 
-# 6. Immutable RDV cache publication boundary — RATIFIED direction, PUBLISH sweep still pending
+# 6. PUBLISH RelationshipDefinitionVersion — active technical review
 
-CREATE does not publish an RDV cache entry because v1 is DRAFT.
+## 6.1 Semantic preparation outside mutation UoW — RATIFIED
 
-CREATE_NEXT does not publish the new DRAFT, but consumes an immutable source snapshot cache when available.
+PUBLISH starts from one authoritative exact current DRAFT generation:
 
-The natural publication boundary for:
+```text
+Definition exists
+exact target exists
+status = DRAFT
+revision = R
+complete ordered properties
+```
+
+For **all** exact DTV pins in that DRAFT, outside the mutation UoW:
+
+```text
+load immutable exact DataTypeVersion semantic payload
+compile validators/runtime semantic structures
+prepare complete immutable RDV runtime representation
+```
+
+Conceptual prepared value:
+
+```text
+PreparedPublishedRDV
+    relationship_definition_id
+    version
+    source_revision = R
+    ordered property snapshot
+    compiled RuntimePropertySpec / validators / exact-DTV linkage
+```
+
+An early set-based historical continuity probe may fail fast. Under the current revalidated history rule it needs only detect same-name historical declarations with a different `datatype_id`.
+
+No complete RelationshipDefinition topology, `relationship_definition_space`, ObjectTemplate ancestry or full committed-history materialization is required.
+
+Compilation can occur before final stabilization because exact DTV semantics are immutable. A concurrent REVISE is rejected by the final generation gate if target revision no longer equals prepared revision R.
+
+## 6.2 Short final publication UoW — RATIFIED at logical level
+
+Logical final admission:
+
+```text
+1. exact target still exists
+2. status still DRAFT
+3. revision == expected_revision == prepared source revision R
+4. every pinned exact DTV is still PUBLISHED
+5. committed-history datatype-lineage continuity is still valid
+6. DRAFT -> PUBLISHED
+7. revision unchanged
+8. if Definition.default_version is still NULL
+       -> set this version as default
+   else
+       -> leave current default unchanged
+9. commit
+```
+
+No DTV semantic reload/recompile belongs inside the mutation UoW.
+
+No `relationship_definition_space` maintenance occurs because RDV publication does not change stable Definition topology/name semantic ownership.
+
+Exact locking/rendezvous mechanics remain architecture/concurrency work.
+
+## 6.3 Immutable RDV cache publication — RATIFIED
+
+The prepared immutable RDV becomes consumable in worker-local cache **only after successful PUBLISH commit**.
+
+Conceptual facets:
 
 ```text
 ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
+
+snapshot READY
+    ordered properties
+        name
+        ordinal
+        datatype_id
+        datatype_version
+        value_mode
+
+compiled READY
+    RuntimePropertySpec / validators / exact-DTV semantic linkage
 ```
 
-is successful `PUBLISH`, because that transition makes the exact RDV immutable and already owns complete dependency certification.
+PUBLISH normally makes both facets READY from already prepared in-memory state. No post-commit DB reload or recompilation is required.
 
-Candidate immutable cache payload includes at least:
-
-```text
-ordered property snapshot
-    name
-    ordinal
-    exact datatype_id/version
-    value_mode
-
-compiled/runtime property structures
-    RuntimePropertySpec / validators / exact-DTV linkage
-```
-
-Mutable state must remain outside the immutable payload:
+The cache excludes mutable/current state:
 
 ```text
-RDV current lifecycle status
+RDV.status
 RelationshipDefinition.default_version
-relationship_definition_space
 ```
 
-Cache publication must become externally consumable only after successful commit; it must not make an uncommitted DRAFT->PUBLISHED transition visible as published semantic state.
+Cache presence never proves current existence or current lifecycle admission.
 
-The complete PUBLISH technical data path is the next active operation point and is not yet marked closed by this file.
+## 6.4 Cache lifecycle across DEPRECATE/DELETE — RATIFIED
+
+The immutable RDV cache follows semantic immutability rather than lifecycle state:
+
+```text
+DRAFT
+    -> not immutable-cacheable
+
+PUBLISHED
+    -> immutable-cacheable
+
+PUBLISHED -> DEPRECATED
+    -> entry remains semantically valid
+    -> no invalidation
+```
+
+DEPRECATE changes only current admission state and does not change the exact property snapshot or compiled semantics.
+
+The same immutable entry can therefore serve existing factual Relationships pinned to a DEPRECATED version and CREATE_NEXT sources in either PUBLISHED or DEPRECATED state.
+
+Complete Definition deletion does not require correctness-driven distributed cache invalidation because cache presence is never existence authority and UUID/exact-version identities are not reused. Local eviction may be opportunistic.
+
+Facet consumers remain distinct:
+
+```text
+snapshot READY
+    -> sufficient for CREATE_NEXT
+
+compiled READY
+    -> required by factual runtime consumers
+```
+
+## 6.5 No new relational RDV materialization — RATIFIED
+
+`relationship_definition_properties` already stores the complete exact schema snapshot. PUBLISH does not justify another persisted copy merely to accelerate runtime compilation. Optimization is worker-local immutable cache reuse.
 
 ---
 
@@ -753,10 +846,12 @@ CREATE_NEXT
 REVISE
 ```
 
+PUBLISH already has ratified preparation/cache checkpoints but still needs its default-interaction and logical DML/cost closure before the operation is marked technically closed.
+
 Still to review technically:
 
 ```text
-PUBLISH
+PUBLISH default interaction / DML cost closure
 SET_DEFAULT
 CLEAR_DEFAULT
 DEPRECATE
