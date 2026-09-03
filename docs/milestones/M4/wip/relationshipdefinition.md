@@ -1,6 +1,6 @@
 # M4 WIP — RelationshipDefinition model-plane review owner
 
-**Status:** ACTIVE REVIEW FRONTIER / SINGLE FAMILY OWNER / REST CONTRACT REVIEW IN PROGRESS / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** ACTIVE REVIEW FRONTIER / SINGLE FAMILY OWNER / REST CONTRACT REVIEW COMPLETE / ARCHITECTURE CLOSING PENDING / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose and ownership
 
@@ -92,18 +92,18 @@ general-domain-principles.md
 
 The AS-IS RelationshipDefinition family exposed four GET capabilities and ten mutations.
 
-M4 has already decided that the old `RENAME` capability does not survive because semantic names are stable relationship meaning, not mutable display metadata.
+M4 has decided that the old `RENAME` capability does not survive because semantic names are stable relationship meaning, not mutable display metadata.
 
-Current candidate family surface therefore contains thirteen capabilities pending completion of the mutation review:
+The current M4 REST candidate therefore contains thirteen reviewed capabilities:
 
 ```text
-READS
+READS REVIEWED
     GET    /api/v1/core/relationship-definitions
     GET    /api/v1/core/relationship-definitions/{relationship_definition_id}
     GET    /api/v1/core/relationship-definitions/{relationship_definition_id}/versions
     GET    /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}
 
-MUTATIONS STILL TO REVIEW
+MUTATIONS REVIEWED
     POST   /api/v1/core/relationship-definitions
     POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/create-next
     POST   /api/v1/core/relationship-definitions/{relationship_definition_id}/set-default
@@ -1255,18 +1255,563 @@ POST /relationship-definitions/{id}/versions/{version}/revise
 
 ---
 
-# 12. Current next review frontier
+# 12. RD-PUBLISH-01 — PUBLISH RelationshipDefinitionVersion
 
-Current next family micro-point:
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
 
-```text
-RelationshipDefinition PUBLISH
-    -> exact route/request shape
-    -> expected_revision generation consumption
-    -> publication certification boundary
-    -> DataType dependency admission
-    -> success acknowledgement
-    -> finite public failure vocabulary
+## Route and request
+
+```http
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/publish
 ```
 
-Then continue with default management, DEPRECATE and deletion separately.
+Query:
+
+```text
+expected_revision: positive integer required
+```
+
+Body: none.
+
+The target must be the exact current DRAFT generation selected by the path and `expected_revision`.
+
+## Publication semantics
+
+Successful publication performs:
+
+```text
+status
+    DRAFT -> PUBLISHED
+
+revision
+    unchanged
+```
+
+PUBLISH consumes the current mutable DRAFT generation by making the exact snapshot immutable. It does not create a new generation and therefore does not increment `revision`.
+
+PUBLISH re-certifies the complete candidate against all committed `PUBLISHED` / `DEPRECATED` property history because publication order is not constrained by numeric version order.
+
+Every exact DataTypeVersion directly pinned by the DRAFT must still be currently `PUBLISHED` at the publication admission boundary.
+
+## Default interaction
+
+The current default rule is:
+
+```text
+Definition.default_version == null
+    -> successful PUBLISH sets default_version = version
+
+Definition.default_version != null
+    -> successful PUBLISH leaves it unchanged
+```
+
+A later publication never silently replaces an existing default.
+
+## Success contract
+
+```text
+204 No Content
+body: none
+```
+
+No Location is required because PUBLISH mutates an already-addressable exact resource. No exact-version GET reconstruction is required solely for the mutation response.
+
+## Failure semantics
+
+```text
+400 invalid_request
+    malformed relationship_definition_id / version
+    expected_revision missing / null / malformed / non-positive
+    body present
+    unknown/repeated query parameter
+
+404 resource_not_found
+    RelationshipDefinition absent
+    OR exact target RelationshipDefinitionVersion absent
+
+409 lifecycle_state_conflict
+    exact target exists but is not DRAFT
+
+409 stale_revision
+    exact target is DRAFT
+    + expected_revision != current revision
+
+409 dependency_not_admissible
+    an exact DataTypeVersion pinned by the DRAFT exists
+    + is not currently PUBLISHED at publication time
+
+422 semantic_validation_failed
+    the otherwise well-formed DRAFT conflicts with committed
+    PUBLISHED/DEPRECATED property-history continuity
+
+500 internal_error
+    persisted DRAFT is intrinsically malformed
+    persisted exact DataType dependency is physically missing
+    persisted invariant corruption / persistence / infrastructure failure
+```
+
+PUBLISH has no normal `referenced_resource_not_found`, `default_version_unavailable`, `default_version_conflict` or `relationship_definition_conflict` outcome.
+
+## PUBLISH REST closure checkpoint
+
+```text
+POST /relationship-definitions/{id}/versions/{version}/publish
+    -> required expected_revision
+    -> body none
+    -> DRAFT -> PUBLISHED
+    -> revision unchanged
+    -> re-certify committed property history
+    -> every exact DataType pin currently PUBLISHED
+    -> establish default only when still null
+    -> 204, no body
+```
+
+---
+
+# 13. RD-DEFAULT-01 — SET_DEFAULT / CLEAR_DEFAULT
+
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
+
+The two default-management capabilities remain distinct rather than overloading an explicit nullable setter.
+
+## SET_DEFAULT route and request
+
+```http
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/set-default
+```
+
+Query: none.
+
+Body:
+
+```text
+RelationshipDefinitionSetDefault
+    version: positive integer required
+```
+
+The selected exact version is a command operand, not a path target. It must exist in the same RelationshipDefinition and be currently `PUBLISHED`.
+
+Success:
+
+```text
+204 No Content
+body: none
+```
+
+SET_DEFAULT is idempotent on current value:
+
+```text
+version == current default_version
+    -> 204
+```
+
+Failure semantics:
+
+```text
+400 invalid_request
+    malformed relationship_definition_id
+    version missing / null / malformed / non-positive
+    query supplied
+    unknown/repeated body field
+
+404 resource_not_found
+    path RelationshipDefinition absent
+
+422 referenced_resource_not_found
+    path Definition exists
+    + selected exact RelationshipDefinitionVersion absent
+
+409 dependency_not_admissible
+    selected exact version exists
+    + status != PUBLISHED
+
+500 internal_error
+    persisted invariant corruption / persistence / infrastructure failure
+```
+
+## CLEAR_DEFAULT route and request
+
+```http
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/clear-default
+```
+
+Query: none.
+Body: none.
+
+Successful CLEAR_DEFAULT establishes:
+
+```text
+default_version = null
+```
+
+Success:
+
+```text
+204 No Content
+body: none
+```
+
+CLEAR_DEFAULT is idempotent when the default is already null.
+
+Failure semantics:
+
+```text
+400 invalid_request
+    malformed relationship_definition_id
+    body or query supplied
+
+404 resource_not_found
+    RelationshipDefinition absent
+
+500 internal_error
+    persisted invariant corruption / persistence / infrastructure failure
+```
+
+CLEAR_DEFAULT has no exact-version operand and therefore no normal `409` or `422` outcome.
+
+## Default-management closure checkpoint
+
+```text
+SET_DEFAULT
+    -> distinct command
+    -> body {version}
+    -> exact PUBLISHED same-Definition target
+    -> idempotent on current value
+    -> 204, no body
+
+CLEAR_DEFAULT
+    -> distinct command
+    -> no body
+    -> stores null
+    -> idempotent when already null
+    -> 204, no body
+```
+
+---
+
+# 14. RD-DEPRECATE-01 — DEPRECATE RelationshipDefinitionVersion
+
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
+
+## Route and request
+
+```http
+POST /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}/deprecate
+```
+
+Query: none.
+Body: none.
+
+Only an exact `PUBLISHED` RelationshipDefinitionVersion may be deprecated.
+
+Successful transition:
+
+```text
+status
+    PUBLISHED -> DEPRECATED
+
+revision
+    unchanged
+```
+
+The transition is irreversible and is not idempotent: calling DEPRECATE on an already DEPRECATED or DRAFT target is a lifecycle conflict.
+
+## Default and factual-reference semantics
+
+The current `default_version` cannot be deprecated.
+
+Current factual Relationships pinned to the exact target version are **not** deprecation blockers. A DEPRECATED version remains a valid historical exact dependency for already-existing factual Relationships; deprecation only removes it from future lifecycle-sensitive admission.
+
+The immutable semantic/property payload does not change during deprecation.
+
+## Success contract
+
+```text
+204 No Content
+body: none
+```
+
+## Failure semantics
+
+```text
+400 invalid_request
+    malformed relationship_definition_id / version
+    body or query supplied
+
+404 resource_not_found
+    RelationshipDefinition absent
+    OR exact RelationshipDefinitionVersion absent
+
+409 lifecycle_state_conflict
+    exact target exists
+    + status != PUBLISHED
+
+409 default_version_conflict
+    exact target is PUBLISHED
+    + version == current default_version
+
+500 internal_error
+    persisted invariant corruption / persistence / infrastructure failure
+```
+
+DEPRECATE has no normal `active_dependency_conflict`, `dependency_not_admissible`, `referenced_resource_not_found` or `stale_revision` outcome.
+
+## DEPRECATE REST closure checkpoint
+
+```text
+POST /relationship-definitions/{id}/versions/{version}/deprecate
+    -> body/query none
+    -> PUBLISHED only
+    -> current default blocked
+    -> factual historical pins do not block
+    -> PUBLISHED -> DEPRECATED
+    -> revision unchanged
+    -> 204, no body
+```
+
+---
+
+# 15. RD-DELETE-DRAFT-01 — DELETE exact DRAFT RelationshipDefinitionVersion
+
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
+
+## Route and request
+
+```http
+DELETE /api/v1/core/relationship-definitions/{relationship_definition_id}/versions/{version}
+```
+
+Query:
+
+```text
+expected_revision: positive integer required
+```
+
+Body: none.
+
+The selected exact version must currently be:
+
+```text
+status = DRAFT
+revision = expected_revision
+```
+
+The complete property declaration payload is not part of admission. Property rows are exact-version-owned child state and disappear with the exact DRAFT.
+
+## Version allocation consequence
+
+A successfully deleted exact DRAFT version number is never reusable. The shared lineage allocator remains monotonic/no-reuse independently of exact-version deletion.
+
+## Success contract
+
+```text
+204 No Content
+body: none
+```
+
+After success the exact resource no longer exists. A repeated DELETE against the same exact version therefore returns `404 resource_not_found` rather than a silent idempotent success.
+
+## Failure semantics
+
+```text
+400 invalid_request
+    malformed relationship_definition_id / version
+    expected_revision missing / null / malformed / non-positive
+    body present
+    unknown/repeated query parameter
+
+404 resource_not_found
+    RelationshipDefinition absent
+    OR exact RelationshipDefinitionVersion absent
+
+409 lifecycle_state_conflict
+    exact target exists
+    + status != DRAFT
+
+409 stale_revision
+    exact target is DRAFT
+    + expected_revision != current revision
+
+500 internal_error
+    persisted invariant corruption / persistence / infrastructure failure
+```
+
+DELETE_DRAFT has no normal `referenced_resource_not_found`, `default_version_conflict` or dependency-admission outcome.
+
+## DELETE_DRAFT REST closure checkpoint
+
+```text
+DELETE /relationship-definitions/{id}/versions/{version}
+    -> required expected_revision
+    -> exact DRAFT generation only
+    -> owned declaration cleanup
+    -> deleted version number never reused
+    -> first valid delete 204
+    -> repeated delete 404
+```
+
+---
+
+# 16. RD-DELETE-ROOT-01 — DELETE RelationshipDefinition
+
+**State:** REST CONTRACT REVIEWED / CURRENT M4 CANDIDATE
+
+## Route and request
+
+```http
+DELETE /api/v1/core/relationship-definitions/{relationship_definition_id}
+```
+
+Query: none.
+Body: none.
+
+## Aggregate ownership semantics
+
+Successful root deletion removes the complete owned model aggregate:
+
+```text
+RelationshipDefinition
+    -> all owned RelationshipDefinitionVersion rows
+        -> all owned RelationshipDefinitionProperty rows
+    -> all other Definition-owned / derived state
+```
+
+The future physical schema may realize owned cleanup through cascades or equivalent atomic ownership semantics. The REST contract does not require application-side child deletion loops.
+
+The Definition topology / semantic-cell contract does not need to be re-certified before deletion: removing the Definition cannot create a new semantic-cell ownership collision.
+
+## External blocker
+
+A current factual Relationship that references any exact version of the Definition is an external lifetime blocker.
+
+```text
+at least one current factual Relationship references the Definition
+    -> 409 delete_blocked
+
+no current factual Relationship references the Definition
+    -> root delete may proceed
+```
+
+The M4 public diagnostic deliberately removes the AS-IS total blocker count. `delete_blocked` needs only bounded information sufficient to identify the blocker family:
+
+```json
+{
+  "code": "delete_blocked",
+  "message": "The RelationshipDefinition is still referenced.",
+  "details": {
+    "blocker_type": "relationship"
+  }
+}
+```
+
+The contract does **not** require:
+
+```text
+COUNT of all blocking factual Relationships
+list of blocking Relationship ids
+full blocker enumeration
+```
+
+This allows the legal efficient path to stop after proving a real blocker rather than performing diagnostic-only total counting.
+
+## Success contract
+
+```text
+204 No Content
+body: none
+```
+
+After success the stable Definition resource no longer exists. A repeated root DELETE therefore returns `404 resource_not_found`.
+
+## Failure semantics
+
+```text
+400 invalid_request
+    malformed relationship_definition_id
+    body or query supplied
+
+404 resource_not_found
+    RelationshipDefinition absent
+
+409 delete_blocked
+    at least one current factual Relationship references an exact version
+    details.blocker_type = "relationship"
+
+500 internal_error
+    persisted invariant corruption / persistence / infrastructure failure
+```
+
+## Root DELETE REST closure checkpoint
+
+```text
+DELETE /relationship-definitions/{id}
+    -> no body/query
+    -> delete complete owned aggregate
+    -> factual current Relationship is the external blocker
+    -> delete_blocked exposes blocker type only, no count/list
+    -> no topology re-certification
+    -> first valid delete 204
+    -> repeated delete 404
+```
+
+---
+
+# 17. RelationshipDefinition REST-family closure checkpoint
+
+The complete current M4 RelationshipDefinition REST family is now reviewed caller-first:
+
+```text
+4 GET capabilities
+9 retained mutations
+1 removed mutation: RENAME
+```
+
+Key cross-operation rules now closed at REST-contract level include:
+
+```text
+NO autonomous RelationshipResolution public identity
+NO resolution_id
+stable semantic names; no RENAME
+explicit symmetric intent
+compact authored topology + factored applicability reads
+shared monotonic/no-reuse exact-version allocation
+DRAFT revision generation semantics
+REVISE always consumes one revision, even for identical replacement
+PUBLISH / DEPRECATE do not increment revision
+CREATE_NEXT clones eligible immutable source without re-admitting historical pins
+PUBLISH is the certification boundary for current exact DataType admissibility
+first publication establishes default only when still null
+SET_DEFAULT / CLEAR_DEFAULT remain distinct and are idempotent on current value
+DEPRECATE cannot target the current default
+DEPRECATED exact versions remain valid historical factual dependencies
+DELETE_DRAFT never recycles an allocated version number
+root DELETE is blocked by current factual Relationships
+root delete_blocked diagnostic exposes blocker type, not total count
+mutation success responses avoid response-only GET reconstruction
+```
+
+This closure remains M4 WIP and non-normative. It does not freeze physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL or migration/backfill.
+
+Any downstream finding that materially invalidates one of these caller-visible semantics must explicitly reopen the affected micro-contract under the normal M4 retroactive-revalidation rule.
+
+---
+
+# 18. Current next review frontier
+
+No RelationshipDefinition REST capability remains unreviewed in the current retained family surface.
+
+The next family frontier is architecture-closing / model-plane handoff rather than another REST route:
+
+```text
+RelationshipDefinition architecture-closing review
+    -> reconcile reviewed REST semantics with compact source-of-truth model
+    -> close relationship_definition_space materialization boundary
+    -> revalidate operation data paths against the final REST contracts
+    -> close immutable RDV runtime-cache boundary
+    -> close persistence / FK / UNIQUE ownership realization
+    -> close concurrency rendezvous and arbitration across
+       CREATE / CREATE_NEXT / REVISE / PUBLISH / DEFAULT / DEPRECATE / DELETE
+    -> preserve GP-05 bounded diagnostics and no diagnostic-only backend work
+```
+
+Implementation remains forbidden until the normal M4 Contract -> Architecture -> Steps freeze sequence authorizes it.
