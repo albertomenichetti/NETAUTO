@@ -1,105 +1,143 @@
-# RelationshipDefinition DELETE discovery
+# RelationshipDefinition DELETE — M4 discovery
 
-Status: WIP / NON-NORMATIVE
+Status: **ACTIVE TECHNICAL REVIEW / RATIFIED ROOT-DELETE GATE CHECKPOINT / WIP / NON-NORMATIVE**
 
-## Scope
+This note is operation-specific source/evidence subordinate to `relationshipdefinition.md` and to the current RelationshipDefinition technical-consolidation ledger. It does not authorize implementation or freeze final FK/lock/gate realization.
 
-First-phase M4 data-access / denormalization / cache audit for complete `RelationshipDefinition.DELETE`.
+## Current M4 semantic boundary
 
-Locking and concurrency realization remain explicitly deferred to the later global concurrency phase.
+`DELETE /relationship-definitions/{id}` removes the complete stable RelationshipDefinition aggregate.
 
-## Current semantics
+A current factual Relationship referencing any exact version of the Definition is an external lifetime blocker.
 
-A RelationshipDefinition cannot be deleted while any current factual Relationship references one of its exact versions. Definition deletion removes the whole owned aggregate.
+The reviewed M4 failure contract requires only:
 
-Owned state:
+```text
+409 delete_blocked
+    details.blocker_type = relationship
+```
 
-- RelationshipResolution rows belong to the Definition and are deleted with it.
-- RelationshipDefinitionVersion rows belong to the Definition and are deleted with it.
-- RelationshipDefinitionProperty rows belong to exact versions and are deleted with them.
+Therefore the AS-IS total factual blocker `COUNT` is superseded. Ordinary deletion admission needs only an existence proof / bounded blocker witness and must not enumerate or count all factual Relationships solely for diagnostics.
 
-External lifetime blocker:
+## Stable Definition-owned cleanup
 
-- current factual Relationship rows reference exact RelationshipDefinitionVersion rows and therefore block Definition deletion.
-
-## AS-IS observations
-
-The application currently:
-
-1. acquires the current Definition lock and model-root delete gate;
-2. loads the complete RelationshipDefinition aggregate;
-3. re-validates the persisted aggregate;
-4. counts current factual Relationships for the Definition;
-5. reports `delete_blocked` with the factual Relationship count when non-zero;
-6. clears `default_version`;
-7. deletes the Definition;
-8. commits.
-
-The complete aggregate load provides `symmetric`, `default_version` and the complete Resolution set even though those values do not participate in the deletion-admission decision after existence is established.
-
-## M4 candidate data path
-
-The minimum conceptual information required before DML is:
-
-- current Definition existence;
-- current factual Relationship blocker count.
-
-The Definition topology does not need to be re-certified before deletion: removing a member from the certified Definition set cannot introduce a new semantic-equivalence or cross-Definition Resolution conflict.
-
-A targeted projection can therefore replace the complete aggregate load.
-
-## Blocker count
-
-Do not mechanically replace the current `COUNT` with `EXISTS`.
-
-The current public failure shape includes the actual blocker count, so `COUNT` is presently consumed information rather than pure existence probing.
-
-The optimization target is instead to avoid `GET complete aggregate + COUNT` when one targeted projection can provide current existence and the blocker count.
-
-## Ownership and cascades
-
-No new reverse-dependency materialization is justified for this rare model-plane operation.
-
-The relational ownership model already gives the right cleanup semantics:
+The current post-Resolution model owns:
 
 ```text
 RelationshipDefinition
-    -> RelationshipResolution          owned / cascade
-    -> RelationshipDefinitionVersion   owned / cascade
-         -> RelationshipDefinitionProperty owned / cascade
+    -> RelationshipDefinitionVersion rows
+         -> RelationshipDefinitionProperty rows
+    -> relationship_definition_space rows
 ```
 
-Current factual Relationship rows are intentionally non-owned lifetime references and therefore remain blockers.
+There is no autonomous `RelationshipResolution` state in the M4 model.
 
-## `default_version = NULL` before delete
+`relationship_definition_space` is owned by the stable Definition, not by any exact version. Therefore:
 
-The current two-step DML is not classified as accidental redundancy during this phase.
+```text
+DELETE_DRAFT
+    -> relationship_definition_space UNCHANGED
 
-The relational schema contains a cyclic relationship:
+DELETE Definition root
+    -> relationship_definition_space owned cleanup
+```
+
+The preferred semantic direction is root-owned relational cleanup (FK cascade or equivalent ownership mechanism). Exact physical FK/cascade realization remains architecture work.
+
+No topology/name recertification is required before deletion: removing one Definition cannot introduce a new semantic-cell ownership conflict.
+
+## Minimal admission path
+
+Conceptually the root delete needs only:
+
+```text
+RelationshipDefinition current existence
++
+EXISTS current factual Relationship referencing the Definition
+```
+
+If a factual blocker exists:
+
+```text
+-> 409 delete_blocked
+-> stop after sufficient blocker proof
+```
+
+If no blocker exists, the root aggregate may be deleted atomically with its owned state.
+
+No complete Definition topology, RDV property payload, DataType semantics, ObjectTemplate ancestry or `relationship_definition_space` interpretation is required for admission.
+
+## `default_version = NULL` before root delete — revalidated classification
+
+The AS-IS path clears `default_version` before deleting the Definition.
+
+The current physical schema has a cycle:
 
 ```text
 RelationshipDefinition.default_version
-    -> RelationshipDefinitionVersion
+    -> exact RelationshipDefinitionVersion
 
 RelationshipDefinitionVersion.relationship_definition_id
     -> RelationshipDefinition
 ```
 
-The default-version FK is restrictive while Definition -> Version ownership cascades. Clearing the default before deleting the root breaks that cycle under the current schema.
+Under that schema, pre-clearing the default breaks the FK cycle before root deletion.
 
-Whether M4 changes the FK realization is a later schema/concurrency design question; this discovery does not assume that the two statements can simply be collapsed.
+A further defensive intuition is that clearing the default appears to close the implicit-version selection surface. However it is **not** a complete or primary root-delete safety predicate:
+
+```text
+- the clear is uncommitted inside the same DELETE transaction and is not independently visible as a durable gate;
+- it addresses only implicit/default selection, not explicit exact-version binding;
+- root DELETE must rendezvous with new factual pinning regardless of selector form.
+```
+
+The M2 concurrency realization already treated root deletion and factual Relationship CREATE as an independent reference-lifetime race:
+
+```text
+RelationshipDefinition root DELETE
+    -> root Definition lifetime protection
+
+Relationship.CREATE explicit exact selector
+    -> stabilizes Definition lifetime + exact RDV admission
+
+Relationship.CREATE implicit/default selector
+    -> stabilizes Definition/default selection + exact RDV admission
+```
+
+Therefore M4 carries forward this discovery-level requirement:
+
+```text
+root DELETE vs new factual pinning
+    -> requires one complete independent lifetime/admission rendezvous
+    -> covers both explicit and implicit Relationship.CREATE
+```
+
+while classifying the pre-clear itself as:
+
+```text
+semantic root-delete requirement
+    -> NO
+
+possible defense-in-depth
+    -> YES
+
+known AS-IS physical reason
+    -> break current default-version FK cycle
+```
+
+Architecture must decide whether the final FK design still requires an explicit pre-clear or whether root deletion can own/cascade the complete aggregate directly. That physical choice must not replace the independent new-pinning lifetime rendezvous.
 
 ## Cache behavior after delete
 
-Candidate worker-local caches may retain orphan entries after Definition deletion:
+Immutable exact-RDV cache entries may survive locally after root deletion without correctness impact:
 
-- stable RelationshipDefinition topology entries;
-- immutable RelationshipDefinitionVersion runtime-schema entries.
+```text
+cache presence != current resource existence
+cache presence != current lifecycle admission
+```
 
-No distributed invalidation protocol is proposed.
+Definition UUIDs/exact-version identities are not reused for a different semantic resource. Distributed cache invalidation is therefore not a correctness prerequisite; local eviction may be opportunistic.
 
-Cache presence must never prove current existence or current admission. A new factual Relationship binding still depends on current PostgreSQL state. Orphan cache entries are therefore semantically harmless and may age out locally.
+## Still open before technical closure
 
-## Candidate conclusion
-
-`RelationshipDefinition.DELETE` should operate on current existence plus the factual Relationship blocker count, not on the complete Definition aggregate. Owned Resolution/version/property state remains cascade-managed; no reverse-dependency denormalization is added. The `default_version = NULL` step remains, for now, a consequence of the current cyclic FK design. Worker-local cache entries need no distributed invalidation after deletion.
+The remaining root-DELETE checkpoint is the final logical DML/ownership cost shape, including the treatment of the shared version-allocation row (`last_versions`) and the explicit architecture handoffs for lifetime arbitration and physical cascade/default-FK realization.
