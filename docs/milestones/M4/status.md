@@ -33,19 +33,24 @@ No software, schema, migration, dependency, persistence, concurrency or public-c
 
 ## Current discovery focus
 
-The initial exploration is evaluating whether NETAUTO can reduce the runtime cost of the existing REST operation surface by moving repeatable immutable-model work out of frequent data-plane operations and into rare model-plane mutation/certification paths.
+M4 has completed the current discovery/revalidation baseline for:
 
-Current investigation areas include, without yet making them architecture decisions:
+```text
+Object
+factual Relationship
+RelationshipDefinition model plane
+```
 
-- denormalized/materialized stable ObjectTemplate ancestry;
-- denormalized/materialized exact ObjectTemplateVersion ancestry;
-- durable effective-schema materialization or equivalent compiled model representations;
-- worker-local caching restricted to information that does not require distributed cache-coherency protocols;
-- operation-by-operation re-evaluation of SQL reads, traversal, lock planning and transaction duration;
-- preservation of current semantic and concurrency guarantees while allowing existing M2/M3 realization mechanisms to be reconsidered where M4 explicitly redesigns them.
+The remaining model-plane families still classified as active input are:
 
-The working notes and hypotheses are non-normative and live under [`wip/`](wip/).
+```text
+DataType
+ObjectTemplate
+```
 
+Their relative review order has not yet been selected and must be chosen explicitly. Lifecycle remains a separate open historical/audit family. Architecture-wide physical, relational, concurrency and verification closing has not started.
+
+The current reviewed directions continue to investigate shifting repeatable immutable-model work away from frequent data-plane operations and into rare model-plane mutation/certification paths, while preserving current semantic and concurrency guarantees. All working notes under [`wip/`](wip/) remain non-normative.
 ## Design gates
 
 | Gate | State |
@@ -68,4 +73,4 @@ contract FINAL / FROZEN
 
 ## Immediate next action
 
-Continue bounded discovery of the current REST operations, starting from concrete hot-path cases and recording current cost, mutable/immutable dependencies, concurrency guarantees and candidate optimization directions before drafting the M4 contract.
+Explicitly select the next model-plane family review between DataType and ObjectTemplate, then perform its caller-first, operation-level and cross-family consistency sweep. The other family remains `ACTIVE INPUT` until selected. Lifecycle remains a separate historical/audit review, and global architecture closing does not begin implicitly through this selection.

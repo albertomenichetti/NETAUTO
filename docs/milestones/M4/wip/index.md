@@ -113,6 +113,8 @@ no missing reviewed owner from this index
 no temporary consolidation file remains
 ```
 
+The targeted reconciliation of `relationship.md` C-REL-32 with the current RelationshipDefinition value-mode history rule has been completed. Factual migration behavior is unchanged: model-plane `LIST -> SCALAR` validity remains separate from per-fact preserve-or-block migration.
+
 Two explicit precedence rules are important when reading the historical sections retained inside `relationship.md`:
 
 ```text
@@ -616,7 +618,7 @@ Former route-specific Object WIP families and focused component/SCHEMA_CHANGE so
 
 The factual Relationship temporary continuation files were likewise removed after the ordered checkpoints through `C-REL-36` were consolidated into `relationship.md`.
 
-RelationshipDefinition distributed discovery files remain in place while `relationshipdefinition.md` is the active family owner. They are retained as operation-specific evidence until the family review is complete enough for a later consolidation/cleanup decision.
+The former RelationshipDefinition semantic-intent material, operation-specific discovery files and temporary consolidation ledger were losslessly absorbed into `relationshipdefinition.md` and removed. `relationshipdefinition.md` is the sole current M4 family owner. Git history remains the historical evidence for the removed source material; no removed file participates in the current working set.
 
 Source material is evidence only. If it conflicts with a reviewed owner/general principle, revalidate explicitly rather than treating the source as authority.
 
