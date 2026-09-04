@@ -1184,6 +1184,40 @@ PostgreSQL
 
 The compiled facet is not required for CREATE_NEXT; `snapshot READY` is sufficient. On cache miss, CREATE_NEXT performs a bounded cold load of the immutable snapshot and may publish that facet.
 
+## CS-03 — `relationship_definition_space` responsibility matrix — RESOLVED
+
+The owner now records the complete responsibility boundary for the derived exact-template semantic closure:
+
+```text
+RelationshipDefinition.CREATE
+    -> derive/arbitrate/persist complete space
+
+Relationship.CREATE
+    -> consume one exact semantic cell for oriented admission
+       and unique owning-Definition resolution
+
+RelationshipDefinition.GET detail
+    -> use compact roots + current descendant sets
+    -> no space scan/refactoring
+
+RelationshipDefinition version/default/lifecycle operations
+    -> no space read or write
+
+RelationshipDefinition.DELETE root
+    -> owned space cleanup
+
+ObjectTemplate stable-ancestry mutation
+    -> coherent set-based maintenance of affected space
+```
+
+Already-admitted factual GET/DATA_CHANGE/SCHEMA_CHANGE/DELETE operations do not re-certify model-plane topology through the space.
+
+The owner also records that a newly created subtype must update ancestry and every induced semantic cell in one coherent commit boundary. Under current single inheritance, subtype creation cannot introduce a genuinely new collision between two already-certified Definitions: any such overlap would imply an already-existing overlapping root-level cell. Concurrent ObjectTemplate.CREATE and RelationshipDefinition.CREATE still require an architecture-level rendezvous so either serial order produces complete closure.
+
+Compact endpoint-root references remain real ObjectTemplate lifetime dependencies. Descendant appearances that exist only through derived expansion must not become autonomous deletion blockers.
+
+The legacy ObjectTemplate relationship-capabilities discovery remains deferred to the ObjectTemplate family sweep because it still assumes autonomous RelationshipResolution identity and mutable names. RelationshipDefinition records only the downstream-consumer handoff and does not freeze that route's final read model here.
+
 ---
 
 # 13. Current technical frontier
