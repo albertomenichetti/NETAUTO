@@ -573,6 +573,8 @@ Omitted `datatype_version` is always a fresh default-selection instruction, not 
 
 ## 5.2 Historical continuity — LATER REVALIDATION RATIFIED
 
+The older RelationshipDefinition REST/discovery wording that forbids committed-history `LIST -> SCALAR` is **superseded by the current M4 revalidation and must be corrected when this ledger is absorbed into the owner**.
+
 Current rule:
 
 ```text
@@ -587,7 +589,7 @@ value_mode
     -> may change LIST -> SCALAR
 ```
 
-Why `LIST -> SCALAR` is not a model-plane publication/revision prohibition:
+Why `LIST -> SCALAR` is no longer a model-plane publication/revision prohibition:
 
 ```text
 validity of an exact RDV
@@ -598,8 +600,6 @@ ability of every current factual Relationship to migrate to it
 A factual `Relationship.SCHEMA_CHANGE` pays concrete preserve-or-fail migration admission for the selected source/target and can reject a multi-item LIST when targeting SCALAR. The model-plane exact target need not be globally banned merely because some facts cannot migrate to it.
 
 DataType lineage continuity remains because same-name factual property continuity currently treats cross-DataType-lineage change as a different/unsupported semantic property transition.
-
-The family owner `relationshipdefinition.md` has now absorbed this revalidation directly; older distributed wording that forbids historical `LIST -> SCALAR` is superseded evidence only.
 
 ## 5.3 Historical conflict probe — RATIFIED
 
@@ -1136,19 +1136,24 @@ The final architecture must preserve the cross-domain allocation invariants and 
 
 ---
 
-# 12. Consistency sweep — ACTIVE
+# 12. Consistency sweep checkpoints
 
-## 12.1 CS-01 — historical `value_mode` revalidation absorbed into owner — RATIFIED
+## CS-01 — historical `value_mode` owner correction — RESOLVED
 
-The family owner previously still contained stale REST-era wording that made committed-history `LIST -> SCALAR` intrinsically invalid and listed `historical LIST -> SCALAR violation` as a REVISE `422 semantic_validation_failed` cause.
-
-That contradicted the later technical/factual revalidation already ratified in this ledger.
-
-The owner has now been corrected at the source. Current family-wide rule is:
+The family owner previously retained the stale monotonic rule:
 
 ```text
-same historical property name
-    -> datatype_id lineage must remain stable
+once LIST
+    -> later SCALAR forbidden
+```
+
+That wording conflicted with the later M4 revalidation already ratified in this ledger and with factual `Relationship.SCHEMA_CHANGE` preserve-or-fail semantics.
+
+The owner has now been corrected at the source. Current family rule:
+
+```text
+same-name committed history
+    -> datatype_id lineage remains stable
 
 exact datatype_version
     -> may change
@@ -1158,26 +1163,26 @@ value_mode
     -> LIST -> SCALAR allowed
 ```
 
-The owner now also states explicitly:
+`historical LIST -> SCALAR violation` is no longer a normal REVISE semantic error. Exact RDV validity remains distinct from factual cross-version migrability.
+
+## CS-02 — CREATE_NEXT immutable cache authority wording — RESOLVED
+
+The family owner previously said that CREATE_NEXT did not treat worker cache state as the authoritative clone source. That wording was too broad and could be read as forbidding the ratified immutable snapshot cache-hit path.
+
+The owner now distinguishes payload authority from current-state authority:
 
 ```text
-exact RDV validity
-    !=
-factual cross-version migrability
+ImmutableRelationshipDefinitionVersionCache snapshot READY
+    -> may provide the exact immutable declaration snapshot directly
+    -> sufficient clone payload for CREATE_NEXT
+
+PostgreSQL
+    -> remains authority for current Definition existence
+    -> source exact-version existence
+    -> source lifecycle eligibility PUBLISHED | DEPRECATED
 ```
 
-A factual `Relationship.SCHEMA_CHANGE` remains responsible for concrete preserve-or-fail migration admission, including rejection of a multi-item LIST when targeting SCALAR.
-
-Consequences of CS-01:
-
-```text
-remove owner-level historical LIST -> SCALAR prohibition
-remove historical LIST -> SCALAR from REVISE 422 taxonomy
-retain same-name historical datatype_id continuity
-retain PUBLISH committed-history recertification under the lineage-only rule
-```
-
-Older distributed files that still encode monotonic `value_mode` history remain superseded evidence and must not be re-promoted during final absorption.
+The compiled facet is not required for CREATE_NEXT; `snapshot READY` is sufficient. On cache miss, CREATE_NEXT performs a bounded cold load of the immutable snapshot and may publish that facet.
 
 ---
 
@@ -1208,6 +1213,6 @@ The remaining RelationshipDefinition discovery task is now:
 cross-operation / cross-document consistency sweep
 ```
 
-CS-01 has removed the known historical `LIST -> SCALAR` contradiction from the single family owner. The sweep must continue until the complete family is internally coherent, later revalidations supersede stale distributed wording, and every unresolved item is explicitly classified as an architecture/concurrency/physical handoff rather than an unfinished semantic/data-path decision.
+That sweep must verify that the complete family is internally coherent, that later revalidations supersede stale distributed wording, and that every unresolved item is explicitly classified as an architecture/concurrency/physical handoff rather than an unfinished semantic/data-path decision.
 
 `RelationshipDefinition` must not be promoted to REVIEWED BASELINE until that consistency sweep is complete and the single owner `relationshipdefinition.md` has absorbed the consolidated result coherently.
