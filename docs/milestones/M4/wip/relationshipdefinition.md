@@ -2887,8 +2887,6 @@ The final architecture must preserve the cross-domain allocation invariants and 
 
 ---
 
----
-
 # 19. Bidirectional consistency sweep
 
 The following checkpoints reconcile the operation-level baseline with the factual Relationship, DataType, ObjectTemplate ancestry and shared version-allocation boundaries.
@@ -2902,7 +2900,7 @@ once LIST
     -> later SCALAR forbidden
 ```
 
-That wording conflicted with the later M4 revalidation already ratified in this ledger and with factual `Relationship.SCHEMA_CHANGE` preserve-or-fail semantics.
+That wording conflicted with the later M4 revalidation ratified during this sweep and with factual `Relationship.SCHEMA_CHANGE` preserve-or-fail semantics.
 
 The owner has now been corrected at the source. Current family rule:
 
@@ -3102,8 +3100,6 @@ Every successful publication must be compatible with all `PUBLISHED | DEPRECATED
 REVISE remains provisional with respect to future history growth: it validates against history at its own commit boundary, but a later publication may make that DRAFT no longer publishable. PUBLISH does not scan or protect unrelated DRAFT candidates and always re-certifies its selected candidate.
 
 `PUBLISHED -> DEPRECATED` does not remove history membership, while DELETE_DRAFT has no history effect. The implementation direction remains set-based early/final probes without worker-side full-history loading or a new history-summary materialization. Exact Definition-local concurrency realization remains architecture work.
-
----
 
 ---
 
