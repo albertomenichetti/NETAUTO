@@ -5115,9 +5115,9 @@ SCALAR -> LIST
         -> TARGET validation/canonicalization
 ```
 
-M4 exact-target semantics also require a controlled reverse `LIST -> SCALAR` factual migration even though normal model-plane publication evolution historically allows only `SCALAR -> LIST`.
+The delivered AS-IS model-plane publication-history rule allowed only `SCALAR -> LIST`. The current M4 RelationshipDefinition reviewed baseline instead permits both `SCALAR -> LIST` and `LIST -> SCALAR` when defining a valid exact RDV.
 
-The reason is that numeric direction has no runtime migration-admission meaning and a current fact may explicitly migrate from a later exact LIST-bearing RDV to an earlier exact SCALAR-bearing PUBLISHED RDV.
+Factual `Relationship.SCHEMA_CHANGE` remains a separate preserve-or-block decision over one concrete current factual state. A TARGET SCALAR exact version may therefore be valid at model-plane level while migration of a factual multi-item LIST value to that TARGET remains blocked because it would require information loss. Numeric version direction has no runtime migration-admission meaning.
 
 RATIFIED conditional lossless rule:
 

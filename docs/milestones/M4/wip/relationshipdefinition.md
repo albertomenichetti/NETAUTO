@@ -1761,7 +1761,7 @@ root delete_blocked diagnostic exposes blocker type, not total count
 mutation success responses avoid response-only GET reconstruction
 ```
 
-This REST closure remains M4 WIP and non-normative. It does not mean the RelationshipDefinition family has reached the consolidated discovery baseline of Object/factual Relationship, and it does not freeze physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL or migration/backfill.
+This REST closure remains M4 WIP and non-normative. Together with the consolidated operation-level technical discovery, bidirectional consistency sweep and reviewed-baseline closure in the following sections, it establishes RelationshipDefinition as `REVIEWED BASELINE` at discovery level. It does not freeze physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL, migration/backfill or verification.
 
 Any downstream finding that materially invalidates one of these caller-visible semantics must explicitly reopen the affected micro-contract under the normal M4 retroactive-revalidation rule.
 
