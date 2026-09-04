@@ -960,7 +960,6 @@ External concurrency handoff:
 after CLEAR_DEFAULT commits
     -> a new factual Relationship.CREATE implicit-version resolution
        cannot obtain the old default
-    -> absent current default yields default_version_unavailable
 ```
 
 The fate of a factual CREATE that had already resolved an exact default before CLEAR_DEFAULT commits belongs to later cross-family concurrency closure.
@@ -1217,6 +1216,41 @@ The owner also records that a newly created subtype must update ancestry and eve
 Compact endpoint-root references remain real ObjectTemplate lifetime dependencies. Descendant appearances that exist only through derived expansion must not become autonomous deletion blockers.
 
 The legacy ObjectTemplate relationship-capabilities discovery remains deferred to the ObjectTemplate family sweep because it still assumes autonomous RelationshipResolution identity and mutable names. RelationshipDefinition records only the downstream-consumer handoff and does not freeze that route's final read model here.
+
+## CS-04 — PUBLISH commit and immutable-cache visibility — RESOLVED
+
+The owner now records PostgreSQL commit as the sole authoritative publication boundary.
+
+```text
+outside short UoW
+    prepare complete immutable exact-RDV snapshot + compiled semantics
+
+inside short UoW
+    final generation/lifecycle/dependency/history admission
+    DRAFT -> PUBLISHED
+    conditional first-default claim
+    COMMIT
+
+post-commit only
+    publish prepared immutable cache entry
+```
+
+A cache entry must never become visible before commit. A rolled-back PUBLISH therefore leaves no apparent immutable published snapshot.
+
+Post-commit cache publication is an optimization rather than a second domain transaction:
+
+```text
+DB commit succeeds + cache publication fails
+    -> PUBLISH remains successful
+    -> 204
+    -> later cache miss reconstructs from PostgreSQL
+```
+
+The failure may be logged/observed operationally but must not be returned as `500`, because the lifecycle mutation is already durable and a caller retry would address a now non-DRAFT target.
+
+Worker-local caches need no synchronous distributed propagation. Other workers may cold-load the exact immutable state. Facet readiness remains explicit: `snapshot READY` is sufficient for CREATE_NEXT, while factual runtime consumers require `compiled READY`; neither is inferred from the other.
+
+PUBLISHED -> DEPRECATED leaves the immutable entry valid. Root deletion needs no correctness-driven invalidation, and cache state never owns current `status`, `default_version`, resource existence or admission.
 
 ---
 
