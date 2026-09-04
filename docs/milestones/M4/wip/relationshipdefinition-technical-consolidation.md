@@ -967,7 +967,176 @@ The fate of a factual CREATE that had already resolved an exact default before C
 
 ---
 
-# 9. Current technical frontier
+# 9. DEPRECATE — technical discovery CLOSED except concurrency/physical realization
+
+`DEPRECATE` changes only lifecycle admission state of one exact immutable RDV.
+
+Admission:
+
+```text
+RelationshipDefinition exists
+exact RDV exists
+RDV.status == PUBLISHED
+Definition.default_version != target version
+```
+
+Mutation:
+
+```text
+RDV.status -> DEPRECATED
+RDV.revision unchanged
+```
+
+No semantic preparation, RDV property read, DTV semantic load, historical-continuity probe, factual Relationship scan/count, topology/space read or post-write reload is required.
+
+Existing factual Relationships pinned to the target exact version are intentionally **not** deprecation blockers. The exact immutable snapshot remains a valid historical dependency for those facts.
+
+The immutable exact-RDV cache remains valid unchanged across `PUBLISHED -> DEPRECATED`; lifecycle status is not stored in the immutable cache.
+
+Concurrency handoffs include at least:
+
+```text
+DEPRECATE vs SET_DEFAULT(target)
+DEPRECATE vs factual Relationship.CREATE binding to target
+DEPRECATE vs CLEAR_DEFAULT when target is current default
+```
+
+Exact rendezvous realization remains architecture work.
+
+---
+
+# 10. DELETE_DRAFT — technical discovery CLOSED except concurrency/physical realization
+
+Admission needs only the exact mutable generation header:
+
+```text
+RelationshipDefinition exists
+exact RDV exists
+status == DRAFT
+revision == expected_revision
+```
+
+The complete property declaration payload is not read for admission.
+
+Mutation/ownership:
+
+```text
+DELETE exact DRAFT RDV root
+    -> relationship_definition_properties owned cleanup
+
+relationship_definition_space
+    -> UNCHANGED
+
+last_versions
+    -> UNCHANGED by exact-version deletion
+    -> allocated version number is never reusable
+```
+
+DRAFT versions are never published in the immutable RDV cache, so DELETE_DRAFT has no cache invalidation responsibility.
+
+Successful deletion returns `204`; a repeated delete observes exact resource absence and returns the reviewed 404 outcome.
+
+Concurrency handoff:
+
+```text
+DELETE_DRAFT vs REVISE
+DELETE_DRAFT vs PUBLISH
+DELETE_DRAFT vs DELETE_DRAFT
+```
+
+Only one operation may consume a given DRAFT generation identified by `expected_revision`. Exact conditional-delete/lock realization remains architecture work.
+
+---
+
+# 11. DELETE RelationshipDefinition root — technical discovery CLOSED except concurrency/physical realization
+
+The stable root owns:
+
+```text
+RelationshipDefinitionVersion rows
+    -> RelationshipDefinitionProperty rows
+relationship_definition_space rows
+```
+
+There is no autonomous RelationshipResolution persistence in the M4 model.
+
+A current factual Relationship referencing any exact version of the Definition is the only reviewed external blocker type for this operation.
+
+## 11.1 Blocker authority — RATIFIED
+
+The M4 error details require only:
+
+```text
+409 delete_blocked
+    blocker_type = relationship
+```
+
+Therefore no blocker COUNT is required. A bounded `EXISTS` may be used as fail-fast optimization, but correctness must ultimately be owned by relational/FK lifetime arbitration or an equivalent current-state mechanism valid through the delete commit boundary.
+
+This is necessary because a standalone preflight `EXISTS=false` cannot by itself exclude a new concurrent factual pin.
+
+## 11.2 New-pinning rendezvous — RATIFIED handoff
+
+Root DELETE requires an independent complete lifetime/admission rendezvous with both:
+
+```text
+Relationship.CREATE explicit exact-version selection
+Relationship.CREATE implicit/default selection
+```
+
+Pre-clearing `default_version` is not sufficient to provide this guarantee and is not the primary semantic safety predicate.
+
+## 11.3 `default_version` pre-clear classification — RATIFIED
+
+The AS-IS pre-clear is classified as:
+
+```text
+semantic root-delete requirement
+    -> NO
+
+possible defense-in-depth
+    -> YES
+
+known AS-IS physical reason
+    -> break the current cyclic FK:
+       Definition.default_version -> RDV
+       RDV -> Definition
+```
+
+Architecture decides whether final FK design still requires the explicit pre-clear or whether direct root-owned cascade/equivalent cleanup removes the need.
+
+## 11.4 Logical DML and cost — RATIFIED
+
+Conceptually:
+
+```text
+stabilize root lifetime
+optional physical default pre-clear if final FK design requires it
+DELETE RelationshipDefinition root
+    -> owned cleanup of versions
+    -> owned cleanup of version properties
+    -> owned cleanup of relationship_definition_space
+```
+
+Application persistence round trips are bounded/constant in owned-row counts. Physical cleanup work is naturally:
+
+```text
+O(versions + properties + relationship_definition_space rows)
+```
+
+No application loop or full topology/property/schema reload is required.
+
+No correctness-driven distributed cache invalidation is required; orphan immutable local cache entries are harmless because cache presence never proves current existence/admission and identities are not reused.
+
+## 11.5 `last_versions` handoff — RATIFIED boundary
+
+Complete-lineage allocator-row lifetime is owned by the cross-domain `version-allocation.md` architecture handoff. RelationshipDefinition DELETE does not independently choose retain-vs-delete behavior for the shared allocator row.
+
+The final architecture must preserve the cross-domain allocation invariants and must not accidentally reintroduce version-number reuse semantics.
+
+---
+
+# 12. Current technical frontier
 
 Closed in this consolidation pass:
 
@@ -983,15 +1152,17 @@ REVISE
 PUBLISH
 SET_DEFAULT
 CLEAR_DEFAULT
-```
-
-Still to review technically:
-
-```text
 DEPRECATE
 DELETE_DRAFT
 DELETE root
-cross-operation consistency sweep
 ```
 
-`RelationshipDefinition` must not be promoted to REVIEWED BASELINE until those remaining operation points, the consistency sweep and explicit concurrency/architecture handoffs are complete.
+The remaining RelationshipDefinition discovery task is now:
+
+```text
+cross-operation / cross-document consistency sweep
+```
+
+That sweep must verify that the complete family is internally coherent, that later revalidations supersede stale distributed wording, and that every unresolved item is explicitly classified as an architecture/concurrency/physical handoff rather than an unfinished semantic/data-path decision.
+
+`RelationshipDefinition` must not be promoted to REVIEWED BASELINE until that consistency sweep is complete and the single owner `relationshipdefinition.md` has absorbed the consolidated result coherently.
