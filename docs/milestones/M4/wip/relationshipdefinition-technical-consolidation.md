@@ -1252,6 +1252,46 @@ Worker-local caches need no synchronous distributed propagation. Other workers m
 
 PUBLISHED -> DEPRECATED leaves the immutable entry valid. Root deletion needs no correctness-driven invalidation, and cache state never owns current `status`, `default_version`, resource existence or admission.
 
+
+## CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED
+
+The owner now separates three concerns:
+
+```text
+exact dependency lifetime
+    -> every persisted RelationshipDefinition declaration
+
+active-model lifecycle dependency
+    -> declarations owned by PUBLISHED RDVs only
+
+new-binding PUBLISHED admission
+    -> CREATE selected pins
+    -> REVISE added/rebound pins
+    -> all pins when publishing an RDV
+```
+
+Lifecycle matrix:
+
+```text
+DRAFT declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker NO
+
+PUBLISHED declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker YES
+
+DEPRECATED declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker NO
+```
+
+The owner also records that REVISE declaration DML classification and exact-dependency classification are independent. A value-mode or ordinal change may cause a physical row replacement while retaining the same exact DTV pin; that unchanged pin requires lifetime preservation but no current PUBLISHED re-admission.
+
+CREATE_NEXT continues to require neither DTV reload/compilation nor current PUBLISHED admission. Architecture must prove the cloned pins' lifetime through source RDV/declaration stabilization and exact declaration FKs, or add only the minimum equivalent exact-target protection.
+
+The cross-family `RDV.PUBLISH × DTV.DEPRECATE` rendezvous must produce only the two serial outcomes: publication first creates an active blocker, while deprecation first makes publication fail `dependency_not_admissible`.
+
 ---
 
 # 13. Current technical frontier

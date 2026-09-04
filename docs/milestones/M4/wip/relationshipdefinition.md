@@ -2020,3 +2020,137 @@ status / default_version
 ```
 
 Exact cache implementation, process topology, capacity, eviction, observability and post-commit hook mechanics remain architecture/implementation work.
+
+---
+
+# 21. CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED
+
+RelationshipDefinition property declarations have two distinct dependency meanings that must not be conflated:
+
+```text
+exact dependency lifetime
+    -> every persisted declaration in any RDV lifecycle state
+
+active-model lifecycle dependency
+    -> only a declaration owned by a PUBLISHED RDV
+```
+
+Consequently:
+
+```text
+RDV DRAFT declaration
+    -> blocks physical exact DTV / DataType-lineage deletion
+    -> does not block DTV DEPRECATE
+
+RDV PUBLISHED declaration
+    -> blocks physical exact DTV / DataType-lineage deletion
+    -> blocks DTV DEPRECATE as an active model consumer
+
+RDV DEPRECATED declaration
+    -> blocks physical exact DTV / DataType-lineage deletion
+    -> does not block DTV DEPRECATE
+```
+
+## 21.1 Operation effects
+
+```text
+RelationshipDefinition.CREATE
+    -> every selected exact DTV must be currently PUBLISHED
+    -> persist exact lifetime references in the new DRAFT
+    -> no active-model dependency exists until RDV publication
+
+CREATE_NEXT
+    -> clone exact lifetime references from an immutable PUBLISHED/DEPRECATED source
+    -> no current PUBLISHED re-admission of the cloned DTV pins
+    -> new RDV remains DRAFT and adds no active-model dependency
+
+REVISE
+    -> added or rebound exact pin:
+         current PUBLISHED admission
+         + new exact lifetime reference
+
+    -> unchanged exact pin:
+         no current PUBLISHED re-admission
+         + preserve exact lifetime
+
+    -> removed declaration:
+         remove its exact lifetime reference
+
+PUBLISH
+    -> every exact DTV pin must still be PUBLISHED
+    -> every persisted declaration becomes an active-model dependency
+
+DEPRECATE RDV
+    -> preserve every exact lifetime reference
+    -> remove the active-model dependency classification
+
+DELETE_DRAFT
+    -> remove owned declarations and their exact lifetime references
+
+DELETE RelationshipDefinition root
+    -> remove all owned declarations and all corresponding exact lifetime references
+```
+
+## 21.2 Declaration delta and dependency delta are distinct
+
+REVISE must classify two different dimensions independently:
+
+```text
+declaration persistence delta
+    unchanged / added / removed / changed
+
+dependency delta
+    exact pin unchanged / added / rebound / removed
+```
+
+A declaration can be physically changed while preserving the same exact pin. Example:
+
+```text
+current:   property P -> X@3, SCALAR
+candidate: property P -> X@3, LIST
+```
+
+The declaration row is changed because `value_mode` changed, but the exact dependency is unchanged. Therefore:
+
+```text
+require X@3 currently PUBLISHED
+    -> NO
+
+require X@3 exact lifetime to remain protected through persistence
+    -> YES
+```
+
+The same applies to ordinal-only changes. A delete/reinsert implementation for such a declaration must not accidentally reinterpret the unchanged exact pin as a new lifecycle-sensitive binding.
+
+## 21.3 CREATE_NEXT transitive lifetime and architecture handoff
+
+On a CREATE_NEXT cache hit, the immutable source snapshot can supply the exact pins without DTV reload or compilation. The final physical realization must nevertheless preserve their lifetime through the clone commit.
+
+Preferred proof obligation:
+
+```text
+stabilized source RDV
+    -> source declarations remain present
+    -> declaration FKs keep every exact DTV alive
+    -> cloned declaration INSERTs can safely reuse those exact identities
+```
+
+If the final relational/concurrency realization cannot derive that transitive lifetime guarantee, architecture must add only the minimum exact-target stabilization required. It must not reintroduce semantic compilation or current PUBLISHED admission into CREATE_NEXT.
+
+## 21.4 Cross-family publication/deprecation race
+
+`RelationshipDefinitionVersion.PUBLISH` and `DataTypeVersion.DEPRECATE` must admit only serializable semantic outcomes:
+
+```text
+RDV PUBLISH wins
+    -> RDV becomes PUBLISHED
+    -> the exact DTV has an active PUBLISHED model consumer
+    -> DTV DEPRECATE is blocked
+
+DTV DEPRECATE wins
+    -> exact DTV is no longer PUBLISHED
+    -> RDV PUBLISH fails depency_not_admissible
+```
+
+Physical DataTypeVersion or DataType-lineage deletion remains blocked by every persisted RelationshipDefinition declaration, independently of RDV lifecycle status. Exact FK, lock, gate, wait, retry and blocker-query realization remains architecture work.
+
