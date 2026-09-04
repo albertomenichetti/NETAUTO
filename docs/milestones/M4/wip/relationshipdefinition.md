@@ -1849,3 +1849,88 @@ RelationshipDefinition technical discovery consolidation
 Only after this family reaches that reviewed discovery baseline should M4 proceed to the broader architecture-closing work shared with Object and factual Relationship.
 
 Implementation remains forbidden until the normal M4 Contract -> Architecture -> Steps freeze sequence authorizes it.
+
+---
+
+# 19. CS-03 — `relationship_definition_space` responsibility matrix — RESOLVED
+
+`relationship_definition_space` is the complete current certified exact-template semantic closure derived from:
+
+```text
+compact RelationshipDefinition stable topology/names
++
+current stable ObjectTemplate ancestry
+```
+
+It is Definition-owned derived state and relational semantic-cell ownership/arbitration knowledge, not a second independent source of domain truth.
+
+## 19.1 Operation and consumer matrix
+
+```text
+RelationshipDefinition.CREATE
+    -> derive CandidateSpace set-based inside PostgreSQL
+    -> arbitrate current semantic-cell ownership
+    -> persist the complete resulting Definition space
+
+Relationship.CREATE
+    -> read one requested exact template-level semantic cell
+    -> admit that requested oriented semantic observation
+    -> identify the unique owning RelationshipDefinition
+    -> use the compact Definition for reciprocal factual closure derivation
+
+RelationshipDefinition.GET detail
+    -> do NOT scan or refactor relationship_definition_space
+    -> use compact endpoint roots + complete current descendant sets
+
+RelationshipDefinition LIST / version / default / lifecycle operations
+    -> do NOT read relationship_definition_space
+    -> do NOT modify relationship_definition_space
+
+RelationshipDefinition.DELETE root
+    -> remove all owned relationship_definition_space rows
+
+ObjectTemplate stable-ancestry mutation
+    -> maintain every affected relationship_definition_space atomically
+       with the ancestry change
+```
+
+Factual operations against an already admitted Relationship do not re-certify model-plane topology:
+
+```text
+Relationship.GET
+Relationship.DATA_CHANGE
+Relationship.SCHEMA_CHANGE
+Relationship.DELETE
+    -> no relationship_definition_space read
+```
+
+## 19.2 New ObjectTemplate subtype maintenance
+
+Creating a new stable ObjectTemplate subtype `X` extends the descendant sets of its stable ancestors. Every RelationshipDefinition whose endpoint root space contains one of those ancestors may consequently gain new exact semantic cells involving `X`.
+
+Required coherence boundary:
+
+```text
+ObjectTemplate.CREATE X
+    -> persist complete object_template_ancestry rows for X
+    -> extend every affected relationship_definition_space set-based
+    -> commit ancestry + derived-space effects coherently
+```
+
+No committed state may expose the new ancestry while omitting the semantic cells that it induces.
+
+With the current single-inheritance model, creation of a subtype cannot introduce a previously absent conflict between two already-certified Definitions. If one new exact cell were derivable from both Definitions, the relevant endpoint roots would be pairwise comparable along the unique ancestor chains, and an overlapping cell using the more specific applicable roots would already have existed before `X` was created. The operation still requires a technical rendezvous with concurrent RelationshipDefinition.CREATE so either serial order produces complete derived closure.
+
+The exact statement, gate, lock, wait, retry and constraint realization remains architecture work.
+
+## 19.3 ObjectTemplate deletion and lifetime boundary
+
+A stable ObjectTemplate used as a compact endpoint root is a real model-plane reference and may block deletion according to the later ObjectTemplate lifetime design.
+
+A stable ObjectTemplate appearing only as an inherited descendant inside `relationship_definition_space` is merely derived state and must not become an autonomous lifetime blocker. Removal of such ancestry must remove the corresponding derived rows coherently, through FK/cascade or equivalent set-based ownership maintenance chosen later.
+
+## 19.4 ObjectTemplate relationship-capabilities handoff
+
+The existing ObjectTemplate relationship-capabilities discovery still assumes autonomous `RelationshipResolution`, mutable Resolution names and `resolution_id`. It is therefore not a current M4 authority for the redesigned model.
+
+The future ObjectTemplate family sweep owns the final route/projection redesign and must decide whether the capability read consumes compact Definition + ancestry, a suitable projection over `relationship_definition_space`, or another equivalent current-state path. RelationshipDefinition only records that this is a downstream consumer to revalidate; it does not freeze that route here.
