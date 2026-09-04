@@ -5866,3 +5866,56 @@ The invariant is enforced at CREATE/admission/relational-authority boundaries. D
 ### Closure
 
 Relationship DELETE is full-sweep complete. No additional factual Relationship route-local discovery point is currently known. Existing architecture-closing items from earlier checkpoints remain open, including the C-REL-26 CREATE Candidate A vs Candidate B selector decision and the global physical/concurrency closure.
+
+---
+
+## C-REL-36 RATIFIED — implicit default resolution freezes the exact RDV selection
+
+For factual `Relationship.CREATE`, omission of `relationship_definition_version` resolves the current `default_version` of the already selected owning RelationshipDefinition. The result of that resolution is one concrete exact binding:
+
+```text
+D.default_version = V
+    -> selected target = D@V
+```
+
+The command remains pinned to `D@V` after resolution. A concurrent later `SET_DEFAULT`, `CLEAR_DEFAULT`, or first-default establishment affects later implicit selections only; it neither retargets the command nor requires the final UoW to prove that the default pointer still equals `V`.
+
+The final CREATE admission continues to require that the selected exact `D@V` exists, belongs to `D`, and remains `PUBLISHED` through the new factual binding commit. It also preserves the already-ratified semantic-cell and runtime-cell arbitration. Default-pointer equality is not a commit predicate.
+
+Consequences:
+
+```text
+CLEAR_DEFAULT before resolution
+    -> default_version_unavailable
+
+CLEAR_DEFAULT after D@V resolution
+    -> D@V remains selected
+    -> final exact-target admission decides success
+
+SET_DEFAULT(D@W) before resolution
+    -> D@W is selected
+
+SET_DEFAULT(D@W) after D@V resolution
+    -> D@V remains selected
+
+first PUBLISH establishes a default before resolution
+    -> the new default may be selected
+
+resolution observes NULL before concurrent first PUBLISH
+    -> default_version_unavailable may be returned
+    -> no mandatory chase/restart loop
+```
+
+If `D@V` becomes `DEPRECATED` before final admission, CREATE fails because the exact selected target is no longer admissible, not because the default pointer changed. If CREATE commits first, later deprecation remains allowed because factual pins are not deprecation blockers.
+
+This rule applies identically to both still-open Definition-selection candidates:
+
+```text
+candidate A
+    explicit relationship_definition_id
+
+candidate B
+    owning Definition derived from the exact semantic cell
+```
+
+Whichever selector architecture closing chooses, the committed factual root stores the exact `(relationship_definition_id, relationship_definition_version)` pair and never follows future default changes.

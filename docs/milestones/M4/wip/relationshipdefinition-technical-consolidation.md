@@ -1292,6 +1292,42 @@ CREATE_NEXT continues to require neither DTV reload/compilation nor current PUBL
 
 The cross-family `RDV.PUBLISH × DTV.DEPRECATE` rendezvous must produce only the two serial outcomes: publication first creates an active blocker, while deprecation first makes publication fail `dependency_not_admissible`.
 
+## CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED
+
+The RelationshipDefinition owner and factual Relationship owner now agree that `default_version` is used only to select one exact RDV when the caller omits an explicit version.
+
+```text
+resolve D.default_version = V
+    -> materialize exact target D@V
+    -> keep D@V fixed for the in-flight command
+```
+
+Later `SET_DEFAULT`, `CLEAR_DEFAULT`, or first-default establishment changes only future implicit resolutions. Final factual CREATE admission protects exact `D@V` existence/same-Definition ownership and `PUBLISHED` status through commit, but does not require `D.default_version == V`.
+
+The owner records the corresponding race outcomes:
+
+```text
+CLEAR before resolution
+    -> default_version_unavailable
+
+CLEAR after exact resolution
+    -> no retarget/invalidation from pointer change alone
+
+SET_DEFAULT before resolution
+    -> new pointer may be selected
+
+SET_DEFAULT after resolution
+    -> already selected exact target remains fixed
+
+first PUBLISH before resolution
+    -> newly established default may be selected
+
+resolution observes NULL first
+    -> no mandatory chase of a concurrently appearing default
+```
+
+A later loss of exact `PUBLISHED` status still blocks the final new binding. This rule is independent of the still-open factual CREATE choice between explicit Definition selection and unique owner derivation from the requested semantic cell.
+
 ---
 
 # 13. Current technical frontier

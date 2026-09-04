@@ -2154,3 +2154,115 @@ DTV DEPRECATE wins
 
 Physical DataTypeVersion or DataType-lineage deletion remains blocked by every persisted RelationshipDefinition declaration, independently of RDV lifecycle status. Exact FK, lock, gate, wait, retry and blocker-query realization remains architecture work.
 
+
+---
+
+# 22. CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED
+
+The mutable `RelationshipDefinition.default_version` pointer is a selection mechanism for commands that omit an exact RelationshipDefinitionVersion. It is not a floating property of the resulting factual binding.
+
+For factual `Relationship.CREATE` with an omitted version:
+
+```text
+resolve owning RelationshipDefinition D
+resolve current D.default_version = V
+materialize selected exact target D@V
+```
+
+Once `D@V` has been resolved, the in-flight command remains pinned to that exact target. A later:
+
+```text
+SET_DEFAULT(D@W)
+CLEAR_DEFAULT(D)
+PUBLISH that establishes a previously-null default
+```
+
+affects future implicit resolutions only. It does not retarget the prepared command, force semantic preparation to restart, or invalidate the command solely because `D.default_version` no longer equals `V`.
+
+The final factual binding admission must instead preserve through commit:
+
+```text
+owning Definition/root lifetime
+exact D@V existence and same-Definition ownership
+D@V status == PUBLISHED
+requested semantic-cell admission/ownership
+factual runtime-cell conflict freedom
+```
+
+It must not require:
+
+```text
+D.default_version == V
+```
+
+The committed factual Relationship stores the exact pair:
+
+```text
+relationship_definition_id = D
+relationship_definition_version = V
+```
+
+and never stores a follow-current-default reference.
+
+## 22.1 Default-mutation races
+
+```text
+CLEAR_DEFAULT commits before implicit resolution
+    -> no exact target can be selected
+    -> default_version_unavailable
+
+implicit resolution selects D@V first
+CLEAR_DEFAULT commits afterward
+    -> command remains pinned to D@V
+    -> it may commit if final exact-target admission still succeeds
+```
+
+```text
+SET_DEFAULT(D@W) commits before resolution
+    -> command selects D@W
+
+command resolves D@V first
+SET_DEFAULT(D@W) commits afterward
+    -> command remains pinned to D@V
+```
+
+```text
+PUBLISH establishes the first default before resolution
+    -> a later implicit resolution may select it
+
+implicit resolution observes default_version = NULL first
+    -> the operation may fail default_version_unavailable
+    -> it is not required to chase a concurrently appearing default
+```
+
+## 22.2 Exact-target lifecycle remains authoritative
+
+A default change may make the previously selected `D@V` eligible for later deprecation, but pointer mutation alone does not decide the in-flight command. Final exact lifecycle admission does:
+
+```text
+DEPRECATE(D@V) wins before final binding admission
+    -> D@V is no longer PUBLISHED
+    -> Relationship.CREATE cannot commit
+
+Relationship.CREATE protects and commits the new D@V binding first
+    -> CREATE succeeds
+    -> DEPRECATE may still occur afterward because factual pins are not deprecation blockers
+```
+
+The protection lasts only through creation of the new exact factual binding. It does not turn factual Relationships into active-model blockers for `PUBLISHED -> DEPRECATED`.
+
+## 22.3 Definition selector independence
+
+The rule is identical for both factual CREATE selector candidates still open for architecture closing:
+
+```text
+candidate A
+    caller supplies relationship_definition_id
+    -> resolve that Definition's current default
+
+candidate B
+    exact semantic cell identifies the owning Definition
+    -> resolve that Definition's current default
+```
+
+After either path materializes `D@V`, the same exact-target semantics apply. Architecture must choose one public selector shape, but that choice does not reopen this default-resolution rule.
