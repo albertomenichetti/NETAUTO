@@ -1,0 +1,269 @@
+name: Apply M4 RelationshipDefinition CS-06
+
+on:
+  push:
+    branches:
+      - M4
+    paths:
+      - .github/workflows/apply-m4-rd-cs06.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: M4
+          fetch-depth: 0
+
+      - name: Record CS-06 in the two owners and temporary ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          owner="docs/milestones/M4/wip/relationshipdefinition.md"
+          relationship="docs/milestones/M4/wip/relationship.md"
+          ledger="docs/milestones/M4/wip/relationshipdefinition-technical-consolidation.md"
+
+          if ! grep -Fq "# 22. CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED" "$owner"; then
+            cat >> "$owner" <<'OWNER_EOF'
+
+---
+
+# 22. CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED
+
+The mutable `RelationshipDefinition.default_version` pointer is a selection mechanism for commands that omit an exact RelationshipDefinitionVersion. It is not a floating property of the resulting factual binding.
+
+For factual `Relationship.CREATE` with an omitted version:
+
+```text
+resolve owning RelationshipDefinition D
+resolve current D.default_version = V
+materialize selected exact target D@V
+```
+
+Once `D@V` has been resolved, the in-flight command remains pinned to that exact target. A later:
+
+```text
+SET_DEFAULT(D@W)
+CLEAR_DEFAULT(D)
+PUBLISH that establishes a previously-null default
+```
+
+affects future implicit resolutions only. It does not retarget the prepared command, force semantic preparation to restart, or invalidate the command solely because `D.default_version` no longer equals `V`.
+
+The final factual binding admission must instead preserve through commit:
+
+```text
+owning Definition/root lifetime
+exact D@V existence and same-Definition ownership
+D@V status == PUBLISHED
+requested semantic-cell admission/ownership
+factual runtime-cell conflict freedom
+```
+
+It must not require:
+
+```text
+D.default_version == V
+```
+
+The committed factual Relationship stores the exact pair:
+
+```text
+relationship_definition_id = D
+relationship_definition_version = V
+```
+
+and never stores a follow-current-default reference.
+
+## 22.1 Default-mutation races
+
+```text
+CLEAR_DEFAULT commits before implicit resolution
+    -> no exact target can be selected
+    -> default_version_unavailable
+
+implicit resolution selects D@V first
+CLEAR_DEFAULT commits afterward
+    -> command remains pinned to D@V
+    -> it may commit if final exact-target admission still succeeds
+```
+
+```text
+SET_DEFAULT(D@W) commits before resolution
+    -> command selects D@W
+
+command resolves D@V first
+SET_DEFAULT(D@W) commits afterward
+    -> command remains pinned to D@V
+```
+
+```text
+PUBLISH establishes the first default before resolution
+    -> a later implicit resolution may select it
+
+implicit resolution observes default_version = NULL first
+    -> the operation may fail default_version_unavailable
+    -> it is not required to chase a concurrently appearing default
+```
+
+## 22.2 Exact-target lifecycle remains authoritative
+
+A default change may make the previously selected `D@V` eligible for later deprecation, but pointer mutation alone does not decide the in-flight command. Final exact lifecycle admission does:
+
+```text
+DEPRECATE(D@V) wins before final binding admission
+    -> D@V is no longer PUBLISHED
+    -> Relationship.CREATE cannot commit
+
+Relationship.CREATE protects and commits the new D@V binding first
+    -> CREATE succeeds
+    -> DEPRECATE may still occur afterward because factual pins are not deprecation blockers
+```
+
+The protection lasts only through creation of the new exact factual binding. It does not turn factual Relationships into active-model blockers for `PUBLISHED -> DEPRECATED`.
+
+## 22.3 Definition selector independence
+
+The rule is identical for both factual CREATE selector candidates still open for architecture closing:
+
+```text
+candidate A
+    caller supplies relationship_definition_id
+    -> resolve that Definition's current default
+
+candidate B
+    exact semantic cell identifies the owning Definition
+    -> resolve that Definition's current default
+```
+
+After either path materializes `D@V`, the same exact-target semantics apply. Architecture must choose one public selector shape, but that choice does not reopen this default-resolution rule.
+OWNER_EOF
+          fi
+
+          if ! grep -Fq "## C-REL-36 RATIFIED — implicit default resolution freezes the exact RDV selection" "$relationship"; then
+            cat >> "$relationship" <<'REL_EOF'
+
+---
+
+## C-REL-36 RATIFIED — implicit default resolution freezes the exact RDV selection
+
+For factual `Relationship.CREATE`, omission of `relationship_definition_version` resolves the current `default_version` of the already selected owning RelationshipDefinition. The result of that resolution is one concrete exact binding:
+
+```text
+D.default_version = V
+    -> selected target = D@V
+```
+
+The command remains pinned to `D@V` after resolution. A concurrent later `SET_DEFAULT`, `CLEAR_DEFAULT`, or first-default establishment affects later implicit selections only; it neither retargets the command nor requires the final UoW to prove that the default pointer still equals `V`.
+
+The final CREATE admission continues to require that the selected exact `D@V` exists, belongs to `D`, and remains `PUBLISHED` through the new factual binding commit. It also preserves the already-ratified semantic-cell and runtime-cell arbitration. Default-pointer equality is not a commit predicate.
+
+Consequences:
+
+```text
+CLEAR_DEFAULT before resolution
+    -> default_version_unavailable
+
+CLEAR_DEFAULT after D@V resolution
+    -> D@V remains selected
+    -> final exact-target admission decides success
+
+SET_DEFAULT(D@W) before resolution
+    -> D@W is selected
+
+SET_DEFAULT(D@W) after D@V resolution
+    -> D@V remains selected
+
+first PUBLISH establishes a default before resolution
+    -> the new default may be selected
+
+resolution observes NULL before concurrent first PUBLISH
+    -> default_version_unavailable may be returned
+    -> no mandatory chase/restart loop
+```
+
+If `D@V` becomes `DEPRECATED` before final admission, CREATE fails because the exact selected target is no longer admissible, not because the default pointer changed. If CREATE commits first, later deprecation remains allowed because factual pins are not deprecation blockers.
+
+This rule applies identically to both still-open Definition-selection candidates:
+
+```text
+candidate A
+    explicit relationship_definition_id
+
+candidate B
+    owning Definition derived from the exact semantic cell
+```
+
+Whichever selector architecture closing chooses, the committed factual root stores the exact `(relationship_definition_id, relationship_definition_version)` pair and never follows future default changes.
+REL_EOF
+          fi
+
+          if ! grep -Fq "## CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED" "$ledger"; then
+            cat > /tmp/cs06-ledger.md <<'LEDGER_EOF'
+
+## CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED
+
+The RelationshipDefinition owner and factual Relationship owner now agree that `default_version` is used only to select one exact RDV when the caller omits an explicit version.
+
+```text
+resolve D.default_version = V
+    -> materialize exact target D@V
+    -> keep D@V fixed for the in-flight command
+```
+
+Later `SET_DEFAULT`, `CLEAR_DEFAULT`, or first-default establishment changes only future implicit resolutions. Final factual CREATE admission protects exact `D@V` existence/same-Definition ownership and `PUBLISHED` status through commit, but does not require `D.default_version == V`.
+
+The owner records the corresponding race outcomes:
+
+```text
+CLEAR before resolution
+    -> default_version_unavailable
+
+CLEAR after exact resolution
+    -> no retarget/invalidation from pointer change alone
+
+SET_DEFAULT before resolution
+    -> new pointer may be selected
+
+SET_DEFAULT after resolution
+    -> already selected exact target remains fixed
+
+first PUBLISH before resolution
+    -> newly established default may be selected
+
+resolution observes NULL first
+    -> no mandatory chase of a concurrently appearing default
+```
+
+A later loss of exact `PUBLISHED` status still blocks the final new binding. This rule is independent of the still-open factual CREATE choice between explicit Definition selection and unique owner derivation from the requested semantic cell.
+LEDGER_EOF
+
+            python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/milestones/M4/wip/relationshipdefinition-technical-consolidation.md")
+          text = path.read_text(encoding="utf-8")
+          section = Path("/tmp/cs06-ledger.md").read_text(encoding="utf-8")
+          marker = "\n---\n\n# 13. Current technical frontier"
+          if marker not in text:
+              raise SystemExit("ledger frontier marker not found")
+          path.write_text(text.replace(marker, section + marker, 1), encoding="utf-8")
+          PY
+          fi
+
+          git rm -- .github/workflows/apply-m4-rd-cs06.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$owner" "$relationship" "$ledger"
+
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git commit -m "docs(m4): freeze exact RDV after implicit default resolution"
+          git push origin HEAD:M4
