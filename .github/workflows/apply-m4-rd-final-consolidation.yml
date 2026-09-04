@@ -21,22 +21,208 @@ jobs:
 
       - name: Consolidate RelationshipDefinition reviewed baseline
         shell: bash
-        env:
-          SCRIPT_GZ_B64: "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"
         run: |
           set -euo pipefail
-          python -c 'import base64,gzip,os; open("/tmp/finalize.py","wb").write(gzip.decompress(base64.b64decode(os.environ["SCRIPT_GZ_B64"])))'
-          python /tmp/finalize.py --repo . --allow-head-drift
-
           git rm -- .github/workflows/apply-m4-rd-final-consolidation.yml
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path(".").resolve()
+          wip = root / "docs/milestones/M4/wip"
+          owner_path = wip / "relationshipdefinition.md"
+          ledger_path = wip / "relationshipdefinition-technical-consolidation.md"
+          index_path = wip / "index.md"
+
+          owner = owner_path.read_text(encoding="utf-8")
+          ledger = ledger_path.read_text(encoding="utf-8")
+          index = index_path.read_text(encoding="utf-8")
+
+          section1 = "# 1. Current capability inventory"
+          frontier = "# 18. Current next review frontier"
+          tech1 = "# 1. `relationship_definition_space` classification"
+          cs = "# 12. Consistency sweep checkpoints"
+          ledger_frontier = "# 13. Current technical frontier"
+
+          for marker, text in (
+              (section1, owner), (frontier, owner),
+              (tech1, ledger), (cs, ledger), (ledger_frontier, ledger),
+          ):
+              if marker not in text:
+                  raise SystemExit(f"missing marker: {marker}")
+
+          preamble = """# M4 WIP — RelationshipDefinition model-plane review owner
+
+          **Status:** REVIEWED BASELINE / SINGLE FAMILY OWNER / REST + TECHNICAL DISCOVERY CONSOLIDATED / ARCHITECTURE CLOSING PENDING / M4 WIP / ALWAYS NON-NORMATIVE
+
+          ## Purpose and ownership
+
+          This document is the single current M4 WIP owner for the complete `RelationshipDefinition` model-plane family. It owns the reviewed public contracts, stable semantic model, exact-version/property authoring rules, logical persistence and ownership, `relationship_definition_space`, route-local data paths, cache boundaries, cost constraints and explicit architecture/concurrency handoffs.
+
+          Everything under `wip/` remains globally non-normative and does not authorize implementation.
+
+          The former semantic-intent draft, operation-specific discovery notes and temporary technical ledger have been absorbed here and removed. Git history remains the historical source for superseded reasoning.
+
+          Cross-domain responsibilities remain owned by `general-domain-principles.md`, `version-allocation.md`, `object-template-ancestry-cache.md` and the factual `relationship.md`. The delivered AS-IS under `docs/architecture/` remains authoritative until M4 freezes and promotes a TO-BE architecture set.
+
+          ---
+          """
+
+          contract = owner[owner.index(section1):owner.index(frontier)].rstrip()
+          contract = re.sub(r"\n---\s*$", "", contract)
+          contract = contract.replace(
+              "This REST closure remains M4 WIP and non-normative. It does not mean the RelationshipDefinition family has reached the consolidated discovery baseline of Object/factual Relationship, and it does not freeze physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL or migration/backfill.",
+              "This REST closure remains M4 WIP and non-normative. The consolidated technical baseline below brings the family to `REVIEWED BASELINE`; physical SQL, cache realization, lock/FK/UNIQUE arbitration, retry behavior, DDL and migration/backfill remain open architecture work.",
+          )
+
+          def demote(value: str) -> str:
+              return re.sub(r"(?m)^(#+)(?=\s)", lambda m: "#" + m.group(1), value)
+
+          technical = ledger[ledger.index(tech1):ledger.index(cs)].strip()
+          technical = technical.replace(
+              "The older RelationshipDefinition REST/discovery wording that forbids committed-history `LIST -> SCALAR` is **superseded by the current M4 revalidation and must be corrected when this ledger is absorbed into the owner**.",
+              "The former wording that forbade committed-history `LIST -> SCALAR` is superseded; this owner carries the corrected rule.",
+          )
+          consistency = ledger[ledger.index(cs) + len(cs):ledger.index(ledger_frontier)].strip()
+
+          closure = """# 20. Logical-model and reviewed-baseline closure
+
+          The stable logical source of truth is the compact `RelationshipDefinition`: stable identity, explicit symmetry, two stable endpoint roots, the complete stable directional naming contract and mutable `default_version`. A/B preserves caller-authored orientation and is not a privileged source/target ordering. There is no autonomous `RelationshipResolution`, `resolution_id`, mutable semantic-name child or identity-preserving RENAME.
+
+          Exact RDV and property rows own lifecycle/generation and ordered exact DTV declarations. Internal ordinal preserves array order but is not public semantic identity. `relationship_definition_space` is Definition-owned derived certified current model knowledge, not a second domain authority.
+
+          A model cell `(T, name, T)` is valid same-template applicability. It does not authorize factual self-reference; `from_object_id != to_object_id` remains a factual Relationship rule. Final DDL must not turn that Object-identity rule into a model-plane endpoint-template inequality.
+
+          Domain code owns symmetry/name/topology semantics. PostgreSQL owns relational integrity, exact lifetime, owned cleanup and final current-state arbitration. Final SQL names/types, PK/FK/UNIQUE/index choices, lock/wait/retry/deadlock realization, migration/backfill, cache implementation and verification remain architecture work.
+
+          Current result:
+
+          ```text
+          one active RelationshipDefinition family owner
+          no unresolved REST / semantic / data-path / cache contradiction
+          all remaining items explicitly classified as architecture/concurrency/physical handoffs
+          implementation still forbidden
+          ```
+
+          Material changes to ObjectTemplate inheritance, DataType dependency lifecycle, factual Relationship admission, stable Definition semantics, version allocation or measured semantic-space cost reopen only the affected boundaries.
+          """
+
+          owner_path.write_text(
+              preamble.rstrip()
+              + "\n\n"
+              + contract
+              + "\n\n---\n\n# 18. Consolidated operation-level technical discovery\n\n"
+              + demote(technical)
+              + "\n\n---\n\n# 19. Bidirectional consistency sweep\n\n"
+              + demote(consistency)
+              + "\n\n---\n\n"
+              + closure.rstrip()
+              + "\n",
+              encoding="utf-8",
+          )
+
+          match = re.search(r"(## REVIEWED BASELINE\n\n```text\n)(.*?)(\n```)", index, re.S)
+          if not match:
+              raise SystemExit("index reviewed baseline block missing")
+          baseline = match.group(2)
+          if "relationshipdefinition.md" not in baseline.splitlines():
+              baseline = baseline.rstrip() + "\nrelationshipdefinition.md"
+          index = index[:match.start()] + match.group(1) + baseline + match.group(3) + index[match.end():]
+          index = index.replace("through `C-REL-35`", "through `C-REL-36`")
+
+          frontier_text = """# 2. Current review frontier
+
+          `relationshipdefinition.md` has reached the same M4 discovery/revalidation baseline as Object and factual Relationship. This is not architecture closure and does not authorize implementation.
+
+          The remaining unconsolidated model-plane families are DataType and ObjectTemplate. Their review order must be selected explicitly; this consolidation does not silently start broader physical/concurrency architecture closure. Lifecycle remains a separate historical/audit family.
+
+          A material future change reopens only the reviewed dependencies it actually affects.
+
+          """
+          spine = "# 3. Current M4 spine"
+          if "# 2. Current review frontier" not in index or spine not in index:
+              raise SystemExit("index frontier markers missing")
+          index = index[:index.index("# 2. Current review frontier")] + frontier_text + index[index.index(spine):]
+
+          index = index.replace(
+              "These families remain non-normative active input unless/until consolidated and promoted by the milestone architecture process.",
+              "DataType and ObjectTemplate remain non-normative active input. RelationshipDefinition is consolidated below as a reviewed family owner.",
+              1,
+          )
+
+          rd = """## RelationshipDefinition — REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
+
+          ### [`relationshipdefinition.md`](relationshipdefinition.md) — SPINE / REVIEWED BASELINE / single family owner
+
+          Sole active M4 RelationshipDefinition model-plane owner. It consolidates the four GETs, nine retained mutations, removed RENAME, compact stable Definition semantics, exact RDV/property ownership, shared no-reuse allocation, certified semantic space, route-local data paths/costs, immutable exact-RDV cache, DTV/default/history lifetime rules and explicit architecture handoffs.
+
+          The former intent draft, operation notes and temporary ledger have been absorbed and removed; Git history remains the historical record. Final DDL, locking, cache implementation, migration/backfill, factual CREATE selector and verification remain later work.
+
+          """
+          rd_old = "## RelationshipDefinition — ACTIVE REVIEW FRONTIER"
+          rel = "# 6. Factual Relationship"
+          if rd_old not in index or rel not in index:
+              raise SystemExit("index RelationshipDefinition markers missing")
+          index = index[:index.index(rd_old)] + rd + index[index.index(rel):]
+
+          anchor = "`REVIEWED BASELINE` remains a WIP review state only."
+          if anchor in index and "RelationshipDefinition has completed its REST and technical consistency sweep" not in index:
+              index = index.replace(
+                  anchor,
+                  "RelationshipDefinition has completed its REST and technical consistency sweep in `relationshipdefinition.md`; its subordinate files were absorbed and removed.\n\n" + anchor,
+                  1,
+              )
+          index_path.write_text(index, encoding="utf-8")
+
+          delete_paths = sorted(wip.glob("relationshipdefinition-*-discovery.md"))
+          for extra in (ledger_path, wip / "new-relationship-definition.md"):
+              if extra.exists():
+                  delete_paths.append(extra)
+          if len(delete_paths) != 16:
+              raise SystemExit(f"expected 16 absorbed files, found {len(delete_paths)}")
+
+          deleted = {p.name for p in delete_paths}
+          stale = []
+          for path in root.rglob("*"):
+              if not path.is_file() or ".git" in path.parts or path in delete_paths:
+                  continue
+              try:
+                  text = path.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              for name in deleted:
+                  if name in text:
+                      stale.append(f"{path.relative_to(root)} -> {name}")
+          if stale:
+              raise SystemExit("stale references remain:\n" + "\n".join(sorted(stale)))
+
+          for path in delete_paths:
+              path.unlink()
+
+          final_owner = owner_path.read_text(encoding="utf-8")
+          final_index = index_path.read_text(encoding="utf-8")
+          for marker in (
+              "REVIEWED BASELINE / SINGLE FAMILY OWNER",
+              "# 18. Consolidated operation-level technical discovery",
+              "# 19. Bidirectional consistency sweep",
+              "# 20. Logical-model and reviewed-baseline closure",
+          ):
+              if marker not in final_owner:
+                  raise SystemExit(f"final owner marker missing: {marker}")
+          if "## RelationshipDefinition — REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING" not in final_index:
+              raise SystemExit("final index marker missing")
+          if list(wip.glob("relationshipdefinition-*")) or (wip / "new-relationship-definition.md").exists():
+              raise SystemExit("absorbed files still present")
+
+          print("RelationshipDefinition consolidation validated.")
+          for name in sorted(deleted):
+              print("deleted", name)
+          PY
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
-
+          git diff --cached --stat
           git commit -m "docs(m4): consolidate RelationshipDefinition reviewed baseline"
           git push origin HEAD:M4
