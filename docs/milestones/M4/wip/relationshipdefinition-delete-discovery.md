@@ -1,6 +1,6 @@
 # RelationshipDefinition DELETE — M4 discovery
 
-Status: **ACTIVE TECHNICAL REVIEW / RATIFIED ROOT-DELETE GATE CHECKPOINT / WIP / NON-NORMATIVE**
+Status: **TECHNICAL DISCOVERY CLOSED EXCEPT CONCURRENCY/PHYSICAL REALIZATION / WIP / NON-NORMATIVE**
 
 This note is operation-specific source/evidence subordinate to `relationshipdefinition.md` and to the current RelationshipDefinition technical-consolidation ledger. It does not authorize implementation or freeze final FK/lock/gate realization.
 
@@ -17,7 +17,7 @@ The reviewed M4 failure contract requires only:
     details.blocker_type = relationship
 ```
 
-Therefore the AS-IS total factual blocker `COUNT` is superseded. Ordinary deletion admission needs only an existence proof / bounded blocker witness and must not enumerate or count all factual Relationships solely for diagnostics.
+Therefore the AS-IS total factual blocker `COUNT` is superseded. Ordinary deletion admission must not enumerate or count all factual Relationships solely for diagnostics.
 
 ## Stable Definition-owned cleanup
 
@@ -46,26 +46,36 @@ The preferred semantic direction is root-owned relational cleanup (FK cascade or
 
 No topology/name recertification is required before deletion: removing one Definition cannot introduce a new semantic-cell ownership conflict.
 
-## Minimal admission path
+## Blocker arbitration — relational authority
 
-Conceptually the root delete needs only:
+A separate factual-reference `COUNT` is not required. A preflight `EXISTS` is also not required for correctness.
 
-```text
-RelationshipDefinition current existence
-+
-EXISTS current factual Relationship referencing the Definition
-```
+The final lifetime authority should be relational/FK arbitration or an equivalent current-state mechanism that remains valid through the root deletion commit boundary.
 
-If a factual blocker exists:
+Conceptually:
 
 ```text
--> 409 delete_blocked
--> stop after sufficient blocker proof
+attempt root deletion
+
+current factual Relationship reference exists
+    -> deletion cannot commit
+    -> 409 delete_blocked
+    -> blocker_type = relationship
+
+no factual Relationship reference
+    -> root deletion may commit
 ```
 
-If no blocker exists, the root aggregate may be deleted atomically with its owned state.
+An `EXISTS` probe may still be used as a bounded fail-fast optimization, but it is not the correctness authority because a new factual pin could otherwise appear after the probe.
 
-No complete Definition topology, RDV property payload, DataType semantics, ObjectTemplate ancestry or `relationship_definition_space` interpretation is required for admission.
+The root DELETE must have an independent complete lifetime/admission rendezvous with new factual pinning for both:
+
+```text
+Relationship.CREATE explicit exact selector
+Relationship.CREATE implicit/default selector
+```
+
+Exact locking/FK-wait/gate realization belongs to architecture/concurrency work.
 
 ## `default_version = NULL` before root delete — revalidated classification
 
@@ -91,28 +101,7 @@ A further defensive intuition is that clearing the default appears to close the 
 - root DELETE must rendezvous with new factual pinning regardless of selector form.
 ```
 
-The M2 concurrency realization already treated root deletion and factual Relationship CREATE as an independent reference-lifetime race:
-
-```text
-RelationshipDefinition root DELETE
-    -> root Definition lifetime protection
-
-Relationship.CREATE explicit exact selector
-    -> stabilizes Definition lifetime + exact RDV admission
-
-Relationship.CREATE implicit/default selector
-    -> stabilizes Definition/default selection + exact RDV admission
-```
-
-Therefore M4 carries forward this discovery-level requirement:
-
-```text
-root DELETE vs new factual pinning
-    -> requires one complete independent lifetime/admission rendezvous
-    -> covers both explicit and implicit Relationship.CREATE
-```
-
-while classifying the pre-clear itself as:
+Therefore M4 classifies the pre-clear as:
 
 ```text
 semantic root-delete requirement
@@ -127,6 +116,53 @@ known AS-IS physical reason
 
 Architecture must decide whether the final FK design still requires an explicit pre-clear or whether root deletion can own/cascade the complete aggregate directly. That physical choice must not replace the independent new-pinning lifetime rendezvous.
 
+## Logical DML / ownership cost shape — RATIFIED
+
+Application-level work is bounded/constant in the number of owned rows.
+
+Conceptual mutation:
+
+```text
+stabilize Definition lifetime
+
+optional physical pre-clear of default_version
+    -> only if final FK realization requires it
+
+DELETE RelationshipDefinition root
+    -> owned cleanup of:
+         RelationshipDefinitionVersion rows
+         RelationshipDefinitionProperty rows
+         relationship_definition_space rows
+```
+
+No application loop over versions, properties or semantic-space rows is required.
+
+Physical cleanup work is naturally proportional to owned state:
+
+```text
+O(number of exact versions
+  + number of property rows
+  + number of relationship_definition_space rows)
+```
+
+while application persistence round trips remain bounded/constant.
+
+No complete Definition topology, RDV property payload, DataType semantics, ObjectTemplate ancestry or semantic-space interpretation is required for deletion admission.
+
+## Shared `last_versions` allocator handoff
+
+The cross-domain version-allocation owner deliberately leaves complete-lineage allocator-row lifetime to architecture.
+
+Therefore root DELETE does not independently decide whether:
+
+```text
+last_versions row is retained
+or
+last_versions row is deleted by some final relational policy
+```
+
+The only discovery invariant carried here is that allocator behavior must remain coherent with the cross-domain owner and must not reintroduce version-number reuse semantics accidentally.
+
 ## Cache behavior after delete
 
 Immutable exact-RDV cache entries may survive locally after root deletion without correctness impact:
@@ -138,6 +174,39 @@ cache presence != current lifecycle admission
 
 Definition UUIDs/exact-version identities are not reused for a different semantic resource. Distributed cache invalidation is therefore not a correctness prerequisite; local eviction may be opportunistic.
 
-## Still open before technical closure
+## Technical closure checkpoint
 
-The remaining root-DELETE checkpoint is the final logical DML/ownership cost shape, including the treatment of the shared version-allocation row (`last_versions`) and the explicit architecture handoffs for lifetime arbitration and physical cascade/default-FK realization.
+```text
+RD root DELETE
+
+semantic preparation
+    -> NONE
+
+current/root admission
+    -> Definition lifetime/current existence
+
+external blocker authority
+    -> relational/FK lifetime arbitration
+    -> no diagnostic COUNT
+    -> optional bounded EXISTS only as fail-fast
+
+writes
+    -> root DELETE
+    -> optional pre-clear default only if final FK design requires it
+
+owned cleanup
+    -> exact versions
+    -> version properties
+    -> relationship_definition_space
+
+last_versions
+    -> cross-domain architecture handoff
+
+cache
+    -> no correctness-driven invalidation
+
+response
+    -> 204
+```
+
+`RelationshipDefinition.DELETE` is therefore technically closed except for concurrency and physical realization.
