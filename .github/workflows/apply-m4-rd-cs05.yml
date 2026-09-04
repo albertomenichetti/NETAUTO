@@ -1,0 +1,230 @@
+name: Apply M4 RelationshipDefinition CS-05
+
+on:
+  push:
+    branches:
+      - M4
+    paths:
+      - .github/workflows/apply-m4-rd-cs05.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: M4
+      - name: Update RelationshipDefinition owner and temporary ledger
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          owner_path = Path("docs/milestones/M4/wip/relationshipdefinition.md")
+          ledger_path = Path("docs/milestones/M4/wip/relationshipdefinition-technical-consolidation.md")
+
+          owner_section = r'''
+
+---
+
+# 21. CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED
+
+RelationshipDefinition property declarations have two distinct dependency meanings that must not be conflated:
+
+```text
+exact dependency lifetime
+    -> every persisted declaration in any RDV lifecycle state
+
+active-model lifecycle dependency
+    -> only a declaration owned by a PUBLISHED RDV
+```
+
+Consequently:
+
+```text
+RDV DRAFT declaration
+    -> blocks physical exact DTV / DataType-lineage deletion
+    -> does not block DTV DEPRECATE
+
+RDV PUBLISHED declaration
+    -> blocks physical exact DTV / DataType-lineage deletion
+    -> blocks DTV DEPRECATE as an active model consumer
+
+RDV DEPRECATED declaration
+    -> blocks physical exact DTV / DataType-lineage deletion
+    -> does not block DTV DEPRECATE
+```
+
+## 21.1 Operation effects
+
+```text
+RelationshipDefinition.CREATE
+    -> every selected exact DTV must be currently PUBLISHED
+    -> persist exact lifetime references in the new DRAFT
+    -> no active-model dependency exists until RDV publication
+
+CREATE_NEXT
+    -> clone exact lifetime references from an immutable PUBLISHED/DEPRECATED source
+    -> no current PUBLISHED re-admission of the cloned DTV pins
+    -> new RDV remains DRAFT and adds no active-model dependency
+
+REVISE
+    -> added or rebound exact pin:
+         current PUBLISHED admission
+         + new exact lifetime reference
+
+    -> unchanged exact pin:
+         no current PUBLISHED re-admission
+         + preserve exact lifetime
+
+    -> removed declaration:
+         remove its exact lifetime reference
+
+PUBLISH
+    -> every exact DTV pin must still be PUBLISHED
+    -> every persisted declaration becomes an active-model dependency
+
+DEPRECATE RDV
+    -> preserve every exact lifetime reference
+    -> remove the active-model dependency classification
+
+DELETE_DRAFT
+    -> remove owned declarations and their exact lifetime references
+
+DELETE RelationshipDefinition root
+    -> remove all owned declarations and all corresponding exact lifetime references
+```
+
+## 21.2 Declaration delta and dependency delta are distinct
+
+REVISE must classify two different dimensions independently:
+
+```text
+declaration persistence delta
+    unchanged / added / removed / changed
+
+dependency delta
+    exact pin unchanged / added / rebound / removed
+```
+
+A declaration can be physically changed while preserving the same exact pin. Example:
+
+```text
+current:   property P -> X@3, SCALAR
+candidate: property P -> X@3, LIST
+```
+
+The declaration row is changed because `value_mode` changed, but the exact dependency is unchanged. Therefore:
+
+```text
+require X@3 currently PUBLISHED
+    -> NO
+
+require X@3 exact lifetime to remain protected through persistence
+    -> YES
+```
+
+The same applies to ordinal-only changes. A delete/reinsert implementation for such a declaration must not accidentally reinterpret the unchanged exact pin as a new lifecycle-sensitive binding.
+
+## 21.3 CREATE_NEXT transitive lifetime and architecture handoff
+
+On a CREATE_NEXT cache hit, the immutable source snapshot can supply the exact pins without DTV reload or compilation. The final physical realization must nevertheless preserve their lifetime through the clone commit.
+
+Preferred proof obligation:
+
+```text
+stabilized source RDV
+    -> source declarations remain present
+    -> declaration FKs keep every exact DTV alive
+    -> cloned declaration INSERTs can safely reuse those exact identities
+```
+
+If the final relational/concurrency realization cannot derive that transitive lifetime guarantee, architecture must add only the minimum exact-target stabilization required. It must not reintroduce semantic compilation or current PUBLISHED admission into CREATE_NEXT.
+
+## 21.4 Cross-family publication/deprecation race
+
+`RelationshipDefinitionVersion.PUBLISH` and `DataTypeVersion.DEPRECATE` must admit only serializable semantic outcomes:
+
+```text
+RDV PUBLISH wins
+    -> RDV becomes PUBLISHED
+    -> the exact DTV has an active PUBLISHED model consumer
+    -> DTV DEPRECATE is blocked
+
+DTV DEPRECATE wins
+    -> exact DTV is no longer PUBLISHED
+    -> RDV PUBLISH fails dependency_not_admissible
+```
+
+Physical DataTypeVersion or DataType-lineage deletion remains blocked by every persisted RelationshipDefinition declaration, independently of RDV lifecycle status. Exact FK, lock, gate, wait, retry and blocker-query realization remains architecture work.
+'''
+
+          ledger_section = r'''
+
+## CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED
+
+The owner now separates three concerns:
+
+```text
+exact dependency lifetime
+    -> every persisted RelationshipDefinition declaration
+
+active-model lifecycle dependency
+    -> declarations owned by PUBLISHED RDVs only
+
+new-binding PUBLISHED admission
+    -> CREATE selected pins
+    -> REVISE added/rebound pins
+    -> all pins when publishing an RDV
+```
+
+Lifecycle matrix:
+
+```text
+DRAFT declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker NO
+
+PUBLISHED declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker YES
+
+DEPRECATED declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker NO
+```
+
+The owner also records that REVISE declaration DML classification and exact-dependency classification are independent. A value-mode or ordinal change may cause a physical row replacement while retaining the same exact DTV pin; that unchanged pin requires lifetime preservation but no current PUBLISHED re-admission.
+
+CREATE_NEXT continues to require neither DTV reload/compilation nor current PUBLISHED admission. Architecture must prove the cloned pins' lifetime through source RDV/declaration stabilization and exact declaration FKs, or add only the minimum equivalent exact-target protection.
+
+The cross-family `RDV.PUBLISH × DTV.DEPRECATE` rendezvous must produce only the two serial outcomes: publication first creates an active blocker, while deprecation first makes publication fail `dependency_not_admissible`.
+'''
+
+          owner = owner_path.read_text(encoding="utf-8")
+          if "# 21. CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED" not in owner:
+              owner_path.write_text(owner.rstrip() + owner_section + "\n", encoding="utf-8")
+
+          ledger = ledger_path.read_text(encoding="utf-8")
+          if "## CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED" not in ledger:
+              marker = "\n---\n\n# 13. Current technical frontier"
+              if marker not in ledger:
+                  raise SystemExit("ledger frontier marker not found")
+              ledger = ledger.replace(marker, ledger_section + marker, 1)
+              ledger_path.write_text(ledger, encoding="utf-8")
+          PY
+      - name: Commit documentation changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/milestones/M4/wip/relationshipdefinition.md \
+                  docs/milestones/M4/wip/relationshipdefinition-technical-consolidation.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "docs(m4): record RelationshipDefinition DTV dependency matrix"
+          git push origin HEAD:M4
