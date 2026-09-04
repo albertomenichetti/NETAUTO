@@ -1153,19 +1153,37 @@ Current lifecycle admission applies only when REVISE creates or changes an exact
 
 ## Historical property continuity
 
-REVISE preserves the existing complete committed-history semantics across all PUBLISHED/DEPRECATED RelationshipDefinitionVersion generations, independently of numeric publication/version order.
+REVISE preserves the complete committed-history semantics across all PUBLISHED/DEPRECATED RelationshipDefinitionVersion generations, independently of numeric publication/version order.
 
-For a property name with committed history, at minimum:
+For the same historical property name:
 
 ```text
-historical DataType lineage
-    -> cannot change
+DataType lineage (`datatype_id`)
+    -> must remain stable
 
-once any committed historical declaration is LIST
-    -> later candidate SCALAR is forbidden
+exact datatype_version
+    -> may change
+
+value_mode
+    -> may change SCALAR -> LIST
+    -> may change LIST -> SCALAR
 ```
 
-These are candidate semantic-validation rules. A later data-path implementation may detect a single violating historical fact set-based rather than loading all historical versions, but must preserve the same complete-history meaning.
+There is no monotonic `value_mode` history rule in the current M4 candidate. In particular, committed historical `LIST -> SCALAR` is not an intrinsic RelationshipDefinitionVersion validity violation.
+
+The governing distinction is:
+
+```text
+validity of an exact RelationshipDefinitionVersion
+    !=
+ability of every current factual Relationship to migrate to it
+```
+
+A factual `Relationship.SCHEMA_CHANGE` pays preserve-or-fail admission for the concrete fact and source/target schema pair. It may reject a multi-item LIST when targeting SCALAR without making the exact SCALAR RDV itself globally invalid.
+
+Historical continuity remains name-scoped and requires stable DataType lineage because same-name factual property continuity does not treat a cross-DataType-lineage replacement as the same supported semantic property evolution.
+
+A later data-path implementation may detect a single violating DataType-lineage fact set-based rather than loading all historical versions, but must preserve this complete-history meaning.
 
 ## Generation semantics
 
@@ -1215,7 +1233,6 @@ The caller already selected the exact resource and supplied the complete replace
     duplicate property names
     property naming rule violation
     historical DataType-lineage continuity violation
-    historical LIST -> SCALAR violation
 
 409 lifecycle_state_conflict
     exact target exists but is not DRAFT
@@ -1250,6 +1267,7 @@ POST /relationship-definitions/{id}/versions/{version}/revise
     -> omitted datatype_version always resolves current default
     -> array order defines internal ordinal
     -> target must be DRAFT
+    -> historical same-name continuity constrains DataType lineage, not value_mode direction
     -> successful call ALWAYS revision + 1
     -> identical canonical replacement is still a new generation
     -> 204, no body
@@ -1782,6 +1800,8 @@ REVISE always consumes one revision, even for identical replacement
 PUBLISH / DEPRECATE do not increment revision
 CREATE_NEXT clones eligible immutable source without re-admitting historical pins
 PUBLISH is the certification boundary for current exact DataType admissibility
+historical same-name RDV continuity constrains DataType lineage, not value_mode direction
+exact RDV validity != factual cross-version migrability
 first publication establishes default only when still null
 SET_DEFAULT / CLEAR_DEFAULT remain distinct and are idempotent on current value
 DEPRECATE cannot target the current default
