@@ -1934,3 +1934,89 @@ A stable ObjectTemplate appearing only as an inherited descendant inside `relati
 The existing ObjectTemplate relationship-capabilities discovery still assumes autonomous `RelationshipResolution`, mutable Resolution names and `resolution_id`. It is therefore not a current M4 authority for the redesigned model.
 
 The future ObjectTemplate family sweep owns the final route/projection redesign and must decide whether the capability read consumes compact Definition + ancestry, a suitable projection over `relationship_definition_space`, or another equivalent current-state path. RelationshipDefinition only records that this is a downstream consumer to revalidate; it does not freeze that route here.
+
+---
+
+# 20. CS-04 — PUBLISH commit and immutable-cache visibility — RESOLVED
+
+PUBLISH may prepare the complete immutable exact-RDV execution snapshot outside the short mutation UoW, but PostgreSQL commit is the only authoritative publication boundary.
+
+Required ordering:
+
+```text
+outside mutation UoW
+    load exact DRAFT generation R
+    load + compile every exact DTV semantic dependency
+    build PreparedPublishedRDV
+        snapshot READY
+        compiled READY
+
+inside short mutation UoW
+    final generation/lifecycle gate
+    final exact-DTV PUBLISHED admission
+    final committed-history admission
+    DRAFT -> PUBLISHED
+    conditional first-default claim
+    COMMIT
+
+after successful commit only
+    publish PreparedPublishedRDV into
+    ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
+```
+
+A prepared value must never become visible in the immutable cache before commit. A failed or rolled-back PUBLISH therefore cannot leave a cache entry that appears to represent a PUBLISHED exact version.
+
+## 20.1 Post-commit cache failure
+
+Cache publication is an optimization, not a second transactional domain mutation.
+
+```text
+PostgreSQL commit succeeds
+cache publication succeeds
+    -> 204
+
+PostgreSQL commit succeeds
+cache publication fails
+    -> PUBLISH remains successful
+    -> 204
+    -> later cache miss reconstructs the immutable entry
+       from authoritative PostgreSQL state
+```
+
+A post-commit cache failure must not be mapped to `500 internal_error`, because the lifecycle mutation is already durable and a caller retry would encounter a non-DRAFT target rather than repeat the original publication.
+
+Operational logging/metrics may record the cache-fill failure, but correctness and the public mutation result remain determined by the committed database state.
+
+## 20.2 Worker-local and facet semantics
+
+With worker-local caches, only the publishing worker may be warm immediately. Other workers may miss and cold-load the exact immutable snapshot; no synchronous distributed propagation is required for correctness.
+
+Facet readiness remains explicit:
+
+```text
+snapshot READY
+    -> sufficient for CREATE_NEXT
+
+compiled READY
+    -> required by factual runtime semantic consumers
+```
+
+A consumer must not infer `compiled READY` from `snapshot READY`. PUBLISH normally owns both prepared facets and may publish them together after commit; later partial facet completion must preserve the actual readiness state.
+
+Lifecycle transitions remain coherent with this boundary:
+
+```text
+PUBLISHED -> DEPRECATED
+    -> immutable cache entry remains valid
+    -> no invalidation
+
+DELETE Definition root
+    -> local eviction optional
+    -> stale/orphan entry never proves existence or admission
+
+status / default_version
+    -> PostgreSQL current state
+    -> excluded from immutable cache
+```
+
+Exact cache implementation, process topology, capacity, eviction, observability and post-commit hook mechanics remain architecture/implementation work.
