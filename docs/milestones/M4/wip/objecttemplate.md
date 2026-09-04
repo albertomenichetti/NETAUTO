@@ -722,3 +722,77 @@ no implementation authorized
 ```
 
 The active next step is the operation-by-operation public-contract review beginning with the ObjectTemplate lineage collection.
+
+---
+
+# 12. OT-GET-01 — LIST ObjectTemplate lineages
+
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE REVIEWED / CURRENT M4 CANDIDATE
+
+## Capability and responsibility
+
+M4 retains a public collection capability for current `ObjectTemplate` lineages.
+
+An `ObjectTemplate` is the stable lineage identity; exact `ObjectTemplateVersion` resources remain distinct subordinate resources. The collection answers:
+
+```text
+which current ObjectTemplate lineages exist
+and match the caller's explicitly selected collection scope?
+```
+
+Membership is not implicitly restricted to:
+
+```text
+abstract == false
+default_version present
+at least one PUBLISHED exact version
+direct Object.CREATE eligibility
+```
+
+Abstract, default-less or otherwise non-directly-instantiable lineages remain valid model-plane resources for inheritance, component targets and Relationship compatibility.
+
+The collection does not own:
+
+```text
+exact-version listing or detail
+local or effective schema
+property/component declarations
+relationship-capability projection
+Object.CREATE admission
+historical/deleted lineage discovery
+mutation-semantic recertification
+```
+
+## Method and route
+
+```http
+GET /api/v1/core/object-templates
+```
+
+`GET` matches a side-effect-free current collection read. The existing `/object-templates` noun remains correct because `ObjectTemplate` already denotes the stable lineage; subordinate `/versions` routes distinguish exact snapshots.
+
+M4 does not introduce, for this checkpoint:
+
+```text
+/object-template-lineages
+/object-templates/lineages
+a command-style collection search route
+removal of the collection capability
+```
+
+## Open public-contract boundary
+
+Not yet reviewed or closed:
+
+```text
+path/query carrier grammar
+strict request-body prohibition
+omission vs explicit null semantics
+success status and body
+page/item DTO
+cardinality, ordering, filters, pagination and cursor scope
+finite failure set and precedence
+technical data path, cache, persistence and concurrency realization
+```
+
+The next micro-point is the collection request-carrier surface, beginning with path and query parameters.
