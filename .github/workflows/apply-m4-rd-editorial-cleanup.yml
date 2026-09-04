@@ -1,0 +1,50 @@
+name: Apply M4 RelationshipDefinition editorial cleanup
+
+on:
+  push:
+    branches:
+      - M4
+    paths:
+      - .github/workflows/apply-m4-rd-editorial-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: M4
+          fetch-depth: 0
+
+      - name: Remove stale self-reference and duplicate separators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          owner = Path('docs/milestones/M4/wip/relationshipdefinition.md')
+          text = owner.read_text(encoding='utf-8')
+          old = 'That wording conflicted with the later M4 revalidation already ratified in this ledger and with factual `Relationship.SCHEMA_CHANGE` preserve-or-fail semantics.'
+          new = 'That wording conflicted with the later M4 revalidation ratified during this sweep and with factual `Relationship.SCHEMA_CHANGE` preserve-or-fail semantics.'
+          if old not in text:
+              raise SystemExit('expected stale ledger wording not found')
+          text = text.replace(old, new, 1)
+          while '\n---\n\n---\n' in text:
+              text = text.replace('\n---\n\n---\n', '\n---\n', 1)
+          if 'already ratified in this ledger' in text:
+              raise SystemExit('stale ledger wording remains')
+          owner.write_text(text, encoding='utf-8')
+
+          workflow = Path('.github/workflows/apply-m4-rd-editorial-cleanup.yml')
+          workflow.unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs(m4): polish RelationshipDefinition consolidated owner"
+          git push origin HEAD:M4
