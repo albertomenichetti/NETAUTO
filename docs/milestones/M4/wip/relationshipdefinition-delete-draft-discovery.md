@@ -1,66 +1,153 @@
 # RelationshipDefinition DELETE_DRAFT discovery
 
-Status: WIP / non-normative discovery for M4.
+Status: **TECHNICAL DISCOVERY CLOSED EXCEPT CONCURRENCY/PHYSICAL REALIZATION / WIP / NON-NORMATIVE**
 
-## Scope
+This note is operation-specific source/evidence subordinate to `relationshipdefinition.md` and to the current RelationshipDefinition technical consolidation ledger.
 
-Audit the current `RelationshipDefinition.DELETE_DRAFT` data path. Lock/concurrency redesign is intentionally deferred to the later global concurrency phase.
+## Ratified M4 technical direction
 
-## Current behavior
-
-After the current lock plan is acquired, the application loads the complete exact `RelationshipDefinitionVersion`, including all property declarations, then requires:
-
-- `status == DRAFT`;
-- `revision == expected_revision`.
-
-It then deletes the exact version and commits.
-
-## Finding: property payload is unnecessary
-
-DELETE_DRAFT admission needs only:
+`DELETE_DRAFT` deletes one exact mutable RelationshipDefinitionVersion generation. Admission depends only on the exact-version header:
 
 ```text
-exact version exists
-status
-revision
+RelationshipDefinition exists
+exact RDV exists
+status == DRAFT
+revision == expected_revision
 ```
 
-The complete property declaration set does not participate in the decision and should not be loaded solely for this mutation.
+The complete property declaration payload does not participate in admission and must not be loaded solely for this mutation.
 
-Candidate M4 read path: use a lightweight exact-version header projection / locking read containing only identity, status and revision.
+## Logical short-UoW path
 
-## Owned child cleanup
+Conceptually:
 
-`relationship_definition_properties` is owned child state of the exact version and its FK to `relationship_definition_versions` uses `ON DELETE CASCADE`.
+```text
+DELETE_DRAFT(definition_id, version, expected_revision)
 
-Therefore DELETE_DRAFT should delete the exact version root and rely on relational ownership for declaration cleanup. No explicit property deletion loop is needed.
+current admission
+    Definition exists
+    exact RDV exists
+    status == DRAFT
+    revision == expected_revision
 
-## Cache behavior
+mutation
+    delete exact relationship_definition_versions row
 
-DRAFT versions are mutable and are never admitted to the immutable runtime cache. DELETE_DRAFT therefore has no cache invalidation or warm-up responsibility.
+owned cleanup
+    relationship_definition_properties
+        -> relational ownership cleanup / cascade-equivalent
 
-## Deferred concurrency question
-
-A later concurrency-design phase may evaluate whether the operation can safely become a conditional single-statement delete, conceptually:
-
-```sql
-DELETE FROM relationship_definition_versions
-WHERE relationship_definition_id = :definition_id
-  AND version = :version
-  AND status = 'DRAFT'
-  AND revision = :expected_revision
-RETURNING ...;
+commit
 ```
 
-That design must preserve the public distinction among:
+The exact SQL / lock / conditional-delete realization remains architecture work. A single conditional `DELETE ... WHERE status='DRAFT' AND revision=:expected_revision RETURNING ...` is a possible realization only if it preserves the public distinction among absent exact version, lifecycle conflict, stale revision and successful deletion.
 
-- exact version not found;
-- lifecycle state conflict;
-- stale revision;
-- successful deletion.
+## Version allocation consequence
 
-It must also be proven against the final M4 concurrency matrix. No locking change is proposed by this discovery note.
+The shared no-reuse allocator is not rewound or changed:
 
-## Candidate conclusion
+```text
+last_versions
+    -> UNCHANGED
+```
 
-`RelationshipDefinition.DELETE_DRAFT` should not load property declarations. Status and revision are sufficient for admission, declaration rows are owned/cascading child state, and no cache or new denormalization is required. Conditional single-statement deletion remains deferred to the global concurrency phase.
+A successfully deleted DRAFT version number is never reusable.
+
+## Explicit ownership boundary: `relationship_definition_space` is unchanged
+
+`relationship_definition_space` is owned by the stable RelationshipDefinition root, not by any exact RelationshipDefinitionVersion.
+
+Its semantic source is:
+
+```text
+stable RelationshipDefinition topology/names
++
+current stable ObjectTemplate ancestry
+```
+
+Therefore deleting one DRAFT exact version does not alter the Definition semantic-cell closure:
+
+```text
+DELETE_DRAFT
+    relationship_definition_versions      DELETE target exact DRAFT
+    relationship_definition_properties    owned cleanup
+    relationship_definition_space         UNCHANGED
+```
+
+The space is cleaned only when the owning RelationshipDefinition root is deleted, potentially through FK/cascade-equivalent physical ownership chosen later in architecture.
+
+## No other model/runtime work
+
+`DELETE_DRAFT` does not require:
+
+```text
+property declaration read
+DataType / DataTypeVersion semantics
+historical continuity
+RelationshipDefinition.default_version
+relationship_definition_space read/write
+ObjectTemplate state
+factual Relationship scan/count
+immutable RDV cache interaction
+post-delete reload
+```
+
+A DRAFT is never published into the immutable RDV cache, so there is no cache invalidation responsibility.
+
+## Response/repeat semantics
+
+```text
+first valid DELETE
+    -> 204 No Content
+
+repeated DELETE of same exact version
+    -> 404 resource_not_found
+```
+
+## Concurrency handoff
+
+The material same-generation races are:
+
+```text
+DELETE_DRAFT vs REVISE
+DELETE_DRAFT vs PUBLISH
+DELETE_DRAFT vs DELETE_DRAFT
+```
+
+Required invariant:
+
+```text
+only one operation can validly consume the mutable DRAFT generation
+identified by expected_revision
+```
+
+Exact lock/CAS/rendezvous realization remains architecture work.
+
+## Technical closure checkpoint
+
+```text
+RD DELETE_DRAFT
+
+semantic preparation
+    -> NONE
+
+reads/admission
+    -> Definition existence
+    -> exact RDV status/revision only
+
+writes
+    -> exact RDV DELETE
+    -> owned property cleanup
+
+relationship_definition_space
+    -> UNCHANGED
+
+last_versions
+    -> UNCHANGED
+
+cache
+    -> NONE
+
+response
+    -> 204
+```
