@@ -989,7 +989,7 @@ PUBLISHED | DEPRECATED
 
 A DRAFT source is not eligible.
 
-CREATE_NEXT clones the complete exact property declaration snapshot, including the preserved internal property order. It does not reinterpret the property schema through current defaults and does not treat worker cache state as the authoritative clone source.
+CREATE_NEXT clones the complete exact property declaration snapshot, including the preserved internal property order. It does not reinterpret the property schema through current defaults. When the immutable RDV cache has `snapshot READY`, CREATE_NEXT may use that exact cached declaration snapshot directly as the clone payload; on cache miss it performs a bounded cold load and may publish the snapshot facet. Cache presence does not prove current source existence or lifecycle eligibility: PostgreSQL remains authoritative for those current-state predicates.
 
 The newly created version is:
 
@@ -1153,13 +1153,13 @@ Current lifecycle admission applies only when REVISE creates or changes an exact
 
 ## Historical property continuity
 
-REVISE preserves the complete committed-history semantics across all PUBLISHED/DEPRECATED RelationshipDefinitionVersion generations, independently of numeric publication/version order.
+REVISE preserves complete committed-history semantics across all PUBLISHED/DEPRECATED RelationshipDefinitionVersion generations, independently of numeric publication/version order.
 
-For the same historical property name:
+For a property name with committed history:
 
 ```text
-DataType lineage (`datatype_id`)
-    -> must remain stable
+historical DataType lineage (`datatype_id`)
+    -> cannot change
 
 exact datatype_version
     -> may change
@@ -1169,21 +1169,9 @@ value_mode
     -> may change LIST -> SCALAR
 ```
 
-There is no monotonic `value_mode` history rule in the current M4 candidate. In particular, committed historical `LIST -> SCALAR` is not an intrinsic RelationshipDefinitionVersion validity violation.
+Exact RDV validity is intentionally distinct from factual cross-version migrability. A model-plane candidate is not globally invalid merely because some current factual Relationships could fail a later preserve-or-fail `Relationship.SCHEMA_CHANGE`; that concrete migration operation owns per-fact compatibility/admission.
 
-The governing distinction is:
-
-```text
-validity of an exact RelationshipDefinitionVersion
-    !=
-ability of every current factual Relationship to migrate to it
-```
-
-A factual `Relationship.SCHEMA_CHANGE` pays preserve-or-fail admission for the concrete fact and source/target schema pair. It may reject a multi-item LIST when targeting SCALAR without making the exact SCALAR RDV itself globally invalid.
-
-Historical continuity remains name-scoped and requires stable DataType lineage because same-name factual property continuity does not treat a cross-DataType-lineage replacement as the same supported semantic property evolution.
-
-A later data-path implementation may detect a single violating DataType-lineage fact set-based rather than loading all historical versions, but must preserve this complete-history meaning.
+These are candidate semantic-validation rules. A later data-path implementation may detect a single violating same-name DataType-lineage fact set-based rather than loading all historical versions, but must preserve the same complete-history meaning.
 
 ## Generation semantics
 
@@ -1267,7 +1255,6 @@ POST /relationship-definitions/{id}/versions/{version}/revise
     -> omitted datatype_version always resolves current default
     -> array order defines internal ordinal
     -> target must be DRAFT
-    -> historical same-name continuity constrains DataType lineage, not value_mode direction
     -> successful call ALWAYS revision + 1
     -> identical canonical replacement is still a new generation
     -> 204, no body
@@ -1800,8 +1787,6 @@ REVISE always consumes one revision, even for identical replacement
 PUBLISH / DEPRECATE do not increment revision
 CREATE_NEXT clones eligible immutable source without re-admitting historical pins
 PUBLISH is the certification boundary for current exact DataType admissibility
-historical same-name RDV continuity constrains DataType lineage, not value_mode direction
-exact RDV validity != factual cross-version migrability
 first publication establishes default only when still null
 SET_DEFAULT / CLEAR_DEFAULT remain distinct and are idempotent on current value
 DEPRECATE cannot target the current default
