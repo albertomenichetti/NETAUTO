@@ -41,16 +41,24 @@ factual Relationship
 RelationshipDefinition model plane
 ```
 
-The remaining model-plane families still classified as active input are:
+ObjectTemplate is now the selected active review frontier:
 
 ```text
-DataType
-ObjectTemplate
+family owner
+    docs/milestones/M4/wip/objecttemplate.md
+
+current state
+    baseline/source map reconstructed
+    complete capability census recorded
+    public contract review pending capability by capability
 ```
 
-Their relative review order has not yet been selected and must be chosen explicitly. Lifecycle remains a separate open historical/audit family. Architecture-wide physical, relational, concurrency and verification closing has not started.
+DataType remains `ACTIVE INPUT` and is intentionally left unchanged until its own family review. Lifecycle remains a separate open historical/audit family.
 
-The current reviewed directions continue to investigate shifting repeatable immutable-model work away from frequent data-plane operations and into rare model-plane mutation/certification paths, while preserving current semantic and concurrency guarantees. All working notes under [`wip/`](wip/) remain non-normative.
+The ObjectTemplate pass will first close caller-visible contracts — API route, path/query parameters, strict body, omission/null semantics, success output and finite failures — and only then close logical data paths, effective-schema/materialization, cache, cost and concurrency/physical handoffs.
+
+Architecture-wide relational, concurrency and verification closing has not started. All working notes under [`wip/`](wip/) remain non-normative.
+
 ## Design gates
 
 | Gate | State |
@@ -73,4 +81,17 @@ contract FINAL / FROZEN
 
 ## Immediate next action
 
-Explicitly select the next model-plane family review between DataType and ObjectTemplate, then perform its caller-first, operation-level and cross-family consistency sweep. The other family remains `ACTIVE INPUT` until selected. Lifecycle remains a separate historical/audit review, and global architecture closing does not begin implicitly through this selection.
+Review the ObjectTemplate public surface one capability at a time and persist every agreed caller contract in `wip/objecttemplate.md` before descending into technical realization.
+
+The first checkpoint is:
+
+```text
+GET /api/v1/core/object-templates
+    -> method/route
+    -> query parameters and cursor scope
+    -> response/page DTO
+    -> ordering and empty semantics
+    -> finite failures and precedence
+```
+
+DataType remains `ACTIVE INPUT`; Lifecycle remains a separate historical/audit review; global architecture closing does not begin implicitly through this family selection.

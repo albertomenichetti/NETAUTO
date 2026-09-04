@@ -69,6 +69,14 @@ relationshipdefinition.md
 object-template-ancestry-cache.md
 ```
 
+## ACTIVE REVIEW FRONTIER
+
+```text
+objecttemplate.md
+```
+
+`objecttemplate.md` is the single current ObjectTemplate family review owner. Its baseline and source map are reconstructed; no ObjectTemplate public contract is closed by that bootstrap. The operation-specific ObjectTemplate files remain source material until lossless absorption after the family sweep.
+
 The route-level Object sweep is complete and consolidated in `object.md`, with cross-operation Object generation/component persistence responsibilities remaining in their dedicated reviewed owners.
 
 The factual Relationship sweep is also complete at the discovery/revalidation level and has been losslessly consolidated back into the single owner:
@@ -163,9 +171,9 @@ without a `resource_kind` discriminator. A future change to the UUID allocation 
 
 # 2. Current review frontier
 
-The RelationshipDefinition model-plane review is now complete at the same M4 discovery/revalidation level as Object and factual Relationship.
+ObjectTemplate is now the selected `ACTIVE REVIEW FRONTIER`.
 
-Current reviewed current-state families:
+Current reviewed current-state/model families remain:
 
 ```text
 Object
@@ -173,20 +181,20 @@ factual Relationship
 RelationshipDefinition model plane
 ```
 
-This promotion is a WIP reviewed-baseline state only. It does not mean that any of those families is architecturally closed or that implementation is authorized.
-
-No next family is selected by this consolidation. The remaining model-plane families still classified as active input are:
+Current active family review:
 
 ```text
-DataType
 ObjectTemplate
+    -> single owner: objecttemplate.md
+    -> baseline/source map reconstructed
+    -> public contract review begins capability by capability
 ```
 
-Their relative review order must be selected explicitly rather than inferred here. Broader physical/concurrency architecture closure also remains pending and must not be treated as automatically started by the RelationshipDefinition promotion.
+DataType remains `ACTIVE INPUT` and is not modified opportunistically during the ObjectTemplate sweep. Lifecycle remains a separate open historical/audit family.
 
-Lifecycle remains classified separately as historical/audit state rather than current authoritative Object/Relationship data-plane state. Its own family review remains open, but it must not be described as a remaining current-state data-plane gap.
+The ObjectTemplate review must first close each caller-visible contract — route, parameters, body, omission/null semantics, success output and failures — before ratifying the corresponding technical data path, cache/materialization and architecture handoff.
 
-A material future change must reopen only the reviewed dependencies it actually affects.
+This selection does not begin global physical/concurrency architecture closure and does not authorize implementation. A material future finding reopens only the affected reviewed dependency.
 
 # 3. Current M4 spine
 
@@ -313,7 +321,7 @@ A source becomes READY only after its complete stable ancestor/neighborship set,
 
 # 5. Model-plane families
 
-DataType and ObjectTemplate remain non-normative active input. RelationshipDefinition has completed its consolidated review and now appears in this section as a reviewed family owner; no WIP promotion implies architecture freeze.
+DataType remains non-normative `ACTIVE INPUT`. ObjectTemplate is now the `ACTIVE REVIEW FRONTIER` under `objecttemplate.md`. RelationshipDefinition remains a reviewed family owner; no WIP classification implies architecture freeze.
 
 ## DataType — ACTIVE INPUT
 
@@ -333,7 +341,27 @@ datatype-set-description-discovery.md
 
 Version allocation is cross-domain and owned by `version-allocation.md`.
 
-## ObjectTemplate — ACTIVE INPUT
+## ObjectTemplate — ACTIVE REVIEW FRONTIER
+
+### [`objecttemplate.md`](objecttemplate.md) — SPINE / ACTIVE REVIEW FRONTIER / single family owner
+
+This is the single current M4 owner for the ObjectTemplate family review.
+
+The bootstrap owner records:
+
+```text
+complete 6-read / 10-mutation capability census
+AS-IS semantic baseline
+operation-specific source corpus
+reviewed incoming Object / ownership / RelationshipDefinition constraints
+stable ancestry and validation-loader handoffs
+known stale/superseded assumptions
+caller-first public-contract review protocol
+```
+
+No ObjectTemplate public contract is closed merely by creating the owner. The review now proceeds one capability at a time, beginning with the lineage collection, and will persist each agreed route/parameter/body/output/failure contract in `objecttemplate.md`.
+
+Source material retained as evidence during review:
 
 ```text
 objecttemplate-create-discovery.md
@@ -354,11 +382,19 @@ objecttemplate-set-description-discovery.md
 objecttemplate-clear-default-discovery.md
 ```
 
-Support/handoff:
+Support/handoff source:
 
 ```text
 objecttemplate-validation-loader-handoff.md
 ```
+
+Reviewed shared support remains:
+
+```text
+object-template-ancestry-cache.md
+```
+
+The source files remain in the working corpus until a final lossless comparison proves that `objecttemplate.md` has absorbed every current decision. They do not override the owner or reviewed cross-domain principles.
 
 ## RelationshipDefinition — REVIEWED BASELINE / ARCHITECTURE CLOSING PENDING
 
