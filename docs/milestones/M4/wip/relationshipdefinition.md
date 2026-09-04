@@ -1,92 +1,56 @@
 # M4 WIP — RelationshipDefinition model-plane review owner
 
-**Status:** ACTIVE REVIEW FRONTIER / SINGLE FAMILY OWNER / REST CONTRACT REVIEW COMPLETE / TECHNICAL DISCOVERY CONSOLIDATION PENDING / M4 WIP / ALWAYS NON-NORMATIVE
+**Status:** REVIEWED BASELINE / SINGLE FAMILY OWNER / REST + TECHNICAL DISCOVERY CONSOLIDATED / ARCHITECTURE CLOSING PENDING / M4 WIP / ALWAYS NON-NORMATIVE
 
 ## Purpose and ownership
 
-This document is the single current M4 WIP owner for the `RelationshipDefinition` model-plane family review.
+This document is the single current M4 WIP owner for the `RelationshipDefinition` model-plane family.
 
-It owns the current review decisions for:
+It owns the current reviewed discovery decisions for:
 
 ```text
 public REST capabilities and wire contracts
 stable RelationshipDefinition semantic contract
 RelationshipDefinitionVersion public contract
 version/property authoring semantics
-model-plane lifecycle interactions
-relationship_definition_space applicability semantics
-later data-path / cache / persistence / concurrency handoff
+logical persistence and ownership boundaries
+relationship_definition_space semantics and consumers
+route-local logical data paths and cost direction
+immutable/current cache authority
+dependency lifetime and lifecycle interactions
+explicit concurrency / physical architecture handoffs
 ```
 
 Everything under `wip/` remains globally non-normative and does not authorize implementation.
 
-The caller-first REST sweep is complete. The next step is **not** architecture closure: it is to revalidate and consolidate the technical discovery for this family — logical operation data paths, persistence/materialization candidates, cache boundaries, cost/over-fetch findings and explicit concurrency/architecture handoffs — until `RelationshipDefinition` reaches the same `REVIEWED BASELINE` discovery level already reached by Object and factual Relationship.
+The caller-first REST sweep, operation-level technical discovery and bidirectional consistency sweep are complete for the current reviewed baseline. This status is not architecture closure: final SQL, DDL, exact PK/FK/UNIQUE/index realization, lock/wait/retry/deadlock protocols, cache implementation, migration/backfill and verification design remain later work.
 
-Final SQL, physical DDL, exact PK/FK/UNIQUE/index realization, lock/wait/retry/deadlock design, migration/backfill and other architecture-closing choices remain later work. They must not be silently frozen during this technical consolidation pass.
+## Authority and retained dependencies
 
-## Precedence and source material
+This file is the only active RelationshipDefinition family owner in the M4 working corpus.
 
-This file is the current family review owner from this point forward.
+The former semantic-intent draft, distributed operation-specific notes and temporary consolidation ledger have been losslessly absorbed here and removed. Git history remains the historical source for superseded intermediate reasoning; those deleted files are not required to interpret the current candidate.
 
-The following file remains the upstream semantic-intent input:
-
-```text
-new-relationship-definition.md
-```
-
-It established the redesign direction that this owner consumes, including:
-
-```text
-NO autonomous RelationshipResolution entity
-NO resolution_id model-plane identity
-stable directional semantic names owned by RelationshipDefinition
-explicit stable symmetric intent
-compact Definition source of truth
-relationship_definition_space as derived effective exact-template semantic closure
-```
-
-Existing distributed files remain source material / operation-specific evidence:
-
-```text
-relationshipdefinition-create-discovery.md
-relationshipdefinition-create-next-discovery.md
-relationshipdefinition-delete-discovery.md
-relationshipdefinition-delete-draft-discovery.md
-relationshipdefinition-deprecate-discovery.md
-relationshipdefinition-get-discovery.md
-relationshipdefinition-get-version-discovery.md
-relationshipdefinition-list-definitions-discovery.md
-relationshipdefinition-list-versions-discovery.md
-relationshipdefinition-publish-discovery.md
-relationshipdefinition-rename-discovery.md
-relationshipdefinition-revise-discovery.md
-relationshipdefinition-set-default-discovery.md
-relationshipdefinition-clear-default-discovery.md
-```
-
-Those files may contain assumptions that predate the current redesign. In particular they must not override this owner where they still assume:
-
-```text
-autonomous relationship_resolutions persistence
-resolution_id as public/model identity
-mutable semantic RelationshipDefinition names / RENAME
-max(existing version) + 1 allocation
-public caller-supplied property position
-```
-
-Cross-domain version allocation is owned by:
-
-```text
-version-allocation.md
-```
-
-Therefore new exact RelationshipDefinitionVersion allocation uses the shared monotonic/no-reuse allocator direction rather than `max(existing)+1`.
-
-General M4 principles remain owned by:
+Cross-domain concerns remain owned rather than duplicated by:
 
 ```text
 general-domain-principles.md
+    -> version meaning vs migrability
+    -> operation-owned lifecycle scope
+    -> bounded diagnostics / no diagnostic-only work
+
+version-allocation.md
+    -> shared monotonic/no-reuse exact-version allocation
+    -> logical last_versions(id, last_version)
+
+object-template-ancestry-cache.md
+    -> stable ObjectTemplate ancestor/compatibility cache semantics
+
+relationship.md
+    -> factual Relationship contracts, runtime cells and exact-RDV consumers
 ```
+
+The delivered AS-IS under `docs/architecture/` remains authoritative until M4 deliberately freezes and promotes a TO-BE architecture set.
 
 ---
 
@@ -1801,60 +1765,18 @@ This REST closure remains M4 WIP and non-normative. It does not mean the Relatio
 
 Any downstream finding that materially invalidates one of these caller-visible semantics must explicitly reopen the affected micro-contract under the normal M4 retroactive-revalidation rule.
 
----
-
-# 18. Current next review frontier
-
-No RelationshipDefinition REST capability remains unreviewed in the current retained family surface.
-
-The next family frontier is **consolidated technical discovery / revalidation**, with the explicit goal of bringing `RelationshipDefinition` to the same M4 `REVIEWED BASELINE` discovery level already reached by Object and factual Relationship. This is not architecture closure.
-
-```text
-RelationshipDefinition technical discovery consolidation
-    -> rebase every distributed relationshipdefinition-*-discovery finding
-       on the reviewed REST contracts and post-Resolution semantic model
-
-    -> consolidate route-local logical data paths
-       reads / writes / admission predicates / response-only work
-       and remove stale autonomous-Resolution assumptions
-
-    -> consolidate the discovery-level logical persistence model
-       compact RelationshipDefinition source of truth
-       RelationshipDefinitionVersion/property ownership
-       shared no-reuse version allocation
-       relationship_definition_space derived semantic closure
-
-    -> revalidate the relationship_definition_space materialization boundary
-       against actual GET / CREATE / factual-Relationship consumers
-       without freezing final DDL
-
-    -> consolidate cache boundaries
-       immutable exact-RDV runtime semantics
-       stable/current Definition semantics where justified
-       PostgreSQL authority for mutable lifecycle/default state
-
-    -> re-run operation-level cost / over-fetch / materialization challenges
-       using the now-final REST response and error contracts
-       including GP-05 bounded diagnostics
-
-    -> carry final PK/FK/UNIQUE/index choices,
-       lock/wait/retry/deadlock realization and other concurrency arbitration
-       forward as explicit architecture handoffs rather than solving them here
-
-    -> run a consistency sweep against reviewed Object and factual Relationship
-       and promote RelationshipDefinition to REVIEWED BASELINE only when
-       no material semantic/data-path/cache contradiction remains
-```
-
-Only after this family reaches that reviewed discovery baseline should M4 proceed to the broader architecture-closing work shared with Object and factual Relationship.
-
-Implementation remains forbidden until the normal M4 Contract -> Architecture -> Steps freeze sequence authorizes it.
 
 ---
 
-# 19. CS-03 — `relationship_definition_space` responsibility matrix — RESOLVED
+# 18. Consolidated operation-level technical discovery
 
-`relationship_definition_space` is the complete current certified exact-template semantic closure derived from:
+The operation-specific technical findings have been absorbed below as one family-owned baseline. They fix logical data paths, authority, cost and handoff boundaries without freezing final SQL or concurrency mechanisms.
+
+## 1. `relationship_definition_space` classification — RATIFIED
+
+`relationship_definition_space` is the complete current certified derived semantic closure for one RelationshipDefinition.
+
+Logical source:
 
 ```text
 compact RelationshipDefinition stable topology/names
@@ -1862,537 +1784,1493 @@ compact RelationshipDefinition stable topology/names
 current stable ObjectTemplate ancestry
 ```
 
-It is Definition-owned derived state and relational semantic-cell ownership/arbitration knowledge, not a second independent source of domain truth.
-
-## 19.1 Operation and consumer matrix
+Conceptual invariant:
 
 ```text
-RelationshipDefinition.CREATE
-    -> derive CandidateSpace set-based inside PostgreSQL
-    -> arbitrate current semantic-cell ownership
-    -> persist the complete resulting Definition space
-
-Relationship.CREATE
-    -> read one requested exact template-level semantic cell
-    -> admit that requested oriented semantic observation
-    -> identify the unique owning RelationshipDefinition
-    -> use the compact Definition for reciprocal factual closure derivation
-
-RelationshipDefinition.GET detail
-    -> do NOT scan or refactor relationship_definition_space
-    -> use compact endpoint roots + complete current descendant sets
-
-RelationshipDefinition LIST / version / default / lifecycle operations
-    -> do NOT read relationship_definition_space
-    -> do NOT modify relationship_definition_space
-
-RelationshipDefinition.DELETE root
-    -> remove all owned relationship_definition_space rows
-
-ObjectTemplate stable-ancestry mutation
-    -> maintain every affected relationship_definition_space atomically
-       with the ancestry change
+MaterializedSpace(D)
+ ==
+Expand(
+    D.symmetric,
+    D.endpoint_a_template_id,
+    D.endpoint_b_template_id,
+    D.name_a_to_b,
+    D.name_b_to_a,
+    current stable ObjectTemplate descendant sets
+)
 ```
 
-Factual operations against an already admitted Relationship do not re-certify model-plane topology:
+It is independent from:
 
 ```text
-Relationship.GET
-Relationship.DATA_CHANGE
-Relationship.SCHEMA_CHANGE
-Relationship.DELETE
-    -> no relationship_definition_space read
+RelationshipDefinition.default_version
+RDV lifecycle/status
+RDV revision
+RDV properties
 ```
 
-## 19.2 New ObjectTemplate subtype maintenance
+The space exists from RelationshipDefinition CREATE even though v1 is DRAFT and `default_version = null`, because semantic-cell ownership belongs to the stable Definition rather than to a published exact version.
 
-Creating a new stable ObjectTemplate subtype `X` extends the descendant sets of its stable ancestors. Every RelationshipDefinition whose endpoint root space contains one of those ancestors may consequently gain new exact semantic cells involving `X`.
-
-Required coherence boundary:
+RelationshipDefinition-owned effects:
 
 ```text
-ObjectTemplate.CREATE X
-    -> persist complete object_template_ancestry rows for X
-    -> extend every affected relationship_definition_space set-based
-    -> commit ancestry + derived-space effects coherently
+CREATE Definition
+    -> create complete space
+
+CREATE_NEXT
+REVISE
+PUBLISH
+SET_DEFAULT
+CLEAR_DEFAULT
+DEPRECATE
+DELETE_DRAFT
+    -> no space change
+
+DELETE Definition
+    -> remove owned space
 ```
 
-No committed state may expose the new ancestry while omitting the semantic cells that it induces.
+Stable ObjectTemplate ancestry changes may require maintenance of the derived space, but that is an external maintenance dependency rather than a reason to move ObjectTemplate into the active RelationshipDefinition review.
 
-With the current single-inheritance model, creation of a subtype cannot introduce a previously absent conflict between two already-certified Definitions. If one new exact cell were derivable from both Definitions, the relevant endpoint roots would be pairwise comparable along the unique ancestor chains, and an overlapping cell using the more specific applicable roots would already have existed before `X` was created. The operation still requires a technical rendezvous with concurrent RelationshipDefinition.CREATE so either serial order produces complete derived closure.
+Classification:
 
-The exact statement, gate, lock, wait, retry and constraint realization remains architecture work.
+```text
+derived/materialized trusted current model knowledge
+NOT a second semantic authority
+may be relational arbitration authority for exact semantic-cell ownership
+```
 
-## 19.3 ObjectTemplate deletion and lifetime boundary
+Physical PK/UNIQUE/constraint realization remains architecture work.
 
-A stable ObjectTemplate used as a compact endpoint root is a real model-plane reference and may block deletion according to the later ObjectTemplate lifetime design.
+### 1.1 Coherence invariant — RATIFIED
 
-A stable ObjectTemplate appearing only as an inherited descendant inside `relationship_definition_space` is merely derived state and must not become an autonomous lifetime blocker. Removal of such ancestry must remove the corresponding derived rows coherently, through FK/cascade or equivalent set-based ownership maintenance chosen later.
+There must be no committed state in which stable ObjectTemplate ancestry has changed while `relationship_definition_space` remains stale.
 
-## 19.4 ObjectTemplate relationship-capabilities handoff
+```text
+relationship_definition_space
+    must always be coherent with
+compact RelationshipDefinition state
++
+current stable ObjectTemplate ancestry
+```
 
-The existing ObjectTemplate relationship-capabilities discovery still assumes autonomous `RelationshipResolution`, mutable Resolution names and `resolution_id`. It is therefore not a current M4 authority for the redesigned model.
+A descendant lineage that appears only through derived expansion must not become an independent root-lineage lifetime blocker merely because it is present in the materialized space.
 
-The future ObjectTemplate family sweep owns the final route/projection redesign and must decide whether the capability read consumes compact Definition + ancestry, a suitable projection over `relationship_definition_space`, or another equivalent current-state path. RelationshipDefinition only records that this is a downstream consumer to revalidate; it does not freeze that route here.
+### 1.2 RelationshipDefinition consumers — RATIFIED
+
+Within the RelationshipDefinition family, the space is **not** a general read model.
+
+```text
+CREATE Definition
+    -> YES
+       candidate-cell derivation
+       semantic conflict arbitration
+       complete space persistence
+
+GET Definition detail
+    -> NO full space scan
+    -> use endpoint roots + stable ancestry descendant sets
+
+LIST Definitions
+GET/LIST versions
+CREATE_NEXT
+REVISE
+PUBLISH
+SET_DEFAULT
+CLEAR_DEFAULT
+DEPRECATE
+DELETE_DRAFT
+    -> NO space
+
+DELETE Definition
+    -> owned derived cleanup only
+```
+
+Primary roles:
+
+```text
+WRITE / ARBITRATION on CREATE
+OWNED CLEANUP on DELETE
+EXTERNAL coherence maintenance when stable ancestry changes
+```
 
 ---
 
-# 20. CS-04 — PUBLISH commit and immutable-cache visibility — RESOLVED
+## 2. CREATE RelationshipDefinition — technical discovery CLOSED except concurrency/physical realization
 
-PUBLISH may prepare the complete immutable exact-RDV execution snapshot outside the short mutation UoW, but PostgreSQL commit is the only authoritative publication boundary.
+### 2.1 Semantic preparation boundary — RATIFIED
 
-Required ordering:
-
-```text
-outside mutation UoW
-    load exact DRAFT generation R
-    load + compile every exact DTV semantic dependency
-    build PreparedPublishedRDV
-        snapshot READY
-        compiled READY
-
-inside short mutation UoW
-    final generation/lifecycle gate
-    final exact-DTV PUBLISHED admission
-    final committed-history admission
-    DRAFT -> PUBLISHED
-    conditional first-default claim
-    COMMIT
-
-after successful commit only
-    publish PreparedPublishedRDV into
-    ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
-```
-
-A prepared value must never become visible in the immutable cache before commit. A failed or rolled-back PUBLISH therefore cannot leave a cache entry that appears to represent a PUBLISHED exact version.
-
-## 20.1 Post-commit cache failure
-
-Cache publication is an optimization, not a second transactional domain mutation.
+CREATE uses the same broad separation already established for Object commands:
 
 ```text
-PostgreSQL commit succeeds
-cache publication succeeds
-    -> 204
-
-PostgreSQL commit succeeds
-cache publication fails
-    -> PUBLISH remains successful
-    -> 204
-    -> later cache miss reconstructs the immutable entry
-       from authoritative PostgreSQL state
+STEP 1 — current dependency resolution
+STEP 2 — semantic preparation outside mutation UoW
+STEP 3 — short mutation UoW / final current admission / persistence
 ```
 
-A post-commit cache failure must not be mapped to `500 internal_error`, because the lifecycle mutation is already durable and a caller retry would encounter a non-DRAFT target rather than repeat the original publication.
+#### STEP 1 — exact dependency selection
 
-Operational logging/metrics may record the cache-fill failure, but correctness and the public mutation result remain determined by the committed database state.
+For every property:
 
-## 20.2 Worker-local and facet semantics
+```text
+explicit datatype_version
+    -> select exact DTV
 
-With worker-local caches, only the publishing worker may be warm immediately. Other workers may miss and cold-load the exact immutable snapshot; no synchronous distributed propagation is required for correctness.
+omitted datatype_version
+    -> resolve current DataType.default_version
+    -> materialize one exact DTV pin
+```
 
-Facet readiness remains explicit:
+Once an omitted default has resolved to an exact DTV, a later default change must **not** retarget the in-flight command.
+
+Endpoint ObjectTemplate roots are also resolved as current existing lineages.
+
+#### STEP 2 — complete DTV semantic preparation
+
+For **all** selected exact DataTypeVersions:
+
+```text
+load semantic payload
+compile required DataType semantics/validators
+make validation semantics READY
+```
+
+Then build and validate the complete v1 DRAFT property candidate and compact RelationshipDefinition candidate.
+
+This work stays outside the mutation UoW.
+
+CREATE v1 has no prior committed RelationshipDefinition property history, therefore:
+
+```text
+NO published/deprecated history lookup for v1
+```
+
+#### STEP 3 — short mutation UoW
+
+Final mutable/current admission includes at least:
+
+```text
+endpoint roots still current/existing
+all newly selected exact DTV pins still admissible/PUBLISHED
+```
+
+The exact DTV semantic payload is **not** reloaded or recompiled inside the mutation UoW.
+
+### 2.2 Endpoint-topology validation boundary — RATIFIED
+
+CREATE does not load the full ObjectTemplate graph or descendant sets into the worker.
+
+For symmetric topology validation the worker only needs the stable relation between endpoint roots A/B:
+
+```text
+A == B
+A ancestor-of B
+B ancestor-of A
+neither ancestry direction
+```
+
+The existing stable ObjectTemplate ancestry cache may answer that bounded predicate. With single inheritance:
+
+```text
+symmetric + A == B
+    -> identical spaces: valid
+
+symmetric + one root is a strict ancestor of the other
+    -> distinct-but-overlapping: invalid
+
+symmetric + neither is ancestor of the other
+    -> disjoint: valid
+```
+
+The stable A/B ancestry relation need not be re-proved in the final mutation UoW if both endpoints still exist; endpoint existence remains current PostgreSQL admission.
+
+### 2.3 Candidate semantic closure generation — RATIFIED
+
+Potentially large candidate semantic cells must remain DB-internal:
+
+```text
+DB -> worker -> DB candidate closure
+    -> NO
+
+PostgreSQL set-based derivation from
+    compact candidate
+    + object_template_ancestry
+    -> YES
+```
+
+The worker owns the compact candidate and bounded failure information, not the Cartesian exact-template cell set.
+
+### 2.4 Conflict path — RATIFIED
+
+For an intrinsically valid candidate:
+
+```text
+CandidateSpace(D)
+INTERSECT
+current relationship_definition_space
+```
+
+is the conflict test.
+
+If non-empty, the ordinary arbitration path needs at most one witness:
+
+```text
+existing relationship_definition_id
+from_template_id
+name
+to_template_id
+```
+
+matching the reviewed REST error:
+
+```text
+409 relationship_definition_conflict
+```
+
+No conflict count, full conflicting Definition load, all-cell enumeration or equivalence-specific second path is required.
+
+Candidate-internal duplication/malformed closure remains intrinsic semantic validation, not a current ownership conflict.
+
+The mechanism that makes this correct under concurrent CREATE operations remains a concurrency/physical handoff.
+
+### 2.5 Logical write set and cost invariant — RATIFIED
+
+CREATE logically writes:
+
+```text
+relationship_definitions
+last_versions
+relationship_definition_versions
+relationship_definition_properties
+relationship_definition_space
+```
+
+The first exact version initializes the shared no-reuse allocator consistently with version 1.
+
+Target DML cost invariant for P properties and N semantic cells:
+
+```text
+application persistence round trips
+    -> bounded / constant in P and N
+
+physical row writes
+    -> O(P + N)
+```
+
+Required direction:
+
+```text
+bulk property persistence
+set-based DB-internal space derivation/persistence
+```
+
+Forbidden hot shape:
+
+```text
+one statement per property
+one statement per semantic cell
+```
+
+No requirement exists to compress the whole model-plane CREATE into one mega-statement; the requirement is bounded statement count and no N+1.
+
+### 2.6 CREATE cache boundary — RATIFIED
+
+CREATE may reuse/fill immutable exact-DTV semantic/compiled cache entries.
+
+It does **not** publish a RelationshipDefinitionVersion immutable cache entry because the newly created v1 is DRAFT.
+
+It does not create a worker cache for `relationship_definition_space`.
+
+No dedicated stable RelationshipDefinition topology cache is justified by CREATE itself without a concrete consumer.
+
+---
+
+## 3. RelationshipDefinition GET family — technical checkpoints
+
+### 3.1 LIST Definitions — RATIFIED
+
+The compact Definition model removes the AS-IS Resolution row multiplication.
+
+Target path:
+
+```text
+relationship_definitions D
+JOIN endpoint ObjectTemplate root A
+JOIN endpoint ObjectTemplate root B
+keyset on D.id
+LIMIT limit + 1
+```
+
+One DB row corresponds to one Definition. The worker performs only bounded perspective projection:
+
+```text
+asymmetric
+    -> 2 perspectives
+
+symmetric + A != B
+    -> 2 reciprocal perspectives with same name
+
+symmetric + A == B
+    -> 1 perspective
+```
+
+No `relationship_definition_space`, ancestry, version, DataType or worker-cache read is needed.
+
+Qualified endpoint names are resolved by the same bounded query; no endpoint N+1.
+
+### 3.2 GET Definition detail — RATIFIED
+
+The detail requires factored applicability, therefore the correct cost is:
+
+```text
+O(|Desc(A)| + |Desc(B)|)
+```
+
+not:
+
+```text
+O(|Desc(A)| * |Desc(B)|)
+```
+
+One authoritative PostgreSQL read obtains:
+
+```text
+compact Definition
+endpoint-root references
+complete current descendants of each distinct endpoint root
+```
+
+using `object_template_ancestry` by `ancestor_template_id` plus descendant ObjectTemplate references.
+
+If A == B the descendant set is obtained once and reused.
+
+The GET must not read `relationship_definition_space` and refactor an N×M cell set back into two arrays.
+
+The existing worker ancestry cache is not authoritative for complete **descendant enumeration** because new descendants can appear over time; PostgreSQL remains the current source for this read.
+
+### 3.3 LIST exact versions — RATIFIED
+
+Keep one root-preserving authoritative PostgreSQL statement that distinguishes:
+
+```text
+Definition absent -> 404
+Definition present + no matching versions -> empty page
+```
+
+Projection is only:
+
+```text
+version
+revision
+status
+```
+
+with optional status predicate, keyset by version and `limit + 1`.
+
+No properties, DataType, topology, space, ancestry or cache involvement.
+
+### 3.4 GET exact RDV — RATIFIED
+
+Public exact-version GET stays PostgreSQL-authoritative rather than bifurcating into cache-hit/cache-miss DTO paths.
+
+One statement projects:
+
+```text
+Definition existence sentinel
+exact RDV header
+ordered properties
+DataType lineage namespace/name for qualified_name
+```
+
+Property payload:
+
+```text
+name
+internal ordinal
+value_mode
+datatype_id
+datatype_version
+DataType namespace/name
+```
+
+The public DTO omits ordinal but preserves its order.
+
+No DataTypeVersion semantic payload or validator compilation is required for this read.
+
+The immutable RDV cache is runtime-oriented and is not a required public GET source.
+
+---
+
+## 4. CREATE_NEXT RelationshipDefinitionVersion — technical discovery CLOSED except concurrency/physical realization
+
+### 4.1 Immutable source and preferred cache path — RATIFIED
+
+Eligible source state:
+
+```text
+PUBLISHED | DEPRECATED
+```
+
+therefore the complete source declaration snapshot is immutable.
+
+Preferred direction is to exploit the immutable RDV cache and build the next DRAFT in application/domain state outside the mutation UoW rather than using DB-side `INSERT ... SELECT` as the primary clone mechanism.
+
+Conceptual cache facets:
+
+```text
+ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
+
+snapshot READY
+    ordered properties
+        name
+        ordinal
+        datatype_id
+        datatype_version
+        value_mode
+
+compiled READY
+    RuntimePropertySpec / validators / DTV semantic linkage
+```
+
+CREATE_NEXT requires only `snapshot READY`.
+
+On cache miss:
+
+```text
+bounded cold load of exact immutable snapshot
+-> publish snapshot facet
+```
+
+No DTV semantic load/compile is required merely to clone.
+
+### 4.2 Prepared next candidate — RATIFIED
+
+Outside the mutation UoW the application may build:
+
+```text
+PreparedRelationshipDefinitionVersion
+    status = DRAFT
+    revision = 1
+    properties = exact ordered source snapshot clone
+    version = not allocated yet
+```
+
+The new version number remains unassigned until the shared `last_versions` allocator is advanced in the mutation UoW.
+
+### 4.3 Final UoW — RATIFIED at logical level
+
+Short mutation UoW must establish at least:
+
+```text
+Definition still exists
+source exact version still exists
+source.status still in {PUBLISHED, DEPRECATED}
+allocate next version through last_versions
+bulk insert new RDV + cloned properties
+```
+
+No source-property reread, DTV reread, DTV compilation or historical continuity validation is required inside the UoW.
+
+A concurrent:
+
+```text
+PUBLISHED -> DEPRECATED
+```
+
+of the source is semantically harmless because both source states are eligible.
+
+Source/root disappearance remains a concurrency realization concern.
+
+The new DRAFT is not published into immutable RDV cache.
+
+---
+
+## 5. REVISE RelationshipDefinitionVersion — technical discovery CLOSED except concurrency/physical realization
+
+### 5.1 Preparation boundary — RATIFIED
+
+REVISE starts from the current exact DRAFT snapshot so the application knows:
+
+```text
+status
+revision
+complete ordered current properties
+```
+
+This supports early target-state/revision checks, classification of unchanged vs new/changed exact bindings, and declaration-delta computation.
+
+Outside the mutation UoW:
+
+```text
+complete request properties[]
+    -> resolve every exact DTV pin
+       explicit version or current DataType.default_version
+    -> once resolved, default changes do not retarget the candidate
+    -> load + compile ALL selected exact DTV semantics
+    -> build/validate complete replacement candidate
+```
+
+Lifecycle admission differs by binding class:
+
+```text
+unchanged exact DTV pin
+    -> semantic load/compile YES
+    -> current PUBLISHED requirement NO
+
+new property / changed exact DTV pin
+    -> semantic load/compile YES
+    -> current PUBLISHED admission YES
+```
+
+Omitted `datatype_version` is always a fresh default-selection instruction, not shorthand for preserving the current exact pin.
+
+### 5.2 Historical continuity — LATER REVALIDATION RATIFIED
+
+The former RelationshipDefinition wording that forbade committed-history `LIST -> SCALAR` is superseded by the current M4 revalidation; the current owner carries the corrected rule.
+
+Current rule:
+
+```text
+same historical property name
+    -> DataType lineage (`datatype_id`) remains stable
+
+exact datatype_version
+    -> may change
+
+value_mode
+    -> may change SCALAR -> LIST
+    -> may change LIST -> SCALAR
+```
+
+Why `LIST -> SCALAR` is no longer a model-plane publication/revision prohibition:
+
+```text
+validity of an exact RDV
+    !=
+ability of every current factual Relationship to migrate to it
+```
+
+A factual `Relationship.SCHEMA_CHANGE` pays concrete preserve-or-fail migration admission for the selected source/target and can reject a multi-item LIST when targeting SCALAR. The model-plane exact target need not be globally banned merely because some facts cannot migrate to it.
+
+DataType lineage continuity remains because same-name factual property continuity currently treats cross-DataType-lineage change as a different/unsupported semantic property transition.
+
+### 5.3 Historical conflict probe — RATIFIED
+
+Do not materialize full committed history in the worker.
+
+The only remaining committed-history violation is:
+
+```text
+historical.name == candidate.name
+AND historical.datatype_id != candidate.datatype_id
+```
+
+Detection should be set-based, candidate-name scoped, and may stop at one violating fact.
+
+No history-summary materialization is justified for this rare model-plane operation.
+
+An early fail-fast probe may run before expensive semantic preparation, but commit legality must still reflect all PUBLISHED/DEPRECATED history at the final admission boundary. A concurrent PUBLISH of another RDV may add committed history while the candidate is being prepared.
+
+The exact concurrency mechanism remains architecture work.
+
+### 5.4 Persistence delta — RATIFIED
+
+The application already owns both:
+
+```text
+current DRAFT snapshot
+prepared complete candidate
+```
+
+so persistence must not reread properties merely to compute the delta.
+
+Classify by property name:
+
+```text
+unchanged
+removed
+added
+changed
+```
+
+where `changed` includes changes to exact pin, value mode or ordinal.
+
+Short-UoW DML direction:
+
+```text
+<= 1 bulk DELETE for removed + changed
+<= 1 bulk INSERT for added + changed
+1 RDV revision UPDATE
+```
+
+Delete-before-insert naturally supports ordinal swaps and uniqueness-sensitive replacement.
+
+Identical complete replacement:
+
+```text
+property delta empty
+DELETE 0
+INSERT 0
+revision still +1
+```
+
+because every successful REVISE consumes exactly one DRAFT generation.
+
+No full delete/reinsert is preferred when most rows are unchanged; differential DML preserves bounded statement count while reducing row/index/FK churn.
+
+No post-mutation reload is required for the 204 response.
+
+### 5.5 Final admission ordering — RATIFIED at logical level
+
+Logical short-UoW ordering:
+
+```text
+1. target-generation gate
+       exact RDV still exists
+       status == DRAFT
+       revision == expected_revision
+
+2. final dependency admission
+       every new/changed exact DTV binding still admissible/PUBLISHED
+
+3. final historical admission
+       candidate remains compatible with all committed
+       PUBLISHED/DEPRECATED same-name history
+       under the current datatype-lineage-only continuity rule
+
+4. persist declaration delta
+
+5. consume exactly one revision generation
+       result revision = expected_revision + 1
+```
+
+Whether revision CAS is physically performed at the initial gate or after equivalent protection is architecture work; the invariant is that a successful REVISE starts from exactly `expected_revision` and commits exactly the prepared complete candidate as `expected_revision + 1`.
+
+The concurrency realization must also ensure that a newly committed incompatible publication cannot invalidate the historical admission between check and commit.
+
+---
+
+## 6. PUBLISH RelationshipDefinitionVersion — technical discovery CLOSED except concurrency/physical realization
+
+### 6.1 Semantic preparation outside mutation UoW — RATIFIED
+
+PUBLISH starts from one authoritative exact current DRAFT generation:
+
+```text
+Definition exists
+exact target exists
+status = DRAFT
+revision = R
+complete ordered properties
+```
+
+For **all** exact DTV pins in that DRAFT, outside the mutation UoW:
+
+```text
+load immutable exact DataTypeVersion semantic payload
+compile validators/runtime semantic structures
+prepare complete immutable RDV runtime representation
+```
+
+Conceptual prepared value:
+
+```text
+PreparedPublishedRDV
+    relationship_definition_id
+    version
+    source_revision = R
+    ordered property snapshot
+    compiled RuntimePropertySpec / validators / exact-DTV linkage
+```
+
+An early set-based historical continuity probe may fail fast. Under the current revalidated history rule it needs only detect same-name historical declarations with a different `datatype_id`.
+
+No complete RelationshipDefinition topology, `relationship_definition_space`, ObjectTemplate ancestry or full committed-history materialization is required.
+
+Compilation can occur before final stabilization because exact DTV semantics are immutable. A concurrent REVISE is rejected by the final generation gate if target revision no longer equals prepared revision R.
+
+### 6.2 Short final publication UoW — RATIFIED at logical level
+
+Logical final admission:
+
+```text
+1. exact target still exists
+2. status still DRAFT
+3. revision == expected_revision == prepared source revision R
+4. every pinned exact DTV is still PUBLISHED
+5. committed-history datatype-lineage continuity is still valid
+6. DRAFT -> PUBLISHED
+7. revision unchanged
+8. if Definition.default_version is still NULL
+       -> set this version as default
+   else
+       -> leave current default unchanged
+9. commit
+```
+
+No DTV semantic reload/recompile belongs inside the mutation UoW.
+
+No `relationship_definition_space` maintenance occurs because RDV publication does not change stable Definition topology/name semantic ownership.
+
+Exact locking/rendezvous mechanics remain architecture/concurrency work.
+
+### 6.3 Immutable RDV cache publication — RATIFIED
+
+The prepared immutable RDV becomes consumable in worker-local cache **only after successful PUBLISH commit**.
+
+Conceptual facets:
+
+```text
+ImmutableRelationshipDefinitionVersionCache[(definition_id, version)]
+
+snapshot READY
+    ordered properties
+        name
+        ordinal
+        datatype_id
+        datatype_version
+        value_mode
+
+compiled READY
+    RuntimePropertySpec / validators / exact-DTV semantic linkage
+```
+
+PUBLISH normally makes both facets READY from already prepared in-memory state. No post-commit DB reload or recompilation is required.
+
+The cache excludes mutable/current state:
+
+```text
+RDV.status
+RelationshipDefinition.default_version
+```
+
+Cache presence never proves current existence or current lifecycle admission.
+
+### 6.4 Cache lifecycle across DEPRECATE/DELETE — RATIFIED
+
+The immutable RDV cache follows semantic immutability rather than lifecycle state:
+
+```text
+DRAFT
+    -> not immutable-cacheable
+
+PUBLISHED
+    -> immutable-cacheable
+
+PUBLISHED -> DEPRECATED
+    -> entry remains semantically valid
+    -> no invalidation
+```
+
+DEPRECATE changes only current admission state and does not change the exact property snapshot or compiled semantics.
+
+The same immutable entry can therefore serve existing factual Relationships pinned to a DEPRECATED version and CREATE_NEXT sources in either PUBLISHED or DEPRECATED state.
+
+Complete Definition deletion does not require correctness-driven distributed cache invalidation because cache presence is never existence authority and UUID/exact-version identities are not reused. Local eviction may be opportunistic.
+
+Facet consumers remain distinct:
 
 ```text
 snapshot READY
     -> sufficient for CREATE_NEXT
 
 compiled READY
-    -> required by factual runtime semantic consumers
+    -> required by factual runtime consumers
 ```
 
-A consumer must not infer `compiled READY` from `snapshot READY`. PUBLISH normally owns both prepared facets and may publish them together after commit; later partial facet completion must preserve the actual readiness state.
+### 6.5 No new relational RDV materialization — RATIFIED
 
-Lifecycle transitions remain coherent with this boundary:
+`relationship_definition_properties` already stores the complete exact schema snapshot. PUBLISH does not justify another persisted copy merely to accelerate runtime compilation. Optimization is worker-local immutable cache reuse.
+
+### 6.6 Default interaction and DML/cost closure — RATIFIED
+
+`default_version` is not a semantic-preparation input and does not require a pre-read.
+
+PUBLISH owns one conditional current-state transition at its final publication boundary:
 
 ```text
-PUBLISHED -> DEPRECATED
-    -> immutable cache entry remains valid
-    -> no invalidation
+if Definition.default_version is still NULL
+    -> set default_version = this published version
 
-DELETE Definition root
-    -> local eviction optional
-    -> stale/orphan entry never proves existence or admission
-
-status / default_version
-    -> PostgreSQL current state
-    -> excluded from immutable cache
+otherwise
+    -> leave the current non-null default unchanged
 ```
 
-Exact cache implementation, process topology, capacity, eviction, observability and post-commit hook mechanics remain architecture/implementation work.
+Logical mutation direction:
+
+```text
+1. final generation/dependency/history admission
+2. UPDATE exact RDV DRAFT -> PUBLISHED, revision unchanged
+3. conditional UPDATE Definition
+       SET default_version = :version
+       WHERE id = :definition_id
+         AND default_version IS NULL
+4. COMMIT
+```
+
+The conditional default update may affect one or zero rows. Zero rows does not invalidate publication; it means a default already exists. The `204 No Content` response does not require learning or re-projecting which case occurred.
+
+Concurrent publications against an initially NULL default must preserve a NULL-only claim invariant: at most one publication establishes the first default, while another publication may still succeed without replacing it. Exact serialization remains architecture work.
+
+PUBLISH should own this narrow first-default transition directly rather than routing through the public `SET_DEFAULT` helper if that helper introduces command-specific reads/admission/reloads not required by publication.
+
+Cost shape:
+
+```text
+READ / PREPARATION
+    O(P) exact property snapshot
+    bounded/bulk exact-DTV semantic preparation
+    set-based history probe
+
+MUTATION DML
+    1 RDV status UPDATE
+    <= 1 conditional Definition default UPDATE
+
+property writes
+    0
+relationship_definition_space writes
+    0
+post-mutation reads
+    0
+```
+
+Mutation statement count is constant in property count.
 
 ---
 
-# 21. CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED
+## 7. SET_DEFAULT — technical discovery CLOSED except concurrency/physical realization
 
-RelationshipDefinition property declarations have two distinct dependency meanings that must not be conflated:
+`SET_DEFAULT` changes only current mutable selection state on the RelationshipDefinition lineage.
+
+Admission:
 
 ```text
-exact dependency lifetime
-    -> every persisted declaration in any RDV lifecycle state
-
-active-model lifecycle dependency
-    -> only a declaration owned by a PUBLISHED RDV
+RelationshipDefinition exists
+selected exact RDV exists in the same Definition
+selected exact RDV status == PUBLISHED
 ```
 
-Consequently:
+No semantic-preparation phase is required. The operation does not consume RDV properties, DTV semantics, compiled caches, topology, ancestry, history or revision.
+
+Logical short-UoW path:
 
 ```text
-RDV DRAFT declaration
-    -> blocks physical exact DTV / DataType-lineage deletion
-    -> does not block DTV DEPRECATE
+current admission
+    Definition exists
+    exact target exists/status == PUBLISHED
 
-RDV PUBLISHED declaration
-    -> blocks physical exact DTV / DataType-lineage deletion
-    -> blocks DTV DEPRECATE as an active model consumer
+mutation
+    default_version = selected version
 
-RDV DEPRECATED declaration
-    -> blocks physical exact DTV / DataType-lineage deletion
-    -> does not block DTV DEPRECATE
+commit
 ```
 
-## 21.1 Operation effects
+The command is idempotent when the selected version is already the current default. The `204 No Content` response requires no aggregate reconstruction or post-write reload.
+
+No cache fill/invalidation or `relationship_definition_space` maintenance occurs.
+
+Concurrency handoff:
 
 ```text
-RelationshipDefinition.CREATE
-    -> every selected exact DTV must be currently PUBLISHED
-    -> persist exact lifetime references in the new DRAFT
-    -> no active-model dependency exists until RDV publication
+SET_DEFAULT(D@V) vs DEPRECATE(D@V)
 
-CREATE_NEXT
-    -> clone exact lifetime references from an immutable PUBLISHED/DEPRECATED source
-    -> no current PUBLISHED re-admission of the cloned DTV pins
-    -> new RDV remains DRAFT and adds no active-model dependency
+SET_DEFAULT wins
+    -> V becomes current default
+    -> DEPRECATE cannot commit while V remains default
 
-REVISE
-    -> added or rebound exact pin:
-         current PUBLISHED admission
-         + new exact lifetime reference
-
-    -> unchanged exact pin:
-         no current PUBLISHED re-admission
-         + preserve exact lifetime
-
-    -> removed declaration:
-         remove its exact lifetime reference
-
-PUBLISH
-    -> every exact DTV pin must still be PUBLISHED
-    -> every persisted declaration becomes an active-model dependency
-
-DEPRECATE RDV
-    -> preserve every exact lifetime reference
-    -> remove the active-model dependency classification
-
-DELETE_DRAFT
-    -> remove owned declarations and their exact lifetime references
-
-DELETE RelationshipDefinition root
-    -> remove all owned declarations and all corresponding exact lifetime references
+DEPRECATE wins
+    -> V no longer PUBLISHED
+    -> SET_DEFAULT cannot commit V as default
 ```
 
-## 21.2 Declaration delta and dependency delta are distinct
+Exact rendezvous realization remains architecture work.
 
-REVISE must classify two different dimensions independently:
+---
+
+## 8. CLEAR_DEFAULT — technical discovery CLOSED except concurrency/physical realization
+
+`CLEAR_DEFAULT` changes only the current mutable default pointer and has no exact-version operand.
+
+Admission:
 
 ```text
-declaration persistence delta
-    unchanged / added / removed / changed
-
-dependency delta
-    exact pin unchanged / added / rebound / removed
+RelationshipDefinition exists
 ```
 
-A declaration can be physically changed while preserving the same exact pin. Example:
+Mutation:
 
 ```text
-current:   property P -> X@3, SCALAR
-candidate: property P -> X@3, LIST
+default_version -> NULL
 ```
 
-The declaration row is changed because `value_mode` changed, but the exact dependency is unchanged. Therefore:
+The command is idempotent when the default is already NULL. A physical implementation may avoid a real row rewrite in that case, but must still distinguish an absent Definition (404) from a present Definition whose default is already NULL (204).
+
+No semantic preparation, exact-version read, property/DTV/history/topology/space read, cache interaction, new denormalization or post-write reload is required.
+
+External concurrency handoff:
 
 ```text
-require X@3 currently PUBLISHED
+after CLEAR_DEFAULT commits
+    -> a new factual Relationship.CREATE implicit-version resolution
+       cannot obtain the old default
+```
+
+The fate of a factual CREATE that had already resolved an exact default before CLEAR_DEFAULT commits belongs to later cross-family concurrency closure.
+
+---
+
+## 9. DEPRECATE — technical discovery CLOSED except concurrency/physical realization
+
+`DEPRECATE` changes only lifecycle admission state of one exact immutable RDV.
+
+Admission:
+
+```text
+RelationshipDefinition exists
+exact RDV exists
+RDV.status == PUBLISHED
+Definition.default_version != target version
+```
+
+Mutation:
+
+```text
+RDV.status -> DEPRECATED
+RDV.revision unchanged
+```
+
+No semantic preparation, RDV property read, DTV semantic load, historical-continuity probe, factual Relationship scan/count, topology/space read or post-write reload is required.
+
+Existing factual Relationships pinned to the target exact version are intentionally **not** deprecation blockers. The exact immutable snapshot remains a valid historical dependency for those facts.
+
+The immutable exact-RDV cache remains valid unchanged across `PUBLISHED -> DEPRECATED`; lifecycle status is not stored in the immutable cache.
+
+Concurrency handoffs include at least:
+
+```text
+DEPRECATE vs SET_DEFAULT(target)
+DEPRECATE vs factual Relationship.CREATE binding to target
+DEPRECATE vs CLEAR_DEFAULT when target is current default
+```
+
+Exact rendezvous realization remains architecture work.
+
+---
+
+## 10. DELETE_DRAFT — technical discovery CLOSED except concurrency/physical realization
+
+Admission needs only the exact mutable generation header:
+
+```text
+RelationshipDefinition exists
+exact RDV exists
+status == DRAFT
+revision == expected_revision
+```
+
+The complete property declaration payload is not read for admission.
+
+Mutation/ownership:
+
+```text
+DELETE exact DRAFT RDV root
+    -> relationship_definition_properties owned cleanup
+
+relationship_definition_space
+    -> UNCHANGED
+
+last_versions
+    -> UNCHANGED by exact-version deletion
+    -> allocated version number is never reusable
+```
+
+DRAFT versions are never published in the immutable RDV cache, so DELETE_DRAFT has no cache invalidation responsibility.
+
+Successful deletion returns `204`; a repeated delete observes exact resource absence and returns the reviewed 404 outcome.
+
+Concurrency handoff:
+
+```text
+DELETE_DRAFT vs REVISE
+DELETE_DRAFT vs PUBLISH
+DELETE_DRAFT vs DELETE_DRAFT
+```
+
+Only one operation may consume a given DRAFT generation identified by `expected_revision`. Exact conditional-delete/lock realization remains architecture work.
+
+---
+
+## 11. DELETE RelationshipDefinition root — technical discovery CLOSED except concurrency/physical realization
+
+The stable root owns:
+
+```text
+RelationshipDefinitionVersion rows
+    -> RelationshipDefinitionProperty rows
+relationship_definition_space rows
+```
+
+There is no autonomous RelationshipResolution persistence in the M4 model.
+
+A current factual Relationship referencing any exact version of the Definition is the only reviewed external blocker type for this operation.
+
+### 11.1 Blocker authority — RATIFIED
+
+The M4 error details require only:
+
+```text
+409 delete_blocked
+    blocker_type = relationship
+```
+
+Therefore no blocker COUNT is required. A bounded `EXISTS` may be used as fail-fast optimization, but correctness must ultimately be owned by relational/FK lifetime arbitration or an equivalent current-state mechanism valid through the delete commit boundary.
+
+This is necessary because a standalone preflight `EXISTS=false` cannot by itself exclude a new concurrent factual pin.
+
+### 11.2 New-pinning rendezvous — RATIFIED handoff
+
+Root DELETE requires an independent complete lifetime/admission rendezvous with both:
+
+```text
+Relationship.CREATE explicit exact-version selection
+Relationship.CREATE implicit/default selection
+```
+
+Pre-clearing `default_version` is not sufficient to provide this guarantee and is not the primary semantic safety predicate.
+
+### 11.3 `default_version` pre-clear classification — RATIFIED
+
+The AS-IS pre-clear is classified as:
+
+```text
+semantic root-delete requirement
     -> NO
 
-require X@3 exact lifetime to remain protected through persistence
+possible defense-in-depth
     -> YES
+
+known AS-IS physical reason
+    -> break the current cyclic FK:
+       Definition.default_version -> RDV
+       RDV -> Definition
 ```
 
-The same applies to ordinal-only changes. A delete/reinsert implementation for such a declaration must not accidentally reinterpret the unchanged exact pin as a new lifecycle-sensitive binding.
+Architecture decides whether final FK design still requires the explicit pre-clear or whether direct root-owned cascade/equivalent cleanup removes the need.
 
-## 21.3 CREATE_NEXT transitive lifetime and architecture handoff
+### 11.4 Logical DML and cost — RATIFIED
 
-On a CREATE_NEXT cache hit, the immutable source snapshot can supply the exact pins without DTV reload or compilation. The final physical realization must nevertheless preserve their lifetime through the clone commit.
-
-Preferred proof obligation:
+Conceptually:
 
 ```text
-stabilized source RDV
-    -> source declarations remain present
-    -> declaration FKs keep every exact DTV alive
-    -> cloned declaration INSERTs can safely reuse those exact identities
+stabilize root lifetime
+optional physical default pre-clear if final FK design requires it
+DELETE RelationshipDefinition root
+    -> owned cleanup of versions
+    -> owned cleanup of version properties
+    -> owned cleanup of relationship_definition_space
 ```
 
-If the final relational/concurrency realization cannot derive that transitive lifetime guarantee, architecture must add only the minimum exact-target stabilization required. It must not reintroduce semantic compilation or current PUBLISHED admission into CREATE_NEXT.
-
-## 21.4 Cross-family publication/deprecation race
-
-`RelationshipDefinitionVersion.PUBLISH` and `DataTypeVersion.DEPRECATE` must admit only serializable semantic outcomes:
+Application persistence round trips are bounded/constant in owned-row counts. Physical cleanup work is naturally:
 
 ```text
-RDV PUBLISH wins
-    -> RDV becomes PUBLISHED
-    -> the exact DTV has an active PUBLISHED model consumer
-    -> DTV DEPRECATE is blocked
-
-DTV DEPRECATE wins
-    -> exact DTV is no longer PUBLISHED
-    -> RDV PUBLISH fails depency_not_admissible
+O(versions + properties + relationship_definition_space rows)
 ```
 
-Physical DataTypeVersion or DataType-lineage deletion remains blocked by every persisted RelationshipDefinition declaration, independently of RDV lifecycle status. Exact FK, lock, gate, wait, retry and blocker-query realization remains architecture work.
+No application loop or full topology/property/schema reload is required.
 
+No correctness-driven distributed cache invalidation is required; orphan immutable local cache entries are harmless because cache presence never proves current existence/admission and identities are not reused.
+
+### 11.5 `last_versions` handoff — RATIFIED boundary
+
+Complete-lineage allocator-row lifetime is owned by the cross-domain `version-allocation.md` architecture handoff. RelationshipDefinition DELETE does not independently choose retain-vs-delete behavior for the shared allocator row.
+
+The final architecture must preserve the cross-domain allocation invariants and must not accidentally reintroduce version-number reuse semantics.
 
 ---
 
-# 22. CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED
-
-The mutable `RelationshipDefinition.default_version` pointer is a selection mechanism for commands that omit an exact RelationshipDefinitionVersion. It is not a floating property of the resulting factual binding.
-
-For factual `Relationship.CREATE` with an omitted version:
-
-```text
-resolve owning RelationshipDefinition D
-resolve current D.default_version = V
-materialize selected exact target D@V
-```
-
-Once `D@V` has been resolved, the in-flight command remains pinned to that exact target. A later:
-
-```text
-SET_DEFAULT(D@W)
-CLEAR_DEFAULT(D)
-PUBLISH that establishes a previously-null default
-```
-
-affects future implicit resolutions only. It does not retarget the prepared command, force semantic preparation to restart, or invalidate the command solely because `D.default_version` no longer equals `V`.
-
-The final factual binding admission must instead preserve through commit:
-
-```text
-owning Definition/root lifetime
-exact D@V existence and same-Definition ownership
-D@V status == PUBLISHED
-requested semantic-cell admission/ownership
-factual runtime-cell conflict freedom
-```
-
-It must not require:
-
-```text
-D.default_version == V
-```
-
-The committed factual Relationship stores the exact pair:
-
-```text
-relationship_definition_id = D
-relationship_definition_version = V
-```
-
-and never stores a follow-current-default reference.
-
-## 22.1 Default-mutation races
-
-```text
-CLEAR_DEFAULT commits before implicit resolution
-    -> no exact target can be selected
-    -> default_version_unavailable
-
-implicit resolution selects D@V first
-CLEAR_DEFAULT commits afterward
-    -> command remains pinned to D@V
-    -> it may commit if final exact-target admission still succeeds
-```
-
-```text
-SET_DEFAULT(D@W) commits before resolution
-    -> command selects D@W
-
-command resolves D@V first
-SET_DEFAULT(D@W) commits afterward
-    -> command remains pinned to D@V
-```
-
-```text
-PUBLISH establishes the first default before resolution
-    -> a later implicit resolution may select it
-
-implicit resolution observes default_version = NULL first
-    -> the operation may fail default_version_unavailable
-    -> it is not required to chase a concurrently appearing default
-```
-
-## 22.2 Exact-target lifecycle remains authoritative
-
-A default change may make the previously selected `D@V` eligible for later deprecation, but pointer mutation alone does not decide the in-flight command. Final exact lifecycle admission does:
-
-```text
-DEPRECATE(D@V) wins before final binding admission
-    -> D@V is no longer PUBLISHED
-    -> Relationship.CREATE cannot commit
-
-Relationship.CREATE protects and commits the new D@V binding first
-    -> CREATE succeeds
-    -> DEPRECATE may still occur afterward because factual pins are not deprecation blockers
-```
-
-The protection lasts only through creation of the new exact factual binding. It does not turn factual Relationships into active-model blockers for `PUBLISHED -> DEPRECATED`.
-
-## 22.3 Definition selector independence
-
-The rule is identical for both factual CREATE selector candidates still open for architecture closing:
-
-```text
-candidate A
-    caller supplies relationship_definition_id
-    -> resolve that Definition's current default
-
-candidate B
-    exact semantic cell identifies the owning Definition
-    -> resolve that Definition's current default
-```
-
-After either path materializes `D@V`, the same exact-target semantics apply. Architecture must choose one public selector shape, but that choice does not reopen this default-resolution rule.
-
 ---
 
-# 23. CS-07 — committed property-history linearization — RESOLVED
+# 19. Bidirectional consistency sweep
 
-Committed RelationshipDefinition property history consists of every exact version whose lifecycle state is:
+The following checkpoints reconcile the operation-level baseline with the factual Relationship, DataType, ObjectTemplate ancestry and shared version-allocation boundaries.
+
+### CS-01 — historical `value_mode` owner correction — RESOLVED
+
+The family owner previously retained the stale monotonic rule:
 
 ```text
-PUBLISHED | DEPRECATED
+once LIST
+    -> later SCALAR forbidden
 ```
 
-For each historical property name, the current continuity rule is:
+That wording conflicted with the later M4 revalidation already ratified in this ledger and with factual `Relationship.SCHEMA_CHANGE` preserve-or-fail semantics.
+
+The owner has now been corrected at the source. Current family rule:
 
 ```text
-datatype_id
-    -> stable across committed history
+same-name committed history
+    -> datatype_id lineage remains stable
 
 exact datatype_version
     -> may change
 
 value_mode
-    -> may change SCALAR <-> LIST
+    -> SCALAR -> LIST allowed
+    -> LIST -> SCALAR allowed
 ```
 
-Because exact version number does not encode publication order, every successful `PUBLISH` must be compatible with all committed history linearized before its own commit.
+`historical LIST -> SCALAR violation` is no longer a normal REVISE semantic error. Exact RDV validity remains distinct from factual cross-version migrability.
 
-## 23.1 Concurrent PUBLISH of different exact versions
+### CS-02 — CREATE_NEXT immutable cache authority wording — RESOLVED
 
-Two different DRAFT versions of the same Definition may be published concurrently. They do not compete on the same DRAFT generation, so target-local lifecycle/revision arbitration alone is insufficient.
+The family owner previously said that CREATE_NEXT did not treat worker cache state as the authoritative clone source. That wording was too broad and could be read as forbidding the ratified immutable snapshot cache-hit path.
 
-Required semantic result:
+The owner now distinguishes payload authority from current-state authority:
 
 ```text
-compatible candidates
-    -> both may eventually commit
+ImmutableRelationshipDefinitionVersionCache snapshot READY
+    -> may provide the exact immutable declaration snapshot directly
+    -> sufficient clone payload for CREATE_NEXT
 
-incompatible candidates
-    -> they cannot both commit
+PostgreSQL
+    -> remains authority for current Definition existence
+    -> source exact-version existence
+    -> source lifecycle eligibility PUBLISHED | DEPRECATED
 ```
 
-If the first committed publication introduces a same-name `datatype_id` lineage that conflicts with the second candidate, the second publication must observe the enlarged committed history at its final admission boundary and fail with the reviewed historical semantic-validation outcome.
+The compiled facet is not required for CREATE_NEXT; `snapshot READY` is sufficient. On cache miss, CREATE_NEXT performs a bounded cold load of the immutable snapshot and may publish that facet.
 
-The concrete Definition-local rendezvous may use a history gate, row protection, serializable arbitration, a suitable relational authority, or an equivalent mechanism. Exact lock, wait, retry, deadlock and constraint realization remains architecture work.
+### CS-03 — `relationship_definition_space` responsibility matrix — RESOLVED
 
-Canonical invariant:
+The owner now records the complete responsibility boundary for the derived exact-template semantic closure:
 
 ```text
-every successful PUBLISH
-    -> compatible with every PUBLISHED/DEPRECATED declaration
-       linearized before that publication commit
+RelationshipDefinition.CREATE
+    -> derive/arbitrate/persist complete space
+
+Relationship.CREATE
+    -> consume one exact semantic cell for oriented admission
+       and unique owning-Definition resolution
+
+RelationshipDefinition.GET detail
+    -> use compact roots + current descendant sets
+    -> no space scan/refactoring
+
+RelationshipDefinition version/default/lifecycle operations
+    -> no space read or write
+
+RelationshipDefinition.DELETE root
+    -> owned space cleanup
+
+ObjectTemplate stable-ancestry mutation
+    -> coherent set-based maintenance of affected space
 ```
 
-## 23.2 Concurrent PUBLISH of the same exact version
+Already-admitted factual GET/DATA_CHANGE/SCHEMA_CHANGE/DELETE operations do not re-certify model-plane topology through the space.
 
-For:
+The owner also records that a newly created subtype must update ancestry and every induced semantic cell in one coherent commit boundary. Under current single inheritance, subtype creation cannot introduce a genuinely new collision between two already-certified Definitions: any such overlap would imply an already-existing overlapping root-level cell. Concurrent ObjectTemplate.CREATE and RelationshipDefinition.CREATE still require an architecture-level rendezvous so either serial order produces complete closure.
+
+Compact endpoint-root references remain real ObjectTemplate lifetime dependencies. Descendant appearances that exist only through derived expansion must not become autonomous deletion blockers.
+
+The legacy ObjectTemplate relationship-capabilities discovery remains deferred to the ObjectTemplate family sweep because it still assumes autonomous RelationshipResolution identity and mutable names. RelationshipDefinition records only the downstream-consumer handoff and does not freeze that route's final read model here.
+
+### CS-04 — PUBLISH commit and immutable-cache visibility — RESOLVED
+
+The owner now records PostgreSQL commit as the sole authoritative publication boundary.
 
 ```text
-PUBLISH D@V
-vs
-PUBLISH D@V
+outside short UoW
+    prepare complete immutable exact-RDV snapshot + compiled semantics
+
+inside short UoW
+    final generation/lifecycle/dependency/history admission
+    DRAFT -> PUBLISHED
+    conditional first-default claim
+    COMMIT
+
+post-commit only
+    publish prepared immutable cache entry
 ```
 
-same-target generation/lifecycle arbitration remains sufficient. Only one operation may consume the exact DRAFT generation. After one commit changes the target to `PUBLISHED`, another invocation can no longer satisfy the DRAFT lifecycle gate.
+A cache entry must never become visible before commit. A rolled-back PUBLISH therefore leaves no apparent immutable published snapshot.
 
-This race is distinct from publication of different exact versions, which requires Definition-level committed-history arbitration.
-
-## 23.3 REVISE versus concurrent history growth
-
-A successful `REVISE` certifies its complete DRAFT candidate against the committed history visible at the REVISE commit boundary.
+Post-commit cache publication is an optimization rather than a second domain transaction:
 
 ```text
-incompatible PUBLISH commits before REVISE final admission
-    -> REVISE must observe the new history
-    -> REVISE cannot commit that incompatible candidate
+DB commit succeeds + cache publication fails
+    -> PUBLISH remains successful
+    -> 204
+    -> later cache miss reconstructs from PostgreSQL
 ```
 
-The inverse order is intentionally different:
+The failure may be logged/observed operationally but must not be returned as `500`, because the lifecycle mutation is already durable and a caller retry would address a now non-DRAFT target.
+
+Worker-local caches need no synchronous distributed propagation. Other workers may cold-load the exact immutable state. Facet readiness remains explicit: `snapshot READY` is sufficient for CREATE_NEXT, while factual runtime consumers require `compiled READY`; neither is inferred from the other.
+
+PUBLISHED -> DEPRECATED leaves the immutable entry valid. Root deletion needs no correctness-driven invalidation, and cache state never owns current `status`, `default_version`, resource existence or admission.
+
+
+### CS-05 — RDV declaration → exact DataTypeVersion dependency matrix — RESOLVED
+
+The owner now separates three concerns:
 
 ```text
-REVISE commits first
-later PUBLISH of another RDV extends committed history
-    -> the already revised DRAFT may become no longer publishable
-    -> the later PUBLISH is not blocked merely to preserve that DRAFT's future publishability
+exact dependency lifetime
+    -> every persisted RelationshipDefinition declaration
+
+active-model lifecycle dependency
+    -> declarations owned by PUBLISHED RDVs only
+
+new-binding PUBLISHED admission
+    -> CREATE selected pins
+    -> REVISE added/rebound pins
+    -> all pins when publishing an RDV
 ```
 
-`PUBLISH` re-certifies the selected DRAFT against then-current committed history. It does not scan, protect or preserve compatibility for every other DRAFT version. A later history extension may therefore require another REVISE before the affected DRAFT can be published.
-
-Conceptually:
+Lifecycle matrix:
 
 ```text
-REVISE
-    -> provisional candidate certification at its commit boundary
+DRAFT declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker NO
 
-PUBLISH
-    -> final certification for admission into committed history
+PUBLISHED declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker YES
+
+DEPRECATED declaration
+    -> lifetime blocker YES
+    -> DTV deprecation blocker NO
 ```
 
-## 23.4 History membership is monotonic across lifecycle operations
+The owner also records that REVISE declaration DML classification and exact-dependency classification are independent. A value-mode or ordinal change may cause a physical row replacement while retaining the same exact DTV pin; that unchanged pin requires lifetime preservation but no current PUBLISHED re-admission.
+
+CREATE_NEXT continues to require neither DTV reload/compilation nor current PUBLISHED admission. Architecture must prove the cloned pins' lifetime through source RDV/declaration stabilization and exact declaration FKs, or add only the minimum equivalent exact-target protection.
+
+The cross-family `RDV.PUBLISH × DTV.DEPRECATE` rendezvous must produce only the two serial outcomes: publication first creates an active blocker, while deprecation first makes publication fail `dependency_not_admissible`.
+
+### CS-06 — implicit default resolution freezes one exact RDV selection — RESOLVED
+
+The RelationshipDefinition owner and factual Relationship owner now agree that `default_version` is used only to select one exact RDV when the caller omits an explicit version.
 
 ```text
-PUBLISHED -> DEPRECATED
-    -> remains part of committed property history
-    -> does not release historical datatype-lineage continuity
-
-DELETE_DRAFT
-    -> no committed-history effect
-    -> DRAFT was never a history member
+resolve D.default_version = V
+    -> materialize exact target D@V
+    -> keep D@V fixed for the in-flight command
 ```
 
-DEPRECATE therefore does not make a formerly used same-name `datatype_id` available for replacement by a different lineage.
+Later `SET_DEFAULT`, `CLEAR_DEFAULT`, or first-default establishment changes only future implicit resolutions. Final factual CREATE admission protects exact `D@V` existence/same-Definition ownership and `PUBLISHED` status through commit, but does not require `D.default_version == V`.
 
-## 23.5 Data-path boundary
-
-This checkpoint does not introduce a worker-side full-history load or a dedicated persisted history summary.
-
-Current direction remains:
+The owner records the corresponding race outcomes:
 
 ```text
-early set-based conflict probe
-    -> optional fail-fast
+CLEAR before resolution
+    -> default_version_unavailable
 
-final concurrency-safe set-based admission/arbitration
-    -> correctness requirement
+CLEAR after exact resolution
+    -> no retarget/invalidation from pointer change alone
 
-full committed-history materialization in worker
-    -> NO
+SET_DEFAULT before resolution
+    -> new pointer may be selected
 
-dedicated history-summary materialization
-    -> not currently justified
+SET_DEFAULT after resolution
+    -> already selected exact target remains fixed
+
+first PUBLISH before resolution
+    -> newly established default may be selected
+
+resolution observes NULL first
+    -> no mandatory chase of a concurrently appearing default
 ```
+
+A later loss of exact `PUBLISHED` status still blocks the final new binding. This rule is independent of the still-open factual CREATE choice between explicit Definition selection and unique owner derivation from the requested semantic cell.
+
+### CS-07 — committed property-history linearization — RESOLVED
+
+The owner now distinguishes same-target publication arbitration from Definition-level committed-history arbitration.
+
+```text
+PUBLISH same exact DRAFT
+    -> target generation/lifecycle gate
+
+PUBLISH different exact DRAFTs of the same Definition
+    -> committed-history linearization
+    -> incompatible candidates cannot both commit
+```
+
+Every successful publication must be compatible with all `PUBLISHED | DEPRECATED` same-name declarations linearized before its commit, under the current datatype-lineage-only continuity rule.
+
+REVISE remains provisional with respect to future history growth: it validates against history at its own commit boundary, but a later publication may make that DRAFT no longer publishable. PUBLISH does not scan or protect unrelated DRAFT candidates and always re-certifies its selected candidate.
+
+`PUBLISHED -> DEPRECATED` does not remove history membership, while DELETE_DRAFT has no history effect. The implementation direction remains set-based early/final probes without worker-side full-history loading or a new history-summary materialization. Exact Definition-local concurrency realization remains architecture work.
+
+---
+
+---
+
+# 20. Consolidated logical model and semantic persistence boundary
+
+The stable compact source of truth is conceptually:
+
+```text
+relationship_definitions
+    id
+    symmetric
+    endpoint_a_template_id
+    endpoint_b_template_id
+    name_a_to_b
+    name_b_to_a
+    default_version
+```
+
+A/B preserves the caller-authored orientation. It is not a privileged source/target ordering and is not canonicalized by UUID or another synthetic key.
+
+Both naming slots are populated:
+
+```text
+symmetric = true
+    -> name_a_to_b == name_b_to_a
+
+symmetric = false
+    -> name_a_to_b != name_b_to_a
+```
+
+Exact version and declaration state remain conceptually:
+
+```text
+relationship_definition_versions
+    relationship_definition_id
+    version
+    revision
+    status
+
+relationship_definition_properties
+    relationship_definition_id
+    relationship_definition_version
+    name
+    internal ordinal
+    datatype_id
+    datatype_version
+    value_mode
+```
+
+The physical ordinal column name remains architecture work. Public array order defines it and exact-version reads preserve it without exposing it.
+
+One exact-template directed semantic cell is:
+
+```text
+(from_template_id, name, to_template_id)
+```
+
+The ordered templates and stable name are all part of semantic identity. One current semantic cell has one owning RelationshipDefinition globally; duplicate generation inside one Definition and repetition across Definitions are both invalid.
+
+`relationship_definition_space` is the complete Definition-owned derived closure over compact Definition state and current stable ObjectTemplate ancestry. It is relational semantic-cell ownership/arbitration knowledge, not a second domain authority and not an autonomous RelationshipResolution entity.
+
+Same-template cells are valid model-plane applicability:
+
+```text
+(T, name, T)
+```
+
+They mean that two Objects in the same compatibility space may participate. They do not authorize factual self-reference. The factual owner separately requires:
+
+```text
+from_object_id != to_object_id
+```
+
+Final DDL must therefore not translate the factual Object-identity rule into a model-plane `from_template_id != to_template_id` restriction.
+
+Symmetry/name equality and allowed endpoint-space topology are domain semantics. Final architecture must retain genuinely relational integrity and arbitration, but must not add semantic database `CHECK` predicates merely to duplicate domain validation without an independent relational reason.
+
+No additional current authority is introduced for:
+
+```text
+autonomous RelationshipResolution persistence
+resolution_id model identity
+another relational copy of exact RDV semantics
+persisted committed-history summary
+worker cache for relationship_definition_space
+mutable RelationshipDefinition topology/default cache
+```
+
+The shared `last_versions(id, last_version)` allocator remains owned by `version-allocation.md`; exact-version deletion never rewinds it.
+
+---
+
+# 21. Architecture handoff, reviewed-baseline result and reopen triggers
+
+The reviewed baseline deliberately leaves these mechanisms open while fixing the guarantees they must preserve:
+
+```text
+final SQL column names/types/nullability
+PK/FK/UNIQUE/index realization
+semantic-cell arbitration carrier
+owned cleanup and ON DELETE behavior
+default-version same-Definition FK/cycle realization
+last_versions row lifetime on root deletion
+exact lock/gate/wait/retry/deadlock protocol
+transaction isolation and final-admission statement shapes
+migration/backfill from autonomous RelationshipResolution state
+cache process topology, capacity, eviction and observability
+cold-loader statement grouping
+verification/concurrency scenario registry
+```
+
+Required concurrency families include at least:
+
+```text
+RD.CREATE vs RD.CREATE semantic-cell ownership
+RD.CREATE vs ObjectTemplate ancestry growth
+same-DRAFT REVISE/PUBLISH/DELETE_DRAFT generation races
+different-RDV PUBLISH committed-history linearization
+RDV.PUBLISH vs DTV.DEPRECATE
+SET_DEFAULT vs DEPRECATE(target)
+CLEAR/SET/default resolution vs factual Relationship.CREATE
+RDV.DEPRECATE vs new factual binding
+root DELETE vs explicit and implicit new factual pinning
+same-lineage exact-version allocation
+```
+
+The current sweep has checked this owner bidirectionally against:
+
+```text
+general-domain-principles.md
+version-allocation.md
+object-template-ancestry-cache.md
+relationship.md
+the former semantic-intent draft
+the former operation-specific RelationshipDefinition notes
+the temporary technical-consolidation ledger
+```
+
+Current result:
+
+```text
+one active RelationshipDefinition family owner
+no autonomous RelationshipResolution candidate
+no unresolved REST/semantic/data-path/cache contradiction
+no temporary RelationshipDefinition source or consolidation file required
+all unresolved items classified as architecture/concurrency/physical handoffs
+```
+
+`RelationshipDefinition` therefore reaches M4 `REVIEWED BASELINE` at discovery level. This means the owner may be reused as reviewed input by later family and architecture work. It does not mean:
+
+```text
+M4 contract frozen
+M4 architecture frozen
+implementation authorized
+```
+
+Targeted revalidation is required if later work changes a material dependency, including:
+
+```text
+ObjectTemplate inheritance no longer single
+stable Definition topology or names become mutable/versioned
+factual Relationship CREATE selector/admission materially changes
+DataType exact-dependency lifecycle rules change
+a new hot consumer requires another model-plane projection/materialization
+measured semantic-space fan-out invalidates the current storage trade-off
+versioned lineage UUID allocation stops sharing the current practical namespace
+a physical design cannot realize a reviewed invariant without changing semantics
+```
+
+Implementation remains forbidden until the normal M4 Contract -> Architecture -> Steps -> Status authorization sequence is satisfied.
