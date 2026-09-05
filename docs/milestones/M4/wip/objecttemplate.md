@@ -181,14 +181,19 @@ No additional ObjectTemplate capability is introduced by this baseline reconstru
 docs/architecture/objecttemplate.md
     stable lineage, exact versions, inheritance, declarations,
     effective schema, lifecycle/default, dependency and delete semantics
+
 docs/architecture/api.md
     current route inventory, wire DTOs, success/failure mapping
+
 docs/architecture/persistence.md
     current tables, columns, keys, FKs, indexes and delete actions
+
 docs/architecture/concurrency-matrix.md
     semantic mutation interactions and safety predicates
+
 docs/architecture/concurrency.md
     current PostgreSQL lock/gate/UoW realization
+
 docs/architecture/verification.md
     current finite route/schema/scenario verification obligations
 ```
