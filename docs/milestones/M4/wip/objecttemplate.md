@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION + PAGE/ITEM DTO + MEMBERSHIP/CARDINALITY/FILTER COMPOSITION/ORDERING REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION + PAGE/ITEM DTO + MEMBERSHIP/CARDINALITY/FILTER COMPOSITION/ORDERING + KEYSET PAGINATION/CURSOR BINDING REVIEWED / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1140,14 +1140,177 @@ This pair is the complete ordering tuple because the qualified lineage identity 
 
 The collection does not use caller-selected sorting, UUID order, creation order, inheritance depth or hierarchical/preorder traversal. Mutable fields such as `description` and `default_version` do not participate in ordering.
 
+## Keyset pagination, cursor position and semantic query binding
+
+The collection uses opaque keyset pagination only.
+
+```text
+supported
+    -> opaque continuation cursor
+
+not supported
+    -> offset
+    -> page number
+    -> caller-selected ordering
+    -> public multi-page snapshot token
+```
+
+The cursor position is the complete canonical ordering tuple of the last item actually returned:
+
+```text
+(last_returned.namespace, last_returned.name)
+```
+
+Continuation uses the same ascending tuple order:
+
+```text
+(namespace, name) > cursor position
+ORDER BY namespace ASC, name ASC
+```
+
+The cursor is never derived from an internal look-ahead row that is not returned to the caller.
+
+Observable page behavior is:
+
+```text
+returned items
+    -> 0..limit
+
+another item exists after the returned page
+within the page's authoritative statement snapshot
+    -> next_cursor is an opaque string
+
+no further item exists
+    -> next_cursor = null
+
+empty page
+    -> next_cursor = null
+```
+
+A bounded look-ahead such as `limit + 1` is an allowed efficient realization, not a public protocol requirement.
+
+### Cursor position is not a resource reference
+
+The keyset position does not require the lineage that originally occupied that position to continue existing or matching the collection.
+
+```text
+page 1 ends at (namespace=N, name=X)
+lineage N.X is then deleted
+    -> cursor remains usable
+    -> continuation still applies tuple > (N, X)
+```
+
+The route does not re-read or validate the previous last item merely to use the cursor. Deletion of that item therefore does not produce `404` or invalidate an otherwise compatible cursor.
+
+### Semantic query identity
+
+A cursor is valid only for the same semantic collection scope that produced it.
+
+The cursor identity includes:
+
+```text
+route/capability
+    -> GET /api/v1/core/object-templates
+
+namespace
+    -> omitted or exact canonical value
+
+name
+    -> omitted or exact canonical value
+
+abstract
+    -> omitted, true or false
+
+parent selection
+    -> omitted
+    -> root-only
+    -> exact parent UUID
+```
+
+The parent presence state is mandatory because:
+
+```text
+parent_template_id omitted
+    !=
+parent_template_id=null
+```
+
+although both may use a nullable internal value. The public contract requires an equivalent semantic presence discriminator but does not expose or freeze an implementation field name such as `parent_filter_set`.
+
+Binding is semantic rather than based on raw query-string layout:
+
+```text
+query-parameter order
+    -> irrelevant
+
+accepted lexical representation of the same UUID
+    -> same UUID identity
+
+filter presence and canonical value
+    -> relevant
+```
+
+The cursor identity excludes:
+
+```text
+limit
+cursor token itself
+description
+default_version
+other response-only fields that affect neither membership nor ordering
+```
+
+Therefore a caller may continue the same collection with a different valid `limit`.
+
+### Incompatible cursor
+
+A supplied cursor is `400 invalid_cursor` when it is malformed or cannot represent the same collection query, including:
+
+```text
+malformed token/envelope
+unsupported cursor version
+wrong route/capability
+namespace mismatch
+name mismatch
+abstract mismatch
+parent omitted/root/exact-UUID mismatch
+incomplete position tuple
+position with wrong cardinality or carrier types
+```
+
+The exact token encoding remains an implementation detail. This block fixes semantic compatibility, not the physical cursor envelope.
+
+### Per-page snapshot and cross-page behavior
+
+Each request observes one coherent authoritative statement snapshot for its own page. Separate page requests do not share a repeatable collection snapshot.
+
+Without intervening membership changes, keyset traversal returns matching lineages once and in canonical order without cursor-induced omission or duplication.
+
+With current-state mutations between requests:
+
+```text
+new lineage inserted after the cursor position
+    -> may appear on a later page
+
+new lineage inserted before or at the cursor position
+    -> is not recovered by that continuation
+
+lineage deleted before the next request
+    -> does not appear
+
+previous last lineage deleted
+    -> compatible cursor remains usable
+```
+
+The cursor is a continuation token, not a domain identity, database offset, transaction snapshot, CDC token or frozen-catalog handle.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-pagination and cursor scope
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is keyset pagination, cursor position and semantic query binding.
+The next micro-point is the finite public failure catalogue and failure precedence.
