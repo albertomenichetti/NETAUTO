@@ -545,7 +545,7 @@ complete effective components
 linked/compiled exact DataTypeVersion validators
 ```
 
-The cache should be shaped for repeated Object/data-plane consumption, not as a byte-for-byte public DTO or persistence mirror. Facets may be independently READY.
+The cache should be shaped for repeated Object data-plane consumption, not as a byte-for-byte public DTO or persistence mirror. Facets may be independently READY.
 
 ## Bounded validation loader
 
