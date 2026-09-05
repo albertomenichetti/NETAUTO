@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION + PAGE/ITEM DTO + MEMBERSHIP/CARDINALITY/FILTER COMPOSITION/ORDERING + KEYSET PAGINATION/CURSOR BINDING REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT CLOSED / TECHNICAL REVIEW PENDING / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1304,13 +1304,146 @@ previous last lineage deleted
 
 The cursor is a continuation token, not a domain identity, database offset, transaction snapshot, CDC token or frozen-catalog handle.
 
-## Open public-contract boundary
+## Finite public failure catalogue and precedence
 
-Not yet reviewed or closed:
+The finite public failure set is exactly:
 
 ```text
-finite failure set and precedence
-technical data path, cache, persistence and concurrency realization
+400 invalid_request
+400 invalid_cursor
+500 internal_error
 ```
 
-The next micro-point is the finite public failure catalogue and failure precedence.
+The root collection has no path-selected resource and performs no mutation, dependency admission or semantic candidate validation. Therefore it has no normal:
+
+```text
+404 resource_not_found
+409 state conflict
+422 semantic_validation_failed
+422 referenced_resource_not_found
+```
+
+A well-formed absent parent filter and any other valid filter combination with no matches remain successful empty pages.
+
+Failure precedence is:
+
+```text
+1. static request validation
+2. cursor validation against the canonical request scope
+3. authoritative current collection read
+4. bounded internal failure boundary
+```
+
+### 1. Static request validation
+
+Malformed request carriers are rejected before cursor decoding or PostgreSQL business work:
+
+```text
+non-empty request body
+unknown or repeated query parameter
+malformed namespace
+malformed name
+invalid abstract carrier
+parent_template_id neither UUID nor lowercase null
+malformed or out-of-range limit
+    -> 400 invalid_request
+    -> zero PostgreSQL business statements
+```
+
+When a request contains both a static carrier error and a malformed or incompatible cursor, `invalid_request` takes precedence because the semantic request scope must first be valid and canonicalized.
+
+### 2. Cursor validation
+
+After static request validation, a malformed or scope-incompatible cursor returns:
+
+```text
+400 invalid_cursor
+zero PostgreSQL business statements
+```
+
+This includes malformed token/envelope, unsupported version, wrong route, filter or parent-presence mismatch, and a position with incorrect cardinality or carrier types.
+
+A compatible cursor whose former last item was deleted, no longer matches or lies beyond the current end is not invalid and does not trigger an existence read. It proceeds to the authoritative collection read and may yield an empty page.
+
+### 3. Authoritative current collection read
+
+A valid request and compatible cursor execute the current collection read. Zero matching rows, an absent well-formed parent UUID and a deleted prior cursor-position lineage are normal successful states represented by `200 OK`.
+
+The read does not issue diagnostic follow-up work merely to distinguish empty-subcases or re-certify represented lineage/default semantics.
+
+### 4. Internal failure boundary
+
+Unexpected persistence/infrastructure failure or inability to decode a mandatory persisted carrier into the complete typed page projection returns:
+
+```text
+500 internal_error
+```
+
+The error response does not expose SQL, table/column names, constraints, driver details, stack traces or cursor internals.
+
+A representable persisted semantic surprise remains readable. The GET does not replay mutation-owned lifecycle/default/inheritance certification merely because it projects current persisted state.
+
+The canonical error envelope remains:
+
+```json
+{
+  "code": "invalid_cursor",
+  "message": "...",
+  "details": {}
+}
+```
+
+`code` is the stable branching carrier, `message` is not, and `details` remains a bounded JSON object. This route introduces no new mandatory error-detail payload.
+
+## Public-contract closure checkpoint
+
+The caller-visible contract of `GET /api/v1/core/object-templates` is closed for the current M4 review candidate:
+
+```text
+capability
+    -> current ObjectTemplate lineage collection
+
+request
+    -> no path parameters
+    -> exact filters: namespace, name, abstract, parent_template_id
+    -> opaque cursor + limit
+    -> no body
+
+success
+    -> 200 OK
+    -> ObjectTemplatePage
+    -> ordered ObjectTemplateSummary items
+    -> represented empty page
+    -> no Location
+
+membership/order
+    -> conjunctive filters
+    -> parent omitted/root/exact direct-parent semantics
+    -> (namespace ASC, name ASC)
+
+pagination
+    -> opaque keyset on (namespace, name)
+    -> limit excluded from cursor identity
+    -> one statement snapshot per page
+
+failures
+    -> invalid_request
+    -> invalid_cursor
+    -> internal_error
+```
+
+This is a WIP review closure only. It does not freeze the milestone contract or architecture and does not authorize implementation.
+
+## Remaining technical review boundary
+
+Still to review for this operation:
+
+```text
+logical authoritative data path
+cache role and opportunistic fill policy
+persistence/query and physical-index handoff
+read snapshot/concurrency realization
+cost profile and final operation closure
+```
+
+The next micro-point is the logical authoritative data path and cache authority boundary.
