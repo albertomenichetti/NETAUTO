@@ -181,19 +181,14 @@ No additional ObjectTemplate capability is introduced by this baseline reconstru
 docs/architecture/objecttemplate.md
     stable lineage, exact versions, inheritance, declarations,
     effective schema, lifecycle/default, dependency and delete semantics
-
 docs/architecture/api.md
     current route inventory, wire DTOs, success/failure mapping
-
 docs/architecture/persistence.md
     current tables, columns, keys, FKs, indexes and delete actions
-
 docs/architecture/concurrency-matrix.md
     semantic mutation interactions and safety predicates
-
 docs/architecture/concurrency.md
     current PostgreSQL lock/gate/UoW realization
-
 docs/architecture/verification.md
     current finite route/schema/scenario verification obligations
 ```
@@ -727,7 +722,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT CLOSED / AUTHORITATIVE DATA PATH + CACHE BOUNDARY REVIEWED / TECHNICAL REVIEW IN PROGRESS / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT CLOSED / AUTHORITATIVE DATA PATH + CACHE BOUNDARY + PERSISTENCE/INDEX HANDOFF REVIEWED / TECHNICAL REVIEW IN PROGRESS / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1559,14 +1554,142 @@ model/effective-schema work
     -> 0
 ```
 
+## Persistence/query carrier and physical-index handoff
+
+The persistence layer should build one dynamic `SELECT` over `object_templates`, adding only the predicates that are semantically present in the validated request:
+
+```sql
+SELECT
+    id,
+    namespace,
+    name,
+    description,
+    abstract,
+    parent_template_id,
+    default_version
+FROM object_templates
+WHERE
+    -- supplied exact membership predicates only
+    -- plus tuple keyset continuation when a cursor is supplied
+ORDER BY
+    namespace ASC,
+    name ASC
+LIMIT :limit_plus_one;
+```
+
+The parent tri-state must compile directly into the corresponding SQL shape:
+
+```text
+parent omitted
+    -> no parent predicate
+
+root-only
+    -> parent_template_id IS NULL
+
+exact parent
+    -> parent_template_id = :parent_template_id
+```
+
+The query builder must not encode optional filters through generic null-short-circuit expressions such as `(:value IS NULL OR column = :value)`. It should expose the actual active predicate set to PostgreSQL and use the tuple predicate:
+
+```text
+(namespace, name) > (:after_namespace, :after_name)
+```
+
+for continuation. `LIMIT limit + 1` is the recommended bounded realization for deriving `next_cursor` in the same statement. No `COUNT`, CTE, join or follow-up statement belongs to this route.
+
+### Current index handoff
+
+Retain the constraint-owned unique B-tree:
+
+```text
+UNIQUE (namespace, name)
+```
+
+It remains the primary access path for unfiltered and namespace-filtered traversal, exact qualified-name lookup, canonical ordering and generic keyset continuation.
+
+Add these explicit B-tree access paths:
+
+```text
+ix_object_templates_name_namespace
+    (name, namespace)
+
+ix_object_templates_abstract_namespace_name
+    (abstract, namespace, name)
+
+ix_object_templates_parent_namespace_name
+    (parent_template_id, namespace, name)
+```
+
+Their responsibilities are respectively:
+
+```text
+(name, namespace)
+    -> name-only filtering with canonical traversal inside a constant name
+
+(abstract, namespace, name)
+    -> abstract-filtered canonical traversal
+
+(parent_template_id, namespace, name)
+    -> exact-parent and root-only canonical traversal
+    -> reverse-parent access needed by lineage lifetime/delete checks
+```
+
+The composite parent index replaces the existing parent-only index:
+
+```text
+ix_object_templates_parent
+    (parent_template_id)
+```
+
+because its leading column preserves the reverse-parent lookup while the suffix supports the collection's canonical order and keyset pagination.
+
+Do not add `INCLUDE` columns. `description` and `default_version` are mutable and the complete public row still requires heap access; copying them into collection indexes would increase mutation maintenance without establishing a compelling covering-read benefit.
+
+Do not create additional indexes on:
+
+```text
+description
+default_version
+id beyond the primary key
+qualified_name as a derived duplicate
+```
+
+and do not proliferate indexes for every filter combination. The four access families above cover the primary collection shapes; remaining conjunctive filters may be applied as residual predicates over the best available stable-key access path.
+
+### Architecture verification handoff
+
+Architecture closing must validate representative cardinalities for:
+
+```text
+unfiltered
+namespace-filtered
+name-only
+abstract-filtered
+exact-parent
+root-only
+```
+
+with and without a cursor, using planner and runtime evidence. It must preserve:
+
+```text
+one authoritative business statement
+bounded limit+1 acquisition
+canonical keyset order
+no pathological explicit sort/materialization
+no unjustified full projection scan
+no duplicate/redundant index
+```
+
+The exact PostgreSQL plan is not part of the public contract. A later measured architecture adjustment may merge or replace an index only if it preserves equivalent access for the owned query families and records the evidence explicitly.
+
 ## Remaining technical review boundary
 
 Still to review for this operation:
 
 ```text
-persistence/query carrier and physical-index handoff
 read snapshot/concurrency realization
 measurement-oriented cost validation and final operation closure
 ```
 
-The next micro-point is the persistence/query carrier and physical-index handoff.
+The next micro-point is the read snapshot/concurrency realization.
