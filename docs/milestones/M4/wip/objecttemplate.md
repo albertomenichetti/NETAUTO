@@ -545,7 +545,7 @@ complete effective components
 linked/compiled exact DataTypeVersion validators
 ```
 
-The cache should be shaped for repeated Object data-plane consumption, not as a byte-for-byte public DTO or persistence mirror. Facets may be independently READY.
+The cache should be shaped for repeated Object/data-plane consumption, not as a byte-for-byte public DTO or persistence mirror. Facets may be independently READY.
 
 ## Bounded validation loader
 
@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION + PAGE/ITEM DTO REVIEWED / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -983,7 +983,7 @@ Every successful collection read returns:
 Content-Type: application/json
 ```
 
-The response body is always present and represents the requested page through one typed JSON page carrier. The exact page and item DTO fields remain owned by the next review block.
+The response body is always present and represents the requested page through one typed JSON page carrier.
 
 An empty result is a normal represented page:
 
@@ -1012,15 +1012,86 @@ total-count header
 Location
 ```
 
+## Page envelope and collection-item DTO
+
+The public page carrier is:
+
+```text
+ObjectTemplatePage
+    items: ObjectTemplateSummary[]
+    next_cursor: string | null
+```
+
+The collection item is the complete current stable-lineage header projection:
+
+```text
+ObjectTemplateSummary
+    id: UUID
+    namespace: string
+    name: string
+    description: string | null
+    abstract: bool
+    parent_template_id: UUID | null
+    default_version: positive integer | null
+```
+
+Presence rules are fixed:
+
+```text
+items
+    -> always present
+    -> [] for a zero-item page
+
+next_cursor
+    -> always present
+    -> string when another page is available
+    -> null when no continuation is available
+
+description
+parent_template_id
+default_version
+    -> always present
+    -> JSON null represents the corresponding genuine absent state
+```
+
+The nullable values mean:
+
+```text
+description = null
+    -> no current description
+
+parent_template_id = null
+    -> stable root lineage
+
+default_version = null
+    -> no exact version currently selected as the lineage default
+```
+
+`default_version` remains a same-lineage exact-version selection policy. Its presence does not mean latest/highest version, direct Object creation eligibility or any independently re-certified lifecycle condition.
+
+The collection deliberately does not add:
+
+```text
+qualified_name duplicated beside namespace + name
+expanded parent reference
+version status, count or list
+effective schema
+relationship capabilities
+count or total_count
+has_more
+links / self / previous_cursor
+```
+
+`ObjectTemplateSummary` names the public role of the collection item. It does not require a distinct implementation class if the later lineage-detail review proves the exact same projection appropriate there.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-page/item DTO
 cardinality, ordering, filter composition, pagination and cursor scope
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is the public page envelope and ObjectTemplate collection-item DTO.
+The next micro-point is collection membership cardinality, filter composition and canonical ordering.
