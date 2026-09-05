@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL SEMANTICS REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION REVIEWED / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -974,16 +974,53 @@ supplied
 
 `cursor` has no explicit-null semantics. Therefore `cursor=null` is a supplied token, not omission and not a first-page alias. Empty and other supplied values must satisfy the cursor codec; exact token structure, query binding and final `invalid_cursor` classification are owned by the pagination/cursor review block.
 
+## Success status, response-body presence and Location
+
+Every successful collection read returns:
+
+```http
+200 OK
+Content-Type: application/json
+```
+
+The response body is always present and represents the requested page through one typed JSON page carrier. The exact page and item DTO fields remain owned by the next review block.
+
+An empty result is a normal represented page:
+
+```text
+zero matching items
+    -> 200 OK
+    -> page body present
+    -> zero-item collection representation
+    -> no error
+```
+
+The route does not use cardinality-dependent success shapes. In particular, an empty page does not produce `204 No Content` and a non-empty page does not use `206 Partial Content`; cursor pagination is not an HTTP byte-range protocol.
+
+The response carries no `Location` header because the operation creates no resource and the requested collection URI is already known to the caller.
+
+M4 therefore introduces no successful response variant based on:
+
+```text
+201 Created
+202 Accepted
+204 No Content
+206 Partial Content
+redirect
+Content-Range
+total-count header
+Location
+```
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-success status and body
 page/item DTO
 cardinality, ordering, filter composition, pagination and cursor scope
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is success status, response-body presence and Location behavior.
+The next micro-point is the public page envelope and ObjectTemplate collection-item DTO.
