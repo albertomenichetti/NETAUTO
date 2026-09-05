@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT CLOSED / TECHNICAL REVIEW PENDING / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT CLOSED / AUTHORITATIVE DATA PATH + CACHE BOUNDARY REVIEWED / TECHNICAL REVIEW IN PROGRESS / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1434,16 +1434,139 @@ failures
 
 This is a WIP review closure only. It does not freeze the milestone contract or architecture and does not authorize implementation.
 
+## Logical authoritative data path and cache authority boundary
+
+After static request and cursor validation, every valid request executes exactly one authoritative PostgreSQL business statement over the current ObjectTemplate lineage relation.
+
+The statement owns, in one bounded page operation:
+
+```text
+source
+    -> current ObjectTemplate lineage rows
+
+membership
+    -> every supplied exact filter composed with AND
+
+continuation
+    -> (namespace, name) > cursor position, when supplied
+
+ordering
+    -> namespace ASC, name ASC
+
+projection
+    -> id
+    -> namespace
+    -> name
+    -> description
+    -> abstract
+    -> parent_template_id
+    -> default_version
+
+page acquisition
+    -> bounded work sufficient to return 0..limit items
+       and determine whether a continuation exists
+```
+
+A bounded look-ahead such as `limit + 1` is an allowed realization, but the public and logical requirement is one authoritative business statement with work proportional to one page.
+
+The page DTO and `next_cursor` are constructed entirely from that statement result. The route issues no second statement for total count, parent-filter existence, cursor-position existence, default-target validation, response enrichment or diagnostic classification.
+
+The authoritative path does not require:
+
+```text
+ObjectTemplateVersion joins
+property/component declaration joins
+object_template_ancestry traversal
+recursive exact-parent traversal
+effective-schema loading
+RelationshipDefinition or relationship_definition_space reads
+mutation-semantic recertification
+model-plane cache reads
+N+1 follow-up queries
+```
+
+PostgreSQL remains authoritative for:
+
+```text
+current lineage existence
+complete collection membership
+current description
+current default_version
+filter evaluation
+canonical ordered page
+```
+
+No worker-local cache may serve, complete or overrule the public response.
+
+### Opportunistic stable-descriptor fill
+
+The already-returned rows may opportunistically populate a worker-local stable descriptor facet:
+
+```text
+StableObjectTemplateDescriptor
+    id
+    namespace
+    name
+    abstract
+    parent_template_id
+```
+
+This fill is optional and policy-gated. It may use only columns already returned by the authoritative statement and must add no PostgreSQL round trip or cache lookup required by the response.
+
+```text
+cache cold
+cache partial
+fill skipped by policy
+entry rejected by capacity/eviction policy
+    -> identical public response
+    -> collection success unaffected
+```
+
+`description` and `default_version` are current mutable state and are not part of this stable descriptor facet.
+
+A descriptor fill does not make any of the following READY:
+
+```text
+complete ObjectTemplate ancestry source set
+exact ObjectTemplateVersion semantics
+effective properties
+effective components
+linked DataTypeVersion semantics
+compiled validators
+```
+
+The collection therefore performs no speculative ancestry/effective-schema load merely to warm another consumer.
+
+### Candidate cost profile
+
+```text
+static invalid request
+    -> 0 PostgreSQL business statements
+
+invalid or incompatible cursor
+    -> 0 PostgreSQL business statements
+
+valid empty or non-empty page
+    -> exactly 1 PostgreSQL business statement
+
+required cache reads
+    -> 0
+
+additional DB work for cache fill
+    -> 0
+
+model/effective-schema work
+    -> 0
+```
+
 ## Remaining technical review boundary
 
 Still to review for this operation:
 
 ```text
-logical authoritative data path
-cache role and opportunistic fill policy
-persistence/query and physical-index handoff
+persistence/query carrier and physical-index handoff
 read snapshot/concurrency realization
-cost profile and final operation closure
+measurement-oriented cost validation and final operation closure
 ```
 
-The next micro-point is the logical authoritative data path and cache authority boundary.
+The next micro-point is the persistence/query carrier and physical-index handoff.
