@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION + PAGE/ITEM DTO REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL + SUCCESS STATUS/BODY/LOCATION + PAGE/ITEM DTO + MEMBERSHIP/CARDINALITY/FILTER COMPOSITION/ORDERING REVIEWED / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1084,14 +1084,70 @@ links / self / previous_cursor
 
 `ObjectTemplateSummary` names the public role of the collection item. It does not require a distinct implementation class if the later lineage-detail review proves the exact same projection appropriate there.
 
+## Collection membership, cardinality, filter composition and canonical ordering
+
+Membership is the set of current `ObjectTemplate` lineage rows that satisfy every supplied membership filter. One current lineage may occur at most once.
+
+All supplied filters compose conjunctively:
+
+```text
+membership =
+    current ObjectTemplate lineage
+    AND namespace predicate, when supplied
+    AND name predicate, when supplied
+    AND abstract predicate, when supplied
+    AND direct-parent/root predicate, when supplied
+```
+
+No filter has precedence over another, cancels another filter or introduces implicit OR semantics.
+
+Cardinality is:
+
+```text
+unfiltered or partially filtered collection
+    -> 0..N distinct current lineages
+
+one returned page
+    -> 0..limit distinct items
+
+name only
+    -> 0..N lineages across different namespaces
+
+namespace + name
+    -> 0..1 lineage
+       because (namespace, name) is unique
+```
+
+A syntactically valid filter combination with no matching lineage returns the normal represented empty page.
+
+A well-formed `parent_template_id` UUID that does not identify a current lineage also returns an empty page:
+
+```text
+200 OK
+items = []
+next_cursor = null
+```
+
+The parent query value is a membership filter, not an implicit path-selected or referenced resource. Its absence therefore does not produce `404 resource_not_found` or `422 referenced_resource_not_found`, and the collection does not require a separate parent-existence read solely for diagnosis.
+
+The canonical ordering is fixed:
+
+```text
+(namespace ASC, name ASC)
+```
+
+This pair is the complete ordering tuple because the qualified lineage identity `(namespace, name)` is unique. No additional `id` tie-breaker is required.
+
+The collection does not use caller-selected sorting, UUID order, creation order, inheritance depth or hierarchical/preorder traversal. Mutable fields such as `description` and `default_version` do not participate in ordering.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-cardinality, ordering, filter composition, pagination and cursor scope
+pagination and cursor scope
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is collection membership cardinality, filter composition and canonical ordering.
+The next micro-point is keyset pagination, cursor position and semantic query binding.
