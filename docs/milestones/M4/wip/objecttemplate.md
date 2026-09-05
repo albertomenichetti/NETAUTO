@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY + STRICT REQUEST/LEXICAL/OMISSION/NULL SEMANTICS REVIEWED / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -836,8 +836,6 @@ root selection
     -> only stable root lineages
 ```
 
-The precise public lexical carrier for root selection, omission versus explicit null, repeated/unknown-parameter handling and cursor identity binding remains part of the next review blocks; this checkpoint ratifies the semantic tri-state, not its final grammar.
-
 M4 introduces no additional derived, recursive or search-oriented collection filter. In particular, the collection does not gain a current-version/admission filter such as:
 
 ```text
@@ -857,14 +855,130 @@ caller-defined generic sort/search DSL
 
 A `qualified_name`-only filter does not replace the separate `namespace` and `name` carriers: the collection retains both stable dimensions independently.
 
+## Strict request shape and lexical/omission/null semantics
+
+### Request body and query multiplicity
+
+The request body is forbidden.
+
+```text
+empty HTTP body
+    -> valid
+
+any non-empty body bytes, including
+    {}
+    null
+    JSON or non-JSON payload
+    whitespace-only payload
+    -> 400 invalid_request
+```
+
+Unknown query parameters are rejected. Every retained query parameter has scalar cardinality and may occur at most once; repeated parameters are rejected even when every occurrence carries the same value.
+
+```text
+unknown query parameter
+repeated query parameter
+    -> 400 invalid_request
+```
+
+The adapter does not silently trim, lowercase, normalize or apply generic scalar coercion to repair caller input.
+
+### `namespace`
+
+```text
+omitted
+    -> no namespace predicate
+
+supplied
+    -> exact stable-namespace filter
+    -> canonical namespace grammar:
+       segment("." segment)*
+       segment = [a-z][a-z0-9_]*
+       maximum 64 characters per segment
+       maximum 255 characters overall
+```
+
+Empty, explicit `null`, uppercase/non-canonical or otherwise malformed values are `400 invalid_request`. Matching is exact; the carrier does not express prefix, contains or case-insensitive search.
+
+### `name`
+
+```text
+omitted
+    -> no local-name predicate
+
+supplied
+    -> exact stable local-name filter
+    -> [a-z][a-z0-9_]*
+    -> maximum 64 characters
+```
+
+Empty, explicit `null`, uppercase/non-canonical or otherwise malformed values are `400 invalid_request`. Matching is exact and receives no trim or lowercase repair.
+
+### `abstract`
+
+```text
+omitted
+    -> no abstract predicate
+
+abstract=true
+    -> only abstract lineages
+
+abstract=false
+    -> only non-abstract lineages
+```
+
+Only exact lowercase lexical `true` and `false` are accepted. Empty, `null`, numeric, title-case, uppercase or other boolean-like spellings are `400 invalid_request`.
+
+### `parent_template_id`
+
+The semantic tri-state uses one carrier:
+
+```text
+omitted
+    -> no parent predicate
+
+parent_template_id=<UUID>
+    -> only direct children of that stable parent lineage
+
+parent_template_id=null
+    -> only stable root lineages
+```
+
+The UUID form uses the shared public UUID carrier. Exact lowercase lexical `null` is the sole root sentinel. Empty, malformed UUID, `NULL`, `Null`, `none`, `root` or any other sentinel spelling is `400 invalid_request`.
+
+Omission, exact-parent selection and root selection are distinct caller intents; no default or normalization collapses them.
+
+### `limit`
+
+```text
+omitted
+    -> 100
+
+supplied
+    -> positive decimal integer
+    -> lexical grammar [1-9][0-9]*
+    -> range 1..500
+```
+
+Empty, `null`, zero, sign-prefixed, leading-zero, decimal, exponent, boolean-like or out-of-range forms are `400 invalid_request`.
+
+### `cursor`
+
+```text
+omitted
+    -> first page
+
+supplied
+    -> opaque continuation token
+```
+
+`cursor` has no explicit-null semantics. Therefore `cursor=null` is a supplied token, not omission and not a first-page alias. Empty and other supplied values must satisfy the cursor codec; exact token structure, query binding and final `invalid_cursor` classification are owned by the pagination/cursor review block.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-exact lexical grammar and static validation of the retained query carriers
-strict request-body prohibition
-omission vs explicit null semantics, including root-selection syntax
 success status and body
 page/item DTO
 cardinality, ordering, filter composition, pagination and cursor scope
@@ -872,4 +986,4 @@ finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is the strict request shape and the lexical/omission/null semantics of the retained query carriers.
+The next micro-point is success status, response-body presence and Location behavior.
