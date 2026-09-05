@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + PATH/QUERY INVENTORY REVIEWED / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -780,19 +780,96 @@ a command-style collection search route
 removal of the collection capability
 ```
 
+## Path and query carrier inventory
+
+Path parameters:
+
+```text
+none
+```
+
+The retained query-parameter inventory is exactly:
+
+```text
+namespace
+name
+abstract
+parent_template_id
+cursor
+limit
+```
+
+Their caller-facing responsibilities are:
+
+```text
+namespace
+    -> optional exact filter on the stable lineage namespace
+
+name
+    -> optional exact filter on the stable local lineage name
+
+abstract
+    -> optional exact filter on the stable abstract flag
+    -> omission does not restrict collection membership
+
+parent_template_id
+    -> optional filter on the stable direct-parent relationship only
+    -> it does not mean arbitrary ancestor or descendant search
+
+cursor
+    -> optional opaque continuation carrier for the same collection scope
+
+limit
+    -> optional requested page size
+```
+
+`parent_template_id` retains three semantic states:
+
+```text
+omitted
+    -> no parent predicate
+
+exact ObjectTemplate UUID
+    -> only direct children of that stable parent
+
+root selection
+    -> only stable root lineages
+```
+
+The precise public lexical carrier for root selection, omission versus explicit null, repeated/unknown-parameter handling and cursor identity binding remains part of the next review blocks; this checkpoint ratifies the semantic tri-state, not its final grammar.
+
+M4 introduces no additional derived, recursive or search-oriented collection filter. In particular, the collection does not gain a current-version/admission filter such as:
+
+```text
+has_default
+has_published_version
+directly_instantiable
+```
+
+and does not gain ancestry/search carriers such as:
+
+```text
+ancestor_template_id
+descendant_of
+qualified-name prefix/contains
+caller-defined generic sort/search DSL
+```
+
+A `qualified_name`-only filter does not replace the separate `namespace` and `name` carriers: the collection retains both stable dimensions independently.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-path/query carrier grammar
+exact lexical grammar and static validation of the retained query carriers
 strict request-body prohibition
-omission vs explicit null semantics
+omission vs explicit null semantics, including root-selection syntax
 success status and body
 page/item DTO
-cardinality, ordering, filters, pagination and cursor scope
+cardinality, ordering, filter composition, pagination and cursor scope
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is the collection request-carrier surface, beginning with path and query parameters.
+The next micro-point is the strict request shape and the lexical/omission/null semantics of the retained query carriers.
