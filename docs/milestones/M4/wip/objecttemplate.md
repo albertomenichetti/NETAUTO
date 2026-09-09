@@ -1922,3 +1922,86 @@ The next public-contract frontier is:
 ```http
 GET /api/v1/core/object-templates/{template_id}
 ```
+
+---
+
+# 13. OT-GET-02 — GET one ObjectTemplate lineage
+
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE REVIEWED / CURRENT M4 CANDIDATE
+
+## Cross-REST consistency checkpoint
+
+This operation follows the already-reviewed detail-resource pattern used by factual Object, factual Relationship and RelationshipDefinition:
+
+```text
+known stable resource identity
+    -> canonical global GET by that identity
+
+current resource state
+    -> returned by the detail capability
+
+subordinate or orthogonal projections
+    -> remain on their own routes
+```
+
+The comparison is semantic rather than mechanically uniform. RelationshipDefinition detail includes its own current applicability because that projection belongs to the Definition contract; ObjectTemplate exact versions, effective schema and relationship capabilities already have distinct subordinate routes and therefore are not folded into the lineage lookup merely for DTO symmetry. Any later divergence from a reviewed analogous REST must be identified explicitly and justified by an ObjectTemplate-specific caller or domain requirement.
+
+## Capability and responsibility
+
+M4 retains a public detail capability for one current `ObjectTemplate` lineage selected through its stable identity.
+
+The operation answers:
+
+```text
+what is the current ObjectTemplate lineage identified by template_id?
+```
+
+It owns:
+
+```text
+current lineage existence
+stable lineage identity/header
+current lineage-level metadata and policy state
+```
+
+It does not own:
+
+```text
+exact-version listing or detail
+local property/component declarations
+effective schema
+complete ancestry closure
+relationship capabilities
+Object.CREATE admission
+historical/deleted lineage state
+mutation-semantic recertification
+```
+
+An abstract, default-less or otherwise non-directly-instantiable lineage remains a valid readable resource. Detail membership is not an Object.CREATE eligibility view.
+
+## Method and route
+
+```http
+GET /api/v1/core/object-templates/{template_id}
+```
+
+`GET` represents a side-effect-free current resource lookup. The `/object-templates/{template_id}` route is canonical for the stable lineage identity, while subordinate `/versions`, `/effective-schema` and `/relationship-capabilities` routes continue to own their distinct projections.
+
+M4 does not rename the resource to `/object-template-lineages`, introduce a query-based ID lookup or remove the detail capability.
+
+## Open public-contract boundary
+
+Not yet reviewed or closed:
+
+```text
+path carrier grammar
+query-parameter prohibition
+strict request-body prohibition
+omission versus explicit null semantics
+success status, body and Location
+lineage detail DTO and relation to ObjectTemplateSummary
+finite failure set and precedence
+technical data path, cache, persistence and concurrency realization
+```
+
+The next micro-point is the strict request carrier: required path UUID, absence of query parameters and forbidden request body.
