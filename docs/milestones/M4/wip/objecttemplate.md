@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT CLOSED / AUTHORITATIVE DATA PATH + CACHE BOUNDARY + PERSISTENCE/INDEX HANDOFF + READ SNAPSHOT/CONCURRENCY REVIEWED / TECHNICAL REVIEW IN PROGRESS / CURRENT M4 CANDIDATE
+**State:** DISCOVERY COMPLETE / PUBLIC CONTRACT CLOSED / LOGICAL DATA PATH + CACHE BOUNDARY + PERSISTENCE/INDEX HANDOFF + READ SNAPSHOT/CONCURRENCY + MEASUREMENT HANDOFF REVIEWED / ARCHITECTURE CLOSING PENDING / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1803,12 +1803,122 @@ optional cache work
     -> best-effort post-read stable-descriptor publication only
 ```
 
-## Remaining technical review boundary
+## Measurement-oriented cost validation and final operation closure
 
-Still to review for this operation:
+This discovery freezes a structural cost contract and delegates measured PostgreSQL-plan, payload and runtime validation to architecture closing. No benchmark result, latency threshold or exact physical-plan choice is claimed before the TO-BE implementation exists.
+
+### Structural cost contract
 
 ```text
-measurement-oriented cost validation and final operation closure
+static invalid_request
+    -> 0 PostgreSQL business statements
+
+invalid_cursor
+    -> 0 PostgreSQL business statements
+
+valid empty or non-empty request
+    -> exactly 1 PostgreSQL business statement
+    -> at most limit public items
+    -> at most limit + 1 rows returned internally for look-ahead
+    -> 0 required cache reads
+    -> 0 joins
+    -> 0 recursive traversal
+    -> 0 COUNT
+    -> 0 follow-up statements
+    -> 0 explicit business locks
+    -> 0 business retries
 ```
 
-The next micro-point is the measurement-oriented cost validation and final operation closure.
+The returned-row bound does not assert that PostgreSQL always examines at most `limit + 1` heap or index tuples. Physical rows, buffers and residual-filter work depend on cardinality, distribution, selectivity and the chosen access path; those are measurement-owned architecture concerns.
+
+### Measurement handoff
+
+Architecture closing must exercise at least:
+
+```text
+query families
+    -> unfiltered
+    -> namespace-filtered
+    -> name-only
+    -> abstract-filtered
+    -> exact-parent
+    -> root-only
+    -> representative conjunctive combinations
+
+cursor positions
+    -> first page
+    -> middle page
+    -> tail page
+    -> compatible cursor beyond the current end
+
+limits
+    -> 1
+    -> 100
+    -> 500
+
+data distributions
+    -> empty
+    -> small
+    -> production-representative
+    -> namespace-skewed
+    -> abstract-skewed
+    -> parent/root-skewed
+```
+
+For every representative shape, evidence must include as applicable:
+
+```text
+EXPLAIN (ANALYZE, BUFFERS)
+planning and execution time
+selected access path
+rows visited and rows removed by filter
+buffer activity
+heap-fetch behavior
+explicit sort/materialization behavior
+response payload bytes
+DTO decoding/serialization cost
+```
+
+A sequential scan is not intrinsically a failure on a small relation when PostgreSQL correctly estimates it as cheaper. At representative scale, selective query families must demonstrate non-pathological use of the ratified access paths, bounded page acquisition and no unjustified sort, full projection scan or index duplication.
+
+### Payload sizing boundary
+
+The page is row-bounded but value-size-sensitive:
+
+```text
+public items
+    -> at most limit
+    -> limit <= 500
+
+payload bytes
+    -> depend on the encoded size of each ObjectTemplateSummary
+    -> especially current description values
+```
+
+This operation does not pre-empt the later `SET_DESCRIPTION` review by inventing a description-length limit. Architecture measurements must include representative description sizes and the maximum size ultimately admitted by the owning description contract.
+
+### Final operation closure checkpoint
+
+`OT-GET-01` is complete at M4 discovery/revalidation level:
+
+```text
+GET /api/v1/core/object-templates
+
+DISCOVERY COMPLETE
+PUBLIC CONTRACT CLOSED
+LOGICAL DATA PATH REVIEWED
+CACHE BOUNDARY REVIEWED
+PERSISTENCE / INDEX HANDOFF REVIEWED
+READ SNAPSHOT / CONCURRENCY REVIEWED
+MEASUREMENT HANDOFF REVIEWED
+ARCHITECTURE CLOSING PENDING
+CURRENT M4 CANDIDATE
+```
+
+The operation-specific source note remains source material until lossless family absorption and the final ObjectTemplate consistency sweep. This operation closure does not freeze the milestone contract or architecture and does not authorize implementation.
+
+The next public-contract frontier is:
+
+```http
+GET /api/v1/core/object-templates/{template_id}
+```
