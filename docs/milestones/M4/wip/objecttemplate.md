@@ -727,7 +727,7 @@ The active next step is the operation-by-operation public-contract review beginn
 
 # 12. OT-GET-01 — LIST ObjectTemplate lineages
 
-**State:** PUBLIC CONTRACT CLOSED / AUTHORITATIVE DATA PATH + CACHE BOUNDARY + PERSISTENCE/INDEX HANDOFF REVIEWED / TECHNICAL REVIEW IN PROGRESS / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT CLOSED / AUTHORITATIVE DATA PATH + CACHE BOUNDARY + PERSISTENCE/INDEX HANDOFF + READ SNAPSHOT/CONCURRENCY REVIEWED / TECHNICAL REVIEW IN PROGRESS / CURRENT M4 CANDIDATE
 
 ## Capability and responsibility
 
@@ -1688,13 +1688,127 @@ no duplicate/redundant index
 
 The exact PostgreSQL plan is not part of the public contract. A later measured architecture adjustment may merge or replace an index only if it preserves equivalent access for the owned query families and records the evidence explicitly.
 
+## Read snapshot and concurrency realization
+
+The route executes its single authoritative `SELECT` inside an ordinary read Unit of Work at PostgreSQL `READ COMMITTED`.
+
+Static request and cursor validation complete before the business statement. The statement's MVCC snapshot is the sole coherence boundary for:
+
+```text
+collection membership
+all projected lineage fields
+canonical ordering
+bounded look-ahead
+next_cursor presence and position
+```
+
+The page must be materialized completely from that one statement result before the read Unit of Work closes. The route does not split membership, current mutable fields or continuation detection across separate statements.
+
+The read acquires no explicit NETAUTO row lock, advisory gate or `LockPlan`, and does not use:
+
+```text
+FOR KEY SHARE
+FOR SHARE
+FOR NO KEY UPDATE
+FOR UPDATE
+REPEATABLE READ
+SERIALIZABLE
+NOWAIT
+SKIP LOCKED
+business retry
+```
+
+Ordinary PostgreSQL relation-level machinery remains an implementation fact; it does not create a route-level synchronization protocol. This pure read is not a mutation-concurrency-matrix participant and does not arbitrate against ObjectTemplate `CREATE`, `DELETE`, `SET_DESCRIPTION`, `SET_DEFAULT` or `CLEAR_DEFAULT`.
+
+Snapshot visibility is:
+
+```text
+writer committed before statement-snapshot acquisition
+    -> the complete AFTER state may be observed
+
+writer not committed at statement-snapshot acquisition
+    -> the complete BEFORE state is observed
+    -> even if the writer commits before the SELECT finishes
+```
+
+For every visible lineage row, MVCC yields one coherent row version. Concurrent current-state mutations therefore produce only whole-state outcomes:
+
+```text
+SET_DESCRIPTION
+    -> old or new description
+    -> never a partial value
+
+SET_DEFAULT / CLEAR_DEFAULT
+    -> old or new default_version
+    -> never a mixed row generation
+
+CREATE lineage
+    -> complete lineage row visible or absent
+
+DELETE lineage
+    -> lineage visible in the snapshot or absent
+```
+
+A lineage returned by the page may be deleted after snapshot acquisition and before the HTTP response is emitted. This remains a valid current-read result for that statement snapshot and triggers no reread or response suppression.
+
+No post-statement existence or freshness check is performed for:
+
+```text
+returned lineage rows
+parent filter identity
+cursor-position lineage
+default target
+current description/default values
+```
+
+Such rereads would create a second temporal boundary and could only replace one coherent snapshot with a mixed observation.
+
+Separate page requests remain independent `READ COMMITTED` statements. The route provides no multi-page repeatable snapshot, frozen membership, global chronology or transaction token beyond the keyset continuation semantics already closed.
+
+### Cache publication after the read
+
+An optional `StableObjectTemplateDescriptor` fill occurs only after the complete page has been successfully decoded into its typed projection and outside the transactional correctness boundary of the read.
+
+```text
+business SELECT and complete decode succeed
+    -> read result is authoritative
+    -> optional best-effort descriptor publication may follow
+
+projection decoding fails
+    -> 500 internal_error
+    -> no partial descriptor batch is published from that failed page
+
+cache publication skipped or fails locally
+    -> successful public response remains successful
+    -> no PostgreSQL reread or retry
+```
+
+A descriptor populated from a row that is deleted immediately after the statement remains safe because the cache carries stable semantics only and never proves current existence. Any consumer that requires current existence or mutable state must continue to consult PostgreSQL.
+
+### Concurrency cost profile
+
+```text
+valid request
+    -> exactly 1 READ COMMITTED business SELECT
+    -> exactly 1 PostgreSQL statement snapshot
+    -> 0 explicit business row locks
+    -> 0 advisory gates
+    -> 0 LockPlan operations
+    -> 0 business retries
+    -> 0 freshness rereads
+
+optional cache work
+    -> 0 required cache reads
+    -> 0 additional PostgreSQL statements
+    -> best-effort post-read stable-descriptor publication only
+```
+
 ## Remaining technical review boundary
 
 Still to review for this operation:
 
 ```text
-read snapshot/concurrency realization
 measurement-oriented cost validation and final operation closure
 ```
 
-The next micro-point is the read snapshot/concurrency realization.
+The next micro-point is the measurement-oriented cost validation and final operation closure.
