@@ -1927,7 +1927,7 @@ GET /api/v1/core/object-templates/{template_id}
 
 # 13. OT-GET-02 — GET one ObjectTemplate lineage
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + STRICT REQUEST CARRIER + SUCCESS STATUS/BODY/LOCATION REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + STRICT REQUEST CARRIER + SUCCESS STATUS/BODY/LOCATION + DETAIL DTO REVIEWED / CURRENT M4 CANDIDATE
 
 ## Cross-REST consistency checkpoint
 
@@ -2053,7 +2053,7 @@ Every successful read of an existing selected lineage returns:
 Content-Type: application/json
 ```
 
-The response body is always present and contains a typed representation of the selected current ObjectTemplate lineage. The exact DTO name and fields remain owned by the next review block.
+The response body is always present and contains the typed `ObjectTemplateDetail` representation defined below.
 
 A missing path-selected lineage is not represented as a successful empty or bodyless response. Its `404 resource_not_found` semantics and precedence remain owned by the upcoming failure-catalogue review.
 
@@ -2072,14 +2072,89 @@ Content-Range
 
 This preserves the represented-resource success pattern of the reviewed detail GETs, including `RD-GET-02`, and the body-present success convention already closed for `OT-GET-01`. No ObjectTemplate-specific divergence is introduced in this block.
 
+## Lineage detail DTO and relationship to ObjectTemplateSummary
+
+The current ratified decision is to keep the detail and collection-item projections equal for now:
+
+```text
+ObjectTemplateDetail
+    id: UUID
+    namespace: string
+    name: string
+    description: string | null
+    abstract: bool
+    parent_template_id: UUID | null
+    default_version: positive integer | null
+```
+
+These are exactly the seven fields of the reviewed `ObjectTemplateSummary`, with identical names, carrier types, presence rules and meanings. The response is directly one JSON object, not a page or an additional wrapper.
+
+```text
+successful detail body
+    -> exactly one ObjectTemplateDetail
+    -> id identifies the same stable lineage selected by template_id
+
+all seven fields
+    -> always present
+
+description = null
+    -> no current description
+
+parent_template_id = null
+    -> stable root lineage
+
+default_version = null
+    -> no exact version currently selected as the lineage default
+```
+
+Nullable fields are not omitted or replaced with placeholder values. `parent_template_id` denotes the direct stable parent lineage, not an exact parent-version pin or a complete ancestor set. `default_version` denotes a same-lineage exact-version selection policy, not latest/highest version or independent Object.CREATE eligibility; the detail does not expand or re-certify that exact version.
+
+The detail does not add:
+
+```text
+items / next_cursor / data wrapper
+count / total_count / links
+qualified_name duplicated beside namespace + name
+expanded parent reference
+version status, count or list
+local property/component declarations
+effective schema
+complete ancestry closure
+relationship capabilities
+```
+
+`ObjectTemplateDetail` and `ObjectTemplateSummary` distinguish public roles. They do not require duplicate implementation classes; a shared representation may realize both. Equality of shape and semantics does not promise identical current values across requests made at different times.
+
+### Explicit cross-REST comparison
+
+The decision preserves the already-ratified ObjectTemplate lineage responsibility rather than introducing a universal rule that every detail equals its summary.
+
+The reviewed precedents remain distinct:
+
+```text
+factual Relationship
+    -> Object-scoped collection exposes one source-relative semantic cell
+    -> global detail exposes the complete factual perspectives
+
+RelationshipDefinition
+    -> collection exposes the compact authored/current contract
+    -> detail additionally exposes complete factored applicability
+
+ObjectTemplate lineage, current decision
+    -> collection item and detail expose the same current lineage header
+    -> collection discovers through filters and pagination
+    -> detail dereferences one known stable identity directly
+```
+
+No Relationship or RelationshipDefinition contract is changed. No ObjectTemplate responsibility is reopened to add ancestry, version, schema or capability expansion. A later change to this equality requires explicit revalidation of the affected responsibility and both public projections.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-lineage detail DTO and relation to ObjectTemplateSummary
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is the lineage detail DTO and its relationship to the reviewed ObjectTemplateSummary.
+The next micro-point is the finite public failure catalogue and failure precedence.
