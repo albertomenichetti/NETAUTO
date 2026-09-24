@@ -1927,7 +1927,7 @@ GET /api/v1/core/object-templates/{template_id}
 
 # 13. OT-GET-02 — GET one ObjectTemplate lineage
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + STRICT REQUEST CARRIER REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + STRICT REQUEST CARRIER + SUCCESS STATUS/BODY/LOCATION REVIEWED / CURRENT M4 CANDIDATE
 
 ## Cross-REST consistency checkpoint
 
@@ -2044,15 +2044,42 @@ An HTTP `Content-Type` header does not enable a payload for this GET. There are 
 
 The adapter applies no route-specific trim, normalization, repair or generic scalar coercion beyond the shared public UUID decoding rules.
 
+## Success status, response-body presence and Location
+
+Every successful read of an existing selected lineage returns:
+
+```http
+200 OK
+Content-Type: application/json
+```
+
+The response body is always present and contains a typed representation of the selected current ObjectTemplate lineage. The exact DTO name and fields remain owned by the next review block.
+
+A missing path-selected lineage is not represented as a successful empty or bodyless response. Its `404 resource_not_found` semantics and precedence remain owned by the upcoming failure-catalogue review.
+
+The response carries no `Location` header: the operation creates no resource and the requested URI already identifies the lineage.
+
+The route introduces no success variant based on:
+
+```text
+201 Created
+202 Accepted
+204 No Content
+206 Partial Content
+redirect
+Content-Range
+```
+
+This preserves the represented-resource success pattern of the reviewed detail GETs, including `RD-GET-02`, and the body-present success convention already closed for `OT-GET-01`. No ObjectTemplate-specific divergence is introduced in this block.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-success status, body and Location
 lineage detail DTO and relation to ObjectTemplateSummary
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is success status, response-body presence and Location behavior.
+The next micro-point is the lineage detail DTO and its relationship to the reviewed ObjectTemplateSummary.
