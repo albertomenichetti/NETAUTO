@@ -1927,7 +1927,7 @@ GET /api/v1/core/object-templates/{template_id}
 
 # 13. OT-GET-02 — GET one ObjectTemplate lineage
 
-**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE REVIEWED / CURRENT M4 CANDIDATE
+**State:** PUBLIC CONTRACT REVIEW IN PROGRESS / CAPABILITY + RESPONSIBILITY + METHOD + ROUTE + STRICT REQUEST CARRIER REVIEWED / CURRENT M4 CANDIDATE
 
 ## Cross-REST consistency checkpoint
 
@@ -1989,19 +1989,70 @@ GET /api/v1/core/object-templates/{template_id}
 
 M4 does not rename the resource to `/object-template-lineages`, introduce a query-based ID lookup or remove the detail capability.
 
+## Strict request carrier
+
+### Path parameter
+
+```text
+template_id
+    -> required
+    -> shared public UUID carrier
+```
+
+A syntactically valid UUID selects one stable ObjectTemplate identity; current existence is decided only by the authoritative detail read. Empty, literal `null`, malformed or otherwise non-decodable path values are `400 invalid_request`.
+
+The path segment has no omission or nullable semantics:
+
+```text
+GET /api/v1/core/object-templates
+    -> OT-GET-01 collection
+
+GET /api/v1/core/object-templates/{template_id}
+    -> OT-GET-02 detail
+```
+
+No default, current-template alias or implicit selector exists.
+
+### Query parameters
+
+The detail route accepts no query parameters. Any supplied query key, including collection filters or speculative expansion/version carriers, is rejected:
+
+```text
+any query parameter
+    -> 400 invalid_request
+```
+
+The route therefore does not accept `namespace`, `name`, `abstract`, `parent_template_id`, `version`, `include_versions`, `expand` or any other query carrier. Unknown and repeated query parameters are not ignored.
+
+### Request body and omission/null semantics
+
+The request body is forbidden:
+
+```text
+empty HTTP body
+    -> valid
+
+any non-empty body bytes, including
+    {}
+    null
+    JSON or non-JSON payload
+    whitespace-only payload
+    -> 400 invalid_request
+```
+
+An HTTP `Content-Type` header does not enable a payload for this GET. There are no optional request fields and therefore no domain distinction between omission and explicit null. Literal `null` in the path remains an invalid UUID carrier, not a null selector.
+
+The adapter applies no route-specific trim, normalization, repair or generic scalar coercion beyond the shared public UUID decoding rules.
+
 ## Open public-contract boundary
 
 Not yet reviewed or closed:
 
 ```text
-path carrier grammar
-query-parameter prohibition
-strict request-body prohibition
-omission versus explicit null semantics
 success status, body and Location
 lineage detail DTO and relation to ObjectTemplateSummary
 finite failure set and precedence
 technical data path, cache, persistence and concurrency realization
 ```
 
-The next micro-point is the strict request carrier: required path UUID, absence of query parameters and forbidden request body.
+The next micro-point is success status, response-body presence and Location behavior.
